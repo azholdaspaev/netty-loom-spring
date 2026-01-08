@@ -327,3 +327,105 @@ Modified `netty-loom-spring-mvc/build.gradle.kts`:
 - `netty-loom-spring-mvc/build.gradle.kts` (added Netty dependency)
 
 ---
+
+## TASK-004: Servlet Context & Filter Support
+
+**Status:** COMPLETED
+**Completed:** 2026-01-08
+
+### Summary
+Implemented the minimal ServletContext needed by Spring MVC and the filter chain adapter for executing servlet filters. These components enable Spring Boot's auto-configuration to register filters and servlets with the Netty server.
+
+### Architecture
+
+```
+HTTP Request
+    ↓
+Servlet Container (Netty)
+    ↓
+FilterChainAdapter.doFilter()
+├─ Filter 1.doFilter() → chain.doFilter()
+│  ├─ Filter 2.doFilter() → chain.doFilter()
+│  │  └─ No more filters → DispatcherServlet.service()
+│  └─ Filter 2 post-processing
+└─ Filter 1 post-processing
+```
+
+### Files Created
+
+#### 1. ServletRegistrationAdapter.java
+Implements `jakarta.servlet.ServletRegistration.Dynamic`:
+- Stores servlet name, class, and instance
+- Manages URL pattern mappings
+- Stores init parameters
+- Tracks load-on-startup and async support
+
+#### 2. FilterRegistrationAdapter.java
+Implements `jakarta.servlet.FilterRegistration.Dynamic`:
+- Stores filter name, class, and instance
+- Manages URL pattern and servlet name mappings
+- Supports dispatcher type configuration
+- Provides URL pattern matching logic
+
+#### 3. NettyServletContext.java
+Implements `jakarta.servlet.ServletContext` (400+ lines):
+- **Servlet Registration:** `addServlet()`, `getServletRegistration()`, `getServletRegistrations()`
+- **Filter Registration:** `addFilter()`, `getFilterRegistration()`, `getFilterRegistrations()`
+- **Attributes:** `getAttribute()`, `setAttribute()`, `removeAttribute()`
+- **Init Parameters:** `getInitParameter()`, `setInitParameter()`
+- **Context Info:** `getContextPath()`, `getServerInfo()`, `getMimeType()`
+- **Unsupported:** Sessions, listeners, JSP (throw UnsupportedOperationException)
+
+#### 4. FilterChainAdapter.java
+Implements `jakarta.servlet.FilterChain`:
+- Executes filters in registration order
+- Terminates at DispatcherServlet (or any terminal servlet)
+- Supports filter short-circuiting (security filters can block requests)
+- Properly propagates exceptions
+
+### Tests Added
+
+#### NettyServletContextTest.java (24 tests)
+Nested test classes:
+- `ContextInfo` - Context path, server info, versions
+- `Attributes` - Get/set/remove attributes
+- `InitParameters` - Init parameter handling
+- `ServletRegistrationTests` - Servlet registration and retrieval
+- `FilterRegistrationTests` - Filter registration and retrieval
+- `MimeTypes` - MIME type detection
+
+#### FilterChainAdapterTest.java (14 tests)
+Nested test classes:
+- `BasicChainExecution` - Filter execution order, empty chains
+- `FilterShortCircuit` - Security filter blocking
+- `ExceptionHandling` - Exception propagation
+- `ChainState` - Index tracking, reset
+- `ListConstructor` - List-based construction
+- `NullServlet` - Null terminal servlet handling
+
+### Test Results
+
+```bash
+./gradlew :netty-loom-spring-mvc:test
+# All tests pass (79 original + 38 new = 117 total)
+BUILD SUCCESSFUL
+```
+
+### Design Decisions
+
+1. **LinkedHashMap for registrations** - Preserves filter execution order (important for Spring Security)
+2. **ConcurrentHashMap for attributes** - Thread-safe attribute access
+3. **Filter matching** - Supports `/*`, `/path/*`, and `*.ext` patterns
+4. **No classloading** - `addFilter(name, className)` throws UnsupportedOperationException (not needed for Spring Boot)
+5. **Silently ignore listeners** - Spring may try to add listeners; we don't fail but don't support them
+
+### Files Created
+
+- `netty-loom-spring-mvc/src/main/java/io/github/azholdaspaev/nettyloom/mvc/servlet/ServletRegistrationAdapter.java`
+- `netty-loom-spring-mvc/src/main/java/io/github/azholdaspaev/nettyloom/mvc/filter/FilterRegistrationAdapter.java`
+- `netty-loom-spring-mvc/src/main/java/io/github/azholdaspaev/nettyloom/mvc/servlet/NettyServletContext.java`
+- `netty-loom-spring-mvc/src/main/java/io/github/azholdaspaev/nettyloom/mvc/filter/FilterChainAdapter.java`
+- `netty-loom-spring-mvc/src/test/java/io/github/azholdaspaev/nettyloom/mvc/servlet/NettyServletContextTest.java`
+- `netty-loom-spring-mvc/src/test/java/io/github/azholdaspaev/nettyloom/mvc/filter/FilterChainAdapterTest.java`
+
+---

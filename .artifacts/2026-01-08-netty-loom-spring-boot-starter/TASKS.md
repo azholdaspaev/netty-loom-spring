@@ -5,7 +5,7 @@
 
 ## Task Overview
 - **Total Tasks:** 12
-- **Status:** 3/12 completed
+- **Status:** 4/12 completed
 
 ---
 
@@ -89,17 +89,18 @@
 ---
 
 ### TASK-004: Servlet Context & Filter Support
-- **Status:** PENDING
+- **Status:** COMPLETED
+- **Completed:** 2026-01-08T21:45:00Z
 - **Priority:** HIGH
 - **Depends On:** TASK-003
 - **Description:**
   Implement the minimal ServletContext needed by Spring MVC and the filter chain adapter for executing servlet filters.
 - **Acceptance Criteria:**
-  - [ ] NettyServletContext implements required Spring MVC methods
-  - [ ] Servlet and filter registration works during initialization
-  - [ ] FilterChainAdapter executes filters in correct order
-  - [ ] FilterChainAdapter terminates at DispatcherServlet
-  - [ ] Unit tests pass
+  - [x] NettyServletContext implements required Spring MVC methods
+  - [x] Servlet and filter registration works during initialization
+  - [x] FilterChainAdapter executes filters in correct order
+  - [x] FilterChainAdapter terminates at DispatcherServlet
+  - [x] Unit tests pass
 - **Files to Create:**
   - `netty-loom-spring-mvc/src/main/java/.../mvc/servlet/NettyServletContext.java`
   - `netty-loom-spring-mvc/src/main/java/.../mvc/filter/FilterChainAdapter.java`
