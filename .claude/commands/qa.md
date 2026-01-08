@@ -131,8 +131,20 @@ When QA returns `FAIL`:
 4. If code changes are significant, may need `/review` again
 
 ## Next Steps
-- If `PASS`: `/docs-update` - Update documentation
-- If `FAIL`: Fix issues and run `/qa` again
+After QA testing, display:
+
+**Artifact Folder:** `.artifacts/{date}-{feature-name}/`
+
+**Related Documents:**
+- PRD: `.artifacts/{date}-{feature-name}/PRD.md`
+- Architecture: `.artifacts/{date}-{feature-name}/ARCHITECTURE.md`
+- Tasks: `.artifacts/{date}-{feature-name}/TASKS.md`
+- Review: `.artifacts/{date}-{feature-name}/REVIEW.md`
+- QA Report: `.artifacts/{date}-{feature-name}/QA_REPORT.md`
+
+**Suggested Commands:**
+- If `PASS`: `/docs-update .artifacts/{date}-{feature-name}/` - Update documentation
+- If `FAIL`: Fix issues and run `/qa .artifacts/{date}-{feature-name}/` again
 
 ## Example Usage
 ```

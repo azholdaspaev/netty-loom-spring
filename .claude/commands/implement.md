@@ -138,8 +138,24 @@ If all tasks are `COMPLETED`:
 - Performance trade-off exists (speed vs memory vs readability)
 
 ## Next Steps
-- `/implement TASK-XXX` - Implement next task
-- `/review` - When all tasks complete
+After task implementation, display:
+
+**Artifact Folder:** `.artifacts/{date}-{feature-name}/`
+
+**Related Documents:**
+- PRD: `.artifacts/{date}-{feature-name}/PRD.md`
+- Architecture: `.artifacts/{date}-{feature-name}/ARCHITECTURE.md`
+- Tasks: `.artifacts/{date}-{feature-name}/TASKS.md`
+- Implementation Log: `.artifacts/{date}-{feature-name}/IMPLEMENTATION_LOG.md`
+
+**Task Progress:**
+- Completed: {N}/{total}
+- Next task: TASK-XXX - {title}
+- Scope: {brief description of next task}
+
+**Suggested Commands:**
+- `/implement TASK-XXX` - Implement next pending task
+- `/review .artifacts/{date}-{feature-name}/` - When all tasks complete
 
 ## Example Usage
 ```

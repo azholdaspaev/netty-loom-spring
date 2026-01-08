@@ -93,13 +93,18 @@ Display report to user (not saved to file):
 
 ## Available Commands
 Based on current state ({state}), you can run:
-- {command}: {description}
+- `{command} .artifacts/{folder-name}/`: {description}
 
 ## Blocked Commands
-- {command}: requires {state} (run {prerequisite command} first)
+- `{command}`: requires {state} (run `{prerequisite command} .artifacts/{folder-name}/` first)
 
 ## Recommendations
-1. {next recommended action}
+1. Run `{recommended-command} .artifacts/{folder-name}/`
+
+## Artifact References
+Based on current state, relevant documents:
+- PRD: `.artifacts/{folder-name}/PRD.md`
+- {other relevant artifacts based on current state}
 ```
 
 ## Output

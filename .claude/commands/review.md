@@ -120,8 +120,20 @@ When review returns `REQUEST_CHANGES`:
 4. Run `/review` again
 
 ## Next Steps
-- If `APPROVED`: `/qa` - Run quality assurance
-- If `REQUEST_CHANGES`: Fix issues and run `/review` again
+After code review, display:
+
+**Artifact Folder:** `.artifacts/{date}-{feature-name}/`
+
+**Related Documents:**
+- PRD: `.artifacts/{date}-{feature-name}/PRD.md`
+- Architecture: `.artifacts/{date}-{feature-name}/ARCHITECTURE.md`
+- Tasks: `.artifacts/{date}-{feature-name}/TASKS.md`
+- Implementation Log: `.artifacts/{date}-{feature-name}/IMPLEMENTATION_LOG.md`
+- Review: `.artifacts/{date}-{feature-name}/REVIEW.md`
+
+**Suggested Commands:**
+- If `APPROVED`: `/qa .artifacts/{date}-{feature-name}/` - Run quality assurance
+- If `REQUEST_CHANGES`: Fix issues and run `/review .artifacts/{date}-{feature-name}/` again
 
 ## Example Usage
 ```

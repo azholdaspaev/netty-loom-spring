@@ -139,7 +139,27 @@ Update `STATE.md`:
 - Edge cases from PRD could be separate tasks or bundled - which approach?
 
 ## Next Steps
+After task list is generated, display:
+
+**Artifact Folder:** `.artifacts/{date}-{feature-name}/`
+
+**Related Documents:**
+- PRD: `.artifacts/{date}-{feature-name}/PRD.md`
+- Research: `.artifacts/{date}-{feature-name}/RESEARCH.md` (if exists)
+- Architecture: `.artifacts/{date}-{feature-name}/ARCHITECTURE.md`
+- Tasks: `.artifacts/{date}-{feature-name}/TASKS.md`
+
+**Task Scope Summary:**
+Display a brief summary of all tasks:
+- Total tasks: {N}
+- First task: TASK-001 - {title}
+- Dependencies: {task dependency summary}
+
+**Suggested Commands:**
 - `/implement TASK-001` - Start implementing first task
+
+**Implementation Order:**
+List the recommended task order based on dependencies from TASKS.md.
 
 ## Example Usage
 ```

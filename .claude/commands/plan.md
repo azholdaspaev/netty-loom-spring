@@ -110,7 +110,17 @@ Update `STATE.md`:
 - Integration approach with third-party services is unclear
 
 ## Next Steps
-- `/tasks` - Generate implementation task list
+After architecture is complete, display:
+
+**Artifact Folder:** `.artifacts/{date}-{feature-name}/`
+
+**Related Documents:**
+- PRD: `.artifacts/{date}-{feature-name}/PRD.md`
+- Research: `.artifacts/{date}-{feature-name}/RESEARCH.md` (if exists)
+- Architecture: `.artifacts/{date}-{feature-name}/ARCHITECTURE.md`
+
+**Suggested Commands:**
+- `/tasks .artifacts/{date}-{feature-name}/` - Generate implementation task list
 
 ## Example Usage
 ```

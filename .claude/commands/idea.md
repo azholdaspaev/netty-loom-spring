@@ -143,9 +143,17 @@ Before completing, verify:
 - External dependencies are uncertain (which API version? which service?)
 
 ## Next Steps
-After PRD is complete, suggest:
-- `/researcher` - To investigate technical approaches (optional)
-- `/plan` - To create architecture plan (if research not needed)
+After PRD is complete, display:
+
+**Artifact Folder:** `.artifacts/{date}-{feature-name}/`
+
+**Created Documents:**
+- PRD: `.artifacts/{date}-{feature-name}/PRD.md`
+- State: `.artifacts/{date}-{feature-name}/STATE.md`
+
+**Suggested Commands:**
+- `/researcher .artifacts/{date}-{feature-name}/` - To investigate technical approaches (optional)
+- `/plan .artifacts/{date}-{feature-name}/` - To create architecture plan (if research not needed)
 
 ## Example Usage
 ```
