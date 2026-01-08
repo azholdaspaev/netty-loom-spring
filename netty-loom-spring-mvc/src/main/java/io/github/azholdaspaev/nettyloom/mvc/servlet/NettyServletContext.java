@@ -308,16 +308,18 @@ public class NettyServletContext implements ServletContext {
         return Collections.unmodifiableMap(filterRegistrations);
     }
 
-    // ===== Session Configuration (not supported) =====
+    // ===== Session Configuration (stub implementation for Spring Boot compatibility) =====
+
+    private final SessionCookieConfig sessionCookieConfig = new NoOpSessionCookieConfig();
 
     @Override
     public SessionCookieConfig getSessionCookieConfig() {
-        throw new UnsupportedOperationException("Session not supported");
+        return sessionCookieConfig;
     }
 
     @Override
     public void setSessionTrackingModes(Set<SessionTrackingMode> sessionTrackingModes) {
-        throw new UnsupportedOperationException("Session not supported");
+        // Session tracking not fully supported, but accept the call for Spring Boot compatibility
     }
 
     @Override
@@ -438,16 +440,88 @@ public class NettyServletContext implements ServletContext {
     }
 
     /**
-     * Returns all registered filters that match the given path.
+     * Returns all registered filters that match the given request path.
      *
-     * @param path the request path
-     * @return collection of matching filters
+     * <p>Filters are returned in registration order. A filter matches if:
+     * <ul>
+     *   <li>It has no URL pattern mappings (matches all paths), or</li>
+     *   <li>Its URL patterns match the given path</li>
+     * </ul>
+     *
+     * @param requestPath the request path to match
+     * @return collection of matching filters in registration order
      */
-    public Collection<Filter> getMatchingFilters(String path) {
+    public Collection<Filter> getMatchingFilters(String requestPath) {
         return filterRegistrations.values().stream()
-                .filter(reg -> reg.matchesUrl(path) || !reg.getUrlPatternMappings().isEmpty())
+                .filter(reg -> reg.matches(requestPath))
                 .map(FilterRegistrationAdapter::getFilter)
                 .filter(f -> f != null)
                 .toList();
+    }
+
+    /**
+     * No-op SessionCookieConfig for Spring Boot compatibility.
+     * Session management is not fully supported.
+     */
+    private static class NoOpSessionCookieConfig implements SessionCookieConfig {
+        private String name = "JSESSIONID";
+        private String domain;
+        private String path;
+        private String comment;
+        private boolean httpOnly = true;
+        private boolean secure = false;
+        private int maxAge = -1;
+        private Map<String, String> attributes = new HashMap<>();
+
+        @Override
+        public void setName(String name) { this.name = name; }
+
+        @Override
+        public String getName() { return name; }
+
+        @Override
+        public void setDomain(String domain) { this.domain = domain; }
+
+        @Override
+        public String getDomain() { return domain; }
+
+        @Override
+        public void setPath(String path) { this.path = path; }
+
+        @Override
+        public String getPath() { return path; }
+
+        @Override
+        public void setComment(String comment) { this.comment = comment; }
+
+        @Override
+        public String getComment() { return comment; }
+
+        @Override
+        public void setHttpOnly(boolean httpOnly) { this.httpOnly = httpOnly; }
+
+        @Override
+        public boolean isHttpOnly() { return httpOnly; }
+
+        @Override
+        public void setSecure(boolean secure) { this.secure = secure; }
+
+        @Override
+        public boolean isSecure() { return secure; }
+
+        @Override
+        public void setMaxAge(int maxAge) { this.maxAge = maxAge; }
+
+        @Override
+        public int getMaxAge() { return maxAge; }
+
+        @Override
+        public void setAttribute(String name, String value) { attributes.put(name, value); }
+
+        @Override
+        public String getAttribute(String name) { return attributes.get(name); }
+
+        @Override
+        public Map<String, String> getAttributes() { return Collections.unmodifiableMap(attributes); }
     }
 }

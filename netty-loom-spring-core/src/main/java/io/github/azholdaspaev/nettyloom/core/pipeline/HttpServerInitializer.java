@@ -1,6 +1,7 @@
 package io.github.azholdaspaev.nettyloom.core.pipeline;
 
 import io.github.azholdaspaev.nettyloom.core.handler.HttpRequestHandler;
+import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
@@ -11,15 +12,40 @@ import java.util.concurrent.ExecutorService;
 
 /**
  * Channel initializer that sets up the HTTP pipeline.
+ *
+ * <p>The pipeline consists of:
+ * <ul>
+ *   <li>HttpServerCodec - encodes/decodes HTTP messages</li>
+ *   <li>HttpObjectAggregator - combines HTTP chunks into FullHttpRequest</li>
+ *   <li>Request handler - either custom injected or default HttpRequestHandler</li>
+ * </ul>
  */
 public class HttpServerInitializer extends ChannelInitializer<SocketChannel> {
 
     private final int maxContentLength;
-    private final ExecutorService executor;
+    private final ChannelHandler requestHandler;
 
-    public HttpServerInitializer(int maxContentLength, ExecutorService executor) {
+    /**
+     * Creates initializer with a custom request handler.
+     * Use this constructor for Spring Boot integration with SpringMvcBridgeHandler.
+     *
+     * @param maxContentLength maximum content length for HTTP aggregation
+     * @param requestHandler the handler to process HTTP requests
+     */
+    public HttpServerInitializer(int maxContentLength, ChannelHandler requestHandler) {
         this.maxContentLength = maxContentLength;
-        this.executor = executor;
+        this.requestHandler = requestHandler;
+    }
+
+    /**
+     * Creates initializer with the default HttpRequestHandler.
+     * This constructor maintains backwards compatibility for standalone server usage.
+     *
+     * @param maxContentLength maximum content length for HTTP aggregation
+     * @param executor the executor service for virtual thread dispatch
+     */
+    public HttpServerInitializer(int maxContentLength, ExecutorService executor) {
+        this(maxContentLength, new HttpRequestHandler(executor));
     }
 
     @Override
@@ -32,7 +58,7 @@ public class HttpServerInitializer extends ChannelInitializer<SocketChannel> {
         // Aggregates HTTP message parts into FullHttpRequest
         pipeline.addLast("httpAggregator", new HttpObjectAggregator(maxContentLength));
 
-        // Our request handler that dispatches to virtual threads
-        pipeline.addLast("httpHandler", new HttpRequestHandler(executor));
+        // Request handler (custom or default)
+        pipeline.addLast("httpHandler", requestHandler);
     }
 }

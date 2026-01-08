@@ -175,9 +175,10 @@ public class FilterRegistrationAdapter implements FilterRegistration.Dynamic {
 
     /**
      * Checks if this filter matches the given URL path.
+     * If no URL patterns are configured, returns false (use matches() for default behavior).
      *
      * @param path the request path
-     * @return true if the filter should be applied
+     * @return true if the filter should be applied based on URL patterns
      */
     public boolean matchesUrl(String path) {
         if (urlPatternMappings.isEmpty()) {
@@ -189,6 +190,27 @@ public class FilterRegistrationAdapter implements FilterRegistration.Dynamic {
             }
         }
         return false;
+    }
+
+    /**
+     * Checks if this filter should be applied for the given request path.
+     *
+     * <p>Matching rules:
+     * <ul>
+     *   <li>If no URL patterns AND no servlet names are configured, filter matches all paths</li>
+     *   <li>Otherwise, checks URL pattern mappings for a match</li>
+     * </ul>
+     *
+     * @param requestPath the request path to check
+     * @return true if the filter should be applied
+     */
+    public boolean matches(String requestPath) {
+        // If no mappings at all, filter matches everything (default behavior)
+        if (urlPatternMappings.isEmpty() && servletNameMappings.isEmpty()) {
+            return true;
+        }
+        // Check URL patterns
+        return matchesUrl(requestPath);
     }
 
     /**

@@ -5,7 +5,7 @@
 
 ## Task Overview
 - **Total Tasks:** 12
-- **Status:** 4/12 completed
+- **Status:** 5/12 completed
 
 ---
 
@@ -113,22 +113,28 @@
 ## Phase 3: Spring Boot Integration
 
 ### TASK-005: Spring Boot Server Factory
-- **Status:** PENDING
+- **Status:** COMPLETED
+- **Completed:** 2026-01-09T00:30:00Z
 - **Priority:** HIGH
 - **Depends On:** TASK-004
 - **Description:**
   Implement the Spring Boot integration layer: factory that creates the server, WebServer wrapper, configuration properties, and the bridge handler that connects Netty to Spring MVC.
 - **Acceptance Criteria:**
-  - [ ] NettyServletWebServerFactory creates working WebServer
-  - [ ] NettyWebServer implements WebServer interface correctly
-  - [ ] NettyServerProperties binds from application.properties
-  - [ ] SpringMvcBridgeHandler dispatches requests to DispatcherServlet
-  - [ ] Virtual threads are used for all request processing
-- **Files to Create:**
+  - [x] NettyServletWebServerFactory creates working WebServer
+  - [x] NettyWebServer implements WebServer interface correctly
+  - [x] NettyServerProperties binds from application.properties
+  - [x] SpringMvcBridgeHandler dispatches requests to DispatcherServlet
+  - [x] Virtual threads are used for all request processing
+- **Files Created:**
   - `netty-loom-spring-boot-starter/src/main/java/.../autoconfigure/NettyServletWebServerFactory.java`
-  - `netty-loom-spring-core/src/main/java/.../core/server/NettyWebServer.java`
   - `netty-loom-spring-boot-starter/src/main/java/.../autoconfigure/NettyServerProperties.java`
-  - `netty-loom-spring-core/src/main/java/.../core/handler/SpringMvcBridgeHandler.java`
+  - `netty-loom-spring-boot-starter/src/main/java/.../autoconfigure/handler/SpringMvcBridgeHandler.java`
+  - `netty-loom-spring-core/src/main/java/.../core/server/NettyWebServer.java`
+- **Files Modified:**
+  - `netty-loom-spring-core/src/main/java/.../core/server/NettyServer.java` (handler injection)
+  - `netty-loom-spring-core/src/main/java/.../core/pipeline/HttpServerInitializer.java` (handler parameter)
+  - `netty-loom-spring-mvc/src/main/java/.../mvc/servlet/NettyServletContext.java` (SessionCookieConfig)
+  - `netty-loom-spring-mvc/src/main/java/.../mvc/filter/FilterRegistrationAdapter.java` (matches method)
 
 ---
 

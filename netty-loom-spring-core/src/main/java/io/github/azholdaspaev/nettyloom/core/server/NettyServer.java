@@ -1,9 +1,11 @@
 package io.github.azholdaspaev.nettyloom.core.server;
 
 import io.github.azholdaspaev.nettyloom.core.executor.VirtualThreadExecutorFactory;
+import io.github.azholdaspaev.nettyloom.core.handler.HttpRequestHandler;
 import io.github.azholdaspaev.nettyloom.core.pipeline.HttpServerInitializer;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -17,20 +19,45 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Netty-based HTTP server with virtual thread support.
+ *
+ * <p>This server can be used in two modes:
+ * <ul>
+ *   <li>Standalone mode: Uses default HttpRequestHandler for simple responses</li>
+ *   <li>Spring Boot mode: Uses injected handler (e.g., SpringMvcBridgeHandler)</li>
+ * </ul>
  */
 public class NettyServer {
 
     private static final Logger logger = LoggerFactory.getLogger(NettyServer.class);
 
     private final NettyServerConfiguration config;
+    private final ChannelHandler requestHandler;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
     private ExecutorService virtualThreadExecutor;
     private Channel serverChannel;
     private volatile boolean running = false;
 
+    /**
+     * Creates a server with default HttpRequestHandler.
+     * Suitable for standalone usage or testing.
+     *
+     * @param config the server configuration
+     */
     public NettyServer(NettyServerConfiguration config) {
+        this(config, null);
+    }
+
+    /**
+     * Creates a server with a custom request handler.
+     * Use this constructor for Spring Boot integration.
+     *
+     * @param config the server configuration
+     * @param requestHandler the handler to process requests, or null for default
+     */
+    public NettyServer(NettyServerConfiguration config, ChannelHandler requestHandler) {
         this.config = config;
+        this.requestHandler = requestHandler;
     }
 
     /**
@@ -52,9 +79,14 @@ public class NettyServer {
         workerGroup = new NioEventLoopGroup(workerThreads);
         virtualThreadExecutor = VirtualThreadExecutorFactory.create("netty-vt-");
 
+        // Use injected handler or fall back to default HttpRequestHandler
+        ChannelHandler handler = requestHandler != null
+                ? requestHandler
+                : new HttpRequestHandler(virtualThreadExecutor);
+
         HttpServerInitializer initializer = new HttpServerInitializer(
                 config.getMaxContentLength(),
-                virtualThreadExecutor
+                handler
         );
 
         ServerBootstrap bootstrap = new ServerBootstrap()

@@ -429,3 +429,157 @@ BUILD SUCCESSFUL
 - `netty-loom-spring-mvc/src/test/java/io/github/azholdaspaev/nettyloom/mvc/filter/FilterChainAdapterTest.java`
 
 ---
+
+## TASK-005: Spring Boot Server Factory
+
+**Status:** COMPLETED
+**Completed:** 2026-01-09
+
+### Summary
+Implemented the Spring Boot integration layer that enables Spring Boot applications to use Netty with virtual threads as their embedded web server. Created the `ServletWebServerFactory`, `WebServer` wrapper, configuration properties, and the bridge handler connecting Netty to Spring MVC.
+
+### Architecture
+
+```
+Spring Boot Application
+    │
+    ▼
+NettyServletWebServerFactory
+    │ Creates
+    ▼
+NettyServletContext ─────────────────────┐
+    │ Registers via ServletContextInitializer
+    ▼                                    │
+DispatcherServlet + Filters              │
+    │                                    │
+    ▼                                    │
+SpringMvcBridgeHandler <─────────────────┘
+    │ Dispatches to virtual threads
+    ▼
+NettyHttpServletRequest/Response
+    │
+    ▼
+FilterChainAdapter → DispatcherServlet
+    │
+    ▼
+Netty FullHttpResponse
+```
+
+### Files Created
+
+#### 1. SpringMvcBridgeHandler.java
+Netty channel handler that bridges HTTP requests to Spring MVC:
+- Receives Netty HTTP requests on event loop thread
+- Dispatches processing to virtual threads via `virtualThreadExecutor.submit()`
+- Creates servlet request/response adapters per request
+- Executes filter chain terminating at DispatcherServlet
+- Converts servlet response back to Netty response
+- Handles HTTP keep-alive correctly
+- Sends error responses for exceptions
+
+#### 2. NettyWebServer.java
+Implements Spring Boot's `WebServer` interface:
+- `start()` - Delegates to NettyServer, handles InterruptedException
+- `stop()` - Delegates to NettyServer
+- `getPort()` - Returns actual bound port (ephemeral port support)
+- `shutDownGracefully()` - Graceful shutdown with callback notification
+- Thread-safe with volatile `started` flag
+
+#### 3. NettyServerProperties.java
+Configuration properties bound from `server.netty.*`:
+- `bossThreads` (default: 1)
+- `workerThreads` (default: 0 = availableProcessors)
+- `maxContentLength` (default: 10MB)
+- `connectionTimeout` (default: 30s)
+- `idleTimeout` (default: 60s)
+- `shutdownTimeout` (default: 30s)
+- `serverHeader` (default: "Netty-Loom")
+
+#### 4. NettyServletWebServerFactory.java
+Spring Boot `AbstractServletWebServerFactory` implementation:
+- Creates `NettyServletContext` for servlet/filter registration
+- Applies all `ServletContextInitializer`s (registers DispatcherServlet)
+- Creates virtual thread executor
+- Creates `SpringMvcBridgeHandler` with servlet context
+- Builds server configuration from properties
+- Returns `NettyWebServer` wrapping `NettyServer`
+
+### Files Modified
+
+#### 1. HttpServerInitializer.java
+- Added constructor accepting `ChannelHandler` parameter
+- Maintains backwards compatibility with executor-based constructor
+- Allows injection of custom handlers (SpringMvcBridgeHandler)
+
+#### 2. NettyServer.java
+- Added `requestHandler` field for handler injection
+- Added constructor accepting custom `ChannelHandler`
+- Falls back to default `HttpRequestHandler` if no handler provided
+- Enables Spring Boot integration while preserving standalone usage
+
+#### 3. FilterRegistrationAdapter.java
+- Added `matches(String requestPath)` method for URL pattern matching
+- Supports default behavior (match all if no patterns configured)
+- Pattern types: `/*`, `/path/*`, `*.ext`, exact path
+
+#### 4. NettyServletContext.java
+- Added `NoOpSessionCookieConfig` inner class for Spring Boot compatibility
+- Changed `getSessionCookieConfig()` to return stub instead of throwing
+- Changed `setSessionTrackingModes()` to accept call silently
+
+### Dependencies Changed
+
+#### netty-loom-spring-mvc/build.gradle.kts
+- Removed dependency on `netty-loom-spring-core` (not needed, prevents circular dependency)
+
+#### netty-loom-spring-boot-starter/build.gradle.kts
+- Added Netty dependency for SpringMvcBridgeHandler
+- Added Servlet API dependency
+
+### Tests Added
+
+#### NettyServerPropertiesTest.java (14 tests)
+- `DefaultValues` - Verifies all default property values
+- `SettersAndGetters` - Tests property mutation
+
+#### NettyWebServerTest.java (7 tests)
+- `Lifecycle` - Start/stop, idempotent operations, port retrieval
+- `GracefulShutdown` - Callback invocation
+- `DefaultTimeout` - Default shutdown timeout
+- `NettyServerAccess` - Access to underlying server
+
+#### NettyServletWebServerFactoryTest.java (9 tests)
+- `WebServerCreation` - Creates WebServer, starts, applies initializers
+- `Configuration` - Default/custom properties, context path
+- `EphemeralPort` - Port 0 binding
+
+#### FilterRegistrationAdapterTest.java (22 tests)
+- `BasicProperties` - Name, class, filter instance
+- `UrlPatternMatching` - `/*`, `/api/*`, `*.json`, exact path
+- `DefaultMatchingBehavior` - No mappings = match all
+- `UrlPatternMappingOrder` - Before/after ordering
+- `ServletNameMatching` - Servlet name matching
+- `InitParameters` - Parameter handling
+- `AsyncSupport` - Async flag
+- `DispatcherTypes` - Dispatcher type configuration
+
+### Test Results
+
+```bash
+./gradlew :netty-loom-spring-boot-starter:test :netty-loom-spring-mvc:test
+BUILD SUCCESSFUL
+# Boot-starter: 23 tests passed
+# MVC: 139 tests passed (117 original + 22 new FilterRegistrationAdapter tests)
+```
+
+### Design Decisions
+
+1. **Handler injection via constructor** - NettyServer accepts optional ChannelHandler, maintaining backwards compatibility for standalone usage
+2. **@Sharable handler** - SpringMvcBridgeHandler is sharable since all request-specific state is in servlet adapters
+3. **Filter matching at request time** - Filters resolved per request to support dynamic registration
+4. **Virtual thread per request** - Each HTTP request dispatched to new virtual thread for blocking operations
+5. **Error handling in bridge** - Exceptions caught and converted to HTTP 500 responses
+6. **SessionCookieConfig stub** - Returns no-op implementation instead of throwing for Spring Boot compatibility
+7. **SpringMvcBridgeHandler in boot-starter** - Moved from core to boot-starter to avoid circular dependency
+
+---

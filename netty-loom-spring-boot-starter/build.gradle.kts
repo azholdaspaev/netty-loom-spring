@@ -7,6 +7,12 @@ dependencies {
     api(project(":netty-loom-spring-core"))
     api(project(":netty-loom-spring-mvc"))
 
+    // Netty (for SpringMvcBridgeHandler)
+    implementation("io.netty:netty-all:${rootProject.extra["nettyVersion"]}")
+
+    // Servlet API (for SpringMvcBridgeHandler)
+    implementation("jakarta.servlet:jakarta.servlet-api:${rootProject.extra["jakartaServletVersion"]}")
+
     // Spring Boot auto-configuration
     implementation("org.springframework.boot:spring-boot-autoconfigure:${rootProject.extra["springBootVersion"]}")
 
