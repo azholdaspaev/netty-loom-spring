@@ -91,12 +91,37 @@ The feature is ready for release!
 - `DOCS_SUMMARY.md` - Documentation changes summary
 - Updated project documentation files
 
-## Quality Criteria
-- [ ] All new features documented
-- [ ] API documentation complete
-- [ ] Examples provided where helpful
-- [ ] Changelog entry added
-- [ ] README updated if needed
+## Quality Checklist
+
+### Required Updates
+- [ ] README mentions new feature (if user-visible)
+- [ ] API documentation added for new endpoints
+- [ ] CHANGELOG entry created
+
+### API Documentation (if applicable)
+- [ ] All new endpoints documented
+- [ ] Request/response examples provided
+- [ ] Error responses documented
+- [ ] Authentication requirements stated
+
+### User Documentation (if user-visible feature)
+- [ ] Feature purpose explained
+- [ ] Usage instructions provided
+- [ ] Configuration options documented
+
+### Changelog Entry
+- [ ] Version/date included
+- [ ] Changes categorized (Added/Changed/Fixed/Removed)
+- [ ] Breaking changes clearly marked
+- [ ] Migration steps provided if needed
+
+## Decision Points - STOP and Clarify If:
+- Documentation style/format is inconsistent across project
+- Feature is internal-only vs user-facing - documentation scope unclear
+- Breaking changes exist but migration path is complex
+- Version numbering scheme is not established
+- Multiple documentation locations exist (README, wiki, docs site)
+- API documentation format is not specified (OpenAPI, JSDoc, etc.)
 
 ## Workflow Complete
 After this command, the AIDD workflow is complete.

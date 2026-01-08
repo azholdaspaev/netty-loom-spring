@@ -105,11 +105,37 @@ If all tasks are `COMPLETED`:
 - Updated `TASKS.md` with completion status
 - `IMPLEMENTATION_LOG.md` entry
 
-## Quality Criteria
-- [ ] All acceptance criteria met
-- [ ] Code follows conventions
-- [ ] Tests written and passing
-- [ ] No regressions introduced
+## Quality Checklist (per task)
+
+### Completion Criteria
+- [ ] All files listed in task are created/modified
+- [ ] Each acceptance criterion has been verified
+- [ ] Code compiles/runs without errors
+
+### Code Quality
+- [ ] No hardcoded values that should be configurable
+- [ ] Functions are <50 lines (or justified exception)
+- [ ] No commented-out code blocks
+- [ ] Error cases handled (not just happy path)
+
+### Testing
+- [ ] At least 1 test per public function/endpoint
+- [ ] Tests cover both success and error cases
+- [ ] All tests pass
+
+### Documentation
+- [ ] Public APIs have docstrings/comments
+- [ ] Complex logic has inline comments
+- [ ] README updated if new setup steps needed
+
+## Decision Points - STOP and Clarify If:
+- Acceptance criteria can be interpreted differently
+- Implementation approach differs from architecture (even if working)
+- conventions.md is missing or doesn't cover this scenario
+- Multiple valid error handling strategies exist (fail fast vs graceful degradation)
+- Third-party API has multiple versions/options - which to use?
+- Test data requirements are unclear (mock vs real data)
+- Performance trade-off exists (speed vs memory vs readability)
 
 ## Next Steps
 - `/implement TASK-XXX` - Implement next task

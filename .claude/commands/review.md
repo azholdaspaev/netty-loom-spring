@@ -68,12 +68,48 @@ Use the template from the reviewer agent.
 ## Output Artifacts
 - `REVIEW.md` - Code review report
 
-## Quality Criteria
-- [ ] All changed files reviewed
-- [ ] Security check completed
+## Pass/Fail Criteria
+
+### Automatic FAIL (REQUEST_CHANGES)
+- Any Critical severity issue found
+- More than 3 Warning severity issues found
+- Security vulnerability identified
+- Test coverage below 50% for new code
+
+### Issue Severity Definitions
+
+**Critical (blocks approval):**
+- Security vulnerabilities (injection, XSS, auth bypass)
+- Data loss potential
+- Breaking existing functionality
+- Missing error handling on external calls
+
+**Warning (should fix):**
+- Code duplication >10 lines
+- Missing input validation
+- Performance concern (N+1 queries, unbounded loops)
+- Convention violations
+
+**Suggestion (optional):**
+- Naming improvements
+- Code organization
+- Additional tests
+- Documentation enhancements
+
+## Quality Checklist
+- [ ] Every modified file has been read
+- [ ] Security checklist completed
+- [ ] Performance implications assessed
 - [ ] Convention compliance verified
-- [ ] Performance considerations assessed
-- [ ] Clear verdict provided
+- [ ] Clear verdict provided (APPROVED or REQUEST_CHANGES)
+
+## Decision Points - STOP and Clarify If:
+- Issue severity is borderline between levels (e.g., Warning vs Critical)
+- Code works but doesn't match architecture - is deviation acceptable?
+- Convention violation is intentional for good reason - approve or reject?
+- Security concern exists but fix significantly increases complexity
+- Review finds PRD/Architecture gaps - proceed or loop back?
+- Third-party dependency has known vulnerabilities but no alternative
 
 ## Handling Review Failures
 

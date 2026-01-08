@@ -63,12 +63,51 @@ Update `STATE.md`:
 ## Output Artifacts
 - `ARCHITECTURE.md` - Architecture plan
 
-## Quality Criteria
-- [ ] Architecture aligns with existing patterns
-- [ ] Component responsibilities clearly defined
-- [ ] Interfaces well-specified
-- [ ] Implementation phases defined
-- [ ] Security considerations addressed
+## Quality Checklist
+
+### System Context (Required)
+- [ ] Diagram or description showing where feature fits in existing system
+- [ ] Integration points with existing components identified
+- [ ] Data flow direction indicated
+
+### Component Design (Required)
+- [ ] Each new component has a single, stated responsibility
+- [ ] Component interfaces defined (inputs, outputs, methods)
+- [ ] No component has more than 3 direct dependencies
+
+### Data Model (If applicable)
+- [ ] New entities have defined fields and types
+- [ ] Relationships between entities documented
+- [ ] Database migrations identified if needed
+
+### API Design (If applicable)
+- [ ] Endpoints/functions listed with HTTP method and path
+- [ ] Request/response schemas defined
+- [ ] Error responses documented
+
+### Implementation Phases (Required)
+- [ ] Work broken into 2-6 sequential phases
+- [ ] Each phase produces testable increment
+- [ ] Phase order accounts for dependencies
+
+### Security (Required for user-facing features)
+- [ ] Authentication requirements stated
+- [ ] Authorization/permissions model defined
+- [ ] Data validation approach specified
+
+### Alignment Check
+- [ ] Uses same patterns as similar features in codebase
+- [ ] File/folder structure follows existing conventions
+- [ ] Naming conventions match existing code
+
+## Decision Points - STOP and Clarify If:
+- Multiple architectural patterns could work (e.g., REST vs GraphQL, SQL vs NoSQL)
+- Existing codebase has inconsistent patterns - which to follow?
+- Feature requires breaking changes to existing APIs/interfaces
+- Performance requirements are not specified but could influence design
+- Security model choice affects UX (e.g., session vs token auth)
+- Technology choice is not specified (e.g., which library for dates/validation?)
+- Integration approach with third-party services is unclear
 
 ## Next Steps
 - `/tasks` - Generate implementation task list

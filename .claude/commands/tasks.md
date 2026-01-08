@@ -103,12 +103,40 @@ Update `STATE.md`:
 ## Output Artifacts
 - `TASKS.md` - Implementation task list
 
-## Quality Criteria
-- [ ] Tasks are specific and actionable
-- [ ] Each task has clear acceptance criteria
-- [ ] Dependencies are identified
-- [ ] Implementation order is logical
-- [ ] Files to modify are identified
+## Quality Checklist
+
+### Task Granularity
+- [ ] Each task is completable in 1-4 hours of work
+- [ ] Tasks with >4 files to modify should be split
+- [ ] No task depends on more than 2 other tasks
+
+### Task Definition (per task)
+- [ ] Title is action-oriented verb phrase ("Add...", "Create...", "Update...")
+- [ ] Description explains what to do, not just what to build
+- [ ] Files to modify/create are listed explicitly
+- [ ] 2-4 acceptance criteria per task
+
+### Acceptance Criteria Quality
+- [ ] Start with testable action verb ("Verify...", "Confirm...", "Check...")
+- [ ] Reference specific behavior or output
+- [ ] Can be verified in <5 minutes
+
+### Dependencies
+- [ ] Dependencies reference valid task IDs
+- [ ] No circular dependencies exist
+- [ ] First task has no dependencies
+
+### Coverage
+- [ ] All architecture components have corresponding tasks
+- [ ] Test tasks are included (not just implementation)
+- [ ] Tasks cover the full scope from PRD
+
+## Decision Points - STOP and Clarify If:
+- Task order could reasonably vary (ask which flow to prioritize)
+- Architecture allows multiple implementation sequences
+- Some tasks could be parallelized vs sequential - preference unclear
+- Test coverage expectations are not defined (unit only? integration? e2e?)
+- Edge cases from PRD could be separate tasks or bundled - which approach?
 
 ## Next Steps
 - `/implement TASK-001` - Start implementing first task

@@ -57,6 +57,8 @@
 **Agent:** Analyst
 **Purpose:** Transform feature idea into structured requirements
 
+**Note:** PRD focuses on requirements only (WHAT/WHO/WHY). Technical details (libraries, APIs, components, HOW) belong in the Architecture phase.
+
 **Process:**
 1. User provides feature idea
 2. Analyst agent gathers requirements
@@ -69,7 +71,29 @@
 - `STATE.md` - Workflow state tracker
 - `PRD.md` - Product Requirements Document
 
-**Quality Gate:** PRD must have all required sections
+**Quality Checklist:**
+- [ ] Problem Statement: 2-4 sentences describing the problem being solved
+- [ ] Problem Statement: Identifies who experiences the problem
+- [ ] Problem Statement: Explains why current state is insufficient
+- [ ] Goals: 3-5 specific, measurable objectives
+- [ ] Goals: Each has a success indicator (metric or outcome)
+- [ ] User Stories: Minimum 2 user stories
+- [ ] User Stories: Each follows "As a [role], I want [capability], so that [benefit]"
+- [ ] Acceptance Criteria: Each user story has 2-5 criteria
+- [ ] Acceptance Criteria: Use testable language ("User can...", "System displays...")
+- [ ] Acceptance Criteria: No vague terms ("fast", "user-friendly", "efficient")
+- [ ] Scope: "In Scope" lists specific deliverables
+- [ ] Scope: "Out of Scope" explicitly excludes deferred items
+- [ ] Dependencies: External services/APIs identified (if applicable)
+- [ ] Risks: At least 1 risk for non-trivial features with mitigation
+
+**Decision Points - STOP and Clarify If:**
+- Feature request can be interpreted in multiple ways
+- Target user/persona is not clear
+- Success metrics could be measured differently
+- Scope boundary is unclear (feature touches multiple areas)
+- Similar functionality exists that might conflict
+- External dependencies are uncertain
 
 ---
 
@@ -108,7 +132,32 @@
 **Artifacts Produced:**
 - `ARCHITECTURE.md` - Architecture plan with diagrams
 
-**Quality Gate:** Architecture must be complete and aligned with codebase
+**Quality Checklist:**
+- [ ] System Context: Diagram/description showing where feature fits in system
+- [ ] System Context: Integration points with existing components identified
+- [ ] System Context: Data flow direction indicated
+- [ ] Components: Each new component has single, stated responsibility
+- [ ] Components: Interfaces defined (inputs, outputs, methods)
+- [ ] Components: No component has more than 3 direct dependencies
+- [ ] Data Model: New entities have defined fields and types (if applicable)
+- [ ] Data Model: Relationships documented (if applicable)
+- [ ] API Design: Endpoints listed with method and path (if applicable)
+- [ ] API Design: Request/response schemas defined (if applicable)
+- [ ] Implementation Phases: 2-6 sequential phases
+- [ ] Implementation Phases: Each produces testable increment
+- [ ] Security: Authentication requirements stated (for user-facing)
+- [ ] Security: Authorization model defined (for user-facing)
+- [ ] Alignment: Uses same patterns as existing codebase
+- [ ] Alignment: File/folder structure follows conventions
+
+**Decision Points - STOP and Clarify If:**
+- Multiple architectural patterns could work (REST vs GraphQL, SQL vs NoSQL)
+- Existing codebase has inconsistent patterns
+- Feature requires breaking changes to existing APIs
+- Performance requirements not specified but could influence design
+- Security model choice affects UX
+- Technology choice not specified (which library?)
+- Integration approach with third-party services unclear
 
 ---
 
@@ -128,7 +177,28 @@
 **Artifacts Produced:**
 - `TASKS.md` - Implementation task list
 
-**Quality Gate:** Each task must have clear acceptance criteria
+**Quality Checklist:**
+- [ ] Granularity: Each task completable in 1-4 hours
+- [ ] Granularity: Tasks with >4 files should be split
+- [ ] Granularity: No task depends on more than 2 others
+- [ ] Task Definition: Title is action-oriented ("Add...", "Create...", "Update...")
+- [ ] Task Definition: Description explains what to do
+- [ ] Task Definition: Files to modify/create listed explicitly
+- [ ] Task Definition: 2-4 acceptance criteria per task
+- [ ] Criteria Quality: Start with testable verb ("Verify...", "Confirm...")
+- [ ] Criteria Quality: Reference specific behavior or output
+- [ ] Criteria Quality: Can be verified in <5 minutes
+- [ ] Dependencies: Reference valid task IDs
+- [ ] Dependencies: No circular dependencies
+- [ ] Dependencies: First task has no dependencies
+- [ ] Coverage: All architecture components have tasks
+- [ ] Coverage: Test tasks included (not just implementation)
+
+**Decision Points - STOP and Clarify If:**
+- Task order could reasonably vary
+- Some tasks could be parallelized vs sequential
+- Test coverage expectations not defined (unit? integration? e2e?)
+- Edge cases could be separate tasks or bundled
 
 ---
 
@@ -150,7 +220,28 @@
 - Code changes
 - `IMPLEMENTATION_LOG.md` - Record of changes
 
-**Quality Gate:** All acceptance criteria must be met for each task
+**Quality Checklist (per task):**
+- [ ] Completion: All files listed in task are created/modified
+- [ ] Completion: Each acceptance criterion verified
+- [ ] Completion: Code compiles/runs without errors
+- [ ] Code Quality: No hardcoded values that should be configurable
+- [ ] Code Quality: Functions are <50 lines (or justified)
+- [ ] Code Quality: No commented-out code blocks
+- [ ] Code Quality: Error cases handled (not just happy path)
+- [ ] Testing: At least 1 test per public function/endpoint
+- [ ] Testing: Tests cover success and error cases
+- [ ] Testing: All tests pass
+- [ ] Documentation: Public APIs have docstrings/comments
+- [ ] Documentation: Complex logic has inline comments
+
+**Decision Points - STOP and Clarify If:**
+- Acceptance criteria can be interpreted differently
+- Implementation approach differs from architecture
+- conventions.md missing or doesn't cover scenario
+- Multiple valid error handling strategies exist
+- Third-party API has multiple versions/options
+- Test data requirements unclear (mock vs real)
+- Performance trade-off exists (speed vs memory)
 
 ---
 
@@ -169,6 +260,28 @@
 
 **Artifacts Produced:**
 - `REVIEW.md` - Code review report
+
+**Pass/Fail Criteria:**
+- **FAIL (REQUEST_CHANGES) if:** Any Critical issue, >3 Warnings, security vulnerability, or <50% test coverage
+
+**Issue Severity Definitions:**
+- **Critical (blocks):** Security vulnerabilities, data loss potential, breaks existing functionality, missing error handling on external calls
+- **Warning (should fix):** Code duplication >10 lines, missing input validation, performance concerns (N+1, unbounded loops), convention violations
+- **Suggestion (optional):** Naming improvements, code organization, additional tests, documentation enhancements
+
+**Quality Checklist:**
+- [ ] Every modified file has been read
+- [ ] Security checklist completed
+- [ ] Performance implications assessed
+- [ ] Convention compliance verified
+
+**Decision Points - STOP and Clarify If:**
+- Issue severity is borderline between levels
+- Code works but doesn't match architecture
+- Convention violation is intentional for good reason
+- Security concern exists but fix increases complexity significantly
+- Review finds PRD/Architecture gaps
+- Third-party dependency has known vulnerabilities
 
 **If REQUEST_CHANGES:**
 - Fix identified issues
@@ -192,6 +305,31 @@
 
 **Artifacts Produced:**
 - `QA_REPORT.md` - QA test report
+
+**Pass/Fail Criteria:**
+- **FAIL if:** Any test fails, Critical bug found, acceptance criterion not verified, or regression in existing functionality
+
+**Bug Severity Definitions:**
+- **Critical (blocks):** Application crash, data corruption/loss, security vulnerability, core functionality broken
+- **High (blocks):** Feature doesn't work as specified, >50% performance degradation, UI completely broken
+- **Medium (can release with plan):** Edge case failures, minor performance issues, cosmetic UI problems
+- **Low (can release):** Minor inconveniences, rare edge cases, polish items
+
+**Quality Checklist:**
+- [ ] All acceptance criteria tested with results documented
+- [ ] Unit tests executed and pass
+- [ ] Integration tests executed (if available)
+- [ ] Manual verification of core flows
+- [ ] Edge cases tested (empty input, invalid input, boundaries)
+
+**Decision Points - STOP and Clarify If:**
+- Bug severity is borderline (Medium could be High)
+- Test environment differs from production
+- Edge case behavior undefined in PRD
+- Performance testing needed but no baseline defined
+- Flaky tests exist
+- Partial functionality works - release with known issues?
+- Acceptance criterion passes technically but UX feels wrong
 
 **If FAIL:**
 - Fix identified bugs
@@ -217,6 +355,27 @@
 - `DOCS_SUMMARY.md` - Documentation changes summary
 - Updated project documentation
 
+**Quality Checklist:**
+- [ ] README mentions new feature (if user-visible)
+- [ ] API documentation added for new endpoints
+- [ ] CHANGELOG entry created
+- [ ] API: Request/response examples provided (if applicable)
+- [ ] API: Error responses documented (if applicable)
+- [ ] User docs: Feature purpose explained (if user-visible)
+- [ ] User docs: Usage instructions provided (if user-visible)
+- [ ] Changelog: Version/date included
+- [ ] Changelog: Changes categorized (Added/Changed/Fixed/Removed)
+- [ ] Changelog: Breaking changes clearly marked
+- [ ] Changelog: Migration steps provided if needed
+
+**Decision Points - STOP and Clarify If:**
+- Documentation style/format inconsistent across project
+- Feature is internal-only vs user-facing unclear
+- Breaking changes exist but migration path complex
+- Version numbering scheme not established
+- Multiple documentation locations exist (README, wiki, docs site)
+- API documentation format not specified (OpenAPI, JSDoc, etc.)
+
 **Workflow Complete!**
 
 ---
@@ -225,13 +384,13 @@
 
 | Transition | Gate Requirements |
 |------------|-------------------|
-| → PRD_READY | PRD has all required sections |
-| → PLAN_APPROVED | Architecture is complete and valid |
-| → TASKLIST_READY | Tasks properly defined with acceptance criteria |
-| → IMPLEMENT_STEP_OK | All tasks completed, tests pass |
-| → REVIEW_OK | Review verdict is APPROVED |
-| → RELEASE_READY | QA verdict is PASS |
-| → DOCS_UPDATED | Documentation is updated |
+| → PRD_READY | PRD has problem statement (2-4 sentences), 3-5 goals, 2+ user stories with 2-5 acceptance criteria each, bounded scope |
+| → PLAN_APPROVED | Architecture has system context, component design (single responsibility, interfaces), implementation phases (2-6) |
+| → TASKLIST_READY | Tasks are 1-4 hours each, have action-oriented titles, 2-4 acceptance criteria, no circular dependencies |
+| → IMPLEMENT_STEP_OK | All tasks completed, all acceptance criteria met, tests pass, code compiles |
+| → REVIEW_OK | No Critical issues, ≤3 Warnings, security check passed, all files reviewed |
+| → RELEASE_READY | All tests pass, no Critical/High bugs, all acceptance criteria verified |
+| → DOCS_UPDATED | README updated (if user-visible), API docs complete, CHANGELOG entry created |
 
 ---
 

@@ -75,12 +75,52 @@ Use the template from the qa agent.
 ## Output Artifacts
 - `QA_REPORT.md` - QA test report
 
-## Quality Criteria
-- [ ] All acceptance criteria tested
-- [ ] Unit tests pass
-- [ ] No critical bugs
-- [ ] Edge cases validated
-- [ ] Performance acceptable
+## Pass/Fail Criteria
+
+### Automatic FAIL
+- Any test fails
+- Critical bug found (crashes, data loss, security)
+- Any acceptance criterion not verified
+- Regression in existing functionality
+
+### Bug Severity Definitions
+
+**Critical (blocks release):**
+- Application crash
+- Data corruption/loss
+- Security vulnerability
+- Core functionality broken
+
+**High (blocks release):**
+- Feature doesn't work as specified
+- Performance degradation >50%
+- UI completely broken
+
+**Medium (can release with plan):**
+- Edge case failures
+- Minor performance issues
+- Cosmetic UI problems
+
+**Low (can release):**
+- Minor inconveniences
+- Rare edge cases
+- Polish items
+
+## Quality Checklist
+- [ ] All acceptance criteria tested with results documented
+- [ ] Unit tests executed and pass
+- [ ] Integration tests executed (if available)
+- [ ] Manual verification of core flows
+- [ ] Edge cases tested (empty input, invalid input, boundaries)
+
+## Decision Points - STOP and Clarify If:
+- Bug severity is borderline (Medium could be High in certain contexts)
+- Test environment differs from production - results valid?
+- Edge case behavior is undefined in PRD - what should happen?
+- Performance testing needed but no baseline defined
+- Flaky tests exist - retry count before FAIL?
+- Partial functionality works - release with known issues or block?
+- Acceptance criterion passes technically but UX feels wrong
 
 ## Handling QA Failures
 
