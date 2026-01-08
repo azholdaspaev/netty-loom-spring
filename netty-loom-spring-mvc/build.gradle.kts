@@ -2,6 +2,9 @@ dependencies {
     // Core module
     implementation(project(":netty-loom-spring-core"))
 
+    // Netty (for Servlet adapters)
+    implementation("io.netty:netty-all:${rootProject.extra["nettyVersion"]}")
+
     // Servlet API
     implementation("jakarta.servlet:jakarta.servlet-api:${rootProject.extra["jakartaServletVersion"]}")
 

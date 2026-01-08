@@ -192,3 +192,138 @@ io.github.azholdaspaev.nettyloom.core/
 - `netty-loom-spring-core/src/test/java/io/github/azholdaspaev/nettyloom/core/server/NettyServerTest.java`
 
 ---
+
+## TASK-003: HTTP Request/Response Adapters
+
+**Status:** COMPLETED
+**Completed:** 2026-01-08
+
+### Summary
+Implemented servlet adapters that bridge Netty's HTTP model to the Jakarta Servlet API for Spring MVC compatibility. Created comprehensive request/response adapters with full Servlet API compliance.
+
+### Architecture
+
+```
+FullHttpRequest (Netty) → NettyHttpServletRequest (Adapter)
+    → DispatcherServlet (Spring MVC)
+    → NettyHttpServletResponse (Adapter) → FullHttpResponse (Netty)
+```
+
+### Files Created
+
+#### 1. ParameterParser.java
+Utility class for parsing HTTP request parameters:
+- Parses query strings and `application/x-www-form-urlencoded` form data
+- Handles URL decoding with proper charset support
+- Supports multiple values per parameter name
+- Provides merge functionality for combining query and body parameters
+- Converts to servlet-compatible `Map<String, String[]>` format
+
+#### 2. NettyServletInputStream.java
+Wraps Netty's `ByteBuf` as a `jakarta.servlet.ServletInputStream`:
+- Implements `read()`, `read(byte[])`, `read(byte[], int, int)`
+- Implements `isFinished()`, `isReady()`, `setReadListener()`
+- Tracks read position in the ByteBuf
+- Handles async notifications via ReadListener
+
+#### 3. NettyServletOutputStream.java
+Buffers response data for Netty response conversion:
+- Extends `jakarta.servlet.ServletOutputStream`
+- Uses `ByteArrayOutputStream` internally
+- Provides `toByteArray()` for extracting written data
+- Supports `isReady()`, `setWriteListener()`, and `reset()`
+
+#### 4. NettyHttpServletRequest.java
+Full `HttpServletRequest` implementation (700+ lines):
+- **URI Parsing:** `getRequestURI()`, `getQueryString()`, `getServletPath()`, `getContextPath()`
+- **Headers:** `getHeader()`, `getHeaders()`, `getHeaderNames()`, `getIntHeader()`, `getDateHeader()`
+- **Parameters:** `getParameter()`, `getParameterMap()`, `getParameterValues()`, `getParameterNames()`
+- **Body:** `getInputStream()`, `getReader()` with mutual exclusion
+- **Metadata:** `getContentType()`, `getContentLength()`, `getCharacterEncoding()`
+- **Server Info:** `getScheme()`, `getServerName()`, `getServerPort()`
+- **Client Info:** `getRemoteAddr()`, `getRemoteHost()`, `getRemotePort()`
+- **Locale:** `getLocale()`, `getLocales()` from Accept-Language header
+- **Cookies:** `getCookies()` with Netty decoder
+- **Attributes:** `getAttribute()`, `setAttribute()`, `removeAttribute()`
+- **Unsupported:** Sessions, async, multipart, HTTP upgrade (throw UnsupportedOperationException)
+
+#### 5. NettyHttpServletResponse.java
+Full `HttpServletResponse` implementation (450+ lines):
+- **Status:** `setStatus()`, `getStatus()`, `sendError()`, `sendRedirect()`
+- **Headers:** `setHeader()`, `addHeader()`, `setDateHeader()`, `setIntHeader()`, `containsHeader()`
+- **Body:** `getOutputStream()`, `getWriter()` with mutual exclusion
+- **Content:** `setContentType()`, `setContentLength()`, `setCharacterEncoding()`
+- **Cookies:** `addCookie()` with Netty STRICT encoder
+- **Buffer:** `flushBuffer()`, `resetBuffer()`, `reset()`, `isCommitted()`
+- **Conversion:** `toNettyResponse()` builds `DefaultFullHttpResponse`
+
+### Tests Added
+
+#### NettyHttpServletRequestTest.java (47 tests)
+Nested test classes:
+- `URIParsing` - Request URI, query string, servlet path, request URL
+- `HeaderAccess` - Single/multiple headers, header names, int headers
+- `ParameterParsing` - Query params, form-encoded body, URL encoding
+- `InputStream` - Body reading, mutual exclusion with reader
+- `Reader` - Body reading via BufferedReader
+- `ContentMetadata` - Content type/length, charset parsing
+- `Attributes` - Get/set/remove attributes
+- `MethodAndProtocol` - HTTP method, protocol version
+- `ServerInfo` - Server name/port from Host header
+- `Locales` - Accept-Language parsing
+- `Cookies` - Cookie header parsing
+
+#### NettyHttpServletResponseTest.java (32 tests)
+Nested test classes:
+- `StatusCode` - Default status, setting status, Netty response status
+- `Headers` - Set/add headers, header existence, names
+- `OutputStream` - Writing, mutual exclusion
+- `Writer` - Writing, mutual exclusion
+- `ContentType` - Type setting, charset parsing
+- `CharacterEncoding` - Default UTF-8, custom encoding
+- `ContentLength` - Auto-calculated content length
+- `SendError` - Status codes, committed state
+- `SendRedirect` - Location header, status 302
+- `Cookies` - Single/multiple cookies, encoding
+- `ResetAndResetBuffer` - Buffer reset, full reset, committed checks
+- `FlushBuffer` - Commits response
+- `Locale` - Setting locale, Content-Language header
+- `ToNettyResponse` - Full conversion test
+
+### Build Configuration
+
+Modified `netty-loom-spring-mvc/build.gradle.kts`:
+- Added explicit Netty dependency for compile-time HTTP class access
+
+### Verification
+
+```bash
+./gradlew :netty-loom-spring-mvc:test --no-daemon
+# Result: BUILD SUCCESSFUL in 6s
+# 79 tests completed, 0 failed
+```
+
+### Design Decisions
+
+1. **No Session Support** - Sessions intentionally not implemented (may be added in TASK-004)
+2. **No Async Support** - Virtual threads handle blocking; async servlet not needed
+3. **Lazy Parameter Parsing** - Parameters parsed on first access, then cached
+4. **Form Data Support** - POST with `application/x-www-form-urlencoded` auto-parsed
+5. **Cookie Encoding** - Uses Netty's STRICT encoder (RFC-compliant)
+6. **Reader/InputStream Mutual Exclusion** - Per Servlet spec, enforced correctly
+
+### Files Created
+
+- `netty-loom-spring-mvc/src/main/java/io/github/azholdaspaev/nettyloom/mvc/request/ParameterParser.java`
+- `netty-loom-spring-mvc/src/main/java/io/github/azholdaspaev/nettyloom/mvc/servlet/NettyServletInputStream.java`
+- `netty-loom-spring-mvc/src/main/java/io/github/azholdaspaev/nettyloom/mvc/servlet/NettyServletOutputStream.java`
+- `netty-loom-spring-mvc/src/main/java/io/github/azholdaspaev/nettyloom/mvc/servlet/NettyHttpServletRequest.java`
+- `netty-loom-spring-mvc/src/main/java/io/github/azholdaspaev/nettyloom/mvc/servlet/NettyHttpServletResponse.java`
+- `netty-loom-spring-mvc/src/test/java/io/github/azholdaspaev/nettyloom/mvc/servlet/NettyHttpServletRequestTest.java`
+- `netty-loom-spring-mvc/src/test/java/io/github/azholdaspaev/nettyloom/mvc/servlet/NettyHttpServletResponseTest.java`
+
+### Files Modified
+
+- `netty-loom-spring-mvc/build.gradle.kts` (added Netty dependency)
+
+---
