@@ -94,3 +94,101 @@ Set up the complete multi-module Gradle project with 6 modules and configured al
 - `netty-loom-spring-benchmark/build.gradle.kts`
 
 ---
+
+## TASK-002: Core Netty Server with Virtual Threads
+
+**Status:** COMPLETED
+**Completed:** 2026-01-08
+
+### Summary
+Implemented the core Netty HTTP server with virtual thread support. The server accepts HTTP connections, dispatches request processing to virtual threads, and returns "Hello World" responses.
+
+### Architecture
+
+```
+HTTP Request → Netty NIO EventLoop (platform thread)
+    → HttpServerCodec → HttpObjectAggregator
+    → HttpRequestHandler → Virtual Thread
+    → Response → writeAndFlush
+```
+
+### Files Created
+
+#### 1. NettyServerConfiguration.java
+Server configuration POJO with builder pattern:
+- `port` (default 8080)
+- `host` (default "0.0.0.0")
+- `bossThreads` (default 1)
+- `workerThreads` (default 0 = available processors)
+- `maxContentLength` (default 10MB)
+
+#### 2. VirtualThreadExecutorFactory.java
+Factory for creating virtual thread executors:
+- `create()` - Creates `newVirtualThreadPerTaskExecutor()`
+- `create(String namePrefix)` - Creates with custom thread names
+
+#### 3. HttpServerInitializer.java
+Channel initializer that sets up the pipeline:
+- HttpServerCodec
+- HttpObjectAggregator
+- HttpRequestHandler
+
+#### 4. HttpRequestHandler.java
+HTTP request handler that:
+- Extends `SimpleChannelInboundHandler<FullHttpRequest>`
+- Dispatches to virtual thread via executor
+- Returns "Hello World" with proper headers
+- Handles keep-alive connections
+- Handles error responses
+
+#### 5. NettyServer.java
+Main server class with:
+- `start()` - Bootstrap, bind, and start
+- `stop()` - Graceful shutdown
+- `stop(timeout, unit)` - Shutdown with timeout
+- `getPort()` - Returns bound port
+- `isRunning()` - Returns server state
+- Uses NioEventLoopGroup for boss/worker
+- Uses VirtualThreadExecutorFactory for request processing
+
+#### 6. NettyServerTest.java
+Comprehensive test suite:
+- `serverStartsAndBindsToPort` - Basic startup
+- `serverRespondsWithHelloWorld` - HTTP response verification
+- `serverStopsGracefully` - Shutdown behavior
+- `serverHandlesConcurrentRequests` - 100 concurrent requests
+- `serverReturnsCorrectPort` - Port binding
+- `serverThrowsExceptionWhenStartedTwice` - State management
+- `serverHandlesKeepAliveConnections` - Connection reuse
+- `serverUsesVirtualThreads` - 1000 concurrent virtual thread requests
+
+### Package Structure
+```
+io.github.azholdaspaev.nettyloom.core/
+├── server/
+│   ├── NettyServer.java
+│   └── NettyServerConfiguration.java
+├── executor/
+│   └── VirtualThreadExecutorFactory.java
+├── pipeline/
+│   └── HttpServerInitializer.java
+└── handler/
+    └── HttpRequestHandler.java
+```
+
+### Verification
+```bash
+./gradlew :netty-loom-spring-core:test --no-daemon
+# Result: BUILD SUCCESSFUL in 14s
+# All 8 tests passed
+```
+
+### Files Created
+- `netty-loom-spring-core/src/main/java/io/github/azholdaspaev/nettyloom/core/server/NettyServerConfiguration.java`
+- `netty-loom-spring-core/src/main/java/io/github/azholdaspaev/nettyloom/core/executor/VirtualThreadExecutorFactory.java`
+- `netty-loom-spring-core/src/main/java/io/github/azholdaspaev/nettyloom/core/pipeline/HttpServerInitializer.java`
+- `netty-loom-spring-core/src/main/java/io/github/azholdaspaev/nettyloom/core/handler/HttpRequestHandler.java`
+- `netty-loom-spring-core/src/main/java/io/github/azholdaspaev/nettyloom/core/server/NettyServer.java` (updated from placeholder)
+- `netty-loom-spring-core/src/test/java/io/github/azholdaspaev/nettyloom/core/server/NettyServerTest.java`
+
+---

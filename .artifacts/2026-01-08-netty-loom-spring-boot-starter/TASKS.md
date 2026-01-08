@@ -5,7 +5,7 @@
 
 ## Task Overview
 - **Total Tasks:** 12
-- **Status:** 1/12 completed
+- **Status:** 2/12 completed
 
 ---
 
@@ -33,18 +33,18 @@
 ---
 
 ### TASK-002: Core Netty Server with Virtual Threads
-- **Status:** PENDING
+- **Status:** COMPLETED
 - **Priority:** HIGH
 - **Depends On:** TASK-001
 - **Description:**
   Implement the core Netty HTTP server that accepts connections, processes requests on virtual threads, and returns responses. This is the foundation of the entire library.
 - **Acceptance Criteria:**
-  - [ ] NettyServer starts and binds to configured port
-  - [ ] HTTP requests are decoded correctly
-  - [ ] Requests are dispatched to virtual threads
-  - [ ] Server responds with "Hello World" to any request
-  - [ ] Server stops gracefully
-  - [ ] Unit tests pass for server lifecycle
+  - [x] NettyServer starts and binds to configured port
+  - [x] HTTP requests are decoded correctly
+  - [x] Requests are dispatched to virtual threads
+  - [x] Server responds with "Hello World" to any request
+  - [x] Server stops gracefully
+  - [x] Unit tests pass for server lifecycle
 - **Files to Create:**
   - `netty-loom-spring-core/src/main/java/.../core/server/NettyServer.java`
   - `netty-loom-spring-core/src/main/java/.../core/server/NettyServerConfiguration.java`
