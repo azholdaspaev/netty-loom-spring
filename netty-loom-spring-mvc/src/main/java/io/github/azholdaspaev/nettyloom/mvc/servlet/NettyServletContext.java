@@ -1,10 +1,13 @@
 package io.github.azholdaspaev.nettyloom.mvc.servlet;
 
 import io.github.azholdaspaev.nettyloom.mvc.filter.FilterRegistrationAdapter;
+import io.github.azholdaspaev.nettyloom.mvc.filter.NettyFilterConfig;
 import jakarta.servlet.Filter;
+import jakarta.servlet.FilterConfig;
 import jakarta.servlet.FilterRegistration;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.Servlet;
+import jakarta.servlet.ServletConfig;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletRegistration;
@@ -409,6 +412,49 @@ public class NettyServletContext implements ServletContext {
     }
 
     // ===== Helper Methods =====
+
+    /**
+     * Initializes all registered servlets and filters.
+     * This method must be called after all ServletContextInitializers have run
+     * and before the server starts accepting requests.
+     *
+     * @throws ServletException if a servlet or filter fails to initialize
+     */
+    public void initializeServletsAndFilters() throws ServletException {
+        // Initialize filters first (they process requests before servlets)
+        for (Map.Entry<String, FilterRegistrationAdapter> entry : filterRegistrations.entrySet()) {
+            String filterName = entry.getKey();
+            FilterRegistrationAdapter registration = entry.getValue();
+            Filter filter = registration.getFilter();
+
+            if (filter != null) {
+                FilterConfig filterConfig = new NettyFilterConfig(
+                        filterName,
+                        this,
+                        registration.getInitParameters()
+                );
+                log("Initializing filter: " + filterName);
+                filter.init(filterConfig);
+            }
+        }
+
+        // Initialize servlets
+        for (Map.Entry<String, ServletRegistrationAdapter> entry : servletRegistrations.entrySet()) {
+            String servletName = entry.getKey();
+            ServletRegistrationAdapter registration = entry.getValue();
+            Servlet servlet = registration.getServlet();
+
+            if (servlet != null) {
+                ServletConfig servletConfig = new NettyServletConfig(
+                        servletName,
+                        this,
+                        registration.getInitParameters()
+                );
+                log("Initializing servlet: " + servletName);
+                servlet.init(servletConfig);
+            }
+        }
+    }
 
     /**
      * Returns the servlet instance with the given name.

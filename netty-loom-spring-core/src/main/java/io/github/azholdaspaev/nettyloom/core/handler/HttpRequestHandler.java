@@ -2,6 +2,7 @@ package io.github.azholdaspaev.nettyloom.core.handler;
 
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFutureListener;
+import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -21,7 +22,13 @@ import java.util.concurrent.ExecutorService;
 /**
  * HTTP request handler that processes requests on virtual threads.
  * Returns a simple "Hello World" response for all requests.
+ *
+ * <p>This handler is marked as {@link io.netty.channel.ChannelHandler.Sharable}
+ * because it maintains no per-channel state - only a reference to the shared
+ * executor service. This allows a single instance to be safely shared across
+ * multiple channel pipelines.
  */
+@ChannelHandler.Sharable
 public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
 
     private static final Logger logger = LoggerFactory.getLogger(HttpRequestHandler.class);

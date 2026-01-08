@@ -73,23 +73,26 @@ public class NettyServletWebServerFactory extends AbstractServletWebServerFactor
         // 2. Apply all initializers (registers DispatcherServlet, filters, etc.)
         applyInitializers(servletContext, initializers);
 
-        // 3. Create virtual thread executor
+        // 3. Initialize all registered servlets and filters
+        initializeServletsAndFilters(servletContext);
+
+        // 4. Create virtual thread executor
         ExecutorService virtualThreadExecutor = VirtualThreadExecutorFactory.create("netty-mvc-");
 
-        // 4. Create bridge handler
+        // 5. Create bridge handler
         SpringMvcBridgeHandler bridgeHandler = new SpringMvcBridgeHandler(
                 servletContext,
                 virtualThreadExecutor,
                 contextPath
         );
 
-        // 5. Build server configuration
+        // 6. Build server configuration
         NettyServerConfiguration config = buildConfiguration();
 
-        // 6. Create Netty server with bridge handler
+        // 7. Create Netty server with bridge handler
         NettyServer nettyServer = new NettyServer(config, bridgeHandler);
 
-        // 7. Return WebServer wrapper
+        // 8. Return WebServer wrapper
         return new NettyWebServer(nettyServer, nettyProperties.getShutdownTimeout());
     }
 
@@ -103,14 +106,28 @@ public class NettyServletWebServerFactory extends AbstractServletWebServerFactor
 
         for (ServletContextInitializer initializer : merged) {
             try {
+                logger.debug("Applying initializer: {}", initializer.getClass().getName());
                 initializer.onStartup(servletContext);
             } catch (ServletException e) {
                 throw new WebServerException("Failed to apply ServletContextInitializer: " +
                         initializer.getClass().getName(), e);
             }
         }
+        logger.debug("Successfully applied {} servlet context initializers", merged.length);
+    }
 
-        logger.debug("Applied {} servlet context initializers", merged.length);
+    /**
+     * Initializes all registered servlets and filters.
+     * This must be called after all initializers have registered their servlets/filters.
+     */
+    private void initializeServletsAndFilters(NettyServletContext servletContext) {
+        try {
+            logger.debug("Initializing servlets and filters");
+            servletContext.initializeServletsAndFilters();
+            logger.debug("Servlets and filters initialized successfully");
+        } catch (ServletException e) {
+            throw new WebServerException("Failed to initialize servlets and filters", e);
+        }
     }
 
     /**

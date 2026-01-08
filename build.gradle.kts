@@ -32,7 +32,7 @@ subprojects {
 
     java {
         toolchain {
-            languageVersion = JavaLanguageVersion.of(25)
+            languageVersion = JavaLanguageVersion.of(21)
         }
     }
 
@@ -45,6 +45,10 @@ subprojects {
         testImplementation("org.assertj:assertj-core:$assertjVersion")
         testImplementation("org.mockito:mockito-core:$mockitoVersion")
         testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    }
+
+    tasks.withType<JavaCompile> {
+        options.compilerArgs.add("-parameters")
     }
 
     tasks.test {
