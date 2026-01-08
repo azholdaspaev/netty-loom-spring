@@ -10,7 +10,3 @@ build/
 
 # OS
 .DS_Store
-
-# AIDD workflow
-.artifacts/
-.claude/**
