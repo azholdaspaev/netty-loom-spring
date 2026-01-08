@@ -57,15 +57,27 @@
 **Agent:** Analyst
 **Purpose:** Transform feature idea into structured requirements
 
+#### Separation of Concerns
+
+| Phase | Document | Focus |
+|-------|----------|-------|
+| /idea | PRD.md | **What and Why** - Business requirements, user needs |
+| /plan | ARCHITECTURE.md | **How** - Technical design, dependencies, code structure |
+| /tasks | TASKS.md | **Steps** - Implementation breakdown |
+
 **Note:** PRD focuses on requirements only (WHAT/WHO/WHY). Technical details (libraries, APIs, components, HOW) belong in the Architecture phase.
+
+**PRD must NOT contain:** Code snippets, dependency versions, configuration examples, API endpoints, database schemas, or technical implementation details.
 
 **Process:**
 1. User provides feature idea
 2. Analyst agent gathers requirements
 3. Analyst asks clarifying questions if needed
-4. Analyst creates comprehensive PRD
-5. PRD saved to artifacts folder
-6. State set to `PRD_READY`
+4. Analyst drafts comprehensive PRD
+5. **PRD draft presented to user for review and approval**
+6. User approves or requests changes (repeat steps 4-5 if changes needed)
+7. Only after approval: PRD saved to artifacts folder
+8. State set to `PRD_READY`
 
 **Artifacts Produced:**
 - `STATE.md` - Workflow state tracker
