@@ -5,7 +5,7 @@
 
 ## Task Overview
 - **Total Tasks:** 12
-- **Status:** 5/12 completed
+- **Status:** 6/12 completed
 
 ---
 
@@ -139,18 +139,19 @@
 ---
 
 ### TASK-006: Auto-Configuration
-- **Status:** PENDING
+- **Status:** COMPLETED
+- **Completed:** 2026-01-09
 - **Priority:** HIGH
 - **Depends On:** TASK-005
 - **Description:**
   Create Spring Boot auto-configuration that automatically enables the Netty server when the starter is on the classpath and Tomcat is excluded.
 - **Acceptance Criteria:**
-  - [ ] Auto-configuration activates when Netty classes present
-  - [ ] Auto-configuration disabled when Tomcat present
-  - [ ] Spring Boot application starts with Netty server
-  - [ ] @RestController responds to HTTP requests
-  - [ ] JSON serialization works with Jackson
-  - [ ] Integration test validates full flow
+  - [x] Auto-configuration activates when Netty classes present
+  - [x] Auto-configuration disabled when Tomcat present
+  - [x] Spring Boot application starts with Netty server
+  - [x] @RestController responds to HTTP requests
+  - [x] JSON serialization works with Jackson
+  - [x] Integration test validates full flow
 - **Files to Create:**
   - `netty-loom-spring-boot-starter/src/main/java/.../autoconfigure/NettyServerAutoConfiguration.java`
   - `netty-loom-spring-boot-starter/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`
@@ -199,59 +200,12 @@
 
 ---
 
-## Phase 5: Production Features
+## Phase 5: Examples & Benchmarks
 
-### TASK-008: SSL/TLS & Graceful Shutdown
+### TASK-008: Example Applications
 - **Status:** PENDING
 - **Priority:** MEDIUM
 - **Depends On:** TASK-007
-- **Description:**
-  Implement production-critical features: SSL/TLS support for HTTPS and graceful shutdown that allows in-flight requests to complete.
-- **Acceptance Criteria:**
-  - [ ] SslContextFactory creates valid SSL context from properties
-  - [ ] HTTPS connections work with configured certificates
-  - [ ] Graceful shutdown stops accepting new connections
-  - [ ] In-flight requests complete within timeout
-  - [ ] Server reports clean shutdown
-  - [ ] Tests validate both features
-- **Files to Create:**
-  - `netty-loom-spring-core/src/main/java/.../core/ssl/SslContextFactory.java`
-  - `netty-loom-spring-core/src/test/java/.../core/ssl/SslContextFactoryTest.java`
-  - `netty-loom-spring-boot-starter/src/test/java/.../integration/SslTest.java`
-  - `netty-loom-spring-boot-starter/src/test/java/.../integration/GracefulShutdownTest.java`
-
----
-
-### TASK-009: Observability (Health & Metrics)
-- **Status:** PENDING
-- **Priority:** MEDIUM
-- **Depends On:** TASK-008
-- **Description:**
-  Add Spring Boot Actuator integration with health indicators and Micrometer metrics for production monitoring.
-- **Acceptance Criteria:**
-  - [ ] Health indicator shows server status
-  - [ ] /actuator/health includes netty component
-  - [ ] Metrics track request count, latency, errors
-  - [ ] Metrics integrate with Micrometer
-  - [ ] Request logging is configurable
-- **Files to Create:**
-  - `netty-loom-spring-boot-starter/src/main/java/.../autoconfigure/NettyServerHealthIndicator.java`
-  - `netty-loom-spring-boot-starter/src/main/java/.../autoconfigure/NettyServerMetricsAutoConfiguration.java`
-  - `netty-loom-spring-boot-starter/src/test/java/.../integration/ActuatorTest.java`
-- **Verification:**
-  ```bash
-  curl localhost:8080/actuator/health
-  # Should include: "netty": {"status": "UP"}
-  ```
-
----
-
-## Phase 6: Examples & Benchmarks
-
-### TASK-010: Example Applications
-- **Status:** PENDING
-- **Priority:** MEDIUM
-- **Depends On:** TASK-009
 - **Description:**
   Create two identical example applications - one using Netty-Loom, one using Tomcat - for benchmark comparison and as usage documentation.
 - **Acceptance Criteria:**
@@ -274,10 +228,10 @@
 
 ---
 
-### TASK-011: k6 Benchmark Scripts
+### TASK-009: k6 Benchmark Scripts
 - **Status:** PENDING
 - **Priority:** MEDIUM
-- **Depends On:** TASK-010
+- **Depends On:** TASK-008
 - **Description:**
   Create k6 load testing scripts that measure performance across different workload types and concurrency levels.
 - **Acceptance Criteria:**
@@ -299,10 +253,10 @@
 
 ---
 
-### TASK-012: Benchmark Execution & Validation
+### TASK-010: Benchmark Execution & Validation
 - **Status:** PENDING
 - **Priority:** LOW
-- **Depends On:** TASK-011
+- **Depends On:** TASK-009
 - **Description:**
   Execute the benchmark suite, collect results, and validate that the 50%+ performance improvement target is achieved.
 - **Acceptance Criteria:**
@@ -317,6 +271,53 @@
 
 ---
 
+## Phase 6: Production Features
+
+### TASK-011: SSL/TLS & Graceful Shutdown
+- **Status:** PENDING
+- **Priority:** LOW
+- **Depends On:** TASK-010
+- **Description:**
+  Implement production-critical features: SSL/TLS support for HTTPS and graceful shutdown that allows in-flight requests to complete.
+- **Acceptance Criteria:**
+  - [ ] SslContextFactory creates valid SSL context from properties
+  - [ ] HTTPS connections work with configured certificates
+  - [ ] Graceful shutdown stops accepting new connections
+  - [ ] In-flight requests complete within timeout
+  - [ ] Server reports clean shutdown
+  - [ ] Tests validate both features
+- **Files to Create:**
+  - `netty-loom-spring-core/src/main/java/.../core/ssl/SslContextFactory.java`
+  - `netty-loom-spring-core/src/test/java/.../core/ssl/SslContextFactoryTest.java`
+  - `netty-loom-spring-boot-starter/src/test/java/.../integration/SslTest.java`
+  - `netty-loom-spring-boot-starter/src/test/java/.../integration/GracefulShutdownTest.java`
+
+---
+
+### TASK-012: Observability (Health & Metrics)
+- **Status:** PENDING
+- **Priority:** LOW
+- **Depends On:** TASK-011
+- **Description:**
+  Add Spring Boot Actuator integration with health indicators and Micrometer metrics for production monitoring.
+- **Acceptance Criteria:**
+  - [ ] Health indicator shows server status
+  - [ ] /actuator/health includes netty component
+  - [ ] Metrics track request count, latency, errors
+  - [ ] Metrics integrate with Micrometer
+  - [ ] Request logging is configurable
+- **Files to Create:**
+  - `netty-loom-spring-boot-starter/src/main/java/.../autoconfigure/NettyServerHealthIndicator.java`
+  - `netty-loom-spring-boot-starter/src/main/java/.../autoconfigure/NettyServerMetricsAutoConfiguration.java`
+  - `netty-loom-spring-boot-starter/src/test/java/.../integration/ActuatorTest.java`
+- **Verification:**
+  ```bash
+  curl localhost:8080/actuator/health
+  # Should include: "netty": {"status": "UP"}
+  ```
+
+---
+
 ## Dependency Graph
 
 ```mermaid
@@ -327,11 +328,11 @@ graph TD
     T4 --> T5[TASK-005: Server Factory]
     T5 --> T6[TASK-006: Auto-Configuration]
     T6 --> T7[TASK-007: MVC Verification]
-    T7 --> T8[TASK-008: SSL & Shutdown]
-    T8 --> T9[TASK-009: Health & Metrics]
-    T9 --> T10[TASK-010: Example Apps]
-    T10 --> T11[TASK-011: k6 Scripts]
-    T11 --> T12[TASK-012: Benchmark Validation]
+    T7 --> T8[TASK-008: Example Apps]
+    T8 --> T9[TASK-009: k6 Scripts]
+    T9 --> T10[TASK-010: Benchmark Validation]
+    T10 --> T11[TASK-011: SSL & Shutdown]
+    T11 --> T12[TASK-012: Health & Metrics]
 ```
 
 ## Implementation Order
@@ -343,8 +344,8 @@ graph TD
 5. TASK-005: Spring Boot Server Factory
 6. TASK-006: Auto-Configuration
 7. TASK-007: Full MVC Feature Verification
-8. TASK-008: SSL/TLS & Graceful Shutdown
-9. TASK-009: Observability (Health & Metrics)
-10. TASK-010: Example Applications
-11. TASK-011: k6 Benchmark Scripts
-12. TASK-012: Benchmark Execution & Validation
+8. TASK-008: Example Applications
+9. TASK-009: k6 Benchmark Scripts
+10. TASK-010: Benchmark Execution & Validation
+11. TASK-011: SSL/TLS & Graceful Shutdown
+12. TASK-012: Observability (Health & Metrics)
