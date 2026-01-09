@@ -8,6 +8,9 @@ server:
 spring:
   application:
     name: tomcat-example
+  threads:
+    virtual:
+      enabled: true
 
 management:
   endpoints:

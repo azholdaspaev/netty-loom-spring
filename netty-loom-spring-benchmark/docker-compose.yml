@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  # Netty-Loom example application
+  netty-app:
+    image: eclipse-temurin:21-jre
+    container_name: netty-loom-example
+    working_dir: /app
+    volumes:
+      - ../netty-loom-spring-example-netty/build/libs:/app
+    command: ["java", "-jar", "netty-loom-spring-example-netty.jar"]
+    ports:
+      - "8081:8081"
+    environment:
+      - JAVA_OPTS=-Xms512m -Xmx1g
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/hello"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # Tomcat example application
+  tomcat-app:
+    image: eclipse-temurin:21-jre
+    container_name: tomcat-example
+    working_dir: /app
+    volumes:
+      - ../netty-loom-spring-example-tomcat/build/libs:/app
+    command: ["java", "-jar", "netty-loom-spring-example-tomcat.jar"]
+    ports:
+      - "8082:8082"
+    environment:
+      - JAVA_OPTS=-Xms512m -Xmx1g
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/hello"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # k6 load testing container (optional - for running benchmarks in containers)
+  k6:
+    image: grafana/k6:latest
+    container_name: k6-benchmark
+    volumes:
+      - ./scripts:/scripts
+      - ./results:/results
+    working_dir: /scripts
+    network_mode: host
+    profiles:
+      - benchmark
+    # Example: docker compose --profile benchmark run k6 run /scripts/cpu-bound.js --env TARGET=http://localhost:8081
+
+networks:
+  default:
+    driver: bridge

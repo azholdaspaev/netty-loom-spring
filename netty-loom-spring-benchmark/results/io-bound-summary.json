@@ -1,0 +1,14 @@
+{
+  "test": "io-bound",
+  "target": "http://localhost:8082",
+  "timestamp": "2026-01-09T12:45:15.763Z",
+  "metrics": {
+    "requests": 342400,
+    "requestsPerSecond": 1629.6661765436122,
+    "avgDuration": 276.1787503709203,
+    "p95Duration": 499.01009999999997,
+    "p99Duration": 0,
+    "avgDbLatency": 103.59269275700935,
+    "errorRate": 0
+  }
+}

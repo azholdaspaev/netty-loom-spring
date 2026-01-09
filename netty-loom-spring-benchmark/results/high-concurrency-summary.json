@@ -1,0 +1,17 @@
+{
+  "test": "high-concurrency",
+  "target": "http://localhost:8082",
+  "timestamp": "2026-01-09T13:13:08.010Z",
+  "peakVUs": 10000,
+  "metrics": {
+    "requests": 4073068,
+    "requestsPerSecond": 16867.125077628683,
+    "avgDuration": 151.96934208045968,
+    "p95Duration": 568.6456499999998,
+    "p99Duration": 0,
+    "maxDuration": 11973.218,
+    "errorRate": 0.007849120122718305,
+    "connectionErrors": 0,
+    "timeoutErrors": 16078
+  }
+}

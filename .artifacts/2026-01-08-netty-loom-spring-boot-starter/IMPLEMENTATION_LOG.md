@@ -847,3 +847,113 @@ curl http://localhost:8082/hello  # Tomcat
 ```
 
 ---
+
+## TASK-009: k6 Benchmark Scripts
+
+**Status:** COMPLETED
+**Completed:** 2026-01-09T14:30:00Z
+
+### Summary
+Created k6 load testing scripts that measure performance across different workload types and concurrency levels. Includes docker-compose for container orchestration, shell script for full automation, comprehensive documentation, and Gradle tasks for integration.
+
+### k6 Scripts Created
+
+#### 1. cpu-bound.js
+Tests JSON serialization throughput on `/json` endpoint:
+- Ramping VUs: 10 → 100 → 200 → 100 → 0
+- Duration: 3 minutes
+- Metrics: requests/sec, avg/p95/p99 latency, error rate
+- Custom `handleSummary()` for JSON output
+
+#### 2. io-bound.js
+Tests blocking IO handling on `/db` endpoint:
+- Ramping VUs: 50 → 500 → 1000 → 500 → 0
+- Duration: 3 minutes
+- Higher VUs since each request blocks 100ms
+- Where virtual threads should show biggest advantage
+
+#### 3. mixed-workload.js
+Simulates realistic production traffic:
+- Distribution: 40% `/hello`, 30% `/json`, 20% `/db`, 10% `/mixed`
+- Ramping VUs: 50 → 200 → 400 → 200 → 0
+- Duration: 4 minutes
+- Tracks per-endpoint metrics
+
+#### 4. high-concurrency.js
+Stress test for 10K+ concurrent connections:
+- Ramping VUs: 0 → 100 → 1000 → 5000 → 10000 → 5000 → 0
+- Duration: 4 minutes
+- Uses `/hello` for minimal overhead
+- Tracks connection errors, timeout errors
+
+### Infrastructure Files
+
+#### docker-compose.yml
+Container orchestration for both example apps:
+- `netty-app` on port 8081 (eclipse-temurin:21-jre)
+- `tomcat-app` on port 8082 (eclipse-temurin:21-jre)
+- `k6` service with `benchmark` profile
+- Health checks for readiness
+
+#### run-benchmark.sh
+Full benchmark orchestration script:
+- Prerequisite checks (k6, Java 21+)
+- Builds both example apps via Gradle
+- Starts/stops servers with health checks
+- Runs all 4 benchmark scripts against each server
+- Generates comparison report
+- Options: `--quick`, `--netty`, `--tomcat`, `--script <name>`
+- Graceful cleanup on exit
+
+#### README.md
+Comprehensive documentation:
+- Prerequisites and installation
+- Quick start with Gradle and shell script
+- Script descriptions and workload details
+- Configuration and customization
+- Results interpretation
+- Docker support
+- Troubleshooting
+- Architecture notes on virtual threads
+
+### Gradle Tasks (build.gradle.kts)
+
+9 tasks in "benchmark" group:
+
+| Task | Description |
+|------|-------------|
+| `benchmark` | Display help and available tasks |
+| `benchmarkAll` | Run full suite (Netty vs Tomcat) |
+| `benchmarkNetty` | Run all scripts against Netty only |
+| `benchmarkTomcat` | Run all scripts against Tomcat only |
+| `benchmarkCpuBound` | Run CPU-bound benchmark |
+| `benchmarkIoBound` | Run IO-bound benchmark |
+| `benchmarkMixed` | Run mixed workload benchmark |
+| `benchmarkHighConcurrency` | Run high concurrency benchmark |
+| `k6Run` | Run specific script with `-Pscript` and `-Ptarget` |
+
+Usage:
+```bash
+./gradlew :netty-loom-spring-benchmark:benchmarkAll
+./gradlew :netty-loom-spring-benchmark:k6Run -Pscript=cpu-bound.js -Ptarget=http://localhost:8081
+```
+
+### Verification
+
+```bash
+./gradlew :netty-loom-spring-benchmark:tasks --group=benchmark
+# Shows all 9 benchmark tasks
+```
+
+### Files Created
+
+- `netty-loom-spring-benchmark/scripts/cpu-bound.js`
+- `netty-loom-spring-benchmark/scripts/io-bound.js`
+- `netty-loom-spring-benchmark/scripts/mixed-workload.js`
+- `netty-loom-spring-benchmark/scripts/high-concurrency.js`
+- `netty-loom-spring-benchmark/docker-compose.yml`
+- `netty-loom-spring-benchmark/run-benchmark.sh`
+- `netty-loom-spring-benchmark/README.md`
+- `netty-loom-spring-benchmark/build.gradle.kts`
+
+---

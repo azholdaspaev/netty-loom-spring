@@ -1,0 +1,13 @@
+{
+  "test": "cpu-bound",
+  "target": "http://localhost:8082",
+  "timestamp": "2026-01-09T12:41:35.187Z",
+  "metrics": {
+    "requests": 1799245,
+    "requestsPerSecond": 8567.728358261591,
+    "avgDuration": 0.8183233989812077,
+    "p95Duration": 2.268,
+    "p99Duration": 0,
+    "errorRate": 0
+  }
+}
