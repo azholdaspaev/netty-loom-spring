@@ -583,3 +583,142 @@ BUILD SUCCESSFUL
 7. **SpringMvcBridgeHandler in boot-starter** - Moved from core to boot-starter to avoid circular dependency
 
 ---
+
+## TASK-006: Auto-Configuration
+
+**Status:** COMPLETED
+**Completed:** 2026-01-09
+
+### Summary
+Created Spring Boot auto-configuration that automatically enables the Netty server when the starter is on the classpath and Tomcat is excluded. Added integration tests validating the full request flow.
+
+---
+
+## TASK-007: Full MVC Feature Verification
+
+**Status:** COMPLETED
+**Completed:** 2026-01-09T13:38:00Z
+
+### Summary
+Implemented comprehensive integration tests to verify Spring MVC features work correctly with the Netty-Loom server. Created a test suite covering all major MVC features including annotations, exception handling, interceptors, and filters.
+
+### Test Architecture
+
+```
+BaseIntegrationTest (abstract base)
+    │ Provides: @SpringBootTest, TestRestTemplate, port injection, utility methods
+    ├── MvcAnnotationsTest (18 tests)
+    │   ├── PathVariables (3 tests)
+    │   ├── RequestParams (6 tests)
+    │   ├── RequestBody (4 tests)
+    │   ├── ResponseBody (3 tests)
+    │   └── ContentNegotiation (2 tests)
+    ├── ExceptionHandlingTest (7 tests)
+    │   ├── ControllerLevelExceptionHandler (2 tests)
+    │   ├── GlobalControllerAdvice (3 tests)
+    │   └── ExceptionPropagation (2 tests)
+    ├── InterceptorTest (9 tests)
+    │   ├── PreHandle (3 tests)
+    │   ├── PostHandle (2 tests)
+    │   ├── AfterCompletion (2 tests)
+    │   └── InterceptorChain (2 tests)
+    └── FilterTest (6 tests)
+        ├── FilterExecution (4 tests)
+        └── FilterConfiguration (2 tests)
+```
+
+### Files Created
+
+#### 1. BaseIntegrationTest.java
+Abstract base class providing common test infrastructure:
+- `@SpringBootTest(RANDOM_PORT)` configuration
+- `@LocalServerPort` injection
+- `@Autowired TestRestTemplate`
+- Utility methods: `get()`, `post()`, `getWithHeaders()`, `postWithHeaders()`
+- Header builders: `jsonHeaders()`, `acceptJsonHeaders()`
+
+#### 2. MvcAnnotationsTest.java (18 tests)
+Tests for core Spring MVC annotations:
+- **PathVariables**: Single, multiple, and hyphenated path variables
+- **RequestParams**: Required, optional, default values, arrays, integers, booleans
+- **RequestBody**: JSON objects, arrays, nested objects, invalid JSON handling
+- **ResponseBody**: Object serialization, list serialization, Content-Type header
+- **ContentNegotiation**: Accept header handling
+
+#### 3. ExceptionHandlingTest.java (7 tests)
+Tests for exception handling:
+- **ControllerLevelExceptionHandler**: Local `@ExceptionHandler` methods
+- **GlobalControllerAdvice**: Global `@ControllerAdvice` for all controllers
+- **ExceptionPropagation**: Custom error bodies, no stack trace leakage
+
+Custom exceptions tested:
+- `ResourceNotFoundException` → 404
+- `ValidationException` → 422
+- `ForbiddenException` → 403
+- `RuntimeException` → 500
+
+#### 4. InterceptorTest.java (9 tests)
+Tests for `HandlerInterceptor` lifecycle:
+- **PreHandle**: Execution order, request blocking, request/response access
+- **PostHandle**: Execution after controller
+- **AfterCompletion**: Always executes, receives exceptions
+- **InterceptorChain**: Multiple interceptors in registration order
+
+Interceptor patterns tested:
+- Tracking interceptor (records phases)
+- Blocking interceptor (returns false)
+- Header interceptor (modifies response)
+- Ordered interceptors (first/second)
+
+#### 5. FilterTest.java (6 tests)
+Tests for servlet filter execution:
+- **FilterExecution**: Execution before controller, data passing, order verification, blocking
+- **FilterConfiguration**: URL pattern matching, skip for non-matching paths
+
+Filter patterns tested:
+- Simple header filter
+- Data-passing filter (request attributes)
+- Ordered filters (first/second/third)
+- Blocking filter (auth check)
+- API filter (path-specific)
+
+### Test Results
+
+```bash
+./gradlew :netty-loom-spring-boot-starter:test --tests "*.integration.*"
+# Result: 40 tests completed, 0 failed
+# BUILD SUCCESSFUL in 4s
+```
+
+### Design Decisions
+
+1. **BaseIntegrationTest pattern** - DRY principle for test configuration
+2. **Nested test classes** - Groups related tests, follows project convention
+3. **Given-When-Then comments** - Per project conventions
+4. **Separate test applications** - Each test class has isolated configuration
+5. **ComponentScan exclusions** - Prevents test application interference
+6. **Realistic test scenarios** - Tests real-world use cases
+
+### Acceptance Criteria Verification
+
+| Criteria | Test Coverage |
+|----------|--------------|
+| @PathVariable works correctly | `MvcAnnotationsTest.PathVariables` (3 tests) |
+| @RequestParam works with all types | `MvcAnnotationsTest.RequestParams` (6 tests) |
+| @RequestBody deserializes JSON correctly | `MvcAnnotationsTest.RequestBodyTests` (4 tests) |
+| @ResponseBody serializes JSON correctly | `MvcAnnotationsTest.ResponseBodyTests` (3 tests) |
+| @ExceptionHandler catches exceptions | `ExceptionHandlingTest.ControllerLevelExceptionHandler` (2 tests) |
+| @ControllerAdvice applies globally | `ExceptionHandlingTest.GlobalControllerAdvice` (3 tests) |
+| HandlerInterceptor lifecycle works | `InterceptorTest.*` (9 tests) |
+| Servlet filters execute in order | `FilterTest.FilterExecution` (4 tests) |
+| Content negotiation works | `MvcAnnotationsTest.ContentNegotiation` (2 tests) |
+
+### Files Created
+
+- `netty-loom-spring-boot-starter/src/test/java/io/github/azholdaspaev/nettyloom/integration/BaseIntegrationTest.java`
+- `netty-loom-spring-boot-starter/src/test/java/io/github/azholdaspaev/nettyloom/integration/MvcAnnotationsTest.java`
+- `netty-loom-spring-boot-starter/src/test/java/io/github/azholdaspaev/nettyloom/integration/ExceptionHandlingTest.java`
+- `netty-loom-spring-boot-starter/src/test/java/io/github/azholdaspaev/nettyloom/integration/InterceptorTest.java`
+- `netty-loom-spring-boot-starter/src/test/java/io/github/azholdaspaev/nettyloom/integration/FilterTest.java`
+
+---
