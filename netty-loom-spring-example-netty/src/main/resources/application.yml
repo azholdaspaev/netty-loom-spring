@@ -1,0 +1,18 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: netty-loom-example
+
+# Netty-specific configuration
+server.netty:
+  boss-threads: 1
+  worker-threads: 0  # Use available processors
+  max-content-length: 10485760
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics

@@ -722,3 +722,128 @@ Filter patterns tested:
 - `netty-loom-spring-boot-starter/src/test/java/io/github/azholdaspaev/nettyloom/integration/FilterTest.java`
 
 ---
+
+## TASK-008: Example Applications
+
+**Status:** COMPLETED
+**Completed:** 2026-01-09T14:01:00Z
+
+### Summary
+Created two identical example Spring Boot applications for benchmark comparison:
+- **netty-loom-spring-example-netty** - Uses Netty-Loom with virtual threads (port 8081)
+- **netty-loom-spring-example-tomcat** - Uses standard Tomcat (port 8082)
+
+Both applications have identical REST endpoints and business logic.
+
+### Architecture
+
+```
+Both Example Applications
+├── ExampleApplication.java      # Spring Boot main class
+├── controller/
+│   └── ExampleController.java   # REST endpoints: /hello, /json, /db, /mixed
+├── service/
+│   └── SimulatedService.java    # Blocking operations simulation
+└── resources/
+    └── application.yml          # Configuration (different ports)
+```
+
+### Endpoints
+
+| Endpoint | Purpose | Workload Type |
+|----------|---------|---------------|
+| `/hello` | Simple string response | Minimal overhead |
+| `/json` | JSON object serialization | CPU-bound (serialization) |
+| `/db` | Simulated 100ms DB call | IO-bound (blocking) |
+| `/mixed` | CPU work + IO delay | Combined workload |
+
+### SimulatedService
+
+Provides realistic blocking scenarios:
+- `simulateDbCall()` - Thread.sleep(100ms) with timing info
+- `simulateCpuWork()` - Fibonacci(35) computation with timing
+- `simulateMixedWorkload()` - Combines both operations
+
+Each method returns thread information including:
+- Thread name
+- Whether running on virtual thread
+
+### Configuration
+
+**Netty app (port 8081):**
+```yaml
+server:
+  port: 8081
+server.netty:
+  boss-threads: 1
+  worker-threads: 0
+```
+
+**Tomcat app (port 8082):**
+```yaml
+server:
+  port: 8082
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 10
+```
+
+### Tests Added
+
+Each module has `ExampleApplicationTest.java` with 6 tests:
+- `HelloEndpoint.shouldReturnHelloWorld`
+- `JsonEndpoint.shouldReturnJsonObject`
+- `JsonEndpoint.shouldContainTimestamp`
+- `DbEndpoint.shouldSimulateDbCall`
+- `DbEndpoint.shouldTakeAtLeast100ms`
+- `MixedEndpoint.shouldReturnComputedAndFetchedData`
+
+### Test Results
+
+```bash
+./gradlew :netty-loom-spring-example-netty:test :netty-loom-spring-example-tomcat:test
+# BUILD SUCCESSFUL in 8s
+# All 12 tests passed (6 per module)
+```
+
+### Files Created
+
+**netty-loom-spring-example-netty:**
+- `src/main/java/io/github/azholdaspaev/nettyloom/example/ExampleApplication.java`
+- `src/main/java/io/github/azholdaspaev/nettyloom/example/controller/ExampleController.java`
+- `src/main/java/io/github/azholdaspaev/nettyloom/example/service/SimulatedService.java`
+- `src/main/resources/application.yml`
+- `src/test/java/io/github/azholdaspaev/nettyloom/example/ExampleApplicationTest.java`
+
+**netty-loom-spring-example-tomcat:**
+- `src/main/java/io/github/azholdaspaev/nettyloom/example/ExampleApplication.java`
+- `src/main/java/io/github/azholdaspaev/nettyloom/example/controller/ExampleController.java`
+- `src/main/java/io/github/azholdaspaev/nettyloom/example/service/SimulatedService.java`
+- `src/main/resources/application.yml`
+- `src/test/java/io/github/azholdaspaev/nettyloom/example/ExampleApplicationTest.java`
+
+### Files Modified
+
+- `netty-loom-spring-example-netty/build.gradle.kts` - Enabled bootJar
+- `netty-loom-spring-example-tomcat/build.gradle.kts` - Enabled bootJar
+
+### Running the Examples
+
+```bash
+# Build both apps
+./gradlew :netty-loom-spring-example-netty:bootJar
+./gradlew :netty-loom-spring-example-tomcat:bootJar
+
+# Start Netty example
+java -jar netty-loom-spring-example-netty/build/libs/netty-loom-spring-example-netty.jar
+
+# Start Tomcat example (separate terminal)
+java -jar netty-loom-spring-example-tomcat/build/libs/netty-loom-spring-example-tomcat.jar
+
+# Test endpoints
+curl http://localhost:8081/hello  # Netty
+curl http://localhost:8082/hello  # Tomcat
+```
+
+---

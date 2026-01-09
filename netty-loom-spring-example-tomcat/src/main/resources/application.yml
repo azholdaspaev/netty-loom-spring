@@ -1,0 +1,16 @@
+server:
+  port: 8082
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 10
+
+spring:
+  application:
+    name: tomcat-example
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics

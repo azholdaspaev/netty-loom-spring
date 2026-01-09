@@ -5,7 +5,7 @@
 
 ## Task Overview
 - **Total Tasks:** 12
-- **Status:** 7/12 completed
+- **Status:** 8/12 completed
 
 ---
 
@@ -205,28 +205,31 @@
 ## Phase 5: Examples & Benchmarks
 
 ### TASK-008: Example Applications
-- **Status:** PENDING
+- **Status:** COMPLETED
+- **Completed:** 2026-01-09T14:01:00Z
 - **Priority:** MEDIUM
 - **Depends On:** TASK-007
 - **Description:**
   Create two identical example applications - one using Netty-Loom, one using Tomcat - for benchmark comparison and as usage documentation.
 - **Acceptance Criteria:**
-  - [ ] Both apps have identical REST endpoints
-  - [ ] /hello - Simple string response
-  - [ ] /json - JSON serialization
-  - [ ] /db - Simulated blocking DB call
-  - [ ] /mixed - CPU + IO combined
-  - [ ] Both apps start and respond correctly
-  - [ ] README documents usage
-- **Files to Create:**
+  - [x] Both apps have identical REST endpoints
+  - [x] /hello - Simple string response
+  - [x] /json - JSON serialization
+  - [x] /db - Simulated blocking DB call
+  - [x] /mixed - CPU + IO combined
+  - [x] Both apps start and respond correctly
+  - [x] Tests verify all endpoints (6 tests per module)
+- **Files Created:**
   - `netty-loom-spring-example-netty/src/main/java/.../example/ExampleApplication.java`
   - `netty-loom-spring-example-netty/src/main/java/.../example/controller/ExampleController.java`
   - `netty-loom-spring-example-netty/src/main/java/.../example/service/SimulatedService.java`
+  - `netty-loom-spring-example-netty/src/main/resources/application.yml`
+  - `netty-loom-spring-example-netty/src/test/java/.../example/ExampleApplicationTest.java`
   - `netty-loom-spring-example-tomcat/src/main/java/.../example/ExampleApplication.java`
   - `netty-loom-spring-example-tomcat/src/main/java/.../example/controller/ExampleController.java`
   - `netty-loom-spring-example-tomcat/src/main/java/.../example/service/SimulatedService.java`
-  - `netty-loom-spring-example-netty/src/main/resources/application.yml`
   - `netty-loom-spring-example-tomcat/src/main/resources/application.yml`
+  - `netty-loom-spring-example-tomcat/src/test/java/.../example/ExampleApplicationTest.java`
 
 ---
 

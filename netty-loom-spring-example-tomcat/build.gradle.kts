@@ -17,11 +17,11 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test")
 }
 
-// Disable bootJar until main class is created
+// Enable bootJar for creating executable JAR
 tasks.bootJar {
-    enabled = false
+    enabled = true
 }
 
 tasks.jar {
-    enabled = true
+    enabled = false
 }
