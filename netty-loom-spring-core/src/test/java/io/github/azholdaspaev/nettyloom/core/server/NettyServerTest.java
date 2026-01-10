@@ -1,5 +1,6 @@
 package io.github.azholdaspaev.nettyloom.core.server;
 
+import io.github.azholdaspaev.nettyloom.core.handler.TestHttpRequestHandler;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -24,15 +25,19 @@ class NettyServerTest {
 
     private static NettyServer server;
     private static HttpClient client;
+    private static ExecutorService handlerExecutor;
     private static int port;
 
     @BeforeAll
     static void startServer() throws Exception {
+        handlerExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        TestHttpRequestHandler handler = new TestHttpRequestHandler(handlerExecutor);
+
         NettyServerConfiguration config = NettyServerConfiguration.builder()
                 .port(0)
                 .build();
 
-        server = new NettyServer(config);
+        server = new NettyServer(config, handler);
         server.start();
         port = server.getPort();
 
@@ -45,6 +50,9 @@ class NettyServerTest {
     static void stopServer() {
         if (server != null && server.isRunning()) {
             server.stop();
+        }
+        if (handlerExecutor != null) {
+            handlerExecutor.shutdown();
         }
     }
 
@@ -147,11 +155,21 @@ class NettyServerTest {
     class LifecycleTests {
 
         private NettyServer lifecycleServer;
+        private ExecutorService lifecycleExecutor;
+
+        private NettyServer createServer(NettyServerConfiguration config) {
+            lifecycleExecutor = Executors.newVirtualThreadPerTaskExecutor();
+            TestHttpRequestHandler handler = new TestHttpRequestHandler(lifecycleExecutor);
+            return new NettyServer(config, handler);
+        }
 
         @AfterEach
         void tearDown() {
             if (lifecycleServer != null && lifecycleServer.isRunning()) {
                 lifecycleServer.stop();
+            }
+            if (lifecycleExecutor != null) {
+                lifecycleExecutor.shutdown();
             }
         }
 
@@ -161,7 +179,7 @@ class NettyServerTest {
             NettyServerConfiguration config = NettyServerConfiguration.builder()
                     .port(0)
                     .build();
-            lifecycleServer = new NettyServer(config);
+            lifecycleServer = createServer(config);
 
             // When
             lifecycleServer.start();
@@ -177,7 +195,7 @@ class NettyServerTest {
             NettyServerConfiguration config = NettyServerConfiguration.builder()
                     .port(0)
                     .build();
-            lifecycleServer = new NettyServer(config);
+            lifecycleServer = createServer(config);
             lifecycleServer.start();
             assertThat(lifecycleServer.isRunning()).isTrue();
 
@@ -194,7 +212,7 @@ class NettyServerTest {
             NettyServerConfiguration config = NettyServerConfiguration.builder()
                     .port(0)
                     .build();
-            lifecycleServer = new NettyServer(config);
+            lifecycleServer = createServer(config);
             assertThat(lifecycleServer.getPort()).isEqualTo(-1);
 
             // When
@@ -218,7 +236,7 @@ class NettyServerTest {
             NettyServerConfiguration config = NettyServerConfiguration.builder()
                     .port(0)
                     .build();
-            lifecycleServer = new NettyServer(config);
+            lifecycleServer = createServer(config);
             lifecycleServer.start();
 
             // When & Then

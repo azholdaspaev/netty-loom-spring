@@ -1,10 +1,10 @@
 package io.github.azholdaspaev.nettyloom.autoconfigure;
 
-import io.github.azholdaspaev.nettyloom.autoconfigure.handler.SpringMvcBridgeHandler;
+import io.github.azholdaspaev.nettyloom.mvc.handler.SpringMvcBridgeHandler;
 import io.github.azholdaspaev.nettyloom.core.executor.VirtualThreadExecutorFactory;
 import io.github.azholdaspaev.nettyloom.core.server.NettyServer;
 import io.github.azholdaspaev.nettyloom.core.server.NettyServerConfiguration;
-import io.github.azholdaspaev.nettyloom.core.server.NettyWebServer;
+import io.github.azholdaspaev.nettyloom.autoconfigure.server.NettyWebServer;
 import io.github.azholdaspaev.nettyloom.mvc.servlet.NettyServletContext;
 import jakarta.servlet.ServletException;
 import org.slf4j.Logger;

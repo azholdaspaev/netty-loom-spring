@@ -1,4 +1,4 @@
-package io.github.azholdaspaev.nettyloom.core.handler;
+package io.github.azholdaspaev.nettyloom.autoconfigure.handler;
 
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFutureListener;
@@ -20,23 +20,20 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 
 /**
- * HTTP request handler that processes requests on virtual threads.
+ * Test HTTP request handler that processes requests on virtual threads.
  * Returns a simple "Hello World" response for all requests.
  *
- * <p>This handler is marked as {@link io.netty.channel.ChannelHandler.Sharable}
- * because it maintains no per-channel state - only a reference to the shared
- * executor service. This allows a single instance to be safely shared across
- * multiple channel pipelines.
+ * <p>This handler is for testing purposes only and should not be used in production.
  */
 @ChannelHandler.Sharable
-public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
+public class TestHttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
 
-    private static final Logger logger = LoggerFactory.getLogger(HttpRequestHandler.class);
+    private static final Logger logger = LoggerFactory.getLogger(TestHttpRequestHandler.class);
     private static final byte[] HELLO_WORLD = "Hello World".getBytes(StandardCharsets.UTF_8);
 
     private final ExecutorService executor;
 
-    public HttpRequestHandler(ExecutorService executor) {
+    public TestHttpRequestHandler(ExecutorService executor) {
         this.executor = executor;
     }
 

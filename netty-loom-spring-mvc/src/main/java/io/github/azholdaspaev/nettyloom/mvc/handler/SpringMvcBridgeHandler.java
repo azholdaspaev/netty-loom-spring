@@ -1,4 +1,4 @@
-package io.github.azholdaspaev.nettyloom.autoconfigure.handler;
+package io.github.azholdaspaev.nettyloom.mvc.handler;
 
 import io.github.azholdaspaev.nettyloom.mvc.filter.FilterChainAdapter;
 import io.github.azholdaspaev.nettyloom.mvc.servlet.NettyHttpServletRequest;

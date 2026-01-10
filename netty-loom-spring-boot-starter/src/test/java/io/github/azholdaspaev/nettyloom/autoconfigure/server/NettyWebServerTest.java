@@ -1,17 +1,20 @@
-package io.github.azholdaspaev.nettyloom.core.server;
+package io.github.azholdaspaev.nettyloom.autoconfigure.server;
 
+import io.github.azholdaspaev.nettyloom.autoconfigure.handler.TestHttpRequestHandler;
+import io.github.azholdaspaev.nettyloom.core.server.NettyServer;
+import io.github.azholdaspaev.nettyloom.core.server.NettyServerConfiguration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.web.server.GracefulShutdownCallback;
 import org.springframework.boot.web.server.GracefulShutdownResult;
-import org.springframework.boot.web.server.WebServerException;
 
 import java.time.Duration;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class NettyWebServerTest {
 
@@ -25,13 +28,19 @@ class NettyWebServerTest {
                 .build();
     }
 
+    private NettyServer createNettyServer(NettyServerConfiguration config) {
+        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        TestHttpRequestHandler handler = new TestHttpRequestHandler(executor);
+        return new NettyServer(config, handler);
+    }
+
     @Nested
     class Lifecycle {
 
         @Test
         void shouldStartAndStopServer() throws Exception {
             // Given
-            NettyServer nettyServer = new NettyServer(config);
+            NettyServer nettyServer = createNettyServer(config);
             NettyWebServer webServer = new NettyWebServer(nettyServer);
 
             // When
@@ -51,7 +60,7 @@ class NettyWebServerTest {
         @Test
         void shouldBeIdempotentOnMultipleStarts() throws Exception {
             // Given
-            NettyServer nettyServer = new NettyServer(config);
+            NettyServer nettyServer = createNettyServer(config);
             NettyWebServer webServer = new NettyWebServer(nettyServer);
 
             // When
@@ -71,7 +80,7 @@ class NettyWebServerTest {
         @Test
         void shouldBeIdempotentOnMultipleStops() throws Exception {
             // Given
-            NettyServer nettyServer = new NettyServer(config);
+            NettyServer nettyServer = createNettyServer(config);
             NettyWebServer webServer = new NettyWebServer(nettyServer);
             webServer.start();
 
@@ -86,7 +95,7 @@ class NettyWebServerTest {
         @Test
         void shouldReturnNegativePortWhenNotStarted() {
             // Given
-            NettyServer nettyServer = new NettyServer(config);
+            NettyServer nettyServer = createNettyServer(config);
             NettyWebServer webServer = new NettyWebServer(nettyServer);
 
             // When
@@ -103,7 +112,7 @@ class NettyWebServerTest {
         @Test
         void shouldInvokeCallbackOnGracefulShutdown() throws Exception {
             // Given
-            NettyServer nettyServer = new NettyServer(config);
+            NettyServer nettyServer = createNettyServer(config);
             NettyWebServer webServer = new NettyWebServer(nettyServer, Duration.ofSeconds(5));
             webServer.start();
 
@@ -125,7 +134,7 @@ class NettyWebServerTest {
         @Test
         void shouldUseDefaultTimeoutIfNotProvided() {
             // Given
-            NettyServer nettyServer = new NettyServer(config);
+            NettyServer nettyServer = createNettyServer(config);
 
             // When
             NettyWebServer webServer = new NettyWebServer(nettyServer);
@@ -141,7 +150,7 @@ class NettyWebServerTest {
         @Test
         void shouldProvideAccessToUnderlyingNettyServer() {
             // Given
-            NettyServer nettyServer = new NettyServer(config);
+            NettyServer nettyServer = createNettyServer(config);
             NettyWebServer webServer = new NettyWebServer(nettyServer);
 
             // When

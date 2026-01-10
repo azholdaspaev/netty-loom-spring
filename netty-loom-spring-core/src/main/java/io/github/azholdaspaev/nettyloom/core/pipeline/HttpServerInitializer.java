@@ -1,14 +1,11 @@
 package io.github.azholdaspaev.nettyloom.core.pipeline;
 
-import io.github.azholdaspaev.nettyloom.core.handler.HttpRequestHandler;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
-
-import java.util.concurrent.ExecutorService;
 
 /**
  * Channel initializer that sets up the HTTP pipeline.
@@ -17,7 +14,6 @@ import java.util.concurrent.ExecutorService;
  * <ul>
  *   <li>HttpServerCodec - encodes/decodes HTTP messages</li>
  *   <li>HttpObjectAggregator - combines HTTP chunks into FullHttpRequest</li>
- *   <li>Request handler - either custom injected or default HttpRequestHandler</li>
  * </ul>
  */
 public class HttpServerInitializer extends ChannelInitializer<SocketChannel> {
@@ -37,17 +33,6 @@ public class HttpServerInitializer extends ChannelInitializer<SocketChannel> {
         this.requestHandler = requestHandler;
     }
 
-    /**
-     * Creates initializer with the default HttpRequestHandler.
-     * This constructor maintains backwards compatibility for standalone server usage.
-     *
-     * @param maxContentLength maximum content length for HTTP aggregation
-     * @param executor the executor service for virtual thread dispatch
-     */
-    public HttpServerInitializer(int maxContentLength, ExecutorService executor) {
-        this(maxContentLength, new HttpRequestHandler(executor));
-    }
-
     @Override
     protected void initChannel(SocketChannel ch) {
         ChannelPipeline pipeline = ch.pipeline();
@@ -58,7 +43,7 @@ public class HttpServerInitializer extends ChannelInitializer<SocketChannel> {
         // Aggregates HTTP message parts into FullHttpRequest
         pipeline.addLast("httpAggregator", new HttpObjectAggregator(maxContentLength));
 
-        // Request handler (custom or default)
+        // Request handler
         pipeline.addLast("httpHandler", requestHandler);
     }
 }

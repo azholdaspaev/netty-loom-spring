@@ -1,5 +1,6 @@
-package io.github.azholdaspaev.nettyloom.core.server;
+package io.github.azholdaspaev.nettyloom.autoconfigure.server;
 
+import io.github.azholdaspaev.nettyloom.core.server.NettyServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.web.server.GracefulShutdownCallback;

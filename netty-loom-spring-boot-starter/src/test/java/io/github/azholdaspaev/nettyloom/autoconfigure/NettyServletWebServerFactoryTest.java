@@ -1,6 +1,6 @@
 package io.github.azholdaspaev.nettyloom.autoconfigure;
 
-import io.github.azholdaspaev.nettyloom.core.server.NettyWebServer;
+import io.github.azholdaspaev.nettyloom.autoconfigure.server.NettyWebServer;
 import jakarta.servlet.ServletContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

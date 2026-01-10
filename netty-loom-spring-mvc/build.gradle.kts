@@ -8,6 +8,9 @@ dependencies {
     // Spring WebMVC
     implementation("org.springframework:spring-webmvc:${rootProject.extra["springVersion"]}")
 
+    // Logging
+    implementation("org.slf4j:slf4j-api:2.0.9")
+
     // Test dependencies
     testImplementation("org.springframework.boot:spring-boot-starter-test:${rootProject.extra["springBootVersion"]}")
 }

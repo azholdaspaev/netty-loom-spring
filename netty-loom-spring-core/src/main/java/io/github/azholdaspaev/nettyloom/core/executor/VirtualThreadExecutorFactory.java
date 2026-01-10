@@ -10,7 +10,7 @@ import java.util.concurrent.Executors;
 public final class VirtualThreadExecutorFactory {
 
     private VirtualThreadExecutorFactory() {
-        // Utility class
+        throw new UnsupportedOperationException("This is a utility class and cannot be instantiated");
     }
 
     /**
