@@ -1,7 +1,7 @@
 package io.github.azholdaspaev.nettyloom.core.server;
 
 import io.github.azholdaspaev.nettyloom.core.executor.VirtualThreadExecutorFactory;
-import io.github.azholdaspaev.nettyloom.core.pipeline.HttpServerInitializer;
+import io.github.azholdaspaev.nettyloom.core.http.HttpNettyServerInitializer;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
@@ -68,7 +68,7 @@ public class NettyServer {
         workerGroup = new NioEventLoopGroup(workerThreads);
         virtualThreadExecutor = VirtualThreadExecutorFactory.create("netty-vt-");
 
-        HttpServerInitializer initializer = new HttpServerInitializer(
+        HttpNettyServerInitializer initializer = new HttpNettyServerInitializer(
                 config.getMaxContentLength(),
                 requestHandler
         );

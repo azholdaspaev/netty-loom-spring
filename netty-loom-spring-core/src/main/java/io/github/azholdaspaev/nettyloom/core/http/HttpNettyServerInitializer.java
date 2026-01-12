@@ -1,4 +1,4 @@
-package io.github.azholdaspaev.nettyloom.core.pipeline;
+package io.github.azholdaspaev.nettyloom.core.http;
 
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelInitializer;
@@ -16,7 +16,7 @@ import io.netty.handler.codec.http.HttpServerCodec;
  *   <li>HttpObjectAggregator - combines HTTP chunks into FullHttpRequest</li>
  * </ul>
  */
-public class HttpServerInitializer extends ChannelInitializer<SocketChannel> {
+public class HttpNettyServerInitializer extends ChannelInitializer<SocketChannel> {
 
     private final int maxContentLength;
     private final ChannelHandler requestHandler;
@@ -28,7 +28,7 @@ public class HttpServerInitializer extends ChannelInitializer<SocketChannel> {
      * @param maxContentLength maximum content length for HTTP aggregation
      * @param requestHandler the handler to process HTTP requests
      */
-    public HttpServerInitializer(int maxContentLength, ChannelHandler requestHandler) {
+    public HttpNettyServerInitializer(int maxContentLength, ChannelHandler requestHandler) {
         this.maxContentLength = maxContentLength;
         this.requestHandler = requestHandler;
     }
