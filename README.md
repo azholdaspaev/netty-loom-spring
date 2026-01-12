@@ -16,6 +16,22 @@ Netty-Loom-Spring is a drop-in replacement for Tomcat in Spring Boot application
 
 The virtual thread model allows thousands of concurrent connections with minimal memory overhead, eliminating traditional thread pool limits.
 
+## Comparison with Other Spring Web Servers
+
+| Aspect | Tomcat (Platform) | Tomcat + VT | WebFlux | Netty + VT + MVC |
+|--------|-------------------|-------------|---------|------------------|
+| Max concurrency | ~500 | Millions | Millions | Millions |
+| I/O bound perf | Poor | Excellent | Excellent | Excellent+ |
+| CPU bound perf | Good | Good | Good | Good |
+| Code style | Blocking | Blocking | Reactive | Blocking |
+| JDBC/JPA | Yes | Yes | No | Yes |
+| Network layer | NIO (Tomcat) | NIO (Tomcat) | Netty | Netty |
+| Request handler | Platform Thread | Virtual Thread | EventLoop | Virtual Thread |
+| Context switches | High | Medium | Low | Low |
+| Debugging | Easy | Easy | Hard | Easy |
+| Migration effort | N/A | 1 line | Full rewrite | ~10 lines |
+| Java version | Any | 21+ | Any | 21+ |
+
 ## Features
 
 - Netty-based HTTP server with non-blocking I/O
