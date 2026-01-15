@@ -9,7 +9,6 @@ import org.springframework.boot.web.server.WebServer;
 import org.springframework.boot.web.server.WebServerException;
 
 import java.time.Duration;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Spring Boot {@link WebServer} implementation that wraps a {@link NettyServer}.
@@ -19,7 +18,6 @@ import java.util.concurrent.TimeUnit;
  * <ul>
  *   <li>Start/stop lifecycle management</li>
  *   <li>Port information retrieval</li>
- *   <li>Graceful shutdown support</li>
  * </ul>
  */
 public class NettyWebServer implements WebServer {
@@ -95,7 +93,7 @@ public class NettyWebServer implements WebServer {
 
         try {
             // Stop accepting new connections and wait for in-flight requests
-            nettyServer.stop(shutdownTimeout.toMillis(), TimeUnit.MILLISECONDS);
+            nettyServer.stop();
             started = false;
 
             // Notify Spring Boot that shutdown completed successfully
