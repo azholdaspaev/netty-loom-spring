@@ -1,5 +1,7 @@
 package io.github.azholdaspaev.nettyloom.autoconfigure;
 
+import io.github.azholdaspaev.nettyloom.core.executor.ExecutorFactory;
+import io.github.azholdaspaev.nettyloom.core.executor.VirtualThreadExecutorFactory;
 import io.github.azholdaspaev.nettyloom.core.server.NettyServer;
 import jakarta.servlet.Servlet;
 import org.springframework.beans.factory.ObjectProvider;
@@ -40,6 +42,7 @@ public class NettyServerAutoConfiguration {
      * use a different embedded server (Tomcat, Jetty, etc.).
      *
      * @param nettyProperties the Netty server configuration properties
+     * @param executorFactoryProvider optional custom executor factory
      * @param customizers factory customizers to apply
      * @return the configured Netty servlet web server factory
      */
@@ -47,9 +50,13 @@ public class NettyServerAutoConfiguration {
     @ConditionalOnMissingBean(ServletWebServerFactory.class)
     public NettyServletWebServerFactory nettyServletWebServerFactory(
             NettyServerProperties nettyProperties,
+            ObjectProvider<ExecutorFactory> executorFactoryProvider,
             ObjectProvider<WebServerFactoryCustomizer<NettyServletWebServerFactory>> customizers) {
 
-        NettyServletWebServerFactory factory = new NettyServletWebServerFactory(nettyProperties);
+        ExecutorFactory executorFactory = executorFactoryProvider
+                .getIfAvailable(() -> new VirtualThreadExecutorFactory("netty-mvc-"));
+
+        NettyServletWebServerFactory factory = new NettyServletWebServerFactory(nettyProperties, executorFactory);
         customizers.orderedStream().forEach(customizer -> customizer.customize(factory));
         return factory;
     }

@@ -1,10 +1,10 @@
 package io.github.azholdaspaev.nettyloom.autoconfigure;
 
-import io.github.azholdaspaev.nettyloom.mvc.handler.SpringMvcBridgeHandler;
-import io.github.azholdaspaev.nettyloom.core.executor.VirtualThreadExecutorFactory;
+import io.github.azholdaspaev.nettyloom.autoconfigure.server.NettyWebServer;
+import io.github.azholdaspaev.nettyloom.core.executor.ExecutorFactory;
 import io.github.azholdaspaev.nettyloom.core.server.NettyServer;
 import io.github.azholdaspaev.nettyloom.core.server.NettyServerConfiguration;
-import io.github.azholdaspaev.nettyloom.autoconfigure.server.NettyWebServer;
+import io.github.azholdaspaev.nettyloom.mvc.handler.SpringMvcBridgeHandler;
 import io.github.azholdaspaev.nettyloom.mvc.servlet.NettyServletContext;
 import jakarta.servlet.ServletException;
 import org.slf4j.Logger;
@@ -45,21 +45,17 @@ public class NettyServletWebServerFactory extends AbstractServletWebServerFactor
     private static final Logger logger = LoggerFactory.getLogger(NettyServletWebServerFactory.class);
 
     private final NettyServerProperties nettyProperties;
+    private final ExecutorFactory executorFactory;
 
     /**
-     * Creates a factory with the given Netty-specific properties.
+     * Creates a factory with the given Netty-specific properties and executor factory.
      *
      * @param nettyProperties the Netty server configuration properties
+     * @param executorFactory the factory for creating executor services
      */
-    public NettyServletWebServerFactory(NettyServerProperties nettyProperties) {
+    public NettyServletWebServerFactory(NettyServerProperties nettyProperties, ExecutorFactory executorFactory) {
         this.nettyProperties = nettyProperties != null ? nettyProperties : new NettyServerProperties();
-    }
-
-    /**
-     * Creates a factory with default properties.
-     */
-    public NettyServletWebServerFactory() {
-        this(new NettyServerProperties());
+        this.executorFactory = executorFactory;
     }
 
     @Override
@@ -77,7 +73,7 @@ public class NettyServletWebServerFactory extends AbstractServletWebServerFactor
         initializeServletsAndFilters(servletContext);
 
         // 4. Create virtual thread executor
-        ExecutorService virtualThreadExecutor = VirtualThreadExecutorFactory.create("netty-mvc-");
+        ExecutorService virtualThreadExecutor = executorFactory.create();
 
         // 5. Create bridge handler
         SpringMvcBridgeHandler bridgeHandler = new SpringMvcBridgeHandler(

@@ -4,13 +4,27 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Factory for creating virtual thread executors.
+ * Factory that creates virtual thread executors.
  * Uses Java 21+ virtual threads for efficient blocking operation handling.
  */
-public final class VirtualThreadExecutorFactory {
+public class VirtualThreadExecutorFactory implements ExecutorFactory {
 
-    private VirtualThreadExecutorFactory() {
-        throw new UnsupportedOperationException("This is a utility class and cannot be instantiated");
+    private final String namePrefix;
+
+    /**
+     * Creates a factory that produces virtual thread executors with default thread names.
+     */
+    public VirtualThreadExecutorFactory() {
+        this.namePrefix = null;
+    }
+
+    /**
+     * Creates a factory that produces virtual thread executors with a custom thread name prefix.
+     *
+     * @param namePrefix prefix for virtual thread names
+     */
+    public VirtualThreadExecutorFactory(String namePrefix) {
+        this.namePrefix = namePrefix;
     }
 
     /**
@@ -19,17 +33,11 @@ public final class VirtualThreadExecutorFactory {
      *
      * @return ExecutorService backed by virtual threads
      */
-    public static ExecutorService create() {
-        return Executors.newVirtualThreadPerTaskExecutor();
-    }
-
-    /**
-     * Creates a virtual thread per task executor with a custom thread name prefix.
-     *
-     * @param namePrefix prefix for virtual thread names
-     * @return ExecutorService backed by virtual threads
-     */
-    public static ExecutorService create(String namePrefix) {
+    @Override
+    public ExecutorService create() {
+        if (namePrefix == null) {
+            return Executors.newVirtualThreadPerTaskExecutor();
+        }
         return Executors.newThreadPerTaskExecutor(
                 Thread.ofVirtual().name(namePrefix, 0).factory()
         );

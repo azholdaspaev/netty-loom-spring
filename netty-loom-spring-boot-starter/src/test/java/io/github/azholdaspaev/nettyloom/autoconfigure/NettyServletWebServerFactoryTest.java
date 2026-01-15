@@ -1,6 +1,7 @@
 package io.github.azholdaspaev.nettyloom.autoconfigure;
 
 import io.github.azholdaspaev.nettyloom.autoconfigure.server.NettyWebServer;
+import io.github.azholdaspaev.nettyloom.core.executor.VirtualThreadExecutorFactory;
 import jakarta.servlet.ServletContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,7 +22,10 @@ class NettyServletWebServerFactoryTest {
 
     @BeforeEach
     void setUp() {
-        factory = new NettyServletWebServerFactory(new NettyServerProperties());
+        factory = new NettyServletWebServerFactory(
+                new NettyServerProperties(),
+                new VirtualThreadExecutorFactory("test-")
+        );
         factory.setPort(0);  // Ephemeral port
     }
 
@@ -96,21 +100,6 @@ class NettyServletWebServerFactoryTest {
 
     @Nested
     class Configuration {
-
-        @Test
-        void shouldUseDefaultProperties() {
-            // Given
-            factory = new NettyServletWebServerFactory();
-            factory.setPort(0);
-
-            // When
-            webServer = factory.getWebServer();
-
-            // Then
-            assertThat(factory.getNettyProperties()).isNotNull();
-            assertThat(factory.getNettyProperties().getBossThreads()).isEqualTo(1);
-        }
-
         @Test
         void shouldUseCustomProperties() {
             // Given
@@ -118,7 +107,7 @@ class NettyServletWebServerFactoryTest {
             props.setBossThreads(2);
             props.setWorkerThreads(8);
 
-            factory = new NettyServletWebServerFactory(props);
+            factory = new NettyServletWebServerFactory(props, new VirtualThreadExecutorFactory("test-"));
             factory.setPort(0);
 
             // When
