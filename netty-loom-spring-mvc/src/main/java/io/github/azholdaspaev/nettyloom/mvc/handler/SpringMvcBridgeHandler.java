@@ -47,21 +47,21 @@ public class SpringMvcBridgeHandler extends SimpleChannelInboundHandler<FullHttp
     private static final Logger logger = LoggerFactory.getLogger(SpringMvcBridgeHandler.class);
 
     private final NettyServletContext servletContext;
-    private final ExecutorService virtualThreadExecutor;
+    private final ExecutorService executorService;
     private final String contextPath;
 
     /**
      * Creates a bridge handler for Spring MVC integration.
      *
      * @param servletContext the servlet context containing registered servlets and filters
-     * @param virtualThreadExecutor the executor for virtual thread dispatch
+     * @param executorService the executor for virtual thread dispatch
      * @param contextPath the context path (e.g., "" or "/api")
      */
     public SpringMvcBridgeHandler(NettyServletContext servletContext,
-                                  ExecutorService virtualThreadExecutor,
+                                  ExecutorService executorService,
                                   String contextPath) {
         this.servletContext = servletContext;
-        this.virtualThreadExecutor = virtualThreadExecutor;
+        this.executorService = executorService;
         this.contextPath = contextPath != null ? contextPath : "";
     }
 
@@ -70,7 +70,7 @@ public class SpringMvcBridgeHandler extends SimpleChannelInboundHandler<FullHttp
         // CRITICAL: Retain request for async processing on virtual thread
         request.retain();
 
-        virtualThreadExecutor.submit(() -> {
+        executorService.submit(() -> {
             try {
                 handleRequest(ctx, request);
             } catch (Exception e) {
