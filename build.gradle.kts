@@ -1,5 +1,5 @@
 allprojects {
-    group = "io.github.azholdaspaev"
+    group = "io.github.azholdaspaev.nettyloom"
     version = "0.1.0-SNAPSHOT"
 
     repositories {
