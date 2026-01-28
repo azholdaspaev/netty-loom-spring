@@ -1,0 +1,44 @@
+# Gradle build system
+.gradle/
+build/
+out/
+
+# IDE - IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# IDE - Eclipse
+.project
+.classpath
+.settings/
+
+# IDE - VS Code
+.vscode/
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Java artifacts
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Git
+.git/
+
+# Temporary files
+*.tmp
+*.swp
+*~
