@@ -1,0 +1,3 @@
+# This directory contains feature documentation
+# Subdirectories are created per feature: {feature-name}/
+# Each feature directory contains: prd.md, research.md, architecture.md, plan.md, tasklist.md, etc.
