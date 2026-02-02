@@ -91,8 +91,4 @@ See `.claude/rules/` for detailed conventions.
 docs/                   # Feature documentation
 ├── {feature-name}/    # Per-feature docs
 └── releases/          # Release notes
-
-src/                    # Source code
-├── main/java/         # Main sources
-└── test/java/         # Test sources
 ```
