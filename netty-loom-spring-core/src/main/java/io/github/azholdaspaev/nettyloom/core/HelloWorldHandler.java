@@ -12,20 +12,19 @@ public class HelloWorldHandler extends SimpleChannelInboundHandler<FullHttpReque
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest request) {
         if (request.method() == HttpMethod.GET && "/netty".equals(request.uri())) {
-            FullHttpResponse response = new DefaultFullHttpResponse(
-                    HttpVersion.HTTP_1_1,
-                    HttpResponseStatus.OK,
-                    Unpooled.copiedBuffer("Hello World", CharsetUtil.UTF_8)
-            );
+            FullHttpResponse response =
+                    new DefaultFullHttpResponse(
+                            HttpVersion.HTTP_1_1,
+                            HttpResponseStatus.OK,
+                            Unpooled.copiedBuffer("Hello World", CharsetUtil.UTF_8));
             response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain; charset=UTF-8");
-            response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
+            response.headers()
+                    .set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
 
             ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);
         } else {
-            FullHttpResponse response = new DefaultFullHttpResponse(
-                    HttpVersion.HTTP_1_1,
-                    HttpResponseStatus.NOT_FOUND
-            );
+            FullHttpResponse response =
+                    new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.NOT_FOUND);
             ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);
         }
     }
