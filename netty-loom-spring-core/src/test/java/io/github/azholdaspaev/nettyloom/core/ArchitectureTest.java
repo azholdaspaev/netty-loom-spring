@@ -14,10 +14,9 @@ class ArchitectureTest {
 
     @BeforeAll
     static void importClasses() {
-        coreClasses =
-                new ClassFileImporter()
-                        .withImportOption(DO_NOT_INCLUDE_TESTS)
-                        .importPackages("io.github.azholdaspaev.nettyloom.core");
+        coreClasses = new ClassFileImporter()
+                .withImportOption(DO_NOT_INCLUDE_TESTS)
+                .importPackages("io.github.azholdaspaev.nettyloom.core");
     }
 
     @Test

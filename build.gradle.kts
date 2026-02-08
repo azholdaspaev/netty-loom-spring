@@ -4,7 +4,7 @@ plugins {
 }
 
 val springBootVersion = libs.versions.spring.boot.get()
-val googleJavaFormatVersion = libs.versions.google.java.format.get()
+val palantirJavaFormatVersion = libs.versions.palantir.java.format.get()
 val junitBom = libs.junit.bom
 val junitJupiter = libs.junit.jupiter
 val assertjCore = libs.assertj.core
@@ -70,7 +70,7 @@ subprojects {
 spotless {
     java {
         target("*/src/**/*.java")
-        googleJavaFormat(googleJavaFormatVersion).aosp()
+        palantirJavaFormat(palantirJavaFormatVersion)
         removeUnusedImports()
         trimTrailingWhitespace()
         endWithNewline()

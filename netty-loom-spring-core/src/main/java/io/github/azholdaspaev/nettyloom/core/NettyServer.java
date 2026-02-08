@@ -24,16 +24,15 @@ public class NettyServer {
         bootstrap
                 .group(bossGroup, workerGroup)
                 .channel(NioServerSocketChannel.class)
-                .childHandler(
-                        new ChannelInitializer<SocketChannel>() {
-                            @Override
-                            protected void initChannel(SocketChannel ch) throws Exception {
-                                ChannelPipeline pipeline = ch.pipeline();
-                                pipeline.addLast(new HttpServerCodec());
-                                pipeline.addLast(new HttpObjectAggregator(65536));
-                                pipeline.addLast(new HelloWorldHandler());
-                            }
-                        });
+                .childHandler(new ChannelInitializer<SocketChannel>() {
+                    @Override
+                    protected void initChannel(SocketChannel ch) throws Exception {
+                        ChannelPipeline pipeline = ch.pipeline();
+                        pipeline.addLast(new HttpServerCodec());
+                        pipeline.addLast(new HttpObjectAggregator(65536));
+                        pipeline.addLast(new HelloWorldHandler());
+                    }
+                });
 
         ChannelFuture channelFuture = bootstrap.bind(8080).sync();
         channelFuture.channel().closeFuture().sync();
