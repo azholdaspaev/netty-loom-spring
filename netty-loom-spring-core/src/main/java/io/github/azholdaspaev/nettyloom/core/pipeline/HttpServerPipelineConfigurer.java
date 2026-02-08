@@ -18,8 +18,7 @@ public class HttpServerPipelineConfigurer {
     public void configure(ChannelPipeline pipeline) {
         pipeline.addLast(
                 "httpCodec",
-                new HttpServerCodec(config.maxInitialLineLength(), config.maxHeaderSize(), config.maxChunkSize())
-        );
+                new HttpServerCodec(config.maxInitialLineLength(), config.maxHeaderSize(), config.maxChunkSize()));
 
         pipeline.addLast("aggregator", new HttpObjectAggregator(config.maxInitialLineLength()));
 

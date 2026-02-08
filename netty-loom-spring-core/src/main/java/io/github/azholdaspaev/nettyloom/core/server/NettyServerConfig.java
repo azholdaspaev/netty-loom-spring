@@ -4,6 +4,8 @@ import java.time.Duration;
 
 public record NettyServerConfig(
         int port,
+        int bossThreads,
+        int workerThreads,
         int maxInitialLineLength,
         int maxHeaderSize,
         int maxChunkSize,
@@ -16,6 +18,8 @@ public record NettyServerConfig(
 
     public static class NettyServerConfigBuilder {
         private int port;
+        private int bossThreads;
+        private int workerThreads;
         private int maxInitialLineLength;
         private int maxHeaderSize;
         private int maxChunkSize;
@@ -24,6 +28,16 @@ public record NettyServerConfig(
 
         public NettyServerConfigBuilder port(int port) {
             this.port = port;
+            return this;
+        }
+
+        public NettyServerConfigBuilder bossThreads(int bossThreads) {
+            this.bossThreads = bossThreads;
+            return this;
+        }
+
+        public NettyServerConfigBuilder workerThreads(int workerThreads) {
+            this.workerThreads = workerThreads;
             return this;
         }
 
@@ -54,7 +68,14 @@ public record NettyServerConfig(
 
         public NettyServerConfig build() {
             return new NettyServerConfig(
-                    port, maxInitialLineLength, maxHeaderSize, maxChunkSize, maxContentLength, idleTimeout);
+                    port,
+                    bossThreads,
+                    workerThreads,
+                    maxInitialLineLength,
+                    maxHeaderSize,
+                    maxChunkSize,
+                    maxContentLength,
+                    idleTimeout);
         }
     }
 }
