@@ -16,6 +16,8 @@
 - Class pattern: `{ClassName}Test` for unit, `{ClassName}IntegrationTest` for integration
 
 ## Test Structure
+- **Every test** must use `// Given`, `// When`, `// Then` comments
+- For combined assertion-and-action cases use `// When / Then`
 ```java
 @Test
 void shouldReturnOk_whenRequestIsValid() {

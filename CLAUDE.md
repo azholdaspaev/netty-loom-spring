@@ -69,6 +69,10 @@ This project uses an AI-Driven Development (AIDD) framework. See `.claude/agents
 - Always release ByteBuf after use
 - Use virtual thread executor for blocking work
 
+### Testing
+- All tests must use Given/When/Then structure with `// Given`, `// When`, `// Then` comments
+- For combined assertion-and-action cases use `// When / Then`
+
 ### Spring
 - Use @ConditionalOnClass, @ConditionalOnMissingBean
 - Configuration properties prefix: `netty.loom.*`

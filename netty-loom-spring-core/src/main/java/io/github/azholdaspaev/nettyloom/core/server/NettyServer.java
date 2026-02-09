@@ -3,7 +3,7 @@ package io.github.azholdaspaev.nettyloom.core.server;
 import io.github.azholdaspaev.nettyloom.core.handler.ExceptionHandler;
 import io.github.azholdaspaev.nettyloom.core.handler.RequestDispatcher;
 import io.github.azholdaspaev.nettyloom.core.handler.RequestHandler;
-import io.github.azholdaspaev.nettyloom.core.pipeline.HttpServerPipelineConfigurer;
+import io.github.azholdaspaev.nettyloom.core.pipeline.NettyPipelineConfigurer;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -19,20 +19,25 @@ public class NettyServer {
     private final NettyServerConfig config;
     private final RequestHandler requestHandler;
     private final ExceptionHandler exceptionHandler;
+    private final NettyPipelineConfigurer nettyPipelineConfigurer;
     private final AtomicReference<NettyServerState> state;
 
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
     private Channel serverChannel;
 
-    public NettyServer(NettyServerConfig config, RequestHandler requestHandler, ExceptionHandler exceptionHandler) {
+    public NettyServer(NettyServerConfig config,
+                       RequestHandler requestHandler,
+                       ExceptionHandler exceptionHandler,
+                       NettyPipelineConfigurer nettyPipelineConfigurer) {
         this.config = config;
         this.requestHandler = requestHandler;
         this.exceptionHandler = exceptionHandler;
+        this.nettyPipelineConfigurer = nettyPipelineConfigurer;
         this.state = new AtomicReference<>(NettyServerState.CREATED);
     }
 
-    public void start() throws InterruptedException {
+    public void start() {
         if (!state.compareAndSet(NettyServerState.CREATED, NettyServerState.STARTING)) {
             return;
         }
@@ -52,8 +57,7 @@ public class NettyServer {
                     .childHandler(new ChannelInitializer<SocketChannel>() {
                         @Override
                         protected void initChannel(SocketChannel ch) throws Exception {
-                            HttpServerPipelineConfigurer pipelineConfigurer = new HttpServerPipelineConfigurer(config);
-                            pipelineConfigurer.configure(ch.pipeline());
+                            nettyPipelineConfigurer.configure(ch.pipeline());
 
                             ch.pipeline()
                                     .addLast("dispatcher", new RequestDispatcher(requestHandler, exceptionHandler));
