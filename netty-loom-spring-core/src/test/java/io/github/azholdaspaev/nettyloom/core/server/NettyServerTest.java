@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 public class NettyServerTest {
 
     @Test
-    void shouldReturnResponse_whenGetInfo() throws Exception {
+    void shouldReturnResponseWhenGetInfo() throws Exception {
         // Given
         NettyServerConfig config = NettyServerConfig.builder()
                 .port(8080)

@@ -12,6 +12,8 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class NettyServer {
@@ -60,12 +62,14 @@ public class NettyServer {
                             nettyPipelineConfigurer.configure(ch.pipeline());
 
                             ch.pipeline()
-                                    .addLast("dispatcher", new RequestDispatcher(requestHandler, exceptionHandler));
+                                    .addLast("dispatcher", new RequestDispatcher(requestHandler, exceptionHandler, Executors.newVirtualThreadPerTaskExecutor()));
                         }
                     });
 
             ChannelFuture bindFuture = bootstrap.bind(8080).sync();
             serverChannel = bindFuture.channel();
+
+            state.set(NettyServerState.RUNNING);
         } catch (Exception e) {
             state.set(NettyServerState.STOPPED);
             shutdown(bossGroup, workerGroup);
