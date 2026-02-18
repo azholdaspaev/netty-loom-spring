@@ -23,7 +23,7 @@ public class HttpServerNettyPipelineConfigurer implements NettyPipelineConfigure
                 "httpCodec",
                 new HttpServerCodec(config.maxInitialLineLength(), config.maxHeaderSize(), config.maxChunkSize()));
 
-        pipeline.addLast("aggregator", new HttpObjectAggregator(config.maxInitialLineLength()));
+        pipeline.addLast("aggregator", new HttpObjectAggregator(config.maxContentLength()));
 
         pipeline.addLast("idleState", new IdleStateHandler(config.idleTimeout().toSeconds(), 0, 0, TimeUnit.SECONDS));
 

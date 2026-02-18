@@ -5,7 +5,6 @@ import io.github.azholdaspaev.nettyloom.core.http.NettyHttpRequestConverter;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToMessageDecoder;
 import io.netty.handler.codec.http.FullHttpRequest;
-
 import java.util.List;
 
 public class HttpRequestDecoder extends MessageToMessageDecoder<FullHttpRequest> {

@@ -17,14 +17,14 @@ public record NettyServerConfig(
     }
 
     public static class NettyServerConfigBuilder {
-        private int port;
-        private int bossThreads;
+        private int port = 8080;
+        private int bossThreads = 1;
         private int workerThreads;
-        private int maxInitialLineLength;
-        private int maxHeaderSize;
-        private int maxChunkSize;
-        private int maxContentLength;
-        private Duration idleTimeout;
+        private int maxInitialLineLength = 4096;
+        private int maxHeaderSize = 8192;
+        private int maxChunkSize = 8192;
+        private int maxContentLength = 65536;
+        private Duration idleTimeout = Duration.ofSeconds(60);
 
         public NettyServerConfigBuilder port(int port) {
             this.port = port;

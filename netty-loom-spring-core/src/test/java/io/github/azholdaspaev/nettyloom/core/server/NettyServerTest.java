@@ -28,10 +28,10 @@ public class NettyServerTest {
                 .build();
 
         NettyServer nettyServer = new NettyServer(
-                config,
-                request -> new DefaultNettyHttpResponse(),
-                (ex, request) -> new DefaultNettyHttpResponse(),
-                new HttpServerNettyPipelineConfigurer(config));
+            config,
+            _ -> DefaultNettyHttpResponse.builder().build(),
+            (ex, request) -> DefaultNettyHttpResponse.builder().build(),
+            new HttpServerNettyPipelineConfigurer(config));
 
         try {
             nettyServer.start();

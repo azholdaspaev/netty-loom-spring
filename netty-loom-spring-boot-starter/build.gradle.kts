@@ -10,6 +10,7 @@ dependencies {
     implementation(libs.spring.boot.starter.web) {
         exclude(group = "org.springframework.boot", module = "spring-boot-starter-tomcat")
     }
+    implementation(libs.jakarta.servlet.api)
 
     annotationProcessor(libs.spring.boot.configuration.processor)
 

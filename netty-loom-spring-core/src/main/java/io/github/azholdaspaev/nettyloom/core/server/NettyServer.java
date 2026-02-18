@@ -12,7 +12,6 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
-
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -28,10 +27,11 @@ public class NettyServer {
     private EventLoopGroup workerGroup;
     private Channel serverChannel;
 
-    public NettyServer(NettyServerConfig config,
-                       RequestHandler requestHandler,
-                       ExceptionHandler exceptionHandler,
-                       NettyPipelineConfigurer nettyPipelineConfigurer) {
+    public NettyServer(
+            NettyServerConfig config,
+            RequestHandler requestHandler,
+            ExceptionHandler exceptionHandler,
+            NettyPipelineConfigurer nettyPipelineConfigurer) {
         this.config = config;
         this.requestHandler = requestHandler;
         this.exceptionHandler = exceptionHandler;
@@ -62,11 +62,16 @@ public class NettyServer {
                             nettyPipelineConfigurer.configure(ch.pipeline());
 
                             ch.pipeline()
-                                    .addLast("dispatcher", new RequestDispatcher(requestHandler, exceptionHandler, Executors.newVirtualThreadPerTaskExecutor()));
+                                    .addLast(
+                                            "dispatcher",
+                                            new RequestDispatcher(
+                                                    requestHandler,
+                                                    exceptionHandler,
+                                                    Executors.newVirtualThreadPerTaskExecutor()));
                         }
                     });
 
-            ChannelFuture bindFuture = bootstrap.bind(8080).sync();
+            ChannelFuture bindFuture = bootstrap.bind(config.port()).sync();
             serverChannel = bindFuture.channel();
 
             state.set(NettyServerState.RUNNING);
@@ -101,5 +106,12 @@ public class NettyServer {
                 group.shutdownGracefully();
             }
         }
+    }
+
+    public int getPort() {
+        if (serverChannel != null && serverChannel.localAddress() instanceof java.net.InetSocketAddress addr) {
+            return addr.getPort();
+        }
+        return config.port();
     }
 }

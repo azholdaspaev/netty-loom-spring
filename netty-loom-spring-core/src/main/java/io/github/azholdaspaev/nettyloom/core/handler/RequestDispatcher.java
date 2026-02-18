@@ -4,7 +4,6 @@ import io.github.azholdaspaev.nettyloom.core.http.NettyHttpRequest;
 import io.github.azholdaspaev.nettyloom.core.http.NettyHttpResponse;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
-
 import java.util.concurrent.ExecutorService;
 
 public class RequestDispatcher extends ChannelInboundHandlerAdapter {
@@ -13,9 +12,8 @@ public class RequestDispatcher extends ChannelInboundHandlerAdapter {
     private final ExceptionHandler exceptionHandler;
     private final ExecutorService executorService;
 
-    public RequestDispatcher(RequestHandler requestHandler,
-                             ExceptionHandler exceptionHandler,
-                             ExecutorService executorService) {
+    public RequestDispatcher(
+            RequestHandler requestHandler, ExceptionHandler exceptionHandler, ExecutorService executorService) {
         this.requestHandler = requestHandler;
         this.exceptionHandler = exceptionHandler;
         this.executorService = executorService;

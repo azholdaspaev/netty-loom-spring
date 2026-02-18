@@ -30,6 +30,9 @@ spring-context = { group = "org.springframework", name = "spring-context" }
 # Spring Security
 spring-security-web = { group = "org.springframework.security", name = "spring-security-web" }
 
+# Jakarta
+jakarta-servlet-api = { group = "jakarta.servlet", name = "jakarta.servlet-api" }
+
 # Jackson
 jackson-databind = { group = "com.fasterxml.jackson.core", name = "jackson-databind" }
 
