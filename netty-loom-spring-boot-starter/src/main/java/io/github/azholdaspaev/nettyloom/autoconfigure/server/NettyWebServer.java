@@ -4,6 +4,7 @@ import io.github.azholdaspaev.nettyloom.core.http.DefaultNettyHttpResponse;
 import io.github.azholdaspaev.nettyloom.core.pipeline.HttpServerNettyPipelineConfigurer;
 import io.github.azholdaspaev.nettyloom.core.server.NettyServer;
 import io.github.azholdaspaev.nettyloom.core.server.NettyServerConfig;
+import io.github.azholdaspaev.nettyloom.core.server.NettyServerInitializer;
 import io.github.azholdaspaev.nettyloom.mvc.handler.DispatcherServletHandler;
 import io.github.azholdaspaev.nettyloom.mvc.servlet.NettyServletContext;
 import jakarta.servlet.ServletConfig;
@@ -50,12 +51,13 @@ public class NettyWebServer implements WebServer {
 
             HttpServerNettyPipelineConfigurer pipelineConfigurer = new HttpServerNettyPipelineConfigurer(config);
 
-            nettyServer = new NettyServer(
-                    config,
+            NettyServerInitializer serverInitializer = new NettyServerInitializer(
                     handler,
                     (ex, req) ->
                             DefaultNettyHttpResponse.builder().statusCode(500).build(),
                     pipelineConfigurer);
+
+            nettyServer = new NettyServer(config, serverInitializer);
             nettyServer.start();
         } catch (Exception e) {
             throw new WebServerException("Failed to start Netty server", e);

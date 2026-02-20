@@ -1,41 +1,26 @@
 package io.github.azholdaspaev.nettyloom.core.server;
 
-import io.github.azholdaspaev.nettyloom.core.handler.ExceptionHandler;
-import io.github.azholdaspaev.nettyloom.core.handler.RequestDispatcher;
-import io.github.azholdaspaev.nettyloom.core.handler.RequestHandler;
-import io.github.azholdaspaev.nettyloom.core.pipeline.NettyPipelineConfigurer;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelInitializer;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class NettyServer {
 
     private final NettyServerConfig config;
-    private final RequestHandler requestHandler;
-    private final ExceptionHandler exceptionHandler;
-    private final NettyPipelineConfigurer nettyPipelineConfigurer;
+    private final NettyServerInitializer channelInitializer;
     private final AtomicReference<NettyServerState> state;
 
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
     private Channel serverChannel;
 
-    public NettyServer(
-            NettyServerConfig config,
-            RequestHandler requestHandler,
-            ExceptionHandler exceptionHandler,
-            NettyPipelineConfigurer nettyPipelineConfigurer) {
+    public NettyServer(NettyServerConfig config, NettyServerInitializer channelInitializer) {
         this.config = config;
-        this.requestHandler = requestHandler;
-        this.exceptionHandler = exceptionHandler;
-        this.nettyPipelineConfigurer = nettyPipelineConfigurer;
+        this.channelInitializer = channelInitializer;
         this.state = new AtomicReference<>(NettyServerState.CREATED);
     }
 
@@ -56,20 +41,7 @@ public class NettyServer {
             bootstrap
                     .group(bossGroup, workerGroup)
                     .channel(NioServerSocketChannel.class)
-                    .childHandler(new ChannelInitializer<SocketChannel>() {
-                        @Override
-                        protected void initChannel(SocketChannel ch) throws Exception {
-                            nettyPipelineConfigurer.configure(ch.pipeline());
-
-                            ch.pipeline()
-                                    .addLast(
-                                            "dispatcher",
-                                            new RequestDispatcher(
-                                                    requestHandler,
-                                                    exceptionHandler,
-                                                    Executors.newVirtualThreadPerTaskExecutor()));
-                        }
-                    });
+                    .childHandler(channelInitializer);
 
             ChannelFuture bindFuture = bootstrap.bind(config.port()).sync();
             serverChannel = bindFuture.channel();

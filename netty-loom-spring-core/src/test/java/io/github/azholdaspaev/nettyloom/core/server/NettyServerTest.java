@@ -27,11 +27,12 @@ public class NettyServerTest {
                 .idleTimeout(Duration.ofSeconds(30))
                 .build();
 
-        NettyServer nettyServer = new NettyServer(
-            config,
-            _ -> DefaultNettyHttpResponse.builder().build(),
-            (ex, request) -> DefaultNettyHttpResponse.builder().build(),
-            new HttpServerNettyPipelineConfigurer(config));
+        NettyServerInitializer nettyServerInitializer = new NettyServerInitializer(
+                _ -> DefaultNettyHttpResponse.builder().build(),
+                (ex, request) -> DefaultNettyHttpResponse.builder().build(),
+                new HttpServerNettyPipelineConfigurer(config));
+
+        NettyServer nettyServer = new NettyServer(config, nettyServerInitializer);
 
         try {
             nettyServer.start();

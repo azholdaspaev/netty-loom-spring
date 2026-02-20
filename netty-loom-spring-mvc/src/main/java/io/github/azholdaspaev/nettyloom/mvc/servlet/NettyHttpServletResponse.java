@@ -4,7 +4,6 @@ import io.github.azholdaspaev.nettyloom.core.http.DefaultNettyHttpResponse;
 import io.github.azholdaspaev.nettyloom.core.http.NettyHttpResponse;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
-
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;

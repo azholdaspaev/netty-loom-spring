@@ -2,7 +2,6 @@ package io.github.azholdaspaev.nettyloom.mvc.servlet;
 
 import jakarta.servlet.*;
 import jakarta.servlet.descriptor.JspConfigDescriptor;
-
 import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -74,12 +73,10 @@ public class NettyServletContext implements ServletContext {
     }
 
     @Override
-    public void log(String msg) {
-    }
+    public void log(String msg) {}
 
     @Override
-    public void log(String message, Throwable throwable) {
-    }
+    public void log(String message, Throwable throwable) {}
 
     @Override
     public String getRealPath(String path) {
@@ -206,8 +203,7 @@ public class NettyServletContext implements ServletContext {
     }
 
     @Override
-    public void setSessionTrackingModes(Set<SessionTrackingMode> sessionTrackingModes) {
-    }
+    public void setSessionTrackingModes(Set<SessionTrackingMode> sessionTrackingModes) {}
 
     @Override
     public Set<SessionTrackingMode> getDefaultSessionTrackingModes() {
@@ -220,16 +216,13 @@ public class NettyServletContext implements ServletContext {
     }
 
     @Override
-    public void addListener(String className) {
-    }
+    public void addListener(String className) {}
 
     @Override
-    public <T extends EventListener> void addListener(T t) {
-    }
+    public <T extends EventListener> void addListener(T t) {}
 
     @Override
-    public void addListener(Class<? extends EventListener> listenerClass) {
-    }
+    public void addListener(Class<? extends EventListener> listenerClass) {}
 
     @Override
     public <T extends EventListener> T createListener(Class<T> clazz) throws ServletException {
@@ -247,8 +240,7 @@ public class NettyServletContext implements ServletContext {
     }
 
     @Override
-    public void declareRoles(String... roleNames) {
-    }
+    public void declareRoles(String... roleNames) {}
 
     @Override
     public String getVirtualServerName() {
@@ -261,8 +253,7 @@ public class NettyServletContext implements ServletContext {
     }
 
     @Override
-    public void setSessionTimeout(int sessionTimeout) {
-    }
+    public void setSessionTimeout(int sessionTimeout) {}
 
     @Override
     public String getRequestCharacterEncoding() {
@@ -270,8 +261,7 @@ public class NettyServletContext implements ServletContext {
     }
 
     @Override
-    public void setRequestCharacterEncoding(String encoding) {
-    }
+    public void setRequestCharacterEncoding(String encoding) {}
 
     @Override
     public String getResponseCharacterEncoding() {
@@ -279,8 +269,7 @@ public class NettyServletContext implements ServletContext {
     }
 
     @Override
-    public void setResponseCharacterEncoding(String encoding) {
-    }
+    public void setResponseCharacterEncoding(String encoding) {}
 
     private static class NoOpServletRegistration implements ServletRegistration.Dynamic {
 
@@ -291,8 +280,7 @@ public class NettyServletContext implements ServletContext {
         }
 
         @Override
-        public void setLoadOnStartup(int loadOnStartup) {
-        }
+        public void setLoadOnStartup(int loadOnStartup) {}
 
         @Override
         public Set<String> setServletSecurity(ServletSecurityElement constraint) {
@@ -300,16 +288,13 @@ public class NettyServletContext implements ServletContext {
         }
 
         @Override
-        public void setMultipartConfig(MultipartConfigElement multipartConfig) {
-        }
+        public void setMultipartConfig(MultipartConfigElement multipartConfig) {}
 
         @Override
-        public void setRunAsRole(String roleName) {
-        }
+        public void setRunAsRole(String roleName) {}
 
         @Override
-        public void setAsyncSupported(boolean isAsyncSupported) {
-        }
+        public void setAsyncSupported(boolean isAsyncSupported) {}
 
         @Override
         public Set<String> addMapping(String... urlPatterns) {
@@ -366,12 +351,11 @@ public class NettyServletContext implements ServletContext {
         }
 
         @Override
-        public void setAsyncSupported(boolean isAsyncSupported) {
-        }
+        public void setAsyncSupported(boolean isAsyncSupported) {}
 
         @Override
-        public void addMappingForServletNames(EnumSet<DispatcherType> dispatcherTypes, boolean isMatchAfter, String... servletNames) {
-        }
+        public void addMappingForServletNames(
+                EnumSet<DispatcherType> dispatcherTypes, boolean isMatchAfter, String... servletNames) {}
 
         @Override
         public Collection<String> getServletNameMappings() {
@@ -379,8 +363,8 @@ public class NettyServletContext implements ServletContext {
         }
 
         @Override
-        public void addMappingForUrlPatterns(EnumSet<DispatcherType> dispatcherTypes, boolean isMatchAfter, String... urlPatterns) {
-        }
+        public void addMappingForUrlPatterns(
+                EnumSet<DispatcherType> dispatcherTypes, boolean isMatchAfter, String... urlPatterns) {}
 
         @Override
         public Collection<String> getUrlPatternMappings() {

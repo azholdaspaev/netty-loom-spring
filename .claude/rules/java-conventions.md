@@ -5,7 +5,7 @@
 - Target toolchain: Java 24
 
 ## Formatting
-- google-java-format AOSP style (4-space indent)
+- palantir-java-format PALANTIR style (4-space indent, +8 continuation, 120-char line width)
 - Enforced by Spotless Gradle plugin
 - Run `./gradlew spotlessApply` to auto-fix
 - Run `./gradlew spotlessCheck` to verify
