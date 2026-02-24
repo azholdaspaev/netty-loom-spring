@@ -1,5 +1,8 @@
 package io.github.azholdaspaev.nettyloom.core.pipeline;
 
+import io.github.azholdaspaev.nettyloom.core.handler.ExceptionHandler;
+import io.github.azholdaspaev.nettyloom.core.handler.RequestDispatcher;
+import io.github.azholdaspaev.nettyloom.core.handler.RequestHandler;
 import io.github.azholdaspaev.nettyloom.core.http.DefaultNettyHttpRequestConverter;
 import io.github.azholdaspaev.nettyloom.core.http.DefaultNettyHttpResponseConverter;
 import io.github.azholdaspaev.nettyloom.core.server.NettyServerConfig;
@@ -7,14 +10,20 @@ import io.netty.channel.ChannelPipeline;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.timeout.IdleStateHandler;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public class HttpServerNettyPipelineConfigurer implements NettyPipelineConfigurer {
 
     private final NettyServerConfig config;
+    private final RequestHandler requestHandler;
+    private final ExceptionHandler exceptionHandler;
 
-    public HttpServerNettyPipelineConfigurer(NettyServerConfig config) {
+    public HttpServerNettyPipelineConfigurer(
+            NettyServerConfig config, RequestHandler requestHandler, ExceptionHandler exceptionHandler) {
         this.config = config;
+        this.requestHandler = requestHandler;
+        this.exceptionHandler = exceptionHandler;
     }
 
     @Override
@@ -30,5 +39,9 @@ public class HttpServerNettyPipelineConfigurer implements NettyPipelineConfigure
         pipeline.addLast("requestDecoder", new HttpRequestDecoder(new DefaultNettyHttpRequestConverter()));
 
         pipeline.addLast("responseEncoder", new HttpResponseEncoder(new DefaultNettyHttpResponseConverter()));
+
+        pipeline.addLast(
+                "dispatcher",
+                new RequestDispatcher(requestHandler, exceptionHandler, Executors.newVirtualThreadPerTaskExecutor()));
     }
 }

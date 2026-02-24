@@ -6,5 +6,5 @@ import io.github.azholdaspaev.nettyloom.core.http.NettyHttpResponse;
 @FunctionalInterface
 public interface RequestHandler {
 
-    NettyHttpResponse handle(NettyHttpRequest request);
+    NettyHttpResponse handle(NettyHttpRequest request) throws Exception;
 }

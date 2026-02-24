@@ -19,15 +19,11 @@ public class DispatcherServletHandler implements RequestHandler {
     }
 
     @Override
-    public NettyHttpResponse handle(NettyHttpRequest request) {
+    public NettyHttpResponse handle(NettyHttpRequest request) throws Exception {
         NettyHttpServletRequest httpRequest = new NettyHttpServletRequest(request, servletContext);
         NettyHttpServletResponse httpResponse = new NettyHttpServletResponse();
 
-        try {
-            dispatcherServlet.service(httpRequest, httpResponse);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        dispatcherServlet.service(httpRequest, httpResponse);
 
         return httpResponse.asNettyHttpResponse();
     }

@@ -49,13 +49,12 @@ public class NettyWebServer implements WebServer {
 
             NettyServerConfig config = NettyServerConfig.builder().port(port).build();
 
-            HttpServerNettyPipelineConfigurer pipelineConfigurer = new HttpServerNettyPipelineConfigurer(config);
+            HttpServerNettyPipelineConfigurer pipelineConfigurer =
+                    new HttpServerNettyPipelineConfigurer(config, handler, (_, _) -> DefaultNettyHttpResponse.builder()
+                            .statusCode(500)
+                            .build());
 
-            NettyServerInitializer serverInitializer = new NettyServerInitializer(
-                    handler,
-                    (ex, req) ->
-                            DefaultNettyHttpResponse.builder().statusCode(500).build(),
-                    pipelineConfigurer);
+            NettyServerInitializer serverInitializer = new NettyServerInitializer(pipelineConfigurer);
 
             nettyServer = new NettyServer(config, serverInitializer);
             nettyServer.start();
