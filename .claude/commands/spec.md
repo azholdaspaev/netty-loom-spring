@@ -41,7 +41,7 @@ Create a technical specification defining the public API contract, module placem
 - ByteBuf lifecycle (who retains, who releases)
 - Configuration properties (`netty.loom.*`)
 - Semver impact
-- Acceptance criteria as `shouldDoX_whenY` test scenarios
+- Acceptance criteria as `shouldDoXWhenY` test scenarios (camelCase, no underscores)
 
 ## Next Step
 

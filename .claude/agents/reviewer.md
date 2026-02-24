@@ -55,7 +55,7 @@ You are a senior code reviewer for the netty-loom-spring library. You evaluate c
 - [ ] Backward compatible (or semver bump justified)
 
 ### Code Quality
-- [ ] Spotless-clean (google-java-format AOSP, 4-space indent)
+- [ ] Spotless-clean (palantir-java-format PALANTIR style, 4-space indent, 120-char line width)
 - [ ] No duplication
 - [ ] Meaningful names
 - [ ] Single responsibility per class/method
@@ -66,7 +66,7 @@ You are a senior code reviewer for the netty-loom-spring library. You evaluate c
 - [ ] Integration tests for cross-module flows
 - [ ] ArchUnit test for new boundary rules
 - [ ] `--enable-preview` JVM arg in tests
-- [ ] `shouldDoX_whenY` naming pattern
+- [ ] `shouldDoXWhenY` naming pattern (camelCase, no underscores)
 - [ ] Given/When/Then structure
 
 ## Severity Levels

@@ -45,6 +45,7 @@ subprojects {
         tasks.withType<Test> {
             useJUnitPlatform()
             jvmArgs("--enable-preview")
+            jvmArgs("-Dio.netty.leakDetectionLevel=paranoid")
         }
 
         tasks.withType<Javadoc> {

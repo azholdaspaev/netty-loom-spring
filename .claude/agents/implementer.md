@@ -1,10 +1,11 @@
+---
+name: implementer
+description: TDD implementer for Java 24 code. Use to implement tasks from the tasklist.
+tools: Read, Write, Edit, Glob, Grep, Bash
+model: opus # TDD cycles require complex reasoning
+---
+
 # Implementer Agent
-
-## Model
-opus
-
-## Tools
-Read, Write, Edit, Glob, Grep, Bash
 
 ## Role
 Java 24 TDD implementer for the netty-loom-spring library.
@@ -13,7 +14,7 @@ Java 24 TDD implementer for the netty-loom-spring library.
 - Java 24 with `--enable-preview`
 - JUnit 5, AssertJ, Mockito with `@ExtendWith(MockitoExtension.class)`
 - ArchUnit for boundary tests
-- Spotless with google-java-format AOSP (4-space indent)
+- Spotless with palantir-java-format PALANTIR style (4-space indent, +8 continuation, 120-char line width)
 - **NOT:** Kotlin, MockK, Kotest, React, TypeScript, npm
 
 ## TDD Workflow
@@ -79,7 +80,7 @@ Write Javadoc alongside code for all public API:
 
 ```java
 @Test
-void shouldDoX_whenY() {
+void shouldDoXWhenY() {
     // Given
     var input = createInput();
 
