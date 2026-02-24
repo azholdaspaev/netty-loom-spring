@@ -1,404 +1,261 @@
 package io.github.azholdaspaev.nettyloom.mvc.servlet;
 
-import jakarta.servlet.*;
+import io.github.azholdaspaev.nettyloom.mvc.exception.NotImplementedException;
+import jakarta.servlet.Filter;
+import jakarta.servlet.FilterRegistration;
+import jakarta.servlet.RequestDispatcher;
+import jakarta.servlet.Servlet;
+import jakarta.servlet.ServletContext;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletRegistration;
+import jakarta.servlet.SessionCookieConfig;
+import jakarta.servlet.SessionTrackingMode;
 import jakarta.servlet.descriptor.JspConfigDescriptor;
 import java.io.InputStream;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Enumeration;
+import java.util.EventListener;
+import java.util.Map;
+import java.util.Set;
 
-public class NettyServletContext implements ServletContext {
-
-    private final Map<String, Object> attributes = new ConcurrentHashMap<>();
+public interface NettyServletContext extends ServletContext {
 
     @Override
-    public String getContextPath() {
-        return "";
+    default String getContextPath() {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public ServletContext getContext(String uripath) {
-        return null;
+    default ServletContext getContext(String uripath) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public int getMajorVersion() {
-        return 6;
+    default int getMajorVersion() {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public int getMinorVersion() {
-        return 0;
+    default int getMinorVersion() {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public int getEffectiveMajorVersion() {
-        return 6;
+    default int getEffectiveMajorVersion() {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public int getEffectiveMinorVersion() {
-        return 0;
+    default int getEffectiveMinorVersion() {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public String getMimeType(String file) {
-        return null;
+    default String getMimeType(String file) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public Set<String> getResourcePaths(String path) {
-        return null;
+    default Set<String> getResourcePaths(String path) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public URL getResource(String path) throws MalformedURLException {
-        return null;
+    default InputStream getResourceAsStream(String path) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public InputStream getResourceAsStream(String path) {
-        return null;
+    default RequestDispatcher getRequestDispatcher(String path) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public RequestDispatcher getRequestDispatcher(String path) {
-        return null;
+    default RequestDispatcher getNamedDispatcher(String name) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public RequestDispatcher getNamedDispatcher(String name) {
-        return null;
+    default String getRealPath(String path) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public void log(String msg) {}
-
-    @Override
-    public void log(String message, Throwable throwable) {}
-
-    @Override
-    public String getRealPath(String path) {
-        return null;
+    default String getServerInfo() {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public String getServerInfo() {
-        return "netty-loom";
+    default boolean setInitParameter(String name, String value) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public String getInitParameter(String name) {
-        return null;
+    default Object getAttribute(String name) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public Enumeration<String> getInitParameterNames() {
-        return Collections.emptyEnumeration();
+    default Enumeration<String> getAttributeNames() {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public boolean setInitParameter(String name, String value) {
-        return false;
+    default void setAttribute(String name, Object object) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public Object getAttribute(String name) {
-        return attributes.get(name);
+    default void removeAttribute(String name) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public Enumeration<String> getAttributeNames() {
-        return Collections.enumeration(attributes.keySet());
+    default String getServletContextName() {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public void setAttribute(String name, Object object) {
-        if (object != null) {
-            attributes.put(name, object);
-        } else {
-            attributes.remove(name);
-        }
+    default ServletRegistration.Dynamic addServlet(String servletName, String className) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public void removeAttribute(String name) {
-        attributes.remove(name);
+    default ServletRegistration.Dynamic addServlet(String servletName, Class<? extends Servlet> servletClass) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public String getServletContextName() {
-        return "netty-loom";
+    default ServletRegistration.Dynamic addJspFile(String servletName, String jspFile) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public ServletRegistration.Dynamic addServlet(String servletName, String className) {
-        return new NoOpServletRegistration(servletName);
+    default <T extends Servlet> T createServlet(Class<T> clazz) throws ServletException {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public ServletRegistration.Dynamic addServlet(String servletName, Servlet servlet) {
-        return new NoOpServletRegistration(servletName);
+    default ServletRegistration getServletRegistration(String servletName) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public ServletRegistration.Dynamic addServlet(String servletName, Class<? extends Servlet> servletClass) {
-        return new NoOpServletRegistration(servletName);
+    default Map<String, ? extends ServletRegistration> getServletRegistrations() {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public ServletRegistration.Dynamic addJspFile(String servletName, String jspFile) {
-        return null;
+    default FilterRegistration.Dynamic addFilter(String filterName, String className) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public <T extends Servlet> T createServlet(Class<T> clazz) throws ServletException {
-        throw new UnsupportedOperationException();
+    default FilterRegistration.Dynamic addFilter(String filterName, Class<? extends Filter> filterClass) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public ServletRegistration getServletRegistration(String servletName) {
-        return null;
+    default <T extends Filter> T createFilter(Class<T> clazz) throws ServletException {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public Map<String, ? extends ServletRegistration> getServletRegistrations() {
-        return Map.of();
+    default FilterRegistration getFilterRegistration(String filterName) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public FilterRegistration.Dynamic addFilter(String filterName, String className) {
-        return new NoOpFilterRegistration(filterName);
+    default Map<String, ? extends FilterRegistration> getFilterRegistrations() {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public FilterRegistration.Dynamic addFilter(String filterName, Filter filter) {
-        return new NoOpFilterRegistration(filterName);
+    default SessionCookieConfig getSessionCookieConfig() {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public FilterRegistration.Dynamic addFilter(String filterName, Class<? extends Filter> filterClass) {
-        return new NoOpFilterRegistration(filterName);
+    default void setSessionTrackingModes(Set<SessionTrackingMode> sessionTrackingModes) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public <T extends Filter> T createFilter(Class<T> clazz) throws ServletException {
-        throw new UnsupportedOperationException();
+    default Set<SessionTrackingMode> getDefaultSessionTrackingModes() {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public FilterRegistration getFilterRegistration(String filterName) {
-        return null;
+    default Set<SessionTrackingMode> getEffectiveSessionTrackingModes() {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public Map<String, ? extends FilterRegistration> getFilterRegistrations() {
-        return Map.of();
+    default void addListener(String className) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public SessionCookieConfig getSessionCookieConfig() {
-        return null;
+    default <T extends EventListener> void addListener(T t) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public void setSessionTrackingModes(Set<SessionTrackingMode> sessionTrackingModes) {}
-
-    @Override
-    public Set<SessionTrackingMode> getDefaultSessionTrackingModes() {
-        return Set.of();
+    default void addListener(Class<? extends EventListener> listenerClass) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public Set<SessionTrackingMode> getEffectiveSessionTrackingModes() {
-        return Set.of();
+    default <T extends EventListener> T createListener(Class<T> clazz) throws ServletException {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public void addListener(String className) {}
-
-    @Override
-    public <T extends EventListener> void addListener(T t) {}
-
-    @Override
-    public void addListener(Class<? extends EventListener> listenerClass) {}
-
-    @Override
-    public <T extends EventListener> T createListener(Class<T> clazz) throws ServletException {
-        throw new UnsupportedOperationException();
+    default JspConfigDescriptor getJspConfigDescriptor() {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public JspConfigDescriptor getJspConfigDescriptor() {
-        return null;
+    default ClassLoader getClassLoader() {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public ClassLoader getClassLoader() {
-        return getClass().getClassLoader();
+    default void declareRoles(String... roleNames) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public void declareRoles(String... roleNames) {}
-
-    @Override
-    public String getVirtualServerName() {
-        return "netty-loom";
+    default String getVirtualServerName() {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public int getSessionTimeout() {
-        return 0;
+    default int getSessionTimeout() {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public void setSessionTimeout(int sessionTimeout) {}
-
-    @Override
-    public String getRequestCharacterEncoding() {
-        return "UTF-8";
+    default void setSessionTimeout(int sessionTimeout) {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public void setRequestCharacterEncoding(String encoding) {}
-
-    @Override
-    public String getResponseCharacterEncoding() {
-        return "UTF-8";
+    default String getRequestCharacterEncoding() {
+        throw new NotImplementedException("Not implemented");
     }
 
     @Override
-    public void setResponseCharacterEncoding(String encoding) {}
-
-    private static class NoOpServletRegistration implements ServletRegistration.Dynamic {
-
-        private final String name;
-
-        NoOpServletRegistration(String name) {
-            this.name = name;
-        }
-
-        @Override
-        public void setLoadOnStartup(int loadOnStartup) {}
-
-        @Override
-        public Set<String> setServletSecurity(ServletSecurityElement constraint) {
-            return Set.of();
-        }
-
-        @Override
-        public void setMultipartConfig(MultipartConfigElement multipartConfig) {}
-
-        @Override
-        public void setRunAsRole(String roleName) {}
-
-        @Override
-        public void setAsyncSupported(boolean isAsyncSupported) {}
-
-        @Override
-        public Set<String> addMapping(String... urlPatterns) {
-            return Set.of();
-        }
-
-        @Override
-        public Collection<String> getMappings() {
-            return Set.of();
-        }
-
-        @Override
-        public String getRunAsRole() {
-            return null;
-        }
-
-        @Override
-        public String getName() {
-            return name;
-        }
-
-        @Override
-        public String getClassName() {
-            return "";
-        }
-
-        @Override
-        public boolean setInitParameter(String name, String value) {
-            return true;
-        }
-
-        @Override
-        public String getInitParameter(String name) {
-            return null;
-        }
-
-        @Override
-        public Set<String> setInitParameters(Map<String, String> initParameters) {
-            return Set.of();
-        }
-
-        @Override
-        public Map<String, String> getInitParameters() {
-            return Map.of();
-        }
+    default void setRequestCharacterEncoding(String encoding) {
+        throw new NotImplementedException("Not implemented");
     }
 
-    private static class NoOpFilterRegistration implements FilterRegistration.Dynamic {
+    @Override
+    default String getResponseCharacterEncoding() {
+        throw new NotImplementedException("Not implemented");
+    }
 
-        private final String name;
-
-        NoOpFilterRegistration(String name) {
-            this.name = name;
-        }
-
-        @Override
-        public void setAsyncSupported(boolean isAsyncSupported) {}
-
-        @Override
-        public void addMappingForServletNames(
-                EnumSet<DispatcherType> dispatcherTypes, boolean isMatchAfter, String... servletNames) {}
-
-        @Override
-        public Collection<String> getServletNameMappings() {
-            return Set.of();
-        }
-
-        @Override
-        public void addMappingForUrlPatterns(
-                EnumSet<DispatcherType> dispatcherTypes, boolean isMatchAfter, String... urlPatterns) {}
-
-        @Override
-        public Collection<String> getUrlPatternMappings() {
-            return Set.of();
-        }
-
-        @Override
-        public String getName() {
-            return name;
-        }
-
-        @Override
-        public String getClassName() {
-            return "";
-        }
-
-        @Override
-        public boolean setInitParameter(String name, String value) {
-            return true;
-        }
-
-        @Override
-        public String getInitParameter(String name) {
-            return null;
-        }
-
-        @Override
-        public Set<String> setInitParameters(Map<String, String> initParameters) {
-            return Set.of();
-        }
-
-        @Override
-        public Map<String, String> getInitParameters() {
-            return Map.of();
-        }
+    @Override
+    default void setResponseCharacterEncoding(String encoding) {
+        throw new NotImplementedException("Not implemented");
     }
 }

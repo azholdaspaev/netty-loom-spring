@@ -6,7 +6,7 @@ import io.github.azholdaspaev.nettyloom.core.server.NettyServer;
 import io.github.azholdaspaev.nettyloom.core.server.NettyServerConfig;
 import io.github.azholdaspaev.nettyloom.core.server.NettyServerInitializer;
 import io.github.azholdaspaev.nettyloom.mvc.handler.DispatcherServletHandler;
-import io.github.azholdaspaev.nettyloom.mvc.servlet.NettyServletContext;
+import io.github.azholdaspaev.nettyloom.mvc.servlet.DefaultNettyServletContext;
 import jakarta.servlet.ServletConfig;
 import jakarta.servlet.ServletContext;
 import java.util.Collections;
@@ -20,12 +20,12 @@ import org.springframework.web.servlet.DispatcherServlet;
 public class NettyWebServer implements WebServer {
 
     private final int port;
-    private final NettyServletContext servletContext;
+    private final DefaultNettyServletContext servletContext;
     private NettyServer nettyServer;
 
     public NettyWebServer(int port, ServletContextInitializer[] initializers) {
         this.port = port;
-        this.servletContext = new NettyServletContext();
+        this.servletContext = new DefaultNettyServletContext();
 
         try {
             for (ServletContextInitializer initializer : initializers) {

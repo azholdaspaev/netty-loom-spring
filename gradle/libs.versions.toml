@@ -6,6 +6,7 @@ junit = "5.11.4"
 mockito = "5.15.2"
 assertj = "3.27.3"
 archunit = "1.4.1"
+slf4j = "2.0.17"
 spotless = "8.2.0"
 palantir-java-format = "2.86.0"
 
@@ -32,6 +33,9 @@ spring-security-web = { group = "org.springframework.security", name = "spring-s
 
 # Jakarta
 jakarta-servlet-api = { group = "jakarta.servlet", name = "jakarta.servlet-api" }
+
+# Logging
+slf4j-api = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4j" }
 
 # Jackson
 jackson-databind = { group = "com.fasterxml.jackson.core", name = "jackson-databind" }

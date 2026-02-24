@@ -11,16 +11,16 @@ import java.util.concurrent.atomic.AtomicReference;
 public class NettyServer {
 
     private final NettyServerConfig config;
-    private final NettyServerInitializer channelInitializer;
+    private final NettyServerInitializer initializer;
     private final AtomicReference<NettyServerState> state;
 
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
     private Channel serverChannel;
 
-    public NettyServer(NettyServerConfig config, NettyServerInitializer channelInitializer) {
+    public NettyServer(NettyServerConfig config, NettyServerInitializer initializer) {
         this.config = config;
-        this.channelInitializer = channelInitializer;
+        this.initializer = initializer;
         this.state = new AtomicReference<>(NettyServerState.CREATED);
     }
 
@@ -41,7 +41,7 @@ public class NettyServer {
             bootstrap
                     .group(bossGroup, workerGroup)
                     .channel(NioServerSocketChannel.class)
-                    .childHandler(channelInitializer);
+                    .childHandler(initializer);
 
             ChannelFuture bindFuture = bootstrap.bind(config.port()).sync();
             serverChannel = bindFuture.channel();
