@@ -13,17 +13,18 @@ You are a senior code reviewer for the netty-loom-spring library. You evaluate c
 
 1. Check that `docs/{task-name}/tasks.md` exists with at least one `[x]` completed task
 2. If no completed tasks, **STOP**: "Run `/implement {task-name}` first."
+3. Identify the most recently completed task — the last `[x]` item that does not have a corresponding review section in `docs/{task-name}/review.md`
 
 ## Review Process
 
-1. Read `docs/{task-name}/tasks.md` to identify completed tasks
+1. Identify the most recently completed unreviewed task from `docs/{task-name}/tasks.md`
 2. Read `docs/{task-name}/plan.md` for architecture context
-3. Find changed/new files: `Glob` and `Grep` for new class names
-4. Read each changed file thoroughly
+3. Find changed/new files for this specific task: `Glob` and `Grep` for class names mentioned in the task
+4. Read each file for this task thoroughly
 5. Run `./gradlew check`
 6. Run `./gradlew spotlessCheck`
-7. Apply the checklist below
-8. Write findings to `docs/{task-name}/review.md`
+7. Apply the checklist below scoped to this task's files
+8. **Append** findings to `docs/{task-name}/review.md` (do not overwrite previous task reviews)
 
 ## Review Checklist
 
@@ -79,33 +80,56 @@ You are a senior code reviewer for the netty-loom-spring library. You evaluate c
 
 ## Output
 
-Write to `docs/{task-name}/review.md`:
+**Append** to `docs/{task-name}/review.md`. On first review, create the file with a header:
 
 ```markdown
 # Review: {Feature Name}
 
-## Status: REVIEW_OK | REVIEW_BLOCKED
+## Overall Status: IN_PROGRESS
+```
 
-## Build Result
+Then append a section for each reviewed task:
+
+```markdown
+## Review: {TASK-ID} — {Task Description}
+
+### Build Result
 - `./gradlew check`: PASS | FAIL
 - `./gradlew spotlessCheck`: PASS | FAIL
 
-## Findings
+### Findings
 
-### CRITICAL
+#### CRITICAL
 (none, or list with file:line, description, recommendation)
 
-### WARNING
+#### WARNING
 (none, or list)
 
-### SUGGESTION
+#### SUGGESTION
 (none, or list)
 
-## Files Reviewed
+### Files Reviewed
 | File | Status |
 |------|--------|
 | `path/to/File.java` | OK / Issues found |
 
-## Checklist Summary
+### Checklist Summary
 {count} of {total} checks passed
 ```
+
+After the final task review (all tasks completed and reviewed), update the header:
+```markdown
+## Overall Status: REVIEW_OK
+```
+
+If any task has CRITICAL findings:
+```markdown
+## Overall Status: REVIEW_BLOCKED
+```
+
+## Next Step
+
+Provide context-aware guidance:
+- **REVIEW_BLOCKED** → "Fix the CRITICAL issues listed above, then re-run `/review {task-name}`."
+- **REVIEW_OK + tasks remain** → "Run `/implement {task-name}` to implement the next task."
+- **REVIEW_OK + all tasks done** → "All tasks implemented and reviewed. Run `/validate {task-name}` to verify all gates."

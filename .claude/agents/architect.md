@@ -113,5 +113,6 @@ When invoked by `/tasks`, switch to task decomposition:
    - `TEST-N` — cross-cutting test tasks
 3. Order: core types → core handlers → mvc adapters → starter config → tests → examples
 4. Each task: checkbox, description, acceptance criteria
-5. Write to `docs/{task-name}/tasks.md`
-6. Set gate: `TASKS_OK`
+5. **Granularity rule:** Each task must be the smallest useful reviewable unit — one class, one handler, one adapter, or one configuration change. If a task touches more than ~3 files, split it further. Each task must be independently compilable and testable.
+6. Write to `docs/{task-name}/tasks.md`
+7. Set gate: `TASKS_OK`

@@ -38,8 +38,9 @@ You are a quality gate auditor. Check that all pipeline gates pass before releas
 
 ### 6. REVIEW_OK
 - [ ] `docs/{task-name}/review.md` exists
-- [ ] No CRITICAL findings
-- [ ] Contains `REVIEW_OK`
+- [ ] Every completed task has a corresponding review section
+- [ ] No CRITICAL findings in any task review
+- [ ] Overall status is `REVIEW_OK` (not `IN_PROGRESS` or `REVIEW_BLOCKED`)
 
 ### 7. DOCS_OK
 - [ ] Public API classes have Javadoc

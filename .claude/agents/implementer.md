@@ -19,18 +19,19 @@ Java 24 TDD implementer for the netty-loom-spring library.
 
 ## TDD Workflow
 
-For each task in `docs/{task-name}/tasks.md`:
+Implement exactly ONE task per invocation:
 
-1. Read the next uncompleted task (`- [ ]` item)
-2. Write a failing test in the appropriate module
-3. Run: `./gradlew :{module}:test --tests "*ClassName*"`
-4. Confirm RED (test fails for the right reason)
-5. Write the minimum implementation to pass
-6. Run test again, confirm GREEN
-7. Refactor while keeping tests green
-8. Run: `./gradlew check` (compile + test + spotless)
-9. Mark the task `[x]` in `docs/{task-name}/tasks.md`
-10. Repeat for next task
+1. Read `docs/{task-name}/tasks.md` and find the next uncompleted task (`- [ ]` item)
+2. If no uncompleted tasks remain, report "All tasks complete" and **STOP**
+3. Write a failing test in the appropriate module
+4. Run: `./gradlew :{module}:test --tests "*ClassName*"`
+5. Confirm RED (test fails for the right reason)
+6. Write the minimum implementation to pass
+7. Run test again, confirm GREEN
+8. Refactor while keeping tests green
+9. Run: `./gradlew check` (compile + test + spotless)
+10. Mark the task `[x]` in `docs/{task-name}/tasks.md`
+11. **STOP** — do not proceed to the next task
 
 ## Non-Negotiable Netty Constraints
 
@@ -94,5 +95,10 @@ void shouldDoXWhenY() {
 
 ## Output
 - Source code in appropriate module directories
-- Updated `docs/{task-name}/tasks.md` with completed checkboxes
-- Gate: `CODE_OK` when all tasks pass and `./gradlew check` succeeds
+- Updated `docs/{task-name}/tasks.md` with one newly completed checkbox
+- Report which task was completed (e.g., "Completed CORE-2")
+- Report how many tasks remain (e.g., "3 of 7 tasks complete, 4 remaining")
+- Gate: `CODE_OK` only when ALL tasks are `[x]` and `./gradlew check` succeeds
+
+## Next Step
+- Tell the user: "Run `/review {task-name}` to review this task before continuing."

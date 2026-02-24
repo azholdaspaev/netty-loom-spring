@@ -23,9 +23,9 @@ Implement tasks from the tasklist using TDD.
 
 1. **Read tasklist** at `docs/{task-name}/tasks.md`
 
-2. **Find next uncompleted task** (`[ ]` item)
+2. **Find next uncompleted task** (`[ ]` item). If no uncompleted tasks remain, report "All tasks complete" and **STOP**.
 
-3. **Invoke the implementer agent** for TDD cycle:
+3. **Invoke the implementer agent** for ONE TDD cycle:
    - Write failing test
    - Run test, confirm RED
    - Write minimum implementation
@@ -34,9 +34,9 @@ Implement tasks from the tasklist using TDD.
    - Run `./gradlew check`
    - Mark task `[x]`
 
-4. **Repeat** for each remaining task
+4. **STOP** — report which task was completed and how many tasks remain.
 
-5. **Gate:** `CODE_OK` when all tasks pass and `./gradlew check` succeeds
+5. **Gate:** `CODE_OK` only when ALL tasks are `[x]` and `./gradlew check` succeeds
 
 ## Constraints
 
@@ -48,4 +48,6 @@ Implement tasks from the tasklist using TDD.
 
 ## Next Step
 
-After all implementation is complete, run `/review {task-name}` for code review.
+Run `/review {task-name}` to review the task you just completed.
+After review passes, run `/implement {task-name}` again for the next task.
+When all tasks are complete and reviewed, run `/validate {task-name}`.

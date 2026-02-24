@@ -63,6 +63,16 @@ Break down the architecture plan into atomic, implementable tasks.
   - **Acceptance:** Spring controller receives request
 ```
 
+## Granularity Guidelines
+
+Each task must be the **smallest useful reviewable unit**:
+- One class or interface definition
+- One handler or adapter implementation
+- One configuration or wiring change
+- One set of closely related tests
+
+If a task would touch more than ~3 files, split it. Each task must compile and pass tests independently.
+
 ## Next Step
 
 After tasks are defined, run `/implement {task-name}` to start implementation.
