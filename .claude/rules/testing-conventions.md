@@ -12,7 +12,7 @@
 - `-Dio.netty.leakDetectionLevel=paranoid` (ByteBuf leak detection)
 
 ## Test Naming
-- Method pattern: `shouldDoX_whenY` or `shouldDoX`
+- Method pattern: `shouldDoXWhenY` or `shouldDoX` (camelCase, **no underscores**)
 - Class pattern: `{ClassName}Test` for unit, `{ClassName}IntegrationTest` for integration
 
 ## Test Structure
@@ -20,7 +20,7 @@
 - For combined assertion-and-action cases use `// When / Then`
 ```java
 @Test
-void shouldReturnOk_whenRequestIsValid() {
+void shouldReturnOkWhenRequestIsValid() {
     // Given
     var request = createValidRequest();
 

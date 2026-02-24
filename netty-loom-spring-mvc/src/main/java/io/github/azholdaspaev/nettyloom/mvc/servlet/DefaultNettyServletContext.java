@@ -8,12 +8,16 @@ import jakarta.servlet.MultipartConfigElement;
 import jakarta.servlet.Servlet;
 import jakarta.servlet.ServletRegistration;
 import jakarta.servlet.ServletSecurityElement;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Enumeration;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -26,15 +30,47 @@ public class DefaultNettyServletContext implements NettyServletContext {
 
     private final Map<String, Object> attributes;
     private final Map<String, String> initParameters;
+    private final ClassLoader classLoader;
 
     public DefaultNettyServletContext() {
+        this(Thread.currentThread().getContextClassLoader());
+    }
+
+    public DefaultNettyServletContext(ClassLoader classLoader) {
         this.attributes = new ConcurrentHashMap<>();
         this.initParameters = new ConcurrentHashMap<>();
+        this.classLoader = classLoader;
     }
 
     @Override
     public URL getResource(String path) throws MalformedURLException {
-        return null;
+        if (path == null || !path.startsWith("/")) {
+            throw new MalformedURLException("Path must start with '/': " + path);
+        }
+        String normalized = normalizePath(path);
+        if (normalized == null) {
+            return null;
+        }
+        return classLoader.getResource(normalized);
+    }
+
+    @Override
+    public InputStream getResourceAsStream(String path) {
+        try {
+            URL url = getResource(path);
+            if (url == null) {
+                return null;
+            }
+            return url.openStream();
+        } catch (IOException e) {
+            logger.debug("Failed to open resource stream for path: {}", path, e);
+            return null;
+        }
+    }
+
+    @Override
+    public ClassLoader getClassLoader() {
+        return classLoader;
     }
 
     @Override
@@ -84,6 +120,25 @@ public class DefaultNettyServletContext implements NettyServletContext {
     @Override
     public FilterRegistration.Dynamic addFilter(String filterName, Filter filter) {
         return new NoOpFilterRegistration(filterName);
+    }
+
+    private static String normalizePath(String path) {
+        String[] segments = path.split("/");
+        List<String> resolved = new ArrayList<>();
+        for (String segment : segments) {
+            if (segment.isEmpty() || ".".equals(segment)) {
+                continue;
+            }
+            if ("..".equals(segment)) {
+                if (resolved.isEmpty()) {
+                    return null;
+                }
+                resolved.removeLast();
+            } else {
+                resolved.add(segment);
+            }
+        }
+        return String.join("/", resolved);
     }
 
     private static class NoOpServletRegistration implements ServletRegistration.Dynamic {

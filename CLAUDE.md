@@ -41,6 +41,7 @@ This library provides seamless integration between Netty's high-performance netw
 ### Testing
 - All tests must use Given/When/Then structure with `// Given`, `// When`, `// Then` comments
 - For combined assertion-and-action cases use `// When / Then`
+- Test method names use camelCase with no underscores: `shouldDoXWhenY`
 
 ### Spring
 - Use @ConditionalOnClass, @ConditionalOnMissingBean
