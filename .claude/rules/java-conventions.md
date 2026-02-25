@@ -17,7 +17,6 @@
 - **Virtual threads** for blocking operations
 
 ## Annotations
-- `@Nullable` / `@NonNull` on all public API parameters and return types
 - `@Override` on all overridden methods
 
 ## Concurrency

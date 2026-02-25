@@ -16,14 +16,13 @@ import java.util.concurrent.TimeUnit;
 public class HttpServerNettyPipelineConfigurer implements NettyPipelineConfigurer {
 
     private final NettyServerConfig config;
-    private final RequestHandler requestHandler;
-    private final ExceptionHandler exceptionHandler;
+    private final RequestDispatcher dispatcher;
 
     public HttpServerNettyPipelineConfigurer(
             NettyServerConfig config, RequestHandler requestHandler, ExceptionHandler exceptionHandler) {
         this.config = config;
-        this.requestHandler = requestHandler;
-        this.exceptionHandler = exceptionHandler;
+        this.dispatcher =
+                new RequestDispatcher(requestHandler, exceptionHandler, Executors.newVirtualThreadPerTaskExecutor());
     }
 
     @Override
@@ -40,8 +39,6 @@ public class HttpServerNettyPipelineConfigurer implements NettyPipelineConfigure
 
         pipeline.addLast("responseEncoder", new HttpResponseEncoder(new DefaultNettyHttpResponseConverter()));
 
-        pipeline.addLast(
-                "dispatcher",
-                new RequestDispatcher(requestHandler, exceptionHandler, Executors.newVirtualThreadPerTaskExecutor()));
+        pipeline.addLast("dispatcher", dispatcher);
     }
 }
