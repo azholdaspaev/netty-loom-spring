@@ -5,6 +5,7 @@ import io.github.azholdaspaev.nettyloom.core.pipeline.HttpServerNettyPipelineCon
 import io.github.azholdaspaev.nettyloom.core.server.NettyServer;
 import io.github.azholdaspaev.nettyloom.core.server.NettyServerConfig;
 import io.github.azholdaspaev.nettyloom.core.server.NettyServerInitializer;
+import io.github.azholdaspaev.nettyloom.core.server.NettyServerState;
 import io.github.azholdaspaev.nettyloom.mvc.handler.DispatcherServletHandler;
 import io.github.azholdaspaev.nettyloom.mvc.servlet.DefaultNettyServletContext;
 import jakarta.servlet.ServletConfig;
@@ -65,7 +66,7 @@ public class NettyWebServer implements WebServer {
 
     @Override
     public void stop() throws WebServerException {
-        if (nettyServer != null) {
+        if (nettyServer != null && nettyServer.getState() == NettyServerState.RUNNING) {
             nettyServer.stop();
         }
     }
