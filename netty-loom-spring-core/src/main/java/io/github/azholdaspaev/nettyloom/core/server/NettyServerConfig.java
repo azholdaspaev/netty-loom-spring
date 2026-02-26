@@ -23,7 +23,7 @@ public record NettyServerConfig(
         private int maxInitialLineLength = 4096;
         private int maxHeaderSize = 8192;
         private int maxChunkSize = 8192;
-        private int maxContentLength = 65536;
+        private int maxContentLength = 2097152;
         private Duration idleTimeout = Duration.ofSeconds(60);
 
         public NettyServerConfigBuilder port(int port) {
