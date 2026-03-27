@@ -36,6 +36,7 @@ public class RequestDispatcher extends ChannelInboundHandlerAdapter {
                     }
                 } catch (Exception exception) {
                     try {
+                        logger.error("Got an exception for {}", request.uri(), exception);
                         NettyHttpResponse exceptionResponse = exceptionHandler.handle(exception, request);
                         if (ctx.channel().isActive()) {
                             ctx.writeAndFlush(exceptionResponse);

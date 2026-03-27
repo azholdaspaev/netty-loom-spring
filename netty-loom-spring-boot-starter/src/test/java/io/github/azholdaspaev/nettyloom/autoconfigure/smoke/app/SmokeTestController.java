@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping(CONTROLLER_PATH)
 public class SmokeTestController {
 
-    public static final String CONTROLLER_PATH = "/api/v1/smore/test";
+    public static final String CONTROLLER_PATH = "/api/v1/smoke/test";
 
     @GetMapping
     public Map<String, Object> hello() {

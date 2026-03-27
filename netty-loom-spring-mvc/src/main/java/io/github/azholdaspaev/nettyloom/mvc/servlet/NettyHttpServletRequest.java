@@ -16,6 +16,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import jakarta.servlet.http.HttpUpgradeHandler;
 import jakarta.servlet.http.Part;
+
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.InputStreamReader;
@@ -23,6 +24,7 @@ import java.security.Principal;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -32,12 +34,13 @@ import java.util.concurrent.ConcurrentHashMap;
 public class NettyHttpServletRequest implements HttpServletRequest {
 
     private final String method;
-    private final String requestURI;
+    private final String requestUri;
     private final String queryString;
     private final Map<String, List<String>> headers;
     private final byte[] body;
     private final Map<String, Object> attributes = new ConcurrentHashMap<>();
     private final ServletContext servletContext;
+    private final Map<String, String[]> parameters = new HashMap<>();
 
     public NettyHttpServletRequest(NettyHttpRequest request, ServletContext servletContext) {
         this.method = request.method().name();
@@ -47,16 +50,34 @@ public class NettyHttpServletRequest implements HttpServletRequest {
         String fullUri = request.uri();
         int queryIdx = fullUri.indexOf('?');
         if (queryIdx >= 0) {
-            this.requestURI = fullUri.substring(0, queryIdx);
+            this.requestUri = fullUri.substring(0, queryIdx);
             this.queryString = fullUri.substring(queryIdx + 1);
+
+            int querySplit = this.queryString.indexOf('&');
+            if (querySplit >= 0) {
+                extractQueryParam(queryString.substring(0, querySplit));
+                extractQueryParam(queryString.substring(querySplit + 1));
+            } else {
+                extractQueryParam(queryString);
+            }
         } else {
-            this.requestURI = fullUri;
+            this.requestUri = fullUri;
             this.queryString = null;
         }
 
         this.headers = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         if (request.headers() != null) {
             this.headers.putAll(request.headers());
+        }
+    }
+
+    private void extractQueryParam(String queryKeyValue) {
+        int querySplit = queryKeyValue.indexOf('=');
+        if (querySplit >= 0) {
+            this.parameters.put(
+                queryKeyValue.substring(0, querySplit),
+                new String[]{queryKeyValue.substring(querySplit + 1)}
+            );
         }
     }
 
@@ -67,12 +88,12 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public String getRequestURI() {
-        return requestURI;
+        return requestUri;
     }
 
     @Override
     public String getServletPath() {
-        return requestURI;
+        return requestUri;
     }
 
     @Override
@@ -238,7 +259,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public StringBuffer getRequestURL() {
-        return new StringBuffer("http://localhost").append(requestURI);
+        return new StringBuffer("http://localhost").append(requestUri);
     }
 
     @Override
@@ -266,7 +287,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public String[] getParameterValues(String name) {
-        return null;
+        return parameters.get(name);
     }
 
     // --- Session / Auth / Misc (no-ops) ---
