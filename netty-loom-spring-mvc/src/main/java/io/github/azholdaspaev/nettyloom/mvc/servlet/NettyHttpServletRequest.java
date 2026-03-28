@@ -1,6 +1,7 @@
 package io.github.azholdaspaev.nettyloom.mvc.servlet;
 
 import io.github.azholdaspaev.nettyloom.core.http.NettyHttpRequest;
+import io.netty.handler.codec.http.QueryStringDecoder;
 import jakarta.servlet.AsyncContext;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.ReadListener;
@@ -16,7 +17,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import jakarta.servlet.http.HttpUpgradeHandler;
 import jakarta.servlet.http.Part;
-
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.InputStreamReader;
@@ -53,10 +53,10 @@ public class NettyHttpServletRequest implements HttpServletRequest {
             this.requestUri = fullUri.substring(0, queryIdx);
             this.queryString = fullUri.substring(queryIdx + 1);
 
-            String[] queryParams = this.queryString.split("&");
-            for (String queryParam : queryParams) {
-                extractQueryParam(queryParam);
-            }
+            QueryStringDecoder decoder = new QueryStringDecoder(fullUri);
+            decoder.parameters().forEach((key, values) -> {
+                this.parameters.put(key, values.toArray(new String[0]));
+            });
         } else {
             this.requestUri = fullUri;
             this.queryString = null;
@@ -65,16 +65,6 @@ public class NettyHttpServletRequest implements HttpServletRequest {
         this.headers = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         if (request.headers() != null) {
             this.headers.putAll(request.headers());
-        }
-    }
-
-    private void extractQueryParam(String queryKeyValue) {
-        int querySplit = queryKeyValue.indexOf('=');
-        if (querySplit >= 0) {
-            this.parameters.put(
-                queryKeyValue.substring(0, querySplit),
-                new String[]{queryKeyValue.substring(querySplit + 1)}
-            );
         }
     }
 
@@ -269,17 +259,18 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public Map<String, String[]> getParameterMap() {
-        return Map.of();
+        return Collections.unmodifiableMap(parameters);
     }
 
     @Override
     public String getParameter(String name) {
-        return null;
+        String[] values = parameters.get(name);
+        return values != null && values.length > 0 ? values[0] : null;
     }
 
     @Override
     public Enumeration<String> getParameterNames() {
-        return Collections.emptyEnumeration();
+        return Collections.enumeration(parameters.keySet());
     }
 
     @Override

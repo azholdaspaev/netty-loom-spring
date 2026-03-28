@@ -15,13 +15,16 @@ public class DefaultNettyHttpResponseConverter implements NettyHttpResponseConve
         if (msg.headers() != null) {
             for (var entry : msg.headers().entrySet()) {
                 for (String value : entry.getValue()) {
-                    response.headers().add(entry.getKey(), value);
+                    if (value != null) {
+                        response.headers().add(entry.getKey(), value);
+                    }
                 }
             }
         }
 
         response.headers()
-                .set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
+                .set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes())
+                .set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
         return response;
     }
 }

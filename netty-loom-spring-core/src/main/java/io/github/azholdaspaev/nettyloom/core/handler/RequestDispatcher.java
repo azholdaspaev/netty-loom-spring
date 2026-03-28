@@ -2,6 +2,7 @@ package io.github.azholdaspaev.nettyloom.core.handler;
 
 import io.github.azholdaspaev.nettyloom.core.http.NettyHttpRequest;
 import io.github.azholdaspaev.nettyloom.core.http.NettyHttpResponse;
+import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -32,14 +33,14 @@ public class RequestDispatcher extends ChannelInboundHandlerAdapter {
                 try {
                     NettyHttpResponse response = requestHandler.handle(request);
                     if (ctx.channel().isActive()) {
-                        ctx.writeAndFlush(response);
+                        ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);
                     }
                 } catch (Exception exception) {
                     try {
                         logger.error("Got an exception for {}", request.uri(), exception);
                         NettyHttpResponse exceptionResponse = exceptionHandler.handle(exception, request);
                         if (ctx.channel().isActive()) {
-                            ctx.writeAndFlush(exceptionResponse);
+                            ctx.writeAndFlush(exceptionResponse).addListener(ChannelFutureListener.CLOSE);
                         }
                     } catch (Exception fallback) {
                         logger.error("ExceptionHandler failed for {}", request.uri(), fallback);
