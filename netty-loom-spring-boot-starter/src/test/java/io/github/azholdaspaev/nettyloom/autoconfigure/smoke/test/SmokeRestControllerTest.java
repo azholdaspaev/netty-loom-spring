@@ -2,6 +2,8 @@ package io.github.azholdaspaev.nettyloom.autoconfigure.smoke.test;
 
 import io.github.azholdaspaev.nettyloom.autoconfigure.NettyLoomAutoConfiguration;
 import io.github.azholdaspaev.nettyloom.autoconfigure.smoke.app.SmokeTestApplication;
+import io.github.azholdaspaev.nettyloom.autoconfigure.smoke.app.dto.GetResponse;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -11,6 +13,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
+import java.util.List;
 import java.util.Map;
 
 import static io.github.azholdaspaev.nettyloom.autoconfigure.smoke.app.SmokeRestController.CONTROLLER_PATH;
@@ -58,5 +61,21 @@ public class SmokeRestControllerTest {
         assertThat(body).containsEntry("first", "some");
         assertThat(body).containsEntry("second", 10);
         assertThat(body).containsEntry("third", 1);
+    }
+
+    @Test
+    void shouldReturnValueForGetRequestWithResponseDto() {
+        // Given
+        var id = 1L;
+        var name = "name";
+        var item = "item";
+
+        // When
+        ResponseEntity<GetResponse> response =
+            restTemplate.exchange(CONTROLLER_PATH + "/query/response/dto?id=1&name=name&item=item", HttpMethod.GET, null, GetResponse.class);
+
+        // Then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isEqualTo(new GetResponse(id, name, List.of(item)));
     }
 }
