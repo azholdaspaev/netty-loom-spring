@@ -80,7 +80,6 @@ public class SmokeRestControllerTest {
         assertThat(response.getBody()).isEqualTo(new GetResponse(id, name, List.of(item)));
     }
 
-    @Disabled
     @Test
     void shouldReturnValueForGetRequestWithPathParamResponseDto() {
         // Given
@@ -90,7 +89,7 @@ public class SmokeRestControllerTest {
 
         // When
         ResponseEntity<GetResponse> response =
-            restTemplate.exchange(CONTROLLER_PATH + "/get/path/1?name=name&item=item", HttpMethod.GET, null, GetResponse.class);
+            restTemplate.exchange(CONTROLLER_PATH + "/get/path/1/dto?name=name&item=item", HttpMethod.GET, null, GetResponse.class);
 
         // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
