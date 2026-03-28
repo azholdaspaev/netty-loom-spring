@@ -3,6 +3,8 @@ package io.github.azholdaspaev.nettyloom.autoconfigure.smoke.test;
 import io.github.azholdaspaev.nettyloom.autoconfigure.NettyLoomAutoConfiguration;
 import io.github.azholdaspaev.nettyloom.autoconfigure.smoke.app.SmokeTestApplication;
 import io.github.azholdaspaev.nettyloom.autoconfigure.smoke.app.dto.GetResponse;
+import io.github.azholdaspaev.nettyloom.autoconfigure.smoke.app.dto.PostRequest;
+import io.github.azholdaspaev.nettyloom.autoconfigure.smoke.app.dto.PostResponse;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -10,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -94,5 +97,22 @@ public class SmokeRestControllerTest {
         // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isEqualTo(new GetResponse(id, name, List.of(item)));
+    }
+
+    @Test
+    void shouldReturnResponseForPostRequestWithPathParam() {
+        // Given
+        var id = 1L;
+        var name = "name";
+        var item = 10L;
+        var request = new PostRequest(name, List.of(item));
+
+        // When
+        ResponseEntity<PostResponse> response =
+            restTemplate.exchange(CONTROLLER_PATH + "/post/path/1/dto", HttpMethod.POST, new HttpEntity<>(request), PostResponse.class);
+
+        // Then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isEqualTo(new PostResponse(id, name, List.of(item)));
     }
 }

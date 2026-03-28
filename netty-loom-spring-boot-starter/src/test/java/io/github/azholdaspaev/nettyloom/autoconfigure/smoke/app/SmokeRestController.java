@@ -1,9 +1,12 @@
 package io.github.azholdaspaev.nettyloom.autoconfigure.smoke.app;
 
 import io.github.azholdaspaev.nettyloom.autoconfigure.smoke.app.dto.GetResponse;
+import io.github.azholdaspaev.nettyloom.autoconfigure.smoke.app.dto.PostRequest;
+import io.github.azholdaspaev.nettyloom.autoconfigure.smoke.app.dto.PostResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -44,5 +47,11 @@ public class SmokeRestController {
                                                           @RequestParam("name") String name,
                                                           @RequestParam("item") String item) {
         return new GetResponse(id, name, List.of(item));
+    }
+
+    @PostMapping("/post/path/{id}/dto")
+    public PostResponse postRequestWithPathParamRequestBody(@PathVariable("id") Long id,
+                                                            @RequestBody PostRequest requestBody) {
+        return new PostResponse(id, requestBody.name(), requestBody.items());
     }
 }
