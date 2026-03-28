@@ -4,6 +4,7 @@ import io.github.azholdaspaev.nettyloom.autoconfigure.NettyLoomAutoConfiguration
 import io.github.azholdaspaev.nettyloom.autoconfigure.smoke.app.SmokeTestApplication;
 import io.github.azholdaspaev.nettyloom.autoconfigure.smoke.app.dto.GetResponse;
 import org.assertj.core.api.Assertions;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -38,7 +39,7 @@ public class SmokeRestControllerTest {
 
         // When
         ResponseEntity<Map<String, Object>> response =
-            restTemplate.exchange(CONTROLLER_PATH + "/query/single?value=some", HttpMethod.GET, null, typeRef);
+            restTemplate.exchange(CONTROLLER_PATH + "/get/query/single?value=some", HttpMethod.GET, null, typeRef);
 
         // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -53,7 +54,7 @@ public class SmokeRestControllerTest {
 
         // When
         ResponseEntity<Map<String, Object>> response =
-            restTemplate.exchange(CONTROLLER_PATH + "/query/multiple?first=some&second=10&third=1", HttpMethod.GET, null, typeRef);
+            restTemplate.exchange(CONTROLLER_PATH + "/get/query/multiple?first=some&second=10&third=1", HttpMethod.GET, null, typeRef);
 
         // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -72,7 +73,24 @@ public class SmokeRestControllerTest {
 
         // When
         ResponseEntity<GetResponse> response =
-            restTemplate.exchange(CONTROLLER_PATH + "/query/response/dto?id=1&name=name&item=item", HttpMethod.GET, null, GetResponse.class);
+            restTemplate.exchange(CONTROLLER_PATH + "/get/query/response/dto?id=1&name=name&item=item", HttpMethod.GET, null, GetResponse.class);
+
+        // Then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isEqualTo(new GetResponse(id, name, List.of(item)));
+    }
+
+    @Disabled
+    @Test
+    void shouldReturnValueForGetRequestWithPathParamResponseDto() {
+        // Given
+        var id = 1L;
+        var name = "name";
+        var item = "item";
+
+        // When
+        ResponseEntity<GetResponse> response =
+            restTemplate.exchange(CONTROLLER_PATH + "/get/path/1?name=name&item=item", HttpMethod.GET, null, GetResponse.class);
 
         // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);

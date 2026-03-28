@@ -2,6 +2,8 @@ package io.github.azholdaspaev.nettyloom.autoconfigure.smoke.app;
 
 import io.github.azholdaspaev.nettyloom.autoconfigure.smoke.app.dto.GetResponse;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -18,22 +20,29 @@ public class SmokeRestController {
 
     public static final String CONTROLLER_PATH = "/api/v1/rest";
 
-    @GetMapping("/query/single")
+    @GetMapping("/get/query/single")
     public Map<String, Object> getRequestWithSingleQueryParam(@RequestParam("value") String value) {
         return Collections.singletonMap("value", value);
     }
 
-    @GetMapping("/query/multiple")
+    @GetMapping("/get/query/multiple")
     public Map<String, Object> getRequestWithMultipleQueryParams(@RequestParam("first") String first,
                                                                  @RequestParam("second") Long second,
                                                                  @RequestParam("third") Integer third) {
         return Map.of("first", first, "second", second, "third", third);
     }
 
-    @GetMapping("/query/response/dto")
+    @GetMapping("/get/query/response/dto")
     public GetResponse getRequestWithResponseDto(@RequestParam("id") Long id,
                                                  @RequestParam("name") String name,
                                                  @RequestParam("item") String item) {
+        return new GetResponse(id, name, List.of(item));
+    }
+
+    @GetMapping("/get/path/{id}/dto")
+    public GetResponse getRequestWithPathParamResponseDto(@PathVariable("id") Long id,
+                                                          @RequestParam("name") String name,
+                                                          @RequestParam("item") String item) {
         return new GetResponse(id, name, List.of(item));
     }
 }
