@@ -23,7 +23,8 @@ public class SmokeRestController {
 
     @GetMapping("/query/multiple")
     public Map<String, Object> getRequestWithMultipleQueryParams(@RequestParam("first") String first,
-                                                                 @RequestParam("second") Long second) {
-        return Map.of("first", first, "second", second);
+                                                                 @RequestParam("second") Long second,
+                                                                 @RequestParam("third") Integer third) {
+        return Map.of("first", first, "second", second, "third", third);
     }
 }

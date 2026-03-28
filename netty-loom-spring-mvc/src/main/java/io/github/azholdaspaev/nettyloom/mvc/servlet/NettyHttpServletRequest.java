@@ -53,12 +53,9 @@ public class NettyHttpServletRequest implements HttpServletRequest {
             this.requestUri = fullUri.substring(0, queryIdx);
             this.queryString = fullUri.substring(queryIdx + 1);
 
-            int querySplit = this.queryString.indexOf('&');
-            if (querySplit >= 0) {
-                extractQueryParam(queryString.substring(0, querySplit));
-                extractQueryParam(queryString.substring(querySplit + 1));
-            } else {
-                extractQueryParam(queryString);
+            String[] queryParams = this.queryString.split("&");
+            for (String queryParam : queryParams) {
+                extractQueryParam(queryParam);
             }
         } else {
             this.requestUri = fullUri;

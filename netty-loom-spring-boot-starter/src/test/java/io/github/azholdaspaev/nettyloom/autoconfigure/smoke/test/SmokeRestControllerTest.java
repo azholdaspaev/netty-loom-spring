@@ -1,7 +1,6 @@
 package io.github.azholdaspaev.nettyloom.autoconfigure.smoke.test;
 
 import io.github.azholdaspaev.nettyloom.autoconfigure.NettyLoomAutoConfiguration;
-import io.github.azholdaspaev.nettyloom.autoconfigure.smoke.app.SmokeRestController;
 import io.github.azholdaspaev.nettyloom.autoconfigure.smoke.app.SmokeTestApplication;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,12 +50,13 @@ public class SmokeRestControllerTest {
 
         // When
         ResponseEntity<Map<String, Object>> response =
-            restTemplate.exchange(CONTROLLER_PATH + "/query/multiple?first=some&second=10", HttpMethod.GET, null, typeRef);
+            restTemplate.exchange(CONTROLLER_PATH + "/query/multiple?first=some&second=10&third=1", HttpMethod.GET, null, typeRef);
 
         // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<String, Object> body = response.getBody();
         assertThat(body).containsEntry("first", "some");
         assertThat(body).containsEntry("second", 10);
+        assertThat(body).containsEntry("third", 1);
     }
 }
