@@ -23,8 +23,7 @@ public class DefaultNettyHttpResponseConverter implements NettyHttpResponseConve
         }
 
         response.headers()
-                .set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes())
-                .set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
+                .set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
         return response;
     }
 }
