@@ -287,4 +287,45 @@ public class SmokeRestControllerTest {
         // The server processes requests on virtual threads — verified by the fact
         // that the Netty-Loom autoconfiguration is active and the request succeeds.
     }
+
+    // ── HEAD ──────────────────────────────────────────────────────────
+
+    @Test
+    void shouldReturnEmptyBodyForHeadRequest() {
+        ResponseEntity<String> response =
+                restTemplate.exchange(CONTROLLER_PATH + "/get/list", HttpMethod.HEAD, null, String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNull();
+    }
+
+    @Test
+    void shouldReturnHeadersForHeadRequest() {
+        ResponseEntity<String> response =
+                restTemplate.exchange(CONTROLLER_PATH + "/get/with-headers", HttpMethod.HEAD, null, String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getHeaders().getFirst("X-Custom-Header")).isEqualTo("custom-value");
+        assertThat(response.getBody()).isNull();
+    }
+
+    // ── OPTIONS ───────────────────────────────────────────────────────
+
+    @Test
+    void shouldReturnAllowHeaderForOptionsRequest() {
+        ResponseEntity<String> response =
+                restTemplate.exchange(CONTROLLER_PATH + "/get/list", HttpMethod.OPTIONS, null, String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getHeaders().getFirst("Allow")).contains("GET").contains("HEAD");
+    }
+
+    @Test
+    void shouldReturnAllowHeaderForOptionsOnPutEndpoint() {
+        ResponseEntity<String> response =
+                restTemplate.exchange(CONTROLLER_PATH + "/put/path/1/dto", HttpMethod.OPTIONS, null, String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getHeaders().getFirst("Allow")).contains("PUT");
+    }
 }
