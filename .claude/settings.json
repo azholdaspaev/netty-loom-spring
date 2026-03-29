@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew build)",
+      "Bash(./gradlew clean)",
+      "Bash(./gradlew test)",
+      "Bash(./gradlew test *)",
+      "Bash(./gradlew :netty-loom-spring-core:*)",
+      "Bash(./gradlew :netty-loom-spring-mvc:*)",
+      "Bash(./gradlew :netty-loom-spring-boot-starter:*)",
+      "Bash(./gradlew :netty-loom-spring-example-netty:*)",
+      "Bash(./gradlew :netty-loom-spring-example-tomcat:*)",
+      "Bash(./gradlew spotlessApply)",
+      "Bash(./gradlew spotlessCheck)",
+      "Bash(./gradlew dependencies *)",
+      "Bash(git status)",
+      "Bash(git status *)",
+      "Bash(git diff)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git branch)",
+      "Bash(git branch *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git stash *)",
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "WebSearch",
+      "WebFetch",
+      "LSP"
+    ],
+    "deny": [
+      "Bash(git push --force *)",
+      "Bash(git reset --hard *)",
+      "Bash(rm -rf *)"
+    ]
+  }
+}
