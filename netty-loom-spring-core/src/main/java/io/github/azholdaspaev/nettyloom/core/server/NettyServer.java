@@ -6,6 +6,8 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,11 +49,12 @@ public class NettyServer {
                     .channel(NioServerSocketChannel.class)
                     .childHandler(initializer);
 
-            ChannelFuture bindFuture = bootstrap.bind(config.port()).sync();
+            ChannelFuture bindFuture =
+                    bootstrap.bind(config.address(), config.port()).sync();
             serverChannel = bindFuture.channel();
 
             state.set(NettyServerState.RUNNING);
-            logger.info("Netty server started on port {}", getPort());
+            logger.info("Netty server started on {}:{}", getAddress().getHostAddress(), getPort());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             state.set(NettyServerState.STOPPED);
@@ -101,11 +104,21 @@ public class NettyServer {
     }
 
     public int getPort() {
+        InetSocketAddress resolved = resolvedAddress();
+        return resolved != null ? resolved.getPort() : config.port();
+    }
+
+    public InetAddress getAddress() {
+        InetSocketAddress resolved = resolvedAddress();
+        return resolved != null ? resolved.getAddress() : config.address();
+    }
+
+    private InetSocketAddress resolvedAddress() {
         if (state.get() == NettyServerState.RUNNING
                 && serverChannel != null
-                && serverChannel.localAddress() instanceof java.net.InetSocketAddress addr) {
-            return addr.getPort();
+                && serverChannel.localAddress() instanceof InetSocketAddress addr) {
+            return addr;
         }
-        return config.port();
+        return null;
     }
 }

@@ -1,8 +1,11 @@
 package io.github.azholdaspaev.nettyloom.core.server;
 
+import java.net.InetAddress;
 import java.time.Duration;
+import java.util.Objects;
 
 public record NettyServerConfig(
+        InetAddress address,
         int port,
         int bossThreads,
         int workerThreads,
@@ -12,11 +15,16 @@ public record NettyServerConfig(
         int maxContentLength,
         Duration idleTimeout) {
 
+    public NettyServerConfig {
+        Objects.requireNonNull(address, "address must not be null");
+    }
+
     public static NettyServerConfigBuilder builder() {
         return new NettyServerConfigBuilder();
     }
 
     public static class NettyServerConfigBuilder {
+        private InetAddress address = InetAddress.getLoopbackAddress();
         private int port = 8080;
         private int bossThreads = 1;
         private int workerThreads;
@@ -25,6 +33,11 @@ public record NettyServerConfig(
         private int maxChunkSize = 8192;
         private int maxContentLength = 2097152;
         private Duration idleTimeout = Duration.ofSeconds(60);
+
+        public NettyServerConfigBuilder address(InetAddress address) {
+            this.address = Objects.requireNonNull(address, "address must not be null");
+            return this;
+        }
 
         public NettyServerConfigBuilder port(int port) {
             this.port = port;
@@ -68,6 +81,7 @@ public record NettyServerConfig(
 
         public NettyServerConfig build() {
             return new NettyServerConfig(
+                    address,
                     port,
                     bossThreads,
                     workerThreads,

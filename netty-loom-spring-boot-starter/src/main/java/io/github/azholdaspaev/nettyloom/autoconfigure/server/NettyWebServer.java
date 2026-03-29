@@ -10,6 +10,7 @@ import io.github.azholdaspaev.nettyloom.mvc.handler.DispatcherServletHandler;
 import io.github.azholdaspaev.nettyloom.mvc.servlet.DefaultNettyServletContext;
 import jakarta.servlet.ServletConfig;
 import jakarta.servlet.ServletContext;
+import java.net.InetAddress;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.concurrent.ExecutorService;
@@ -27,12 +28,14 @@ public class NettyWebServer implements WebServer {
 
     private static final Logger logger = LoggerFactory.getLogger(NettyWebServer.class);
 
+    private final InetAddress address;
     private final int port;
     private final DefaultNettyServletContext servletContext;
     private NettyServer nettyServer;
     private final ExecutorService executorService;
 
-    public NettyWebServer(int port, ServletContextInitializer[] initializers) {
+    public NettyWebServer(InetAddress address, int port, ServletContextInitializer[] initializers) {
+        this.address = address;
         this.port = port;
         this.servletContext = new DefaultNettyServletContext();
         this.executorService = Executors.newVirtualThreadPerTaskExecutor();
@@ -57,7 +60,8 @@ public class NettyWebServer implements WebServer {
 
             DispatcherServletHandler handler = new DispatcherServletHandler(dispatcherServlet, servletContext);
 
-            NettyServerConfig config = NettyServerConfig.builder().port(port).build();
+            NettyServerConfig config =
+                    NettyServerConfig.builder().address(address).port(port).build();
 
             HttpServerNettyPipelineConfigurer pipelineConfigurer = new HttpServerNettyPipelineConfigurer(
                     config,

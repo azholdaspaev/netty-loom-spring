@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.azholdaspaev.nettyloom.core.http.DefaultNettyHttpResponse;
 import io.github.azholdaspaev.nettyloom.core.pipeline.HttpServerNettyPipelineConfigurer;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -134,9 +135,33 @@ class NettyServerTest {
     }
 
     @Test
+    void shouldReturnConfiguredAddressWhenNotStarted() {
+        // Given
+        server = createServer(0);
+
+        // When
+        InetAddress address = server.getAddress();
+
+        // Then
+        assertThat(address).isEqualTo(InetAddress.getLoopbackAddress());
+    }
+
+    @Test
+    void shouldReturnActualAddressWhenRunning() {
+        // Given
+        server = createServer(0);
+
+        // When
+        server.start();
+
+        // Then
+        assertThat(server.getAddress()).isEqualTo(InetAddress.getLoopbackAddress());
+    }
+
+    @Test
     void shouldSetStateToStoppedWhenStartFailsDueToPortConflict() throws Exception {
         // Given
-        try (ServerSocket occupied = new ServerSocket(0)) {
+        try (ServerSocket occupied = new ServerSocket(0, 50, InetAddress.getLoopbackAddress())) {
             int occupiedPort = occupied.getLocalPort();
             server = createServer(occupiedPort);
 

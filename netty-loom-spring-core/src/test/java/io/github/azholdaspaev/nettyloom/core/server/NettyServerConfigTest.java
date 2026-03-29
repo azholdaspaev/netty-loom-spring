@@ -1,7 +1,10 @@
 package io.github.azholdaspaev.nettyloom.core.server;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
@@ -13,6 +16,7 @@ class NettyServerConfigTest {
         NettyServerConfig config = NettyServerConfig.builder().build();
 
         // Then
+        assertThat(config.address()).isEqualTo(InetAddress.getLoopbackAddress());
         assertThat(config.port()).isEqualTo(8080);
         assertThat(config.bossThreads()).isEqualTo(1);
         assertThat(config.workerThreads()).isZero();
@@ -24,9 +28,13 @@ class NettyServerConfigTest {
     }
 
     @Test
-    void shouldOverrideAllDefaults() {
+    void shouldOverrideAllDefaults() throws UnknownHostException {
+        // Given
+        InetAddress customAddress = InetAddress.getByName("0.0.0.0");
+
         // When
         NettyServerConfig config = NettyServerConfig.builder()
+                .address(customAddress)
                 .port(9090)
                 .bossThreads(2)
                 .workerThreads(4)
@@ -38,6 +46,7 @@ class NettyServerConfigTest {
                 .build();
 
         // Then
+        assertThat(config.address()).isEqualTo(customAddress);
         assertThat(config.port()).isEqualTo(9090);
         assertThat(config.bossThreads()).isEqualTo(2);
         assertThat(config.workerThreads()).isEqualTo(4);
@@ -59,5 +68,23 @@ class NettyServerConfigTest {
         assertThat(config.workerThreads()).isZero();
         assertThat(config.maxContentLength()).isEqualTo(2097152);
         assertThat(config.idleTimeout()).isEqualTo(Duration.ofSeconds(60));
+    }
+
+    @Test
+    void shouldUseCustomAddress() throws UnknownHostException {
+        // Given
+        InetAddress customAddress = InetAddress.getByName("192.168.1.1");
+
+        // When
+        NettyServerConfig config =
+                NettyServerConfig.builder().address(customAddress).build();
+
+        // Then
+        assertThat(config.address()).isEqualTo(customAddress);
+    }
+
+    @Test
+    void shouldRejectNullAddress() {
+        assertThatThrownBy(() -> NettyServerConfig.builder().address(null)).isInstanceOf(NullPointerException.class);
     }
 }
