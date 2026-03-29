@@ -9,12 +9,15 @@ public class DefaultNettyHttpRequest implements NettyHttpRequest {
     private final String uri;
     private final Map<String, List<String>> headers;
     private final byte[] body;
+    private final boolean keepAlive;
 
-    private DefaultNettyHttpRequest(HttpMethod method, String uri, Map<String, List<String>> headers, byte[] body) {
+    private DefaultNettyHttpRequest(
+            HttpMethod method, String uri, Map<String, List<String>> headers, byte[] body, boolean keepAlive) {
         this.method = method;
         this.uri = uri;
         this.headers = headers;
         this.body = body;
+        this.keepAlive = keepAlive;
     }
 
     @Override
@@ -37,6 +40,11 @@ public class DefaultNettyHttpRequest implements NettyHttpRequest {
         return body;
     }
 
+    @Override
+    public boolean keepAlive() {
+        return keepAlive;
+    }
+
     public static DefaultNettyHttpRequestBuilder builder() {
         return new DefaultNettyHttpRequestBuilder();
     }
@@ -46,6 +54,7 @@ public class DefaultNettyHttpRequest implements NettyHttpRequest {
         private String uri = "/";
         private Map<String, List<String>> headers = Map.of();
         private byte[] body = new byte[0];
+        private boolean keepAlive = true;
 
         public DefaultNettyHttpRequestBuilder method(HttpMethod method) {
             this.method = method;
@@ -67,8 +76,13 @@ public class DefaultNettyHttpRequest implements NettyHttpRequest {
             return this;
         }
 
+        public DefaultNettyHttpRequestBuilder keepAlive(boolean keepAlive) {
+            this.keepAlive = keepAlive;
+            return this;
+        }
+
         public DefaultNettyHttpRequest build() {
-            return new DefaultNettyHttpRequest(method, uri, headers, body);
+            return new DefaultNettyHttpRequest(method, uri, headers, body, keepAlive);
         }
     }
 }

@@ -16,6 +16,7 @@ import io.netty.channel.ChannelPipeline;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.timeout.IdleStateHandler;
+import java.util.concurrent.Executors;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,7 +38,8 @@ class HttpServerNettyPipelineConfigurerTest {
     @BeforeEach
     void setUp() {
         var config = NettyServerConfig.builder().build();
-        configurer = new HttpServerNettyPipelineConfigurer(config, requestHandler, exceptionHandler);
+        configurer = new HttpServerNettyPipelineConfigurer(
+                config, requestHandler, exceptionHandler, Executors.newVirtualThreadPerTaskExecutor());
     }
 
     @Test

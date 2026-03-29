@@ -2,6 +2,7 @@ package io.github.azholdaspaev.nettyloom.core.handler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -11,6 +12,8 @@ import io.github.azholdaspaev.nettyloom.core.http.DefaultNettyHttpResponse;
 import io.github.azholdaspaev.nettyloom.core.http.NettyHttpRequest;
 import io.github.azholdaspaev.nettyloom.core.http.NettyHttpResponse;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.List;
@@ -36,6 +39,9 @@ class RequestDispatcherTest {
     private ChannelHandlerContext ctx;
 
     @Mock
+    private ChannelFuture channelFuture;
+
+    @Mock
     private Channel channel;
 
     private final ExecutorService executorService = new SynchronousExecutorService();
@@ -59,7 +65,7 @@ class RequestDispatcherTest {
         dispatcher.channelRead(ctx, request);
 
         // Then
-        verify(ctx).writeAndFlush(response);
+        verify(ctx).writeAndFlush(responseWithStatus(200));
     }
 
     @Test
@@ -71,13 +77,15 @@ class RequestDispatcherTest {
         RuntimeException error = new RuntimeException("handler error");
         when(requestHandler.handle(request)).thenThrow(error);
         when(exceptionHandler.handle(error, request)).thenReturn(errorResponse);
+        when(ctx.writeAndFlush(any())).thenReturn(channelFuture);
 
         // When
         dispatcher.channelRead(ctx, request);
 
         // Then
         verify(exceptionHandler).handle(error, request);
-        verify(ctx).writeAndFlush(errorResponse);
+        verify(ctx).writeAndFlush(responseWithStatus(500));
+        verify(channelFuture).addListener(ChannelFutureListener.CLOSE);
     }
 
     @Test
@@ -130,10 +138,9 @@ class RequestDispatcherTest {
         // Given
         givenInactiveChannel();
         var request = givenRequest("/fail");
-        var errorResponse = givenResponse(500);
         RuntimeException error = new RuntimeException("handler error");
         when(requestHandler.handle(request)).thenThrow(error);
-        when(exceptionHandler.handle(error, request)).thenReturn(errorResponse);
+        when(exceptionHandler.handle(error, request)).thenReturn(givenResponse(500));
 
         // When
         dispatcher.channelRead(ctx, request);
@@ -154,6 +161,44 @@ class RequestDispatcherTest {
         // Then
         verify(ctx).close();
         verify(ctx, never()).fireExceptionCaught(any());
+    }
+
+    @Test
+    void shouldNotCloseConnectionForKeepAliveRequest() throws Exception {
+        // Given
+        givenActiveChannel();
+        var request =
+                DefaultNettyHttpRequest.builder().uri("/test").keepAlive(true).build();
+        when(requestHandler.handle(request)).thenReturn(givenResponse(200));
+        when(ctx.writeAndFlush(any())).thenReturn(channelFuture);
+
+        // When
+        dispatcher.channelRead(ctx, request);
+
+        // Then
+        verify(ctx)
+                .writeAndFlush(argThat(r -> r instanceof NettyHttpResponse resp
+                        && resp.headers().get("Connection").contains("keep-alive")));
+        verify(channelFuture, never()).addListener(ChannelFutureListener.CLOSE);
+    }
+
+    @Test
+    void shouldCloseConnectionForNonKeepAliveRequest() throws Exception {
+        // Given
+        givenActiveChannel();
+        var request =
+                DefaultNettyHttpRequest.builder().uri("/test").keepAlive(false).build();
+        when(requestHandler.handle(request)).thenReturn(givenResponse(200));
+        when(ctx.writeAndFlush(any())).thenReturn(channelFuture);
+
+        // When
+        dispatcher.channelRead(ctx, request);
+
+        // Then
+        verify(ctx)
+                .writeAndFlush(argThat(r -> r instanceof NettyHttpResponse resp
+                        && resp.headers().get("Connection").contains("close")));
+        verify(channelFuture).addListener(ChannelFutureListener.CLOSE);
     }
 
     @Test
@@ -178,6 +223,10 @@ class RequestDispatcherTest {
 
     private static NettyHttpResponse givenResponse(int statusCode) {
         return DefaultNettyHttpResponse.builder().statusCode(statusCode).build();
+    }
+
+    private static NettyHttpResponse responseWithStatus(int statusCode) {
+        return argThat(r -> r instanceof NettyHttpResponse resp && resp.statusCode() == statusCode);
     }
 
     /**

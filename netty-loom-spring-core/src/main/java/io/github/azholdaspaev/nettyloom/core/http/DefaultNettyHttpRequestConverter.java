@@ -1,6 +1,7 @@
 package io.github.azholdaspaev.nettyloom.core.http;
 
 import io.netty.handler.codec.http.FullHttpRequest;
+import io.netty.handler.codec.http.HttpUtil;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,6 +26,7 @@ public class DefaultNettyHttpRequestConverter implements NettyHttpRequestConvert
                 .uri(msg.uri())
                 .headers(headers)
                 .body(body)
+                .keepAlive(HttpUtil.isKeepAlive(msg))
                 .build();
     }
 }

@@ -12,4 +12,6 @@ public interface NettyHttpRequest {
     byte[] body();
 
     Map<String, List<String>> headers();
+
+    boolean keepAlive();
 }

@@ -10,7 +10,6 @@ import io.netty.channel.ChannelPipeline;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.timeout.IdleStateHandler;
-
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -19,10 +18,11 @@ public class HttpServerNettyPipelineConfigurer implements NettyPipelineConfigure
     private final NettyServerConfig config;
     private final RequestDispatcher dispatcher;
 
-    public HttpServerNettyPipelineConfigurer(NettyServerConfig config,
-                                             RequestHandler requestHandler,
-                                             ExceptionHandler exceptionHandler,
-                                             ExecutorService executorService) {
+    public HttpServerNettyPipelineConfigurer(
+            NettyServerConfig config,
+            RequestHandler requestHandler,
+            ExceptionHandler exceptionHandler,
+            ExecutorService executorService) {
         this.config = config;
         this.dispatcher = new RequestDispatcher(requestHandler, exceptionHandler, executorService);
     }

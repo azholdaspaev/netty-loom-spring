@@ -15,7 +15,6 @@ import java.util.Enumeration;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.web.server.WebServer;
@@ -60,10 +59,11 @@ public class NettyWebServer implements WebServer {
 
             NettyServerConfig config = NettyServerConfig.builder().port(port).build();
 
-            HttpServerNettyPipelineConfigurer pipelineConfigurer =
-                    new HttpServerNettyPipelineConfigurer(config, handler, (_, _) -> DefaultNettyHttpResponse.builder()
-                            .statusCode(500)
-                            .build(), executorService);
+            HttpServerNettyPipelineConfigurer pipelineConfigurer = new HttpServerNettyPipelineConfigurer(
+                    config,
+                    handler,
+                    (_, _) -> DefaultNettyHttpResponse.builder().statusCode(500).build(),
+                    executorService);
 
             NettyServerInitializer serverInitializer = new NettyServerInitializer(pipelineConfigurer);
 

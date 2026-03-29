@@ -11,6 +11,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.concurrent.Executors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -170,7 +171,8 @@ class NettyServerTest {
         NettyServerInitializer initializer = new NettyServerInitializer(new HttpServerNettyPipelineConfigurer(
                 config,
                 _ -> DefaultNettyHttpResponse.builder().build(),
-                (ex, request) -> DefaultNettyHttpResponse.builder().build()));
+                (ex, request) -> DefaultNettyHttpResponse.builder().build(),
+                Executors.newVirtualThreadPerTaskExecutor()));
         return new NettyServer(config, initializer);
     }
 }
