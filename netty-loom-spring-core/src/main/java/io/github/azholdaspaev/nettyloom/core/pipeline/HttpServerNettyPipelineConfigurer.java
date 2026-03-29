@@ -24,7 +24,8 @@ public class HttpServerNettyPipelineConfigurer implements NettyPipelineConfigure
             ExceptionHandler exceptionHandler,
             ExecutorService executorService) {
         this.config = config;
-        this.dispatcher = new RequestDispatcher(requestHandler, exceptionHandler, executorService);
+        this.dispatcher =
+                new RequestDispatcher(requestHandler, exceptionHandler, executorService, config.requestTimeout());
     }
 
     @Override

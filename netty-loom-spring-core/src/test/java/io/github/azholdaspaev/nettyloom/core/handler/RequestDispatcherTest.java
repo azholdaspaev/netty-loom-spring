@@ -16,10 +16,14 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.AbstractExecutorService;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -50,7 +54,7 @@ class RequestDispatcherTest {
 
     @BeforeEach
     void setUp() {
-        dispatcher = new RequestDispatcher(requestHandler, exceptionHandler, executorService);
+        dispatcher = new RequestDispatcher(requestHandler, exceptionHandler, executorService, null);
     }
 
     @Test
@@ -205,6 +209,118 @@ class RequestDispatcherTest {
     void shouldBeSharable() {
         // When / Then
         assertThat(RequestDispatcher.class).hasAnnotation(ChannelHandler.Sharable.class);
+    }
+
+    @Test
+    void shouldReturn500WhenRequestTimesOut() throws Exception {
+        // Given
+        ExecutorService realExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        CountDownLatch blockHandler = new CountDownLatch(1);
+        try {
+            var timeoutDispatcher =
+                    new RequestDispatcher(requestHandler, exceptionHandler, realExecutor, Duration.ofMillis(50));
+            givenActiveChannel();
+            var request = givenRequest("/slow");
+            when(requestHandler.handle(request)).thenAnswer(invocation -> {
+                blockHandler.await();
+                return givenResponse(200);
+            });
+            when(ctx.writeAndFlush(any())).thenReturn(channelFuture);
+
+            // When
+            timeoutDispatcher.channelRead(ctx, request);
+
+            // Then
+            verify(ctx, org.mockito.Mockito.timeout(2000)).writeAndFlush(responseWithStatus(500));
+            verify(channelFuture, org.mockito.Mockito.timeout(2000)).addListener(ChannelFutureListener.CLOSE);
+        } finally {
+            blockHandler.countDown();
+            realExecutor.close();
+        }
+    }
+
+    @Test
+    void shouldInterruptHandlerOnTimeout() throws Exception {
+        // Given
+        ExecutorService realExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        AtomicBoolean wasInterrupted = new AtomicBoolean(false);
+        CountDownLatch handlerFinished = new CountDownLatch(1);
+        try {
+            var timeoutDispatcher =
+                    new RequestDispatcher(requestHandler, exceptionHandler, realExecutor, Duration.ofMillis(50));
+            givenActiveChannel();
+            var request = givenRequest("/slow");
+            when(requestHandler.handle(request)).thenAnswer(invocation -> {
+                try {
+                    Thread.sleep(10_000);
+                } catch (InterruptedException e) {
+                    wasInterrupted.set(true);
+                } finally {
+                    handlerFinished.countDown();
+                }
+                return givenResponse(200);
+            });
+            when(ctx.writeAndFlush(any())).thenReturn(channelFuture);
+
+            // When
+            timeoutDispatcher.channelRead(ctx, request);
+
+            // Then
+            assertThat(handlerFinished.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(wasInterrupted.get()).isTrue();
+        } finally {
+            realExecutor.close();
+        }
+    }
+
+    @Test
+    void shouldNotWriteTimeoutResponseWhenChannelIsInactive() throws Exception {
+        // Given
+        ExecutorService realExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        CountDownLatch blockHandler = new CountDownLatch(1);
+        try {
+            var timeoutDispatcher =
+                    new RequestDispatcher(requestHandler, exceptionHandler, realExecutor, Duration.ofMillis(50));
+            givenInactiveChannel();
+            var request = givenRequest("/slow");
+            when(requestHandler.handle(request)).thenAnswer(invocation -> {
+                blockHandler.await();
+                return givenResponse(200);
+            });
+
+            // When
+            timeoutDispatcher.channelRead(ctx, request);
+
+            // Then
+            verify(ctx, org.mockito.Mockito.after(200).never()).writeAndFlush(any());
+        } finally {
+            blockHandler.countDown();
+            realExecutor.close();
+        }
+    }
+
+    @Test
+    void shouldWriteSuccessResponseWhenHandlerCompletesBeforeTimeout() throws Exception {
+        // Given
+        givenActiveChannel();
+        var request = givenRequest("/fast");
+        when(requestHandler.handle(request)).thenReturn(givenResponse(200));
+        var timeoutDispatcher =
+                new RequestDispatcher(requestHandler, exceptionHandler, executorService, Duration.ofSeconds(5));
+
+        // When
+        timeoutDispatcher.channelRead(ctx, request);
+
+        // Then
+        verify(ctx).writeAndFlush(responseWithStatus(200));
+    }
+
+    @Test
+    void shouldRejectNegativeRequestTimeout() {
+        // When / Then
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                        new RequestDispatcher(requestHandler, exceptionHandler, executorService, Duration.ofMillis(-1)))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     private void givenActiveChannel() {

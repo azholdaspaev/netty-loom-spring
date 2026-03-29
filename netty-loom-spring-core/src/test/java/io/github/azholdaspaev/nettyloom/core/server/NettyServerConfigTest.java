@@ -25,6 +25,7 @@ class NettyServerConfigTest {
         assertThat(config.maxChunkSize()).isEqualTo(8192);
         assertThat(config.maxContentLength()).isEqualTo(2097152);
         assertThat(config.idleTimeout()).isEqualTo(Duration.ofSeconds(60));
+        assertThat(config.requestTimeout()).isEqualTo(Duration.ofSeconds(60));
     }
 
     @Test
@@ -43,6 +44,7 @@ class NettyServerConfigTest {
                 .maxChunkSize(4096)
                 .maxContentLength(1048576)
                 .idleTimeout(Duration.ofSeconds(30))
+                .requestTimeout(Duration.ofSeconds(30))
                 .build();
 
         // Then
@@ -55,6 +57,7 @@ class NettyServerConfigTest {
         assertThat(config.maxChunkSize()).isEqualTo(4096);
         assertThat(config.maxContentLength()).isEqualTo(1048576);
         assertThat(config.idleTimeout()).isEqualTo(Duration.ofSeconds(30));
+        assertThat(config.requestTimeout()).isEqualTo(Duration.ofSeconds(30));
     }
 
     @Test
@@ -68,6 +71,17 @@ class NettyServerConfigTest {
         assertThat(config.workerThreads()).isZero();
         assertThat(config.maxContentLength()).isEqualTo(2097152);
         assertThat(config.idleTimeout()).isEqualTo(Duration.ofSeconds(60));
+        assertThat(config.requestTimeout()).isEqualTo(Duration.ofSeconds(60));
+    }
+
+    @Test
+    void shouldAllowNullRequestTimeout() {
+        // When
+        NettyServerConfig config =
+                NettyServerConfig.builder().requestTimeout(null).build();
+
+        // Then
+        assertThat(config.requestTimeout()).isNull();
     }
 
     @Test

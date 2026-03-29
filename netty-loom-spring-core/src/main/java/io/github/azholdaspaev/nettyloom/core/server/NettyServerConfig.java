@@ -13,7 +13,8 @@ public record NettyServerConfig(
         int maxHeaderSize,
         int maxChunkSize,
         int maxContentLength,
-        Duration idleTimeout) {
+        Duration idleTimeout,
+        Duration requestTimeout) {
 
     public NettyServerConfig {
         Objects.requireNonNull(address, "address must not be null");
@@ -33,6 +34,7 @@ public record NettyServerConfig(
         private int maxChunkSize = 8192;
         private int maxContentLength = 2097152;
         private Duration idleTimeout = Duration.ofSeconds(60);
+        private Duration requestTimeout = Duration.ofSeconds(60);
 
         public NettyServerConfigBuilder address(InetAddress address) {
             this.address = Objects.requireNonNull(address, "address must not be null");
@@ -79,6 +81,11 @@ public record NettyServerConfig(
             return this;
         }
 
+        public NettyServerConfigBuilder requestTimeout(Duration requestTimeout) {
+            this.requestTimeout = requestTimeout;
+            return this;
+        }
+
         public NettyServerConfig build() {
             return new NettyServerConfig(
                     address,
@@ -89,7 +96,8 @@ public record NettyServerConfig(
                     maxHeaderSize,
                     maxChunkSize,
                     maxContentLength,
-                    idleTimeout);
+                    idleTimeout,
+                    requestTimeout);
         }
     }
 }
