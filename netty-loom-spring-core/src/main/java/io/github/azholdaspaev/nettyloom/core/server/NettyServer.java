@@ -32,7 +32,7 @@ public class NettyServer {
 
     public void start() {
         if (!state.compareAndSet(NettyServerState.CREATED, NettyServerState.STARTING)) {
-            throw new IllegalStateException("Cannot start server: expected state CREATED but was " + state.get());
+            throw new IllegalStateException("Server is already in " + state.get());
         }
 
         try {
