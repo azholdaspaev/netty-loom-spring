@@ -70,6 +70,7 @@ class HttpServerNettyPipelineConfigurerTest {
         verify(pipeline).addLast(eq("httpCodec"), any(HttpServerCodec.class));
         verify(pipeline).addLast(eq("aggregator"), any(HttpObjectAggregator.class));
         verify(pipeline).addLast(eq("idleState"), any(IdleStateHandler.class));
+        verify(pipeline).addLast(eq("idleConnectionCloser"), any(IdleConnectionCloser.class));
         verify(pipeline).addLast(eq("requestDecoder"), any(HttpRequestDecoder.class));
         verify(pipeline).addLast(eq("responseEncoder"), any(HttpResponseEncoder.class));
         verify(pipeline).addLast(eq("dispatcher"), any(RequestDispatcher.class));

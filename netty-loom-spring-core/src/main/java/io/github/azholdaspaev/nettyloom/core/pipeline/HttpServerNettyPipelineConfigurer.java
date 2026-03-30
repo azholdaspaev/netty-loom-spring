@@ -15,6 +15,8 @@ import java.util.concurrent.TimeUnit;
 
 public class HttpServerNettyPipelineConfigurer implements NettyPipelineConfigurer {
 
+    private static final IdleConnectionCloser IDLE_CONNECTION_CLOSER = new IdleConnectionCloser();
+
     private final NettyServerConfig config;
     private final RequestDispatcher dispatcher;
 
@@ -37,6 +39,8 @@ public class HttpServerNettyPipelineConfigurer implements NettyPipelineConfigure
         pipeline.addLast("aggregator", new HttpObjectAggregator(config.maxContentLength()));
 
         pipeline.addLast("idleState", new IdleStateHandler(config.idleTimeout().toSeconds(), 0, 0, TimeUnit.SECONDS));
+
+        pipeline.addLast("idleConnectionCloser", IDLE_CONNECTION_CLOSER);
 
         pipeline.addLast("requestDecoder", new HttpRequestDecoder(new DefaultNettyHttpRequestConverter()));
 
