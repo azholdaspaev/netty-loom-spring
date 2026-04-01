@@ -21,3 +21,6 @@ Thumbs.db
 *.log
 
 docs/
+
+# Benchmark results
+netty-loom-spring-benchmarks/results/**/*.json

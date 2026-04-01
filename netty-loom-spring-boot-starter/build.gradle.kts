@@ -7,7 +7,7 @@ dependencies {
     api(project(":netty-loom-spring-mvc"))
 
     implementation(libs.spring.boot.autoconfigure)
-    implementation(libs.spring.boot.starter.web) {
+    api(libs.spring.boot.starter.web) {
         exclude(group = "org.springframework.boot", module = "spring-boot-starter-tomcat")
     }
     implementation(libs.jakarta.servlet.api)
