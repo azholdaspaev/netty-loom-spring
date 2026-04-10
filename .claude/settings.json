@@ -1,0 +1,9 @@
+{
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
+  "enabledPlugins": {
+    "commit-commands@claude-plugins-official": true
+  }
+}
