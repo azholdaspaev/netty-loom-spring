@@ -32,9 +32,26 @@ What is the primary audience for this change?
 
 The user can reply with just a number, multiple numbers, or a free-text answer. Adapt accordingly.
 
+### 0. Codebase Reconnaissance (before asking any questions)
+
+Before asking the user anything, use Glob, Grep, and Read to understand what already exists:
+
+1. Read `CLAUDE.md` at the project root — it describes the architecture, modules, dependency flow, and conventions. Internalize this.
+2. Based on the topic in `topic.md`, identify which module is most likely affected (use CLAUDE.md's module list), then use Glob and Grep to find directly relevant code. Search for both the feature name AND the underlying patterns (e.g., for "HTTP/2 support" search both "http2" and "codec" / "protocol" / "pipeline"). Start with the most-affected module and expand outward to dependent modules.
+3. Identify: what interfaces exist today, what patterns the codebase follows, what modules would be affected.
+
+Use this knowledge to:
+- Skip questions whose answers are obvious from the code (e.g., don't ask "what framework do you use?" when CLAUDE.md says Spring Boot)
+- Ask sharper questions grounded in what actually exists (e.g., "I see NettyPipelineConfigurer is the current SPI for pipeline setup. Should the new feature extend this SPI or introduce a parallel one?")
+- Challenge assumptions with evidence from code (e.g., "You mentioned adding a dependency on X, but the core module currently has no Spring dependency — this would break the dependency flow")
+
 ### 1. Understand the Problem
 
-Read `topic.md` first. Based on what the user already stated, skip what's known and ask **2-3 focused questions** (one at a time) with options. Pick the most relevant areas to probe:
+You have already read `topic.md` and explored the codebase in Step 0. Reference specific code you found during reconnaissance when asking questions. Ground your options in what actually exists.
+
+Based on what the user already stated, skip what's known and ask **2-3 focused questions** (one at a time) with options. Pick the most relevant areas to probe.
+
+**Pacing:** Complete the entire requirements gathering (questions + challenge + trade-offs) in **3-5 total interaction rounds**. If you still have open questions after 5 rounds, capture them in the "Open Questions" section of requirements.md rather than continuing to ask — the RFC process has later stages (research, review) where these can be resolved. Avoid fatiguing the user with endless clarification.
 
 - **Concrete evidence** — What specific symptoms demonstrate the problem? Offer likely options based on the topic.
 - **Primary audience** — Who is most affected? Offer personas relevant to the project.
@@ -46,7 +63,7 @@ Adapt — if topic.md already answers some of these, skip them and go deeper on 
 
 ### 2. Challenge Assumptions
 
-After understanding the problem, challenge at least one assumption. Present your challenge as options:
+After understanding the problem, challenge at least one assumption. Use findings from codebase reconnaissance to support your challenges — citing existing code is more convincing than abstract reasoning. Present your challenge as options:
 
 ```
 I notice you're assuming X. I want to push back on this:

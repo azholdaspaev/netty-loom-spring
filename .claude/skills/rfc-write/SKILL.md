@@ -17,6 +17,9 @@ Read these files from the RFC directory:
 1. `requirements.md` — problem statement, goals, non-goals, constraints, success criteria
 2. `research.md` — prior art and technical constraints
 3. `revision-brief.md` — (if exists) feedback from previous review round; apply targeted revisions
+4. The project's `CLAUDE.md` at the repository root — for architecture overview, module structure, and conventions
+
+Additionally, use Glob and Grep to read existing code relevant to the RFC topic. The "Proposed Approach" section must be grounded in what the codebase actually looks like today — reference specific existing interfaces, modules, and patterns when describing the proposed changes.
 
 ## Determining RFC Number and Title
 
@@ -32,7 +35,7 @@ Write the RFC to `<RFC_DIR>/RFC-NNNN.md` using this template:
 # RFC-NNNN: [Title]
 
 **Status:** Draft
-**Author:** [Run `git config user.name` via Bash tool and substitute the result]
+**Author:** [Run `git config user.name` via Bash tool. If it returns empty, use 'Unknown Author' and note that git user.name is not configured.]
 **Created:** [Run `date +%Y-%m-%d` via Bash tool and substitute the result]
 **Last Updated:** [Run `date +%Y-%m-%d` via Bash tool and substitute the result]
 
@@ -58,7 +61,7 @@ Write the RFC to `<RFC_DIR>/RFC-NNNN.md` using this template:
 
 ### Existing Solutions
 
-[From research.md — what already exists, how others solve this, why those are insufficient for our case.]
+[Summarize the most relevant findings from research.md — focus on the 2-3 solutions most comparable to our problem and the key differentiators. Do not duplicate all of research.md; reference it for the full survey. Include enough context that a reviewer can understand the landscape without reading research.md, but stay concise.]
 
 ### Technical Constraints
 
@@ -156,11 +159,24 @@ This is a **Decision RFC** — it decides the *approach*, not the *implementatio
 - Write for a reviewer who has NOT read the requirements or research documents
 - The Prior Art & Research section must be self-contained — reviewers will NOT have access to research.md. Include all relevant findings, references, and conclusions directly in the RFC
 
+### Template Flexibility
+
+Not all sections apply to every RFC. If a section is genuinely not applicable (e.g., "Security Considerations" for a purely cosmetic change, or "Migration & Compatibility" for a greenfield component), write a single sentence explaining why it doesn't apply rather than padding it with boilerplate. Never omit the section heading — always show you considered it.
+
 ## Revision Mode
 
 If `revision-brief.md` exists:
-1. Read the existing RFC
+1. Read the existing RFC in full
 2. Read the revision brief for prioritized action items
-3. Apply targeted edits — do NOT rewrite the entire document
-4. Update the "Last Updated" date
-5. Address each action item and note what changed
+3. Apply targeted edits — do NOT rewrite the entire document. Preserve all content not mentioned in the revision brief; sections that weren't flagged should remain untouched.
+4. For items marked "SKIPPED — user decision" in the revision brief, leave the existing text as-is and add no commentary
+5. If two action items conflict (e.g., one asks to expand a section, another asks to simplify it), address the higher-priority one and note the conflict in the Open Questions section
+6. Update the "Last Updated" date
+7. After applying all changes, append a revision log entry at the bottom of the RFC:
+
+```markdown
+## Revision History
+- [date] — [1-2 sentence summary of what changed and why, referencing the revision brief]
+```
+
+If a Revision History section already exists, append the new entry to it rather than creating a duplicate section.
