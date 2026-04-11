@@ -18,7 +18,7 @@ public class NettyLoomAutoConfiguration {
 
     @Bean
     public NettyServer nettyServer() {
-        return new NettyServer(new NettyServerConfiguration(8080));
+        return new NettyServer(new NettyServerConfiguration(0));
     }
 
     @Bean
