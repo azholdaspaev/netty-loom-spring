@@ -5,6 +5,9 @@ import jakarta.servlet.FilterRegistration;
 import jakarta.servlet.Servlet;
 import jakarta.servlet.ServletRegistration;
 
+import java.io.InputStream;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Enumeration;
@@ -122,6 +125,26 @@ public class DefaultNettyServletContext implements NettyServletContext {
     @Override
     public Map<String, ? extends FilterRegistration> getFilterRegistrations() {
         return Collections.unmodifiableMap(filterRegistrations);
+    }
+
+    @Override
+    public URL getResource(String path) throws MalformedURLException {
+        return null;
+    }
+
+    @Override
+    public InputStream getResourceAsStream(String path) {
+        return null;
+    }
+
+    @Override
+    public Set<String> getResourcePaths(String path) {
+        return null;
+    }
+
+    @Override
+    public String getRealPath(String path) {
+        return null;
     }
 
     @Override

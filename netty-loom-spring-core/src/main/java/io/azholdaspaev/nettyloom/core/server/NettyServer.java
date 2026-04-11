@@ -3,13 +3,10 @@ package io.azholdaspaev.nettyloom.core.server;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
-
 import io.netty.util.concurrent.Future;
 
 import java.net.InetSocketAddress;
@@ -20,6 +17,7 @@ public class NettyServer {
     private final Object lock = new Object();
 
     private final NettyServerConfiguration configuration;
+    private final NettyServerChannelInitializer channelInitializer;
 
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
@@ -27,8 +25,9 @@ public class NettyServer {
     private volatile Channel serverChannel;
     private volatile boolean state = false;
 
-    public NettyServer(NettyServerConfiguration configuration) {
+    public NettyServer(NettyServerConfiguration configuration, NettyServerChannelInitializer channelInitializer) {
         this.configuration = configuration;
+        this.channelInitializer = channelInitializer;
     }
 
     public void start() {
@@ -43,12 +42,7 @@ public class NettyServer {
             ServerBootstrap bootstrap = new ServerBootstrap();
             bootstrap.group(bossGroup, workerGroup)
                 .channel(NioServerSocketChannel.class)
-                .childHandler(new ChannelInitializer<SocketChannel>() {
-                    @Override
-                    protected void initChannel(SocketChannel ch) throws Exception {
-
-                    }
-                })
+                .childHandler(channelInitializer)
                 .option(ChannelOption.SO_BACKLOG, 128)
                 .childOption(ChannelOption.SO_KEEPALIVE, true);
 

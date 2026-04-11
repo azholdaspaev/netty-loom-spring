@@ -1,7 +1,10 @@
 package io.azholdaspaev.nettyloom.autoconfigure;
 
 import io.azholdaspaev.nettyloom.autoconfigure.server.NettyWebServerFactory;
+import io.azholdaspaev.nettyloom.core.pipeline.DefaultNettyPipelineConfigurer;
+import io.azholdaspaev.nettyloom.core.pipeline.NettyPipelineConfigurer;
 import io.azholdaspaev.nettyloom.core.server.NettyServer;
+import io.azholdaspaev.nettyloom.core.server.NettyServerChannelInitializer;
 import io.azholdaspaev.nettyloom.core.server.NettyServerConfiguration;
 import io.azholdaspaev.nettyloom.mvc.servlet.DefaultNettyServletContext;
 import io.azholdaspaev.nettyloom.mvc.servlet.NettyServletContext;
@@ -17,12 +20,22 @@ public class NettyLoomAutoConfiguration {
     }
 
     @Bean
-    public NettyServer nettyServer() {
-        return new NettyServer(new NettyServerConfiguration(0));
+    public NettyServer nettyServer(NettyServerChannelInitializer nettyServerChannelInitializer) {
+        return new NettyServer(new NettyServerConfiguration(0), nettyServerChannelInitializer);
     }
 
     @Bean
     public NettyServletContext nettyServletContext() {
         return new DefaultNettyServletContext();
+    }
+
+    @Bean
+    public NettyServerChannelInitializer nettyServerChannelInitializer(NettyPipelineConfigurer nettyPipelineConfigurer) {
+        return new NettyServerChannelInitializer(nettyPipelineConfigurer);
+    }
+
+    @Bean
+    public NettyPipelineConfigurer nettyPipelineConfigurer() {
+        return new DefaultNettyPipelineConfigurer();
     }
 }
