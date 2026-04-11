@@ -8,4 +8,6 @@ dependencies {
     api(libs.spring.webmvc)
 
     implementation(libs.jakarta.servlet.api)
+
+    testImplementation(libs.junit.jupiter)
 }
