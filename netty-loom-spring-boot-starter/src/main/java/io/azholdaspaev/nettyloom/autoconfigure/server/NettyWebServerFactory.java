@@ -8,6 +8,6 @@ public class NettyWebServerFactory implements ServletWebServerFactory {
 
     @Override
     public WebServer getWebServer(ServletContextInitializer... initializers) {
-        return null;
+        return new NettyWebServer();
     }
 }
