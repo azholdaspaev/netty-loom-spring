@@ -20,7 +20,7 @@ This is a Spring Boot integration library that replaces Tomcat/Jetty with a Nett
 **Modules (flat layout, all included in settings.gradle.kts):**
 
 - **netty-loom-spring-core** — Pure Netty layer, no Spring dependency. Netty transport, codec-http, handler, plus native epoll/kqueue transports.
-- **netty-loom-spring-mvc** — Spring MVC servlet bridge. Contains `NettyLoomServletContext` (Jakarta ServletContext implementation) that allows Spring MVC to run on top of Netty.
+- **netty-loom-spring-mvc** — Spring MVC servlet bridge. Contains `NettyServletContext` interface (Jakarta ServletContext with default UnsupportedOperationException stubs) and `DefaultNettyServletContext` implementation that allows Spring MVC to run on top of Netty.
 - **netty-loom-spring-boot-starter** — Spring Boot auto-configuration entry point. `NettyWebServerFactory` implements `ServletWebServerFactory` SPI; `NettyWebServer` implements `WebServer`. Auto-config registered via `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`.
 - **netty-loom-spring-example-tomcat** / **netty-loom-spring-example-netty** — Example apps (placeholders).
 
