@@ -4,6 +4,9 @@ plugins {
 }
 
 dependencies {
-    api(project(":netty-loom-spring-mvc"))
     api(libs.spring.boot.autoconfigure)
+    api(libs.spring.boot.starter.web)
+
+    testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.spring.boot.webmvc.test)
 }

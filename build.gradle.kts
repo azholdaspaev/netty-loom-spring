@@ -43,6 +43,6 @@ subprojects {
     }
 
     dependencies {
-        "testImplementation"(rootProject.libs.junit.jupiter)
+        "testRuntimeOnly"(rootProject.libs.junit.platform.launcher)
     }
 }

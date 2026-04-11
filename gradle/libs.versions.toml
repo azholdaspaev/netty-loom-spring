@@ -10,6 +10,7 @@ spring-webmvc = { module = "org.springframework:spring-webmvc" }
 spring-boot-autoconfigure = { module = "org.springframework.boot:spring-boot-autoconfigure" }
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+spring-boot-webmvc-test = { module = "org.springframework.boot:spring-boot-webmvc-test" }
 
 # Netty
 netty-transport = { module = "io.netty:netty-transport", version.ref = "netty" }
@@ -18,7 +19,11 @@ netty-handler = { module = "io.netty:netty-handler", version.ref = "netty" }
 netty-transport-native-epoll = { module = "io.netty:netty-transport-native-epoll", version.ref = "netty" }
 netty-transport-native-kqueue = { module = "io.netty:netty-transport-native-kqueue", version.ref = "netty" }
 
+# Jakarta
+jakarta-servlet-api = { module = "jakarta.servlet:jakarta.servlet-api" }
+
 # Testing
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
 
 [plugins]
