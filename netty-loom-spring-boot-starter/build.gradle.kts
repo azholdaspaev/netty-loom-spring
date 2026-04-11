@@ -4,6 +4,8 @@ plugins {
 }
 
 dependencies {
+    api(project(":netty-loom-spring-core"))
+
     api(libs.spring.boot.autoconfigure)
     api(libs.spring.boot.starter.web)
 
