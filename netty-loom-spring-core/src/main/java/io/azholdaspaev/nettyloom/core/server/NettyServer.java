@@ -5,7 +5,8 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.MultiThreadIoEventLoopGroup;
+import io.netty.channel.nio.NioIoHandler;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.util.concurrent.Future;
 
@@ -36,8 +37,8 @@ public class NettyServer {
                 return;
             }
 
-            bossGroup = new NioEventLoopGroup();
-            workerGroup = new NioEventLoopGroup();
+            bossGroup = new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
+            workerGroup = new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
 
             ServerBootstrap bootstrap = new ServerBootstrap();
             bootstrap.group(bossGroup, workerGroup)
@@ -51,6 +52,15 @@ public class NettyServer {
                 serverChannel = bindFuture.channel();
                 state = true;
             } catch (InterruptedException e) {
+                try {
+                    shutdownGracefully(bossGroup, workerGroup);
+                } catch (InterruptedException suppressed) {
+                    e.addSuppressed(suppressed);
+                } finally {
+                    bossGroup = null;
+                    workerGroup = null;
+                }
+                Thread.currentThread().interrupt();
                 throw new RuntimeException(e);
             }
         }
@@ -58,6 +68,9 @@ public class NettyServer {
 
     public void stop() {
         synchronized (lock) {
+            if (!state) {
+                return;
+            }
             try {
                 if (serverChannel != null) {
                     serverChannel.close().sync();
@@ -68,12 +81,15 @@ public class NettyServer {
                 Thread.currentThread().interrupt();
                 throw new RuntimeException("Server stop interrupted", e);
             } finally {
+                serverChannel = null;
+                bossGroup = null;
+                workerGroup = null;
                 state = false;
             }
         }
     }
 
-    private void shutdownGracefully(EventLoopGroup... groups) {
+    private void shutdownGracefully(EventLoopGroup... groups) throws InterruptedException {
         var futures = new ArrayList<Future<?>>();
         for (EventLoopGroup group : groups) {
             if (group != null) {
@@ -81,7 +97,7 @@ public class NettyServer {
             }
         }
         for (var future : futures) {
-            future.syncUninterruptibly();
+            future.sync();
         }
     }
 
@@ -95,7 +111,8 @@ public class NettyServer {
     }
 
     private InetSocketAddress resolvedAddress() {
-        if (serverChannel != null && serverChannel.localAddress() instanceof InetSocketAddress addr) {
+        Channel ch = serverChannel;
+        if (ch != null && ch.localAddress() instanceof InetSocketAddress addr) {
             return addr;
         }
         return null;
