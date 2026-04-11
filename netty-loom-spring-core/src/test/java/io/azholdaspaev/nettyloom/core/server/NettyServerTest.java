@@ -6,6 +6,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -17,7 +19,7 @@ class NettyServerTest {
     @BeforeEach
     void setup() {
         NettyServerConfiguration configuration = new NettyServerConfiguration(0);
-        NettyPipelineConfigurer pipelineConfigurer = new DefaultNettyPipelineConfigurer();
+        NettyPipelineConfigurer pipelineConfigurer = new DefaultNettyPipelineConfigurer(List.of());
         NettyServerChannelInitializer channelInitializer = new NettyServerChannelInitializer(pipelineConfigurer);
         nettyServer = new NettyServer(configuration, channelInitializer);
     }

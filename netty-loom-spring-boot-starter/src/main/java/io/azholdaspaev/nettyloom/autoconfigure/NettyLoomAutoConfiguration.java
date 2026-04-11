@@ -11,6 +11,8 @@ import io.azholdaspaev.nettyloom.mvc.servlet.NettyServletContext;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.context.annotation.Bean;
 
+import java.util.List;
+
 @AutoConfiguration
 public class NettyLoomAutoConfiguration {
 
@@ -36,6 +38,6 @@ public class NettyLoomAutoConfiguration {
 
     @Bean
     public NettyPipelineConfigurer nettyPipelineConfigurer() {
-        return new DefaultNettyPipelineConfigurer();
+        return new DefaultNettyPipelineConfigurer(List.of());
     }
 }
