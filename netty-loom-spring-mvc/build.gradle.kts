@@ -4,6 +4,8 @@ plugins {
 }
 
 dependencies {
+    api(project(":netty-loom-spring-core"))
+
     api(libs.spring.web)
     api(libs.spring.webmvc)
 

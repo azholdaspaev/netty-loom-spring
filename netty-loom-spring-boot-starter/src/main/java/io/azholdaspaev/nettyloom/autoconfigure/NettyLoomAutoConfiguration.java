@@ -1,15 +1,22 @@
 package io.azholdaspaev.nettyloom.autoconfigure;
 
 import io.azholdaspaev.nettyloom.autoconfigure.server.NettyWebServerFactory;
+import io.azholdaspaev.nettyloom.core.handler.HttpRequestDispatcher;
+import io.azholdaspaev.nettyloom.core.handler.HttpRequestHandler;
 import io.azholdaspaev.nettyloom.core.pipeline.DefaultNettyPipelineConfigurer;
+import io.azholdaspaev.nettyloom.core.pipeline.NamedChannelHandler;
 import io.azholdaspaev.nettyloom.core.pipeline.NettyPipelineConfigurer;
 import io.azholdaspaev.nettyloom.core.server.NettyServer;
 import io.azholdaspaev.nettyloom.core.server.NettyServerChannelInitializer;
 import io.azholdaspaev.nettyloom.core.server.NettyServerConfiguration;
+import io.azholdaspaev.nettyloom.mvc.handler.SpringHttpRequestDispatcher;
 import io.azholdaspaev.nettyloom.mvc.servlet.DefaultNettyServletContext;
 import io.azholdaspaev.nettyloom.mvc.servlet.NettyServletContext;
+import io.netty.handler.codec.http.HttpObjectAggregator;
+import io.netty.handler.codec.http.HttpServerCodec;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.web.servlet.DispatcherServlet;
 
 import java.util.List;
 
@@ -37,7 +44,16 @@ public class NettyLoomAutoConfiguration {
     }
 
     @Bean
-    public NettyPipelineConfigurer nettyPipelineConfigurer() {
-        return new DefaultNettyPipelineConfigurer(List.of());
+    public NettyPipelineConfigurer nettyPipelineConfigurer(HttpRequestDispatcher httpRequestDispatcher) {
+        return new DefaultNettyPipelineConfigurer(List.of(
+            new NamedChannelHandler("httpCodec", new HttpServerCodec(10000, 10000, 10000)),
+            new NamedChannelHandler("aggregator", new HttpObjectAggregator(10000)),
+            new NamedChannelHandler("dispatcher", new HttpRequestHandler(httpRequestDispatcher))
+        ));
+    }
+
+    @Bean
+    public HttpRequestDispatcher httpRequestDispatcher(DispatcherServlet dispatcherServlet) {
+        return new SpringHttpRequestDispatcher(dispatcherServlet);
     }
 }

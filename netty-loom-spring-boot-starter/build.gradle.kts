@@ -12,4 +12,6 @@ dependencies {
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.boot.webmvc.test)
+    testImplementation(libs.spring.boot.starter.restclient)
+    testImplementation(libs.spring.boot.resttestclient)
 }

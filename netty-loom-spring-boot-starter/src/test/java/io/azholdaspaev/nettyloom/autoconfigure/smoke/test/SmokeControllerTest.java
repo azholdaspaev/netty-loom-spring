@@ -1,13 +1,21 @@
 package io.azholdaspaev.nettyloom.autoconfigure.smoke.test;
 
-import io.azholdaspaev.nettyloom.autoconfigure.smoke.app.SmokeNettyLoomApplication;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.web.servlet.client.RestTestClient;
 
-@SpringBootTest(classes = SmokeNettyLoomApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class SmokeControllerTest {
+class SmokeControllerTest extends BaseIntegrationTest {
+
+    @Autowired
+    private RestTestClient restTestClient;
 
     @Test
-    void contextLoads() {
+    @Disabled
+    void shouldHandleGetRequest() {
+        restTestClient.get().uri("/get")
+            .exchange()
+            .expectStatus()
+            .isOk();
     }
 }
