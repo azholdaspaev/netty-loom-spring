@@ -1,5 +1,7 @@
 package io.azholdaspaev.nettyloom.mvc.servlet;
 
+import io.netty.handler.codec.http.FullHttpRequest;
+import io.netty.handler.codec.http.QueryStringDecoder;
 import jakarta.servlet.AsyncContext;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.RequestDispatcher;
@@ -21,12 +23,25 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.security.Principal;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 public class NettyHttpServletRequest implements HttpServletRequest {
+
+    private final FullHttpRequest nettyRequest;
+
+    private final Map<String, Object> attributes = new HashMap<>();
+    private final String requestURI;
+
+    public NettyHttpServletRequest(FullHttpRequest nettyRequest) {
+        this.nettyRequest = nettyRequest;
+
+        this.requestURI = new QueryStringDecoder(nettyRequest.uri()).path();
+    }
 
     @Override
     public String getAuthType() {
@@ -65,7 +80,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public String getMethod() {
-        return "";
+        return nettyRequest.method().name();
     }
 
     @Override
@@ -110,7 +125,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public String getRequestURI() {
-        return "";
+        return requestURI;
     }
 
     @Override
@@ -185,17 +200,17 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public Object getAttribute(String name) {
-        return null;
+        return attributes.get(name);
     }
 
     @Override
     public Enumeration<String> getAttributeNames() {
-        return null;
+        return Collections.enumeration(attributes.keySet());
     }
 
     @Override
     public String getCharacterEncoding() {
-        return "";
+        return null;
     }
 
     @Override
@@ -280,12 +295,16 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public void setAttribute(String name, Object o) {
-
+        if (o == null) {
+            attributes.remove(name);
+        } else {
+            attributes.put(name, o);
+        }
     }
 
     @Override
     public void removeAttribute(String name) {
-
+        attributes.remove(name);
     }
 
     @Override

@@ -15,17 +15,20 @@ import io.azholdaspaev.nettyloom.mvc.servlet.NettyServletContext;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.webmvc.autoconfigure.WebMvcAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.web.servlet.DispatcherServlet;
 
 import java.util.List;
 
-@AutoConfiguration
+@AutoConfiguration(before = WebMvcAutoConfiguration.class)
 public class NettyLoomAutoConfiguration {
 
     @Bean
-    public NettyWebServerFactory nettyWebServerFactory(NettyServer nettyServer, NettyServletContext servletContext) {
-        return new NettyWebServerFactory(nettyServer, servletContext);
+    public NettyWebServerFactory nettyWebServerFactory(NettyServer nettyServer,
+                                                       NettyServletContext servletContext,
+                                                       DispatcherServlet dispatcherServlet) {
+        return new NettyWebServerFactory(nettyServer, servletContext, dispatcherServlet);
     }
 
     @Bean

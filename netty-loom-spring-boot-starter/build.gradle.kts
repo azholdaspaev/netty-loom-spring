@@ -8,7 +8,14 @@ dependencies {
     api(project(":netty-loom-spring-mvc"))
 
     api(libs.spring.boot.autoconfigure)
-    api(libs.spring.boot.starter.web)
+    api(libs.spring.boot.web.server)
+    api(libs.spring.boot.starter.web) {
+        exclude(group = "org.springframework.boot", module = "spring-boot-starter-tomcat")
+    }
+
+    implementation(libs.jakarta.servlet.api)
+
+    annotationProcessor(libs.spring.boot.configuration.processor)
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.boot.webmvc.test)

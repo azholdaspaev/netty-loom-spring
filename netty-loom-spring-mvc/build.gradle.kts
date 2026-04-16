@@ -6,10 +6,11 @@ plugins {
 dependencies {
     api(project(":netty-loom-spring-core"))
 
-    api(libs.spring.web)
-    api(libs.spring.webmvc)
-
+    implementation(libs.spring.web)
+    implementation(libs.spring.webmvc)
+    implementation(libs.spring.context)
     implementation(libs.jakarta.servlet.api)
+    implementation(libs.slf4j.api)
 
     testImplementation(libs.junit.jupiter)
 }

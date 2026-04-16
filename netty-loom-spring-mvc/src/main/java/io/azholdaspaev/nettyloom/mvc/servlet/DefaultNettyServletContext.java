@@ -4,6 +4,8 @@ import jakarta.servlet.Filter;
 import jakarta.servlet.FilterRegistration;
 import jakarta.servlet.Servlet;
 import jakarta.servlet.ServletRegistration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.InputStream;
 import java.net.MalformedURLException;
@@ -20,6 +22,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 public class DefaultNettyServletContext implements NettyServletContext {
+
+    private static final Logger log = LoggerFactory.getLogger(DefaultNettyServletContext.class);
 
     private final ConcurrentMap<String, Object> attributes = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, String> initParameters = new ConcurrentHashMap<>();
@@ -185,6 +189,16 @@ public class DefaultNettyServletContext implements NettyServletContext {
     @Override
     public ClassLoader getClassLoader() {
         return getClass().getClassLoader();
+    }
+
+    @Override
+    public void log(String msg) {
+        log.info(msg);
+    }
+
+    @Override
+    public void log(String message, Throwable throwable) {
+        log.error(message, throwable);
     }
 
     // --- Registration implementations ---

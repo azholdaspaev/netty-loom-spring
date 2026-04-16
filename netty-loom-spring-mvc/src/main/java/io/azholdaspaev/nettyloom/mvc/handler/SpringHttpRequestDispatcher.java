@@ -17,7 +17,7 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
 
     @Override
     public FullHttpResponse handle(FullHttpRequest request) throws Exception {
-        NettyHttpServletRequest servletRequest = new NettyHttpServletRequest();
+        NettyHttpServletRequest servletRequest = new NettyHttpServletRequest(request);
         NettyHttpServletResponse servletResponse = new NettyHttpServletResponse();
 
         dispatcherServlet.service(servletRequest, servletResponse);

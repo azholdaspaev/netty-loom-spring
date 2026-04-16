@@ -82,16 +82,6 @@ public interface NettyServletContext extends ServletContext {
     }
 
     @Override
-    default void log(String msg) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    default void log(String message, Throwable throwable) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
     default String getRealPath(String path) {
         throw new UnsupportedOperationException();
     }
