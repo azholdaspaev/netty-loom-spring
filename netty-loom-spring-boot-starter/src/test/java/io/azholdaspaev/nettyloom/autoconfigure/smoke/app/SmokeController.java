@@ -1,6 +1,8 @@
 package io.azholdaspaev.nettyloom.autoconfigure.smoke.app;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -40,6 +42,11 @@ public class SmokeController {
     @GetMapping("/api/whoami")
     public String whoami(@RequestHeader("X-User") String user) {
         return user;
+    }
+
+    @GetMapping("/api/headers/date")
+    public void dateHeader(HttpServletResponse response) {
+        response.setDateHeader(HttpHeaders.LAST_MODIFIED, 0L);
     }
 
     public record Greeting(String message) {

@@ -1,6 +1,7 @@
 package io.azholdaspaev.nettyloom.mvc.servlet;
 
 import io.netty.buffer.Unpooled;
+import io.netty.handler.codec.DateFormatter;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -21,6 +22,7 @@ import java.io.PrintWriter;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
@@ -70,12 +72,12 @@ public class NettyHttpServletResponse implements HttpServletResponse {
 
     @Override
     public void setDateHeader(String name, long date) {
-        setHeader(name, Long.toString(date));
+        setHeader(name, DateFormatter.format(new Date(date)));
     }
 
     @Override
     public void addDateHeader(String name, long date) {
-        addHeader(name, Long.toString(date));
+        addHeader(name, DateFormatter.format(new Date(date)));
     }
 
     @Override
