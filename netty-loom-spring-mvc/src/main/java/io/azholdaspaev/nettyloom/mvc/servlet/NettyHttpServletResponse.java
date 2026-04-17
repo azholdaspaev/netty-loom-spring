@@ -33,20 +33,6 @@ public class NettyHttpServletResponse implements HttpServletResponse {
     private ServletOutputStream outputStream;
     private PrintWriter writer;
 
-    public FullHttpResponse toFullHttpResponse() throws IOException {
-        flushBuffer();
-        FullHttpResponse response = new DefaultFullHttpResponse(
-            HttpVersion.HTTP_1_1,
-            HttpResponseStatus.valueOf(status),
-            Unpooled.wrappedBuffer(body.toByteArrayUnsafe(), 0, body.size())
-        );
-        headers.forEach((name, values) -> response.headers().add(name, values));
-        if (!response.headers().contains(HttpHeaderNames.CONTENT_LENGTH)) {
-            response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH, body.size());
-        }
-        return response;
-    }
-
     @Override
     public void addCookie(Cookie cookie) {
     }
@@ -268,5 +254,19 @@ public class NettyHttpServletResponse implements HttpServletResponse {
             }
         } catch (InvalidMediaTypeException ignored) {
         }
+    }
+
+    public FullHttpResponse toFullHttpResponse() throws IOException {
+        flushBuffer();
+        FullHttpResponse response = new DefaultFullHttpResponse(
+            HttpVersion.HTTP_1_1,
+            HttpResponseStatus.valueOf(status),
+            Unpooled.wrappedBuffer(body.toByteArrayUnsafe(), 0, body.size())
+        );
+        headers.forEach((name, values) -> response.headers().add(name, values));
+        if (!response.headers().contains(HttpHeaderNames.CONTENT_LENGTH)) {
+            response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH, body.size());
+        }
+        return response;
     }
 }
