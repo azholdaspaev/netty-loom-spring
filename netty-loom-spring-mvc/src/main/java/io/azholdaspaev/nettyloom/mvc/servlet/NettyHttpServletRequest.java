@@ -1,5 +1,6 @@
 package io.azholdaspaev.nettyloom.mvc.servlet;
 
+import io.netty.handler.codec.DateFormatter;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import jakarta.servlet.AsyncContext;
@@ -24,8 +25,10 @@ import java.io.UnsupportedEncodingException;
 import java.security.Principal;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Date;
 import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -36,11 +39,23 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     private final Map<String, Object> attributes = new HashMap<>();
     private final String requestURI;
+    private final String queryString;
+    private final Map<String, String[]> parameterMap;
 
     public NettyHttpServletRequest(FullHttpRequest nettyRequest) {
         this.nettyRequest = nettyRequest;
 
-        this.requestURI = new QueryStringDecoder(nettyRequest.uri()).path();
+        QueryStringDecoder decoder = new QueryStringDecoder(nettyRequest.uri());
+        this.requestURI = decoder.path();
+        String rawQuery = decoder.rawQuery();
+        this.queryString = rawQuery.isEmpty() ? null : rawQuery;
+        this.parameterMap = toParameterMap(decoder.parameters());
+    }
+
+    private static Map<String, String[]> toParameterMap(Map<String, List<String>> parameters) {
+        Map<String, String[]> map = new LinkedHashMap<>(parameters.size());
+        parameters.forEach((name, values) -> map.put(name, values.toArray(new String[0])));
+        return Collections.unmodifiableMap(map);
     }
 
     @Override
@@ -55,27 +70,39 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public long getDateHeader(String name) {
-        return 0;
+        String value = nettyRequest.headers().get(name);
+        if (value == null) {
+            return -1L;
+        }
+        Date parsed = DateFormatter.parseHttpDate(value);
+        if (parsed == null) {
+            throw new IllegalArgumentException("Cannot parse date header: " + value);
+        }
+        return parsed.getTime();
     }
 
     @Override
     public String getHeader(String name) {
-        return "";
+        return nettyRequest.headers().get(name);
     }
 
     @Override
     public Enumeration<String> getHeaders(String name) {
-        return null;
+        return Collections.enumeration(nettyRequest.headers().getAll(name));
     }
 
     @Override
     public Enumeration<String> getHeaderNames() {
-        return null;
+        return Collections.enumeration(nettyRequest.headers().names());
     }
 
     @Override
     public int getIntHeader(String name) {
-        return 0;
+        String value = nettyRequest.headers().get(name);
+        if (value == null) {
+            return -1;
+        }
+        return Integer.parseInt(value);
     }
 
     @Override
@@ -100,7 +127,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public String getQueryString() {
-        return "";
+        return queryString;
     }
 
     @Override
@@ -240,22 +267,24 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public String getParameter(String name) {
-        return "";
+        String[] values = parameterMap.get(name);
+        return values == null ? null : values[0];
     }
 
     @Override
     public Enumeration<String> getParameterNames() {
-        return null;
+        return Collections.enumeration(parameterMap.keySet());
     }
 
     @Override
     public String[] getParameterValues(String name) {
-        return new String[0];
+        String[] values = parameterMap.get(name);
+        return values == null ? null : values.clone();
     }
 
     @Override
     public Map<String, String[]> getParameterMap() {
-        return Map.of();
+        return parameterMap;
     }
 
     @Override
