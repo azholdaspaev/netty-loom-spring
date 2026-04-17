@@ -3,14 +3,20 @@ package io.azholdaspaev.nettyloom.autoconfigure.smoke.app;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.StringWriter;
+import java.util.Locale;
 import java.util.Map;
 
 @RestController
@@ -59,6 +65,25 @@ public class SmokeController {
     @PostMapping("/api/echo")
     public String echoForm(@RequestParam String msg) {
         return msg;
+    }
+
+    @PutMapping("/api/greetings/{name}")
+    public Greeting replaceGreeting(@PathVariable String name, @RequestBody Greeting input) {
+        return new Greeting(name + " says " + input.message());
+    }
+
+    @PutMapping("/api/greetings/{name}/ack")
+    public ResponseEntity<Void> acknowledgeGreeting(@PathVariable String name) {
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/api/notes/{id}")
+    public String replaceNote(@PathVariable String id, HttpServletRequest request) throws IOException {
+        StringWriter body = new StringWriter();
+        try (BufferedReader reader = request.getReader()) {
+            reader.transferTo(body);
+        }
+        return body.toString().toUpperCase(Locale.ROOT);
     }
 
     public record Greeting(String message) {

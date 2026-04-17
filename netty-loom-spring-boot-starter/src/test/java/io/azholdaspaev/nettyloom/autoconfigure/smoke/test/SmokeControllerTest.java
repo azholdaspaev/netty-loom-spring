@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.client.RestTestClient;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -124,5 +125,36 @@ class SmokeControllerTest extends BaseIntegrationTest {
             .exchange()
             .expectStatus().isOk()
             .expectBody(String.class).isEqualTo("hello form");
+    }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldRoutePutWithRequestBodyAndPathVariable() {
+        restTestClient.put().uri("/api/greetings/bob")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(new Greeting("hi"))
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody(Greeting.class).isEqualTo(new Greeting("bob says hi"));
+    }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldReturnNoContentFromPut() {
+        restTestClient.put().uri("/api/greetings/bob/ack")
+            .exchange()
+            .expectStatus().isNoContent()
+            .expectBody().isEmpty();
+    }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldReadRawTextBodyViaReader() {
+        restTestClient.put().uri("/api/notes/42")
+            .contentType(new MediaType("text", "plain", StandardCharsets.UTF_8))
+            .body("café")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody(String.class).isEqualTo("CAFÉ");
     }
 }

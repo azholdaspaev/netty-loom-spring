@@ -28,6 +28,7 @@ import jakarta.servlet.http.Part;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -53,6 +54,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     private final Map<String, String[]> parameterMap;
     private final Charset characterEncoding;
     private ServletInputStream inputStream;
+    private BufferedReader reader;
 
     public NettyHttpServletRequest(FullHttpRequest nettyRequest) {
         this.nettyRequest = nettyRequest;
@@ -296,6 +298,9 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public ServletInputStream getInputStream() throws IOException {
+        if (reader != null) {
+            throw new IllegalStateException("getReader() has already been called on this request");
+        }
         if (inputStream == null) {
             ByteBuf buffer = nettyRequest.content().duplicate();
             ByteBufInputStream stream = new ByteBufInputStream(buffer);
@@ -373,7 +378,15 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public BufferedReader getReader() throws IOException {
-        return null;
+        if (inputStream != null) {
+            throw new IllegalStateException("getInputStream() has already been called on this request");
+        }
+        if (reader == null) {
+            Charset charset = characterEncoding != null ? characterEncoding : StandardCharsets.ISO_8859_1;
+            ByteBufInputStream stream = new ByteBufInputStream(nettyRequest.content().duplicate());
+            reader = new BufferedReader(new InputStreamReader(stream, charset));
+        }
+        return reader;
     }
 
     @Override
