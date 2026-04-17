@@ -26,7 +26,9 @@ This is a Spring Boot integration library that replaces Tomcat/Jetty with a Nett
 
 **Package root:** `io.azholdaspaev.nettyloom`
 
-Sub-packages: `core.server`, `core.pipeline`, `mvc.servlet`, `autoconfigure`, `autoconfigure.server`
+Sub-packages: `core.server`, `core.pipeline`, `core.handler`, `mvc.servlet`, `mvc.handler`, `autoconfigure`, `autoconfigure.server`
+
+**Core SPI:** `core.handler.HttpRequestDispatcher` is the seam between the Netty pipeline and any higher-layer dispatcher (keeps `core` free of Spring). `mvc.handler.SpringHttpRequestDispatcher` is the Spring MVC implementation, wrapping `DispatcherServlet` with `NettyHttpServletRequest` / `NettyHttpServletResponse`.
 
 **Dependency flow:** `starter → mvc → core` (core has no Spring dependency)
 
