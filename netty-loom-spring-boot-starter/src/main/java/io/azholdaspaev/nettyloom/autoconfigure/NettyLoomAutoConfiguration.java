@@ -24,6 +24,8 @@ import java.util.List;
 @AutoConfiguration(before = WebMvcAutoConfiguration.class)
 public class NettyLoomAutoConfiguration {
 
+    private static final int MAX_HTTP_REQUEST_BODY_BYTES = 1024 * 1024;
+
     @Bean
     public NettyWebServerFactory nettyWebServerFactory(NettyServer nettyServer,
                                                        NettyServletContext servletContext,
@@ -50,7 +52,7 @@ public class NettyLoomAutoConfiguration {
     public NettyPipelineConfigurer nettyPipelineConfigurer(HttpRequestDispatcher httpRequestDispatcher) {
         return new DefaultNettyPipelineConfigurer(List.of(
             new NamedChannelHandler("httpCodec", new HttpServerCodec(10000, 10000, 10000)),
-            new NamedChannelHandler("aggregator", new HttpObjectAggregator(10000)),
+            new NamedChannelHandler("aggregator", new HttpObjectAggregator(MAX_HTTP_REQUEST_BODY_BYTES)),
             new NamedChannelHandler("dispatcher", new HttpRequestHandler(httpRequestDispatcher))
         ));
     }

@@ -102,4 +102,27 @@ class SmokeControllerTest extends BaseIntegrationTest {
             .expectStatus().isOk()
             .expectHeader().valueEquals(HttpHeaders.LAST_MODIFIED, "Thu, 01 Jan 1970 00:00:00 GMT");
     }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldDeserializeJsonRequestBody() {
+        restTestClient.post().uri("/api/greetings")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(new Greeting("world"))
+            .exchange()
+            .expectStatus().isOk()
+            .expectHeader().contentTypeCompatibleWith(MediaType.APPLICATION_JSON)
+            .expectBody(Greeting.class).isEqualTo(new Greeting("hello, world"));
+    }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldBindFormUrlencodedBodyToRequestParam() {
+        restTestClient.post().uri("/api/echo")
+            .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+            .body("msg=hello+form")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody(String.class).isEqualTo("hello form");
+    }
 }

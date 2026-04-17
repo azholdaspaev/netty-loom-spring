@@ -1,10 +1,17 @@
 package io.azholdaspaev.nettyloom.mvc.servlet;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.DateFormatter;
 import io.netty.handler.codec.http.FullHttpRequest;
+import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpHeaderValues;
+import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.QueryStringDecoder;
+import io.netty.util.AsciiString;
 import jakarta.servlet.AsyncContext;
 import jakarta.servlet.DispatcherType;
+import jakarta.servlet.ReadListener;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletConnection;
 import jakarta.servlet.ServletContext;
@@ -22,7 +29,10 @@ import jakarta.servlet.http.Part;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.security.Principal;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
@@ -41,6 +51,8 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     private final String requestURI;
     private final String queryString;
     private final Map<String, String[]> parameterMap;
+    private final Charset characterEncoding;
+    private ServletInputStream inputStream;
 
     public NettyHttpServletRequest(FullHttpRequest nettyRequest) {
         this.nettyRequest = nettyRequest;
@@ -49,7 +61,28 @@ public class NettyHttpServletRequest implements HttpServletRequest {
         this.requestURI = decoder.path();
         String rawQuery = decoder.rawQuery();
         this.queryString = rawQuery.isEmpty() ? null : rawQuery;
-        this.parameterMap = toParameterMap(decoder.parameters());
+        this.characterEncoding = HttpUtil.getCharset(nettyRequest, null);
+
+        Map<String, List<String>> merged = new LinkedHashMap<>(decoder.parameters());
+        mergeFormBodyParameters(merged);
+        this.parameterMap = toParameterMap(merged);
+    }
+
+    private void mergeFormBodyParameters(Map<String, List<String>> target) {
+        CharSequence mimeType = HttpUtil.getMimeType(nettyRequest);
+        if (mimeType == null
+            || !AsciiString.contentEqualsIgnoreCase(mimeType, HttpHeaderValues.APPLICATION_X_WWW_FORM_URLENCODED)) {
+            return;
+        }
+        Charset charset = characterEncoding != null ? characterEncoding : StandardCharsets.UTF_8;
+        String body = nettyRequest.content().toString(charset);
+        if (body.isEmpty()) {
+            return;
+        }
+        Map<String, List<String>> formParams =
+            new QueryStringDecoder(body, charset, false).parameters();
+        formParams.forEach((name, values) ->
+            target.computeIfAbsent(name, k -> new ArrayList<>()).addAll(values));
     }
 
     private static Map<String, String[]> toParameterMap(Map<String, List<String>> parameters) {
@@ -237,7 +270,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public String getCharacterEncoding() {
-        return null;
+        return characterEncoding == null ? null : characterEncoding.name();
     }
 
     @Override
@@ -247,22 +280,53 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public int getContentLength() {
-        return 0;
+        long length = getContentLengthLong();
+        return length > Integer.MAX_VALUE ? -1 : (int) length;
     }
 
     @Override
     public long getContentLengthLong() {
-        return 0;
+        return HttpUtil.getContentLength(nettyRequest, -1L);
     }
 
     @Override
     public String getContentType() {
-        return "";
+        return nettyRequest.headers().get(HttpHeaderNames.CONTENT_TYPE);
     }
 
     @Override
     public ServletInputStream getInputStream() throws IOException {
-        return null;
+        if (inputStream == null) {
+            ByteBuf buffer = nettyRequest.content().duplicate();
+            ByteBufInputStream stream = new ByteBufInputStream(buffer);
+            inputStream = new ServletInputStream() {
+                @Override
+                public boolean isFinished() {
+                    return buffer.readableBytes() == 0;
+                }
+
+                @Override
+                public boolean isReady() {
+                    return true;
+                }
+
+                @Override
+                public void setReadListener(ReadListener readListener) {
+                    throw new UnsupportedOperationException("Async read not supported");
+                }
+
+                @Override
+                public int read() throws IOException {
+                    return stream.read();
+                }
+
+                @Override
+                public int read(byte[] b, int off, int len) throws IOException {
+                    return stream.read(b, off, len);
+                }
+            };
+        }
+        return inputStream;
     }
 
     @Override
