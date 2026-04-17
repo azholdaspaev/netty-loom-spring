@@ -157,4 +157,35 @@ class SmokeControllerTest extends BaseIntegrationTest {
             .expectStatus().isOk()
             .expectBody(String.class).isEqualTo("CAFÉ");
     }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldRoutePatchWithRequestBodyAndPathVariable() {
+        restTestClient.patch().uri("/api/greetings/bob")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(new Greeting("hi"))
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody(Greeting.class).isEqualTo(new Greeting("bob updated to hi"));
+    }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldBindFormUrlencodedBodyToRequestParamOnPatch() {
+        restTestClient.patch().uri("/api/echo")
+            .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+            .body("msg=hello+patch")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody(String.class).isEqualTo("hello patch");
+    }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldReturnNoContentFromPatch() {
+        restTestClient.patch().uri("/api/greetings/bob/touch")
+            .exchange()
+            .expectStatus().isNoContent()
+            .expectBody().isEmpty();
+    }
 }

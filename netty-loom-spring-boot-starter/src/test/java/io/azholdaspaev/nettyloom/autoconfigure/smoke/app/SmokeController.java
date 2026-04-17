@@ -5,6 +5,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -84,6 +85,21 @@ public class SmokeController {
             reader.transferTo(body);
         }
         return body.toString().toUpperCase(Locale.ROOT);
+    }
+
+    @PatchMapping("/api/greetings/{name}")
+    public Greeting patchGreeting(@PathVariable String name, @RequestBody Greeting input) {
+        return new Greeting(name + " updated to " + input.message());
+    }
+
+    @PatchMapping("/api/echo")
+    public String echoPatchForm(@RequestParam String msg) {
+        return msg;
+    }
+
+    @PatchMapping("/api/greetings/{name}/touch")
+    public ResponseEntity<Void> touchGreeting(@PathVariable String name) {
+        return ResponseEntity.noContent().build();
     }
 
     public record Greeting(String message) {
