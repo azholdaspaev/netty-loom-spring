@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -100,6 +101,21 @@ public class SmokeController {
     @PatchMapping("/api/greetings/{name}/touch")
     public ResponseEntity<Void> touchGreeting(@PathVariable String name) {
         return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/api/greetings/{name}")
+    public ResponseEntity<Void> deleteGreeting(@PathVariable String name) {
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/api/greetings")
+    public Greeting deleteGreetingsByPrefix(@RequestParam String prefix) {
+        return new Greeting("deleted: " + prefix);
+    }
+
+    @DeleteMapping("/api/greetings/{name}/archive")
+    public Greeting archiveGreeting(@PathVariable String name) {
+        return new Greeting("archived: " + name);
     }
 
     public record Greeting(String message) {

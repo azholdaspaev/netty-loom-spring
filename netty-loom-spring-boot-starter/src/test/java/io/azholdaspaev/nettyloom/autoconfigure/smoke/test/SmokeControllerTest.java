@@ -188,4 +188,32 @@ class SmokeControllerTest extends BaseIntegrationTest {
             .expectStatus().isNoContent()
             .expectBody().isEmpty();
     }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldReturnNoContentFromDelete() {
+        restTestClient.delete().uri("/api/greetings/bob")
+            .exchange()
+            .expectStatus().isNoContent()
+            .expectBody().isEmpty();
+    }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldResolveQueryParamOnDelete() {
+        restTestClient.delete().uri("/api/greetings?prefix=foo")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody(Greeting.class).isEqualTo(new Greeting("deleted: foo"));
+    }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldReturnDeletedRepresentationFromDelete() {
+        restTestClient.delete().uri("/api/greetings/bob/archive")
+            .exchange()
+            .expectStatus().isOk()
+            .expectHeader().contentTypeCompatibleWith(MediaType.APPLICATION_JSON)
+            .expectBody(Greeting.class).isEqualTo(new Greeting("archived: bob"));
+    }
 }
