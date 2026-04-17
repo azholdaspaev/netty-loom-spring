@@ -14,8 +14,7 @@ class SmokeControllerTest extends BaseIntegrationTest {
     private RestTestClient restTestClient;
 
     @Test
-    @Disabled
-    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
     void shouldHandleGetRequest() {
         restTestClient.get().uri("/get")
             .exchange()

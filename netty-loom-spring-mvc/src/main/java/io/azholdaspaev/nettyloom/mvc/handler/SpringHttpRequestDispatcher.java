@@ -22,6 +22,6 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
 
         dispatcherServlet.service(servletRequest, servletResponse);
 
-        return null;
+        return servletResponse.toFullHttpResponse();
     }
 }
