@@ -4,6 +4,7 @@ import io.azholdaspaev.nettyloom.autoconfigure.smoke.app.SmokeController.Greetin
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.client.RestTestClient;
@@ -91,5 +92,14 @@ class SmokeControllerTest extends BaseIntegrationTest {
             .header("Accept", "text/csv")
             .exchange()
             .expectStatus().isEqualTo(HttpStatus.NOT_ACCEPTABLE);
+    }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldFormatDateHeaderAsRfc1123() {
+        restTestClient.get().uri("/api/headers/date")
+            .exchange()
+            .expectStatus().isOk()
+            .expectHeader().valueEquals(HttpHeaders.LAST_MODIFIED, "Thu, 01 Jan 1970 00:00:00 GMT");
     }
 }
