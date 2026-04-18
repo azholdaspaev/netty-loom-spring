@@ -1,0 +1,46 @@
+{
+  "groups": [
+    {
+      "name": "server.netty",
+      "description": "Configuration properties for the Netty-based web server that replaces Tomcat in this starter."
+    }
+  ],
+  "properties": [
+    {
+      "name": "server.netty.port",
+      "description": "TCP port the Netty server binds to. Use 0 to let the OS assign an ephemeral port (useful for tests)."
+    },
+    {
+      "name": "server.netty.boss-threads",
+      "description": "Number of threads in the boss event loop group that accepts incoming connections. One is typically sufficient."
+    },
+    {
+      "name": "server.netty.worker-threads",
+      "description": "Number of threads in the worker event loop group that processes I/O for accepted connections. Use 0 to apply Netty's default of two times the number of available processors."
+    },
+    {
+      "name": "server.netty.keep-alive",
+      "description": "Enables TCP SO_KEEPALIVE on accepted child channels. This is the socket-level keep-alive, independent of HTTP keep-alive semantics."
+    }
+  ],
+  "hints": [
+    {
+      "name": "server.netty.port",
+      "values": [
+        {
+          "value": 0,
+          "description": "Bind to an ephemeral port chosen by the operating system."
+        }
+      ]
+    },
+    {
+      "name": "server.netty.worker-threads",
+      "values": [
+        {
+          "value": 0,
+          "description": "Use Netty's default (2 x Runtime.getRuntime().availableProcessors())."
+        }
+      ]
+    }
+  ]
+}
