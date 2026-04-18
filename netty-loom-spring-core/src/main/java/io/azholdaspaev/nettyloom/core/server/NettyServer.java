@@ -37,18 +37,18 @@ public class NettyServer {
                 return;
             }
 
-            bossGroup = new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
-            workerGroup = new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
+            bossGroup = new MultiThreadIoEventLoopGroup(configuration.bossThreads(), NioIoHandler.newFactory());
+            workerGroup = new MultiThreadIoEventLoopGroup(configuration.workerThreads(), NioIoHandler.newFactory());
 
             ServerBootstrap bootstrap = new ServerBootstrap();
             bootstrap.group(bossGroup, workerGroup)
                 .channel(NioServerSocketChannel.class)
                 .childHandler(channelInitializer)
                 .option(ChannelOption.SO_BACKLOG, 128)
-                .childOption(ChannelOption.SO_KEEPALIVE, true);
+                .childOption(ChannelOption.SO_KEEPALIVE, configuration.keepAlive());
 
             try {
-                ChannelFuture bindFuture = bootstrap.bind(configuration.getPort()).sync();
+                ChannelFuture bindFuture = bootstrap.bind(configuration.port()).sync();
                 serverChannel = bindFuture.channel();
                 state = true;
             } catch (InterruptedException e) {
@@ -103,7 +103,7 @@ public class NettyServer {
 
     public int getPort() {
         InetSocketAddress address = resolvedAddress();
-        return address == null ? configuration.getPort() : address.getPort();
+        return address == null ? configuration.port() : address.getPort();
     }
 
     public boolean isRunning() {

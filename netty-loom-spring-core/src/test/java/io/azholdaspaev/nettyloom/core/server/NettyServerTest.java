@@ -18,7 +18,7 @@ class NettyServerTest {
 
     @BeforeEach
     void setup() {
-        NettyServerConfiguration configuration = new NettyServerConfiguration(0);
+        NettyServerConfiguration configuration = new NettyServerConfiguration(0, 0, 0, false);
         NettyPipelineConfigurer pipelineConfigurer = new DefaultNettyPipelineConfigurer(List.of());
         NettyServerChannelInitializer channelInitializer = new NettyServerChannelInitializer(pipelineConfigurer);
         nettyServer = new NettyServer(configuration, channelInitializer);

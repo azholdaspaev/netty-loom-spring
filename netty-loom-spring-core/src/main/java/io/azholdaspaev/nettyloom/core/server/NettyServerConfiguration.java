@@ -1,14 +1,8 @@
 package io.azholdaspaev.nettyloom.core.server;
 
-public class NettyServerConfiguration {
-
-    private final int port;
-
-    public NettyServerConfiguration(int port) {
-        this.port = port;
-    }
-
-    public int getPort() {
-        return port;
-    }
-}
+public record NettyServerConfiguration(
+    int port,
+    int bossThreads,
+    int workerThreads,
+    boolean keepAlive
+) {}
