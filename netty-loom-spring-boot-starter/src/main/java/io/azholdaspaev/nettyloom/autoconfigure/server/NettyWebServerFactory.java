@@ -11,25 +11,30 @@ import org.springframework.boot.web.servlet.ServletContextInitializer;
 import org.springframework.boot.webmvc.autoconfigure.DispatcherServletAutoConfiguration;
 import org.springframework.web.servlet.DispatcherServlet;
 
+import java.time.Duration;
+
 public class NettyWebServerFactory implements ServletWebServerFactory {
 
     private final NettyServer nettyServer;
     private final NettyServletContext servletContext;
     private final DispatcherServlet dispatcherServlet;
+    private final Duration shutdownGracePeriod;
 
     public NettyWebServerFactory(NettyServer nettyServer,
                                  NettyServletContext servletContext,
-                                 DispatcherServlet dispatcherServlet) {
+                                 DispatcherServlet dispatcherServlet,
+                                 Duration shutdownGracePeriod) {
         this.nettyServer = nettyServer;
         this.servletContext = servletContext;
         this.dispatcherServlet = dispatcherServlet;
+        this.shutdownGracePeriod = shutdownGracePeriod;
     }
 
     @Override
     public WebServer getWebServer(ServletContextInitializer... initializers) {
         initializeServletContext(initializers);
         initializeDispatcherServlet();
-        return new NettyWebServer(nettyServer);
+        return new NettyWebServer(nettyServer, shutdownGracePeriod);
     }
 
     private void initializeServletContext(ServletContextInitializer... initializers) {

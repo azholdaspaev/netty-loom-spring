@@ -13,8 +13,11 @@ import io.azholdaspaev.nettyloom.core.server.NettyServerConfiguration;
 import io.azholdaspaev.nettyloom.mvc.handler.SpringHttpRequestDispatcher;
 import io.azholdaspaev.nettyloom.mvc.servlet.DefaultNettyServletContext;
 import io.azholdaspaev.nettyloom.mvc.servlet.NettyServletContext;
+import io.netty.channel.group.ChannelGroup;
+import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
+import io.netty.util.concurrent.GlobalEventExecutor;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.webmvc.autoconfigure.WebMvcAutoConfiguration;
@@ -32,17 +35,20 @@ public class NettyLoomAutoConfiguration {
     @Bean
     public NettyWebServerFactory nettyWebServerFactory(NettyServer nettyServer,
                                                        NettyServletContext servletContext,
-                                                       DispatcherServlet dispatcherServlet) {
-        return new NettyWebServerFactory(nettyServer, servletContext, dispatcherServlet);
+                                                       DispatcherServlet dispatcherServlet,
+                                                       NettyLoomProperties properties) {
+        return new NettyWebServerFactory(nettyServer, servletContext, dispatcherServlet,
+            properties.shutdownGracePeriod());
     }
 
     @Bean
     public NettyServer nettyServer(NettyLoomProperties properties,
-                                   NettyServerChannelInitializer nettyServerChannelInitializer) {
+                                   NettyServerChannelInitializer nettyServerChannelInitializer,
+                                   ChannelGroup nettyLoomChannelGroup) {
         NettyServerConfiguration configuration = new NettyServerConfiguration(
             properties.port(), properties.bossThreads(), properties.workerThreads(), properties.keepAlive()
         );
-        return new NettyServer(configuration, nettyServerChannelInitializer);
+        return new NettyServer(configuration, nettyServerChannelInitializer, nettyLoomChannelGroup);
     }
 
     @Bean
@@ -51,8 +57,14 @@ public class NettyLoomAutoConfiguration {
     }
 
     @Bean
-    public NettyServerChannelInitializer nettyServerChannelInitializer(NettyPipelineConfigurer nettyPipelineConfigurer) {
-        return new NettyServerChannelInitializer(nettyPipelineConfigurer);
+    public ChannelGroup nettyLoomChannelGroup() {
+        return new DefaultChannelGroup("netty-loom-channels", GlobalEventExecutor.INSTANCE);
+    }
+
+    @Bean
+    public NettyServerChannelInitializer nettyServerChannelInitializer(NettyPipelineConfigurer nettyPipelineConfigurer,
+                                                                       ChannelGroup nettyLoomChannelGroup) {
+        return new NettyServerChannelInitializer(nettyPipelineConfigurer, nettyLoomChannelGroup);
     }
 
     @Bean

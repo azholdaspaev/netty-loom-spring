@@ -21,6 +21,10 @@
     {
       "name": "server.netty.keep-alive",
       "description": "Enables TCP SO_KEEPALIVE on accepted child channels. This is the socket-level keep-alive, independent of HTTP keep-alive semantics."
+    },
+    {
+      "name": "server.netty.shutdown-grace-period",
+      "description": "Maximum time to wait for in-flight HTTP requests to complete when Spring Boot invokes graceful shutdown (server.shutdown=graceful). After this deadline, remaining connections are force-closed. Defaults to 30 seconds, matching spring.lifecycle.timeout-per-shutdown-phase."
     }
   ],
   "hints": [
