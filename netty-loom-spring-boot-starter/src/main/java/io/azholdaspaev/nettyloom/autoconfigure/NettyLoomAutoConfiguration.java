@@ -26,6 +26,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.web.servlet.DispatcherServlet;
 
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @AutoConfiguration(before = WebMvcAutoConfiguration.class)
 @EnableConfigurationProperties(NettyLoomProperties.class)
@@ -69,13 +71,19 @@ public class NettyLoomAutoConfiguration {
     }
 
     @Bean
-    public NettyPipelineConfigurer nettyPipelineConfigurer(HttpRequestDispatcher httpRequestDispatcher) {
+    public NettyPipelineConfigurer nettyPipelineConfigurer(HttpRequestDispatcher httpRequestDispatcher,
+                                                           ExecutorService nettyLoomDispatchExecutor) {
         return new DefaultNettyPipelineConfigurer(List.of(
             new NamedChannelHandler("httpCodec", new HttpServerCodec(10000, 10000, 10000)),
             new NamedChannelHandler("aggregator", new HttpObjectAggregator(MAX_HTTP_REQUEST_BODY_BYTES)),
-            new NamedChannelHandler("dispatcher", new HttpRequestHandler(httpRequestDispatcher)),
+            new NamedChannelHandler("dispatcher", new HttpRequestHandler(httpRequestDispatcher, nettyLoomDispatchExecutor)),
             new NamedChannelHandler("exceptionHandler", new HttpExceptionHandler())
         ));
+    }
+
+    @Bean
+    public ExecutorService nettyLoomDispatchExecutor() {
+        return Executors.newVirtualThreadPerTaskExecutor();
     }
 
     @Bean
