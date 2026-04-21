@@ -2,6 +2,7 @@ package io.azholdaspaev.nettyloom.autoconfigure;
 
 import io.azholdaspaev.nettyloom.autoconfigure.properties.NettyLoomProperties;
 import io.azholdaspaev.nettyloom.autoconfigure.server.NettyWebServerFactory;
+import io.azholdaspaev.nettyloom.core.handler.HttpExceptionHandler;
 import io.azholdaspaev.nettyloom.core.handler.HttpRequestDispatcher;
 import io.azholdaspaev.nettyloom.core.handler.HttpRequestHandler;
 import io.azholdaspaev.nettyloom.core.pipeline.DefaultNettyPipelineConfigurer;
@@ -72,7 +73,8 @@ public class NettyLoomAutoConfiguration {
         return new DefaultNettyPipelineConfigurer(List.of(
             new NamedChannelHandler("httpCodec", new HttpServerCodec(10000, 10000, 10000)),
             new NamedChannelHandler("aggregator", new HttpObjectAggregator(MAX_HTTP_REQUEST_BODY_BYTES)),
-            new NamedChannelHandler("dispatcher", new HttpRequestHandler(httpRequestDispatcher))
+            new NamedChannelHandler("dispatcher", new HttpRequestHandler(httpRequestDispatcher)),
+            new NamedChannelHandler("exceptionHandler", new HttpExceptionHandler())
         ));
     }
 
