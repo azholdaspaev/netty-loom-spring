@@ -8,10 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./gradlew build                              # Full build (compile + test)
 ./gradlew build -x test                      # Build without tests
 ./gradlew :netty-loom-spring-core:test       # Test a single module
-./gradlew test --tests 'io.azholdaspaev.nettyloom.autoconfigure.smoke.test.SmokeControllerTest'  # Single test
+./gradlew test --tests 'io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.test.SmokeControllerTest'  # Single test
 ```
 
-All Java compilation and execution requires `--enable-preview` (configured in root build.gradle.kts).
+Java 25 toolchain (LTS). No `--enable-preview` — the library targets only stable JDK features, so consumers don't need special JVM flags.
 
 ## Architecture
 
@@ -24,9 +24,11 @@ This is a Spring Boot integration library that replaces Tomcat/Jetty with a Nett
 - **netty-loom-spring-boot-starter** — Spring Boot auto-configuration entry point. `NettyWebServerFactory` implements `ServletWebServerFactory` SPI; `NettyWebServer` implements `WebServer`. Auto-config registered via `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`.
 - **netty-loom-spring-example-tomcat** / **netty-loom-spring-example-netty** — Example apps (placeholders).
 
-**Package root:** `io.azholdaspaev.nettyloom`
+**Package root:** `io.github.azholdaspaev.nettyloomspring`
 
 Sub-packages: `core.server`, `core.pipeline`, `core.handler`, `mvc.servlet`, `mvc.handler`, `autoconfigure`, `autoconfigure.server`
+
+**Maven coordinate (target):** `io.github.azholdaspaev:netty-loom-spring-boot-starter`
 
 **Core SPI:** `core.handler.HttpRequestDispatcher` is the seam between the Netty pipeline and any higher-layer dispatcher (keeps `core` free of Spring). `mvc.handler.SpringHttpRequestDispatcher` is the Spring MVC implementation, wrapping `DispatcherServlet` with `NettyHttpServletRequest` / `NettyHttpServletResponse`.
 
