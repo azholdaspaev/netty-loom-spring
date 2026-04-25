@@ -8,7 +8,7 @@ val springBootVersion = libs.versions.spring.boot.get()
 subprojects {
     apply(plugin = "java-library")
 
-    group = "io.github.netty-loom-spring"
+    group = "io.github.azholdaspaev"
     version = "0.1.0-SNAPSHOT"
 
     java {
@@ -18,17 +18,11 @@ subprojects {
     }
 
     tasks.withType<JavaCompile> {
-        options.compilerArgs.add("--enable-preview")
         options.compilerArgs.add("-parameters")
     }
 
     tasks.withType<Test> {
         useJUnitPlatform()
-        jvmArgs("--enable-preview")
-    }
-
-    tasks.withType<JavaExec> {
-        jvmArgs("--enable-preview")
     }
 
     pluginManager.withPlugin("io.spring.dependency-management") {
