@@ -17,6 +17,6 @@ public class DefaultNettyPipelineConfigurer implements NettyPipelineConfigurer {
     public void configure(ChannelPipeline pipeline) {
         Objects.requireNonNull(pipeline, "pipeline must not be null");
 
-        pipelineSteps.forEach(step -> pipeline.addLast(step.name(), step.channelHandler()));
+        pipelineSteps.forEach(step -> pipeline.addLast(step.name(), step.factory().get()));
     }
 }

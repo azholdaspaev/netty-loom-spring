@@ -18,6 +18,7 @@ import io.netty.channel.group.ChannelGroup;
 import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
+import io.netty.handler.timeout.ReadTimeoutHandler;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -28,12 +29,16 @@ import org.springframework.web.servlet.DispatcherServlet;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 @AutoConfiguration(before = WebMvcAutoConfiguration.class)
 @EnableConfigurationProperties(NettyLoomProperties.class)
 public class NettyLoomAutoConfiguration {
 
     private static final int MAX_HTTP_REQUEST_BODY_BYTES = 1024 * 1024;
+    private static final int MAX_HTTP_INITIAL_LINE_LENGTH = 10_000;
+    private static final int MAX_HTTP_HEADER_SIZE = 10_000;
+    private static final int MAX_HTTP_CHUNK_SIZE = 10_000;
 
     @Bean
     public NettyWebServerFactory nettyWebServerFactory(NettyServer nettyServer,
@@ -71,13 +76,16 @@ public class NettyLoomAutoConfiguration {
     }
 
     @Bean
-    public NettyPipelineConfigurer nettyPipelineConfigurer(HttpRequestDispatcher httpRequestDispatcher,
+    public NettyPipelineConfigurer nettyPipelineConfigurer(NettyLoomProperties properties,
+                                                           HttpRequestDispatcher httpRequestDispatcher,
                                                            ExecutorService nettyLoomDispatchExecutor) {
+        long readTimeoutMillis = properties.readTimeout().toMillis();
         return new DefaultNettyPipelineConfigurer(List.of(
-            new NamedChannelHandler("httpCodec", new HttpServerCodec(10000, 10000, 10000)),
-            new NamedChannelHandler("aggregator", new HttpObjectAggregator(MAX_HTTP_REQUEST_BODY_BYTES)),
-            new NamedChannelHandler("dispatcher", new HttpRequestHandler(httpRequestDispatcher, nettyLoomDispatchExecutor)),
-            new NamedChannelHandler("exceptionHandler", new HttpExceptionHandler())
+            new NamedChannelHandler("readTimeout", () -> new ReadTimeoutHandler(readTimeoutMillis, TimeUnit.MILLISECONDS)),
+            new NamedChannelHandler("httpCodec", () -> new HttpServerCodec(MAX_HTTP_INITIAL_LINE_LENGTH, MAX_HTTP_HEADER_SIZE, MAX_HTTP_CHUNK_SIZE)),
+            new NamedChannelHandler("aggregator", () -> new HttpObjectAggregator(MAX_HTTP_REQUEST_BODY_BYTES)),
+            new NamedChannelHandler("dispatcher", () -> new HttpRequestHandler(httpRequestDispatcher, nettyLoomDispatchExecutor)),
+            NamedChannelHandler.shared("exceptionHandler", new HttpExceptionHandler())
         ));
     }
 

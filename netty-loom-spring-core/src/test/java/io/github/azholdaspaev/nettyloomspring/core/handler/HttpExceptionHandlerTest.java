@@ -6,6 +6,7 @@ import io.netty.handler.codec.TooLongFrameException;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.timeout.ReadTimeoutException;
 import org.junit.jupiter.api.Test;
 
 import java.nio.channels.ClosedChannelException;
@@ -88,6 +89,18 @@ class HttpExceptionHandlerTest {
         assertNotNull(response);
         assertEquals(HttpResponseStatus.REQUEST_ENTITY_TOO_LARGE, response.status());
         response.release();
+    }
+
+    @Test
+    void shouldCloseWithoutResponseOnReadTimeout() {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpExceptionHandler());
+
+        channel.pipeline().fireExceptionCaught(ReadTimeoutException.INSTANCE);
+        channel.runPendingTasks();
+
+        Object outbound = channel.readOutbound();
+        assertNull(outbound, "no response should be written on read timeout");
+        assertFalse(channel.isOpen(), "channel must be closed on read timeout");
     }
 
     @Test

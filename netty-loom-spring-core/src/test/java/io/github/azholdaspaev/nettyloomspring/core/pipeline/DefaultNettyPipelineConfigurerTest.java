@@ -9,6 +9,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
@@ -29,7 +31,7 @@ class DefaultNettyPipelineConfigurerTest {
     void shouldAddSingleHandlerToPipeline() {
         var handler = new ChannelInboundHandlerAdapter();
         var configurer = new DefaultNettyPipelineConfigurer(List.of(
-                new NamedChannelHandler("myHandler", handler)
+                new NamedChannelHandler("myHandler", () -> handler)
         ));
         var channel = new EmbeddedChannel();
         ChannelPipeline pipeline = channel.pipeline();
@@ -45,9 +47,9 @@ class DefaultNettyPipelineConfigurerTest {
         var second = new ChannelInboundHandlerAdapter();
         var third = new ChannelInboundHandlerAdapter();
         var configurer = new DefaultNettyPipelineConfigurer(List.of(
-                new NamedChannelHandler("first", first),
-                new NamedChannelHandler("second", second),
-                new NamedChannelHandler("third", third)
+                new NamedChannelHandler("first", () -> first),
+                new NamedChannelHandler("second", () -> second),
+                new NamedChannelHandler("third", () -> third)
         ));
         var channel = new EmbeddedChannel();
         ChannelPipeline pipeline = channel.pipeline();
@@ -70,7 +72,7 @@ class DefaultNettyPipelineConfigurerTest {
     void shouldDefensivelyCopyHandlerList() {
         var handler = new ChannelInboundHandlerAdapter();
         var mutableList = new ArrayList<>(List.of(
-                new NamedChannelHandler("original", handler)
+                new NamedChannelHandler("original", () -> handler)
         ));
         var configurer = new DefaultNettyPipelineConfigurer(mutableList);
 
@@ -81,6 +83,24 @@ class DefaultNettyPipelineConfigurerTest {
         configurer.configure(pipeline);
 
         assertSame(handler, pipeline.get("original"));
+    }
+
+    @Test
+    void shouldCreateFreshHandlerInstancePerConfigureCall() {
+        var configurer = new DefaultNettyPipelineConfigurer(List.of(
+                new NamedChannelHandler("perChannel", ChannelInboundHandlerAdapter::new)
+        ));
+
+        ChannelPipeline firstPipeline = new EmbeddedChannel().pipeline();
+        ChannelPipeline secondPipeline = new EmbeddedChannel().pipeline();
+        configurer.configure(firstPipeline);
+        configurer.configure(secondPipeline);
+
+        var firstHandler = firstPipeline.get("perChannel");
+        var secondHandler = secondPipeline.get("perChannel");
+        assertNotNull(firstHandler);
+        assertNotNull(secondHandler);
+        assertNotSame(firstHandler, secondHandler);
     }
 
 }

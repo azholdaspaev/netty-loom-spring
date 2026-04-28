@@ -14,6 +14,7 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.timeout.ReadTimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,11 +29,14 @@ public class HttpExceptionHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+        if (cause instanceof ReadTimeoutException) {
+            log.debug("Closing channel after read timeout", cause);
+            ctx.close();
+            return;
+        }
         if (isClientDisconnect(cause)) {
             log.debug("Client disconnected before response", cause);
-            if (ctx.channel().isActive()) {
-                ctx.close();
-            }
+            ctx.close();
             return;
         }
 
