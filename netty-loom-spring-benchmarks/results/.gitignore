@@ -1,0 +1,6 @@
+# Raw, machine-specific benchmark artifacts. Only the curated SNAPSHOT.md is committed.
+*.json
+*.csv
+*.log
+!.gitignore
+!SNAPSHOT.md

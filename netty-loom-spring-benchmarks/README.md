@@ -1,0 +1,141 @@
+# netty-loom-spring-benchmarks
+
+A reproducible [k6](https://k6.io/) benchmark answering the only question that decides whether
+this library is worth adopting: **does running blocking Spring MVC controllers on Netty + virtual
+threads actually beat a stock Tomcat starter under high concurrency — and does it beat Tomcat with
+virtual threads simply switched on?**
+
+If Tomcat-with-virtual-threads matches Netty-Loom, the honest recommendation is "set
+`spring.threads.virtual.enabled=true`," not "adopt this library." This harness is built to surface
+that outcome plainly rather than hide it.
+
+> This is a plain directory of scripts, **not** a Gradle module — k6 is an external tool with no
+> Java to compile, so wiring it into `./gradlew build` would only slow CI down. Run it explicitly.
+
+## The three targets
+
+All three run an **identical** Spring MVC app (same controller, same two endpoints):
+
+| Target | Server | Port | Config |
+|---|---|---|---|
+| `netty-loom` | this library's starter (Netty + one virtual thread per request) | 18080 | `server.netty.port=18080` |
+| `tomcat-platform` | stock embedded Tomcat, classic thread-per-request | 18081 | `spring.threads.virtual.enabled=false` |
+| `tomcat-virtual` | embedded Tomcat dispatching onto virtual threads | 18082 | `spring.threads.virtual.enabled=true` |
+
+The apps live in [`netty-loom-spring-example-netty`](../netty-loom-spring-example-netty) and
+[`netty-loom-spring-example-tomcat`](../netty-loom-spring-example-tomcat) (the Tomcat one is launched
+twice with different Spring profiles, `platform` and `virtual`).
+
+Endpoints:
+- `GET /ping` → `pong` — minimal work, for raw throughput.
+- `GET /work` → `Thread.sleep(50)` then small JSON — a **blocking** 50ms call simulating a database
+  round-trip. This is the Loom scenario: a parked virtual thread is cheap; a parked platform thread
+  pins an OS thread from a bounded pool (~200).
+
+## Scenarios
+
+1. **Low-concurrency throughput** (`k6/low-concurrency.js`) — 1→10 VUs hammering `/ping`. Measures
+   transport overhead and baseline latency where per-request work is negligible.
+2. **High-concurrency blocking I/O** (`k6/high-concurrency.js`) — N VUs (default 10,000) each looping
+   `GET /work`. With keep-alive on, **1 VU ≈ 1 persistent connection ≈ 1 in-flight blocked request**,
+   which is what makes the server-side memory-per-connection measurement meaningful.
+
+Both scenarios report **p50 / p95 / p99 latency** and **error rate**. Error rate is the only hard
+threshold; latency is measured, not gated (measuring it is the point).
+
+## What gets measured, and why these three metrics
+
+The user-facing verdict rests on three numbers under load:
+
+- **Memory per connection** — measured *server-side* by [`scripts/sample-memory.sh`](scripts/sample-memory.sh),
+  which samples the target JVM's RSS (and best-effort `jcmd GC.heap_info` heap) at idle and under
+  sustained load. k6 only sees the client; this is the only way to see what each connection costs the
+  server. Reported as `(loaded RSS median − idle RSS median) / connections`.
+- **Tail latency (p99)** — where thread-per-request pools fall apart: once concurrent requests exceed
+  the ~200-thread pool, requests queue and p99 climbs steeply.
+- **Error rate** — at thousands of connections, Tomcat's platform pool refuses/queues past its
+  connection limit (~8192) and slow requests time out; virtual-thread targets shouldn't.
+
+## Prerequisites
+
+- **Java 25** (the repo toolchain) and **[k6](https://k6.io/docs/get-started/installation/)** on `PATH`.
+- `jcmd`, `ps`, `curl`, `python3` (all standard with the JDK / OS).
+- **Build the app jars first:**
+  ```bash
+  ./gradlew :netty-loom-spring-example-netty:bootJar :netty-loom-spring-example-tomcat:bootJar
+  ```
+
+### Raising OS limits for high connection counts
+
+Both the k6 client and the server JVM need file descriptors ≥ connections + overhead:
+
+```bash
+ulimit -n 200000   # in the shell that launches run-all.sh
+```
+
+The harder limit at high VU counts on a **single machine** is **ephemeral-port exhaustion**: every
+client connection consumes a source port toward the one server port.
+
+- **macOS** (the default dev target): the ephemeral range is ~`49152–65535` (~16k ports;
+  `sysctl net.inet.ip.portrange.first net.inet.ip.portrange.last`). After a high-VU run, that many
+  client sockets sit in `TIME_WAIT` (~30s; `net.inet.tcp.msl`), so `run-all.sh` deliberately settles
+  between targets (`SETTLE`). **~10k concurrent is reliable; 50k is not** — 10k held + 10k draining
+  approaches the port ceiling, and the k6 client contends with the server for CPU on the same box.
+- **Linux** (CI / a dedicated box): widen `net.ipv4.ip_local_port_range`, enable `net.ipv4.tcp_tw_reuse`,
+  and for 50k add **loopback aliases** (`127.0.0.2`, `127.0.0.3`, …) so each client IP gets its own
+  ~64k port space.
+
+**For defensible 50k numbers, run the k6 client and the server on separate hosts** over a real NIC.
+Single-box loopback 50k results are indicative at best — the README and snapshot label them as such.
+
+## Running
+
+The whole three-way sweep (build jars first):
+
+```bash
+cd netty-loom-spring-benchmarks
+ulimit -n 200000
+VUS=10000 DURATION=60s SETTLE=35 bash scripts/run-all.sh
+```
+
+This starts each target with identical JVM flags, waits for health, samples idle memory, runs both
+scenarios while sampling memory under load, tears the target down, drains, and repeats. It then writes
+[`results/SNAPSHOT.md`](results/SNAPSHOT.md). Raw k6 exports and memory CSVs land in `results/` and are
+git-ignored; only the curated snapshot is committed.
+
+Knobs (env vars): `VUS` (connections for scenario 2), `DURATION` (steady-state plateau), `RAMP`
+(warmup ramp, trimmed when interpreting steady state), `SETTLE` (inter-target drain seconds),
+`JAVA_FLAGS` (applied **identically** to all three for a fair memory comparison).
+
+### Run one target by hand
+
+```bash
+java -jar ../netty-loom-spring-example-netty/build/libs/*.jar                              # :18080
+java -jar ../netty-loom-spring-example-tomcat/build/libs/*.jar --spring.profiles.active=platform  # :18081
+java -jar ../netty-loom-spring-example-tomcat/build/libs/*.jar --spring.profiles.active=virtual   # :18082
+
+k6 run --env BASE_URL=http://localhost:18080 --env VUS=10000 k6/high-concurrency.js
+```
+
+## Interpreting results — and how to keep yourself honest
+
+- **Memory per connection is noise-dominated at low VU counts.** With `-Xmx2g` and no `-Xms`, G1 commits
+  heap lazily, so RSS jumps ~100MB from GC/JIT regardless of connections. The metric only separates the
+  targets once connections vastly outnumber the ~200-thread pool. The snapshot uses the steady-state
+  **median** (not the transient peak) to suppress this.
+- **The platform-thread target's footprint does not scale with offered load.** It caps at ~200 worker
+  threads and refuses/queues the rest — so it can look memory-frugal while its p99 and error rate
+  collapse. Read all three metrics together, not memory alone.
+- **Coordinated omission.** The high-concurrency scenario is a *closed* model (`ramping-vus`): when the
+  server saturates, slow responses throttle the offered load, so a dying server can look merely "slow"
+  rather than overloaded. For the honest tail, also run an *open* model that holds offered RPS fixed
+  (k6 `constant-arrival-rate`) and watch errors instead of latency.
+- **Same box = contention.** At 10k+ VUs the k6 client steals CPU from the server; numbers are partly
+  client-bound. The two-host setup above is the only fully defensible configuration.
+- **Warmup/JIT and GC** are pinned the same way across all three (identical `JAVA_FLAGS`, a warmup ramp
+  that's trimmed) so a difference can't be misattributed to the server model.
+
+## Results snapshot
+
+See [`results/SNAPSHOT.md`](results/SNAPSHOT.md) for the committed numbers, the exact machine, and the
+JVM flags they were produced with. Regenerate any time by re-running `scripts/run-all.sh`.
