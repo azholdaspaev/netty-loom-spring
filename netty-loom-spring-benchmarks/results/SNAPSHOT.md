@@ -3,6 +3,8 @@
 - **Date:** 2026-06-13
 - **Machine:** `Darwin 25.5.0 arm64`
 - **JVM flags (identical for all targets):** `-XX:+UseG1GC -Xmx2g -XX:NativeMemoryTracking=summary`
+- **Logical cores:** 8 (client and server share this box — see CPU efficiency below)
+- **Tomcat connector:** `max-connections=20000` on both Tomcat targets, and `threads.max=20000` on the virtual target (platform keeps the default `threads.max=200` — the thread-per-request pool under test). Raised above the connection count so Tomcat's default `max-connections=8192` accept ceiling — which `spring.threads.virtual.enabled` does not touch — isn't the confound.
 - **High-concurrency connections (VUs):** 10,000
 - **Workload:** `GET /work` → `Thread.sleep(50)` (simulated 50ms blocking DB call); keep-alive on, so 1 VU ≈ 1 connection ≈ 1 in-flight request.
 
@@ -12,37 +14,50 @@
 
 At **10,000 concurrent blocking connections**:
 
-- **Throughput:** Netty-Loom 38,082 req/s vs Tomcat+VT 11,471 vs Tomcat-platform 3,798 req/s.
-- **Tail latency (p99):** Netty-Loom 620 ms vs Tomcat+VT 6,372 ms (10.3×) vs Tomcat-platform 2,455 ms (4.0×).
-- **Error rate:** Netty-Loom 0.00% vs Tomcat+VT 1.15% vs Tomcat-platform 4.68%.
+- **Throughput:** Netty-Loom 41,412 req/s vs Tomcat+VT 12,640 vs Tomcat-platform 3,834 req/s.
+- **Tail latency (p99):** Netty-Loom 447 ms vs Tomcat+VT 5,417 ms (12.1×) vs Tomcat-platform 2,653 ms (5.9×).
+- **Error rate:** Netty-Loom 0.00% vs Tomcat+VT 0.00% vs Tomcat-platform 0.00%.
+- **CPU efficiency:** Netty-Loom 1.8 cores → 22,908 req/s per core vs Tomcat+VT 2.2 cores → 5,734 req/s per core.
 
 **Does flipping `spring.threads.virtual.enabled=true` on Tomcat close the gap?** On this workload, **no** — Netty-Loom still wins on throughput, p99 tail, and error rate. The wedge is more than a Tomcat config flag.
 
-> Single-box loopback numbers: the k6 client contends with the server for CPU, so absolute latencies are inflated and the comparison is relative, not absolute. See [README](../README.md) caveats.
+**Is the throughput edge structural or a single-box contention artifact?** Structural: Netty-Loom does more work *per core* (22,908 vs 5,734 req/s/core), so the win isn't merely from grabbing cores k6 left idle. Off-box, raw per-request efficiency may compress, but a per-core advantage like this should persist.
+
+> Single-box loopback numbers: the k6 client contends with the server for CPU, so absolute latencies are inflated and the comparison is relative, not absolute. The CPU efficiency table is the discriminator for what survives off-box. See [README](../README.md) caveats.
 
 ## Scenario 1 — low-concurrency throughput (1→10 VUs, `GET /ping`)
 
 | Target | Throughput (req/s) | p50 (ms) | p95 (ms) | p99 (ms) | Error rate |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Netty-Loom (this library) | 26391 | 0.1 | 0.2 | 0.4 | 0.00% |
-| Tomcat, platform threads | 28910 | 0.1 | 0.2 | 0.3 | 0.00% |
-| Tomcat, virtual threads | 28187 | 0.1 | 0.2 | 0.3 | 0.00% |
+| Netty-Loom (this library) | 25782 | 0.1 | 0.2 | 0.4 | 0.00% |
+| Tomcat, platform threads | 26032 | 0.1 | 0.2 | 0.4 | 0.00% |
+| Tomcat, virtual threads | 25913 | 0.1 | 0.2 | 0.4 | 0.00% |
 
 ## Scenario 2 — high-concurrency blocking I/O (10,000 VUs, `GET /work`)
 
 | Target | Throughput (req/s) | p50 (ms) | p95 (ms) | p99 (ms) | Error rate |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Netty-Loom (this library) | 38082 | 162.1 | 449.4 | 619.9 | 0.00% |
-| Tomcat, platform threads | 3798 | 2227.3 | 2426.3 | 2455.1 | 4.68% |
-| Tomcat, virtual threads | 11471 | 96.8 | 4822.1 | 6372.3 | 1.15% |
+| Netty-Loom (this library) | 41412 | 170.6 | 392.2 | 446.7 | 0.00% |
+| Tomcat, platform threads | 3834 | 2607.6 | 2642.9 | 2652.7 | 0.00% |
+| Tomcat, virtual threads | 12640 | 95.3 | 3232.7 | 5416.8 | 0.00% |
+
+## CPU efficiency (server-side, during the 10,000-connection run)
+
+| Target | Throughput (req/s) | CPU (avg cores) | CPU util % (of 8) | Throughput / core (req/s) |
+| --- | ---: | ---: | ---: | ---: |
+| Netty-Loom (this library) | 41412 | 1.81 | 22.6% | 22908 |
+| Tomcat, platform threads | 3834 | 0.32 | 4.1% | 11799 |
+| Tomcat, virtual threads | 12640 | 2.20 | 27.6% | 5734 |
+
+Server-process CPU only (the k6 client is a separate process). **CPU (avg cores)** = Δ(cumulative CPU time) / Δ(wall clock) over the load window, so it counts only CPU burned while serving the load, not startup/JIT. **Throughput / core** is the discriminator: at 10,000 connections the client and server contend for the same 8 cores, so raw throughput partly reflects who grabbed more cores. Throughput-per-core is allocation-independent — a higher value means more requests served per core of work, an efficiency edge that should survive moving the client off-box. A target can post high throughput simply by pinning more cores; only a higher throughput-per-core says the win is structural.
 
 ## Memory per connection (under 10,000 concurrent connections)
 
 | Target | Idle RSS (MB) | Loaded RSS median (MB) | Loaded RSS peak (MB) | Δ RSS median (MB) | Memory / connection (KB) |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Netty-Loom (this library) | 177.5 | 337.4 | 418.2 | 159.9 | 16.37 |
-| Tomcat, platform threads | 212.9 | 411.8 | 454.9 | 198.9 | 20.36 |
-| Tomcat, virtual threads | 208.5 | 1357.6 | 1847.7 | 1149.1 | 117.67 |
+| Netty-Loom (this library) | 200.4 | 397.4 | 540.1 | 197.0 | 20.17 |
+| Tomcat, platform threads | 213.0 | 499.0 | 639.0 | 286.0 | 29.29 |
+| Tomcat, virtual threads | 210.5 | 1660.7 | 1893.4 | 1450.2 | 148.50 |
 
 RSS includes committed heap, thread stacks, and Netty direct buffers. `Memory / connection = (loaded RSS median − idle RSS median) / connections`, using the steady-state median rather than the transient peak to suppress G1 heap-commit/JIT jitter (a ~100MB noise floor with `-Xmx2g` and no `-Xms`). At low connection counts this metric is noise-dominated and not meaningful; it only separates the targets once connections vastly outnumber the platform-thread pool (~200). Near-zero or negative values mean per-connection growth was below the noise floor — expected for virtual-thread targets whose parked continuations are cheap. Note the platform-thread target's footprint does **not** scale with offered connections: it caps at ~200 worker threads and refuses/queues the rest, so it can look memory-frugal while collapsing on latency and error rate above.
 

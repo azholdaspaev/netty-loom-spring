@@ -7,7 +7,7 @@ Reads, per target:
   <name>_idle.csv           RSS samples taken before load
   <name>_high_load.csv      RSS samples taken during the high-concurrency run
 
-Usage: summarize.py <results_dir> <vus> <java_flags> <uname>
+Usage: summarize.py <results_dir> <vus> <java_flags> <uname> <tomcat_max_connections>
 """
 import json
 import os
@@ -19,6 +19,8 @@ RESULTS_DIR = sys.argv[1]
 VUS = int(sys.argv[2])
 JAVA_FLAGS = sys.argv[3]
 UNAME = sys.argv[4] if len(sys.argv) > 4 else "unknown"
+TOMCAT_MAXCONN = sys.argv[5] if len(sys.argv) > 5 else None
+NCORES = os.cpu_count() or 1
 
 TARGETS = [
     ("netty-loom", "Netty-Loom (this library)"),
@@ -71,6 +73,49 @@ def rss_kb(csv_name):
     return vals
 
 
+def parse_cputime(s):
+    """Parse `ps -o cputime` output ([DD-]HH:MM:SS[.ss] / MM:SS.ss) to seconds."""
+    s = s.strip()
+    if not s:
+        return None
+    days = 0
+    if "-" in s:
+        d, s = s.split("-", 1)
+        days = int(d)
+    try:
+        parts = [float(p) for p in s.split(":")]
+    except ValueError:
+        return None
+    while len(parts) < 3:
+        parts.insert(0, 0.0)
+    h, m, sec = parts
+    return days * 86400 + h * 3600 + m * 60 + sec
+
+
+def cpu_avg_cores(csv_name):
+    """Average cores used over the sampling window = Δ(cumulative CPU time) / Δ(wall clock).
+
+    Differencing first/last valid samples cancels CPU burned before the window (startup, JIT).
+    """
+    path = os.path.join(RESULTS_DIR, csv_name)
+    if not os.path.exists(path):
+        return None
+    samples = []
+    with open(path) as f:
+        next(f, None)
+        for line in f:
+            parts = line.strip().split(",")
+            if len(parts) >= 4 and parts[0].isdigit():
+                cpu = parse_cputime(parts[3])
+                if cpu is not None:
+                    samples.append((int(parts[0]), cpu))
+    if len(samples) < 2:
+        return None
+    wall = samples[-1][0] - samples[0][0]
+    cpu = samples[-1][1] - samples[0][1]
+    return (cpu / wall) if wall > 0 else None
+
+
 def f(v, nd=1, suffix=""):
     return "n/a" if v is None else f"{v:.{nd}f}{suffix}"
 
@@ -89,6 +134,13 @@ out.append("")
 out.append(f"- **Date:** {date.today().isoformat()}")
 out.append(f"- **Machine:** `{UNAME}`")
 out.append(f"- **JVM flags (identical for all targets):** `{JAVA_FLAGS}`")
+out.append(f"- **Logical cores:** {NCORES} (client and server share this box — see CPU efficiency below)")
+if TOMCAT_MAXCONN:
+    out.append(f"- **Tomcat connector:** `max-connections={TOMCAT_MAXCONN}` on both Tomcat targets, "
+               f"and `threads.max={TOMCAT_MAXCONN}` on the virtual target (platform keeps the default "
+               "`threads.max=200` — the thread-per-request pool under test). Raised above the connection "
+               "count so Tomcat's default `max-connections=8192` accept ceiling — which "
+               "`spring.threads.virtual.enabled` does not touch — isn't the confound.")
 out.append(f"- **High-concurrency connections (VUs):** {VUS:,}")
 out.append("- **Workload:** `GET /work` → `Thread.sleep(50)` (simulated 50ms blocking DB call); "
            "keep-alive on, so 1 VU ≈ 1 connection ≈ 1 in-flight request.")
@@ -100,10 +152,14 @@ out.append("")
 # ---- Headline (derived from scenario 2 data) ----
 def high_stats(name):
     s = load_summary(name, "high")
+    thr = pick(metric(s, "http_reqs"), "rate")
+    cores = cpu_avg_cores(f"{name}_high_load.csv")
     return {
-        "thr": pick(metric(s, "http_reqs"), "rate"),
+        "thr": thr,
         "p99": pick(metric(s, "http_req_duration"), "p(99)"),
         "err": (pick(metric(s, "http_req_failed"), "value", "rate") or 0) * 100,
+        "cores": cores,
+        "per_core": (thr / cores) if (thr is not None and cores) else None,
     }
 
 
@@ -122,6 +178,10 @@ if all(v["thr"] is not None and v["p99"] is not None for v in (nl, tp, tv)):
                f"({tp['p99'] / nl['p99']:.1f}×).")
     out.append(f"- **Error rate:** Netty-Loom {nl['err']:.2f}% vs Tomcat+VT {tv['err']:.2f}% "
                f"vs Tomcat-platform {tp['err']:.2f}%.")
+    if nl["per_core"] and tv["per_core"]:
+        out.append(f"- **CPU efficiency:** Netty-Loom {nl['cores']:.1f} cores → "
+                   f"{nl['per_core']:,.0f} req/s per core vs Tomcat+VT {tv['cores']:.1f} cores → "
+                   f"{tv['per_core']:,.0f} req/s per core.")
     out.append("")
     beats_vt = nl["p99"] < tv["p99"] and nl["err"] <= tv["err"] and nl["thr"] >= tv["thr"]
     if beats_vt:
@@ -133,8 +193,24 @@ if all(v["thr"] is not None and v["p99"] is not None for v in (nl, tp, tv)):
                    "On this workload Tomcat+VT is competitive with Netty-Loom — read that honestly: "
                    "the cheaper recommendation may be to enable virtual threads on Tomcat.")
     out.append("")
+    if nl["per_core"] and tv["per_core"]:
+        if nl["per_core"] >= tv["per_core"]:
+            out.append("**Is the throughput edge structural or a single-box contention artifact?** "
+                       f"Structural: Netty-Loom does more work *per core* "
+                       f"({nl['per_core']:,.0f} vs {tv['per_core']:,.0f} req/s/core), so the win isn't "
+                       "merely from grabbing cores k6 left idle. Off-box, raw per-request efficiency may "
+                       "compress, but a per-core advantage like this should persist.")
+        else:
+            out.append("**Is the throughput edge structural or a single-box contention artifact?** "
+                       f"Partly contention: Netty-Loom's throughput/core ({nl['per_core']:,.0f}) is "
+                       f"*below* Tomcat+VT's ({tv['per_core']:,.0f}), so some of its raw throughput comes "
+                       "from pinning more cores on this contended box. The I/O-parallelism win should "
+                       "persist off-box, but the raw-efficiency component would compress — confirm on "
+                       "two hosts.")
+        out.append("")
     out.append("> Single-box loopback numbers: the k6 client contends with the server for CPU, so "
-               "absolute latencies are inflated and the comparison is relative, not absolute. See "
+               "absolute latencies are inflated and the comparison is relative, not absolute. The CPU "
+               "efficiency table is the discriminator for what survives off-box. See "
                "[README](../README.md) caveats.")
     out.append("")
 
@@ -161,6 +237,36 @@ def scenario_table(scenario, heading):
 
 scenario_table("low", "Scenario 1 — low-concurrency throughput (1→10 VUs, `GET /ping`)")
 scenario_table("high", f"Scenario 2 — high-concurrency blocking I/O ({VUS:,} VUs, `GET /work`)")
+
+# ---- CPU efficiency (the structural-win vs contention-artifact discriminator) ----
+out.append(f"## CPU efficiency (server-side, during the {VUS:,}-connection run)")
+out.append("")
+out.append(row(["Target", "Throughput (req/s)", "CPU (avg cores)", f"CPU util % (of {NCORES})",
+                "Throughput / core (req/s)"]))
+out.append(row(["---", "---:", "---:", "---:", "---:"]))
+for name, label in TARGETS:
+    s = load_summary(name, "high")
+    thr = pick(metric(s, "http_reqs"), "rate")
+    cores = cpu_avg_cores(f"{name}_high_load.csv")
+    util = (cores / NCORES * 100) if cores is not None else None
+    per_core = (thr / cores) if (thr is not None and cores) else None
+    out.append(row([
+        label,
+        f(thr, 0),
+        f(cores, 2),
+        f(util, 1, "%"),
+        f(per_core, 0),
+    ]))
+out.append("")
+out.append("Server-process CPU only (the k6 client is a separate process). **CPU (avg cores)** = "
+           "Δ(cumulative CPU time) / Δ(wall clock) over the load window, so it counts only CPU burned "
+           "while serving the load, not startup/JIT. **Throughput / core** is the discriminator: at "
+           f"{VUS:,} connections the client and server contend for the same {NCORES} cores, so raw "
+           "throughput partly reflects who grabbed more cores. Throughput-per-core is allocation-"
+           "independent — a higher value means more requests served per core of work, an efficiency "
+           "edge that should survive moving the client off-box. A target can post high throughput "
+           "simply by pinning more cores; only a higher throughput-per-core says the win is structural.")
+out.append("")
 
 # ---- Memory per connection ----
 out.append(f"## Memory per connection (under {VUS:,} concurrent connections)")
