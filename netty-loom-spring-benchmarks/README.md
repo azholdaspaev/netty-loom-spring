@@ -151,8 +151,17 @@ k6 run --env BASE_URL=http://localhost:18080 --env VUS=10000 k6/high-concurrency
   server saturates, slow responses throttle the offered load, so a dying server can look merely "slow"
   rather than overloaded. For the honest tail, also run an *open* model that holds offered RPS fixed
   (k6 `constant-arrival-rate`) and watch errors instead of latency.
-- **Same box = contention.** At 10k+ VUs the k6 client steals CPU from the server; numbers are partly
-  client-bound. The two-host setup above is the only fully defensible configuration.
+- **Same box = contention — so we report CPU per target.** At 10k+ VUs the k6 client steals CPU from
+  the server; raw throughput is partly client-bound. Part of Netty-Loom's edge is a leaner per-request
+  pipeline, and on a contended box "cheaper per request" converts directly into "grabs more of the
+  shared cores than k6 leaves for Tomcat." The **CPU efficiency** table in the snapshot is the cheap
+  discriminator: it reports each server's average cores used (Δ cumulative CPU time / Δ wall over the
+  load window) and **throughput per core**. Throughput-per-core is allocation-independent — if
+  Netty-Loom serves more requests *per core* than Tomcat+VT, the win is structural and should survive
+  going off-box; if it wins only by pinning more cores, that component is a contention artifact that
+  off-box testing would compress (though the structural I/O-parallelism / poller advantage should
+  persist). The two-host setup above remains the only fully defensible configuration; the CPU column
+  tells you, on a single box, which story the numbers are telling.
 - **Warmup/JIT and GC** are pinned the same way across all three (identical `JAVA_FLAGS`, a warmup ramp
   that's trimmed) so a difference can't be misattributed to the server model.
 
