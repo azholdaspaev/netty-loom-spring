@@ -35,6 +35,12 @@ SETTLE="${SETTLE:-10}"
 # Identical flags for every target so the memory comparison is apples-to-apples. No -Xms, so
 # committed heap (and thus RSS) grows with real usage rather than being pre-committed away.
 JAVA_FLAGS="${JAVA_FLAGS:--XX:+UseG1GC -Xmx2g -XX:NativeMemoryTracking=summary}"
+# Tomcat's connector defaults to maxConnections=8192 — an established-connection cap that
+# spring.threads.virtual.enabled does NOT raise. At VUS connections, the overflow is reset/
+# queued and shows up as a tail-latency + error-rate collapse that's config, not architecture.
+# Raise the cap well above the offered load so the comparison reflects architecture. The VT
+# target also gets threads.max raised (its executor isn't pool-bounded, but this is explicit).
+TOMCAT_MAXCONN=$(( VUS * 2 ))
 
 # Resolve the bootJars by glob so a version bump doesn't silently break the run. The plain
 # (-plain.jar) artifact is filtered out; the boot-packaged jar is the runnable one.
@@ -95,10 +101,12 @@ benchmark_target() {
 }
 
 benchmark_target "netty-loom"      18080 -jar "$NETTY_JAR"
-benchmark_target "tomcat-platform" 18081 -jar "$TOMCAT_JAR" --spring.profiles.active=platform
-benchmark_target "tomcat-virtual"  18082 -jar "$TOMCAT_JAR" --spring.profiles.active=virtual
+benchmark_target "tomcat-platform" 18081 -jar "$TOMCAT_JAR" --spring.profiles.active=platform \
+  --server.tomcat.max-connections="$TOMCAT_MAXCONN"
+benchmark_target "tomcat-virtual"  18082 -jar "$TOMCAT_JAR" --spring.profiles.active=virtual \
+  --server.tomcat.max-connections="$TOMCAT_MAXCONN" --server.tomcat.threads.max="$TOMCAT_MAXCONN"
 
 echo "================ summarizing ================"
 UNAME=$(uname -srm)
-python3 "$SCRIPT_DIR/summarize.py" "$RESULTS" "$VUS" "$JAVA_FLAGS" "$UNAME" > "$RESULTS/SNAPSHOT.md"
+python3 "$SCRIPT_DIR/summarize.py" "$RESULTS" "$VUS" "$JAVA_FLAGS" "$UNAME" "$TOMCAT_MAXCONN" > "$RESULTS/SNAPSHOT.md"
 echo "wrote $RESULTS/SNAPSHOT.md"

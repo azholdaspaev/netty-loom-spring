@@ -26,6 +26,14 @@ The apps live in [`netty-loom-spring-example-netty`](../netty-loom-spring-exampl
 [`netty-loom-spring-example-tomcat`](../netty-loom-spring-example-tomcat) (the Tomcat one is launched
 twice with different Spring profiles, `platform` and `virtual`).
 
+Both Tomcat targets run with `server.tomcat.max-connections` raised above the connection count
+(`run-all.sh` sets it to `2 × VUS`). This is **not** tuning Tomcat to win — it removes a confound:
+Tomcat's connector defaults to `max-connections=8192`, an established-connection cap that
+`spring.threads.virtual.enabled` does **not** raise (the flag only swaps the request executor for a
+`VirtualThreadExecutor`). Left at the default, ~1,800 of 10k connections would be reset/queued at the
+accept ceiling — a config artifact masquerading as an architectural limit. See
+[Interpreting results](#interpreting-results--and-how-to-keep-yourself-honest).
+
 Endpoints:
 - `GET /ping` → `pong` — minimal work, for raw throughput.
 - `GET /work` → `Thread.sleep(50)` then small JSON — a **blocking** 50ms call simulating a database
@@ -119,6 +127,19 @@ k6 run --env BASE_URL=http://localhost:18080 --env VUS=10000 k6/high-concurrency
 
 ## Interpreting results — and how to keep yourself honest
 
+- **Tomcat's accept ceiling is config, not architecture — so we raise it.** Tomcat's NIO connector
+  defaults to `max-connections=8192` and `threads.max=200`. Enabling virtual threads
+  (`spring.threads.virtual.enabled=true`) replaces the worker pool with a `VirtualThreadExecutor` but
+  leaves the acceptor, poller, and `max-connections` untouched (verified in spring-boot-tomcat 4.0.5's
+  `TomcatVirtualThreadsWebServerFactoryCustomizer`). At 10k connections, the default would reset/queue
+  ~1,800 of them at the accept ceiling, producing a tail-latency + error-rate collapse that's a config
+  artifact, not an architectural one. `run-all.sh` therefore sets `max-connections = 2 × VUS` on both
+  Tomcat targets, and raises `threads.max` to match on the **virtual** target (its executor isn't
+  pool-bounded, but this forecloses the "you throttled the VT path" objection). The **platform** target
+  keeps `threads.max=200` — the bounded thread-per-request pool *is* the architecture under test. The
+  OS backlog (`accept-count=100`) is left at its default, ≈ Netty core's hardcoded `SO_BACKLOG=128`, and
+  isn't the bottleneck under the 15s gradual ramp. Whatever gap survives this is architecture; the
+  earlier default-config snapshot is in git history (commit `c4f4270`) for a before/after comparison.
 - **Memory per connection is noise-dominated at low VU counts.** With `-Xmx2g` and no `-Xms`, G1 commits
   heap lazily, so RSS jumps ~100MB from GC/JIT regardless of connections. The metric only separates the
   targets once connections vastly outnumber the ~200-thread pool. The snapshot uses the steady-state

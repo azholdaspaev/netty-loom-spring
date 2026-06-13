@@ -7,7 +7,7 @@ Reads, per target:
   <name>_idle.csv           RSS samples taken before load
   <name>_high_load.csv      RSS samples taken during the high-concurrency run
 
-Usage: summarize.py <results_dir> <vus> <java_flags> <uname>
+Usage: summarize.py <results_dir> <vus> <java_flags> <uname> <tomcat_max_connections>
 """
 import json
 import os
@@ -19,6 +19,7 @@ RESULTS_DIR = sys.argv[1]
 VUS = int(sys.argv[2])
 JAVA_FLAGS = sys.argv[3]
 UNAME = sys.argv[4] if len(sys.argv) > 4 else "unknown"
+TOMCAT_MAXCONN = sys.argv[5] if len(sys.argv) > 5 else None
 
 TARGETS = [
     ("netty-loom", "Netty-Loom (this library)"),
@@ -89,6 +90,12 @@ out.append("")
 out.append(f"- **Date:** {date.today().isoformat()}")
 out.append(f"- **Machine:** `{UNAME}`")
 out.append(f"- **JVM flags (identical for all targets):** `{JAVA_FLAGS}`")
+if TOMCAT_MAXCONN:
+    out.append(f"- **Tomcat connector:** `max-connections={TOMCAT_MAXCONN}` on both Tomcat targets, "
+               f"and `threads.max={TOMCAT_MAXCONN}` on the virtual target (platform keeps the default "
+               "`threads.max=200` — the thread-per-request pool under test). Raised above the connection "
+               "count so Tomcat's default `max-connections=8192` accept ceiling — which "
+               "`spring.threads.virtual.enabled` does not touch — isn't the confound.")
 out.append(f"- **High-concurrency connections (VUs):** {VUS:,}")
 out.append("- **Workload:** `GET /work` → `Thread.sleep(50)` (simulated 50ms blocking DB call); "
            "keep-alive on, so 1 VU ≈ 1 connection ≈ 1 in-flight request.")

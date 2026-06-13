@@ -3,6 +3,7 @@
 - **Date:** 2026-06-13
 - **Machine:** `Darwin 25.5.0 arm64`
 - **JVM flags (identical for all targets):** `-XX:+UseG1GC -Xmx2g -XX:NativeMemoryTracking=summary`
+- **Tomcat connector:** `max-connections=20000` on both Tomcat targets, and `threads.max=20000` on the virtual target (platform keeps the default `threads.max=200` — the thread-per-request pool under test). Raised above the connection count so Tomcat's default `max-connections=8192` accept ceiling — which `spring.threads.virtual.enabled` does not touch — isn't the confound.
 - **High-concurrency connections (VUs):** 10,000
 - **Workload:** `GET /work` → `Thread.sleep(50)` (simulated 50ms blocking DB call); keep-alive on, so 1 VU ≈ 1 connection ≈ 1 in-flight request.
 
@@ -12,9 +13,9 @@
 
 At **10,000 concurrent blocking connections**:
 
-- **Throughput:** Netty-Loom 38,082 req/s vs Tomcat+VT 11,471 vs Tomcat-platform 3,798 req/s.
-- **Tail latency (p99):** Netty-Loom 620 ms vs Tomcat+VT 6,372 ms (10.3×) vs Tomcat-platform 2,455 ms (4.0×).
-- **Error rate:** Netty-Loom 0.00% vs Tomcat+VT 1.15% vs Tomcat-platform 4.68%.
+- **Throughput:** Netty-Loom 37,090 req/s vs Tomcat+VT 11,934 vs Tomcat-platform 3,631 req/s.
+- **Tail latency (p99):** Netty-Loom 578 ms vs Tomcat+VT 5,924 ms (10.3×) vs Tomcat-platform 2,869 ms (5.0×).
+- **Error rate:** Netty-Loom 0.00% vs Tomcat+VT 0.00% vs Tomcat-platform 0.00%.
 
 **Does flipping `spring.threads.virtual.enabled=true` on Tomcat close the gap?** On this workload, **no** — Netty-Loom still wins on throughput, p99 tail, and error rate. The wedge is more than a Tomcat config flag.
 
@@ -24,25 +25,25 @@ At **10,000 concurrent blocking connections**:
 
 | Target | Throughput (req/s) | p50 (ms) | p95 (ms) | p99 (ms) | Error rate |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Netty-Loom (this library) | 26391 | 0.1 | 0.2 | 0.4 | 0.00% |
-| Tomcat, platform threads | 28910 | 0.1 | 0.2 | 0.3 | 0.00% |
-| Tomcat, virtual threads | 28187 | 0.1 | 0.2 | 0.3 | 0.00% |
+| Netty-Loom (this library) | 27516 | 0.1 | 0.2 | 0.3 | 0.00% |
+| Tomcat, platform threads | 28297 | 0.1 | 0.2 | 0.3 | 0.00% |
+| Tomcat, virtual threads | 27932 | 0.1 | 0.2 | 0.3 | 0.00% |
 
 ## Scenario 2 — high-concurrency blocking I/O (10,000 VUs, `GET /work`)
 
 | Target | Throughput (req/s) | p50 (ms) | p95 (ms) | p99 (ms) | Error rate |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Netty-Loom (this library) | 38082 | 162.1 | 449.4 | 619.9 | 0.00% |
-| Tomcat, platform threads | 3798 | 2227.3 | 2426.3 | 2455.1 | 4.68% |
-| Tomcat, virtual threads | 11471 | 96.8 | 4822.1 | 6372.3 | 1.15% |
+| Netty-Loom (this library) | 37090 | 155.5 | 444.5 | 577.7 | 0.00% |
+| Tomcat, platform threads | 3631 | 2776.6 | 2848.3 | 2869.1 | 0.00% |
+| Tomcat, virtual threads | 11934 | 86.0 | 4066.8 | 5924.2 | 0.00% |
 
 ## Memory per connection (under 10,000 concurrent connections)
 
 | Target | Idle RSS (MB) | Loaded RSS median (MB) | Loaded RSS peak (MB) | Δ RSS median (MB) | Memory / connection (KB) |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Netty-Loom (this library) | 177.5 | 337.4 | 418.2 | 159.9 | 16.37 |
-| Tomcat, platform threads | 212.9 | 411.8 | 454.9 | 198.9 | 20.36 |
-| Tomcat, virtual threads | 208.5 | 1357.6 | 1847.7 | 1149.1 | 117.67 |
+| Netty-Loom (this library) | 178.7 | 346.8 | 435.8 | 168.0 | 17.21 |
+| Tomcat, platform threads | 200.0 | 429.0 | 522.2 | 229.0 | 23.45 |
+| Tomcat, virtual threads | 206.7 | 1358.3 | 1874.0 | 1151.6 | 117.92 |
 
 RSS includes committed heap, thread stacks, and Netty direct buffers. `Memory / connection = (loaded RSS median − idle RSS median) / connections`, using the steady-state median rather than the transient peak to suppress G1 heap-commit/JIT jitter (a ~100MB noise floor with `-Xmx2g` and no `-Xms`). At low connection counts this metric is noise-dominated and not meaningful; it only separates the targets once connections vastly outnumber the platform-thread pool (~200). Near-zero or negative values mean per-connection growth was below the noise floor — expected for virtual-thread targets whose parked continuations are cheap. Note the platform-thread target's footprint does **not** scale with offered connections: it caps at ~200 worker threads and refuses/queues the rest, so it can look memory-frugal while collapsing on latency and error rate above.
 
