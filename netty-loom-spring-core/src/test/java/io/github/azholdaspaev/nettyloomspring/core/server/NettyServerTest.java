@@ -27,11 +27,12 @@ class NettyServerTest {
 
     @BeforeEach
     void setup() {
-        NettyServerConfiguration configuration = new NettyServerConfiguration(0, 0, 0, false);
+        NettyServerConfiguration configuration = new NettyServerConfiguration(0, 0, 0, false, "auto");
         NettyPipelineConfigurer pipelineConfigurer = new DefaultNettyPipelineConfigurer(List.of());
         ChannelGroup channelGroup = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
         NettyServerChannelInitializer channelInitializer = new NettyServerChannelInitializer(pipelineConfigurer, channelGroup);
-        nettyServer = new NettyServer(configuration, channelInitializer, channelGroup);
+        NettyIoHandlerFactory nettyIoHandlerFactory = new NettyIoHandlerFactory(configuration);
+        nettyServer = new NettyServer(configuration, channelInitializer, nettyIoHandlerFactory, channelGroup);
     }
 
     @AfterEach

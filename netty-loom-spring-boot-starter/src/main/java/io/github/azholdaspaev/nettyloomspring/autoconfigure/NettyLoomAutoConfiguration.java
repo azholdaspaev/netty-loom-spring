@@ -8,6 +8,7 @@ import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestHandler;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.DefaultNettyPipelineConfigurer;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NamedChannelHandler;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineConfigurer;
+import io.github.azholdaspaev.nettyloomspring.core.server.NettyIoHandlerFactory;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyServer;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyServerChannelInitializer;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyServerConfiguration;
@@ -50,13 +51,25 @@ public class NettyLoomAutoConfiguration {
     }
 
     @Bean
-    public NettyServer nettyServer(NettyLoomProperties properties,
-                                   NettyServerChannelInitializer nettyServerChannelInitializer,
-                                   ChannelGroup nettyLoomChannelGroup) {
-        NettyServerConfiguration configuration = new NettyServerConfiguration(
-            properties.port(), properties.bossThreads(), properties.workerThreads(), properties.keepAlive()
+    public NettyServerConfiguration nettyServerConfiguration(NettyLoomProperties properties) {
+        return new NettyServerConfiguration(
+            properties.port(), properties.bossThreads(), properties.workerThreads(), properties.keepAlive(),
+            properties.transport()
         );
-        return new NettyServer(configuration, nettyServerChannelInitializer, nettyLoomChannelGroup);
+    }
+
+    @Bean
+    public NettyIoHandlerFactory nettyIoHandlerFactory(NettyServerConfiguration nettyServerConfiguration) {
+        return new NettyIoHandlerFactory(nettyServerConfiguration);
+    }
+
+    @Bean
+    public NettyServer nettyServer(NettyServerConfiguration nettyServerConfiguration,
+                                   NettyServerChannelInitializer nettyServerChannelInitializer,
+                                   NettyIoHandlerFactory nettyIoHandlerFactory,
+                                   ChannelGroup nettyLoomChannelGroup) {
+
+        return new NettyServer(nettyServerConfiguration, nettyServerChannelInitializer, nettyIoHandlerFactory, nettyLoomChannelGroup);
     }
 
     @Bean

@@ -25,6 +25,20 @@ class NettyLoomPropertiesTest {
         assertEquals(Duration.ofSeconds(5), properties.readTimeout());
     }
 
+    @Test
+    void shouldDefaultTransportToAuto() {
+        NettyLoomProperties properties = bind(Map.of());
+
+        assertEquals("auto", properties.transport());
+    }
+
+    @Test
+    void shouldOverrideTransportFromConfiguration() {
+        NettyLoomProperties properties = bind(Map.of("server.netty.transport", "nio"));
+
+        assertEquals("nio", properties.transport());
+    }
+
     private static NettyLoomProperties bind(Map<String, Object> source) {
         return new Binder(new MapConfigurationPropertySource(source))
             .bindOrCreate("server.netty", NettyLoomProperties.class);

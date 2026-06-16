@@ -12,5 +12,6 @@ public record NettyLoomProperties(
     @DefaultValue("0") int workerThreads,
     @DefaultValue("true") boolean keepAlive,
     @DefaultValue("30s") Duration shutdownGracePeriod,
-    @DefaultValue("30s") Duration readTimeout
+    @DefaultValue("30s") Duration readTimeout,
+    @DefaultValue("auto") String transport
 ) {}
