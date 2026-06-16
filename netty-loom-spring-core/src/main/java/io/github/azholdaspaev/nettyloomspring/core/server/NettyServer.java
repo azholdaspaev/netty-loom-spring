@@ -7,8 +7,6 @@ import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
 import io.netty.channel.group.ChannelGroup;
-import io.netty.channel.nio.NioIoHandler;
-import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.util.concurrent.Future;
 
 import java.net.InetSocketAddress;
@@ -22,15 +20,18 @@ public class NettyServer {
 
     private final NettyServerConfiguration configuration;
     private final NettyServerChannelInitializer channelInitializer;
+    private final NettyIoHandlerFactory ioHandlerFactory;
     private final ChannelGroup channelGroup;
 
     private volatile RunningState state;
 
     public NettyServer(NettyServerConfiguration configuration,
                        NettyServerChannelInitializer channelInitializer,
+                       NettyIoHandlerFactory ioHandlerFactory,
                        ChannelGroup channelGroup) {
         this.configuration = configuration;
         this.channelInitializer = channelInitializer;
+        this.ioHandlerFactory = ioHandlerFactory;
         this.channelGroup = channelGroup;
     }
 
@@ -110,7 +111,7 @@ public class NettyServer {
     private Channel bind(EventLoopGroup boss, EventLoopGroup worker) throws InterruptedException {
         ServerBootstrap bootstrap = new ServerBootstrap()
             .group(boss, worker)
-            .channel(NioServerSocketChannel.class)
+            .channel(ioHandlerFactory.getServerChannelClass())
             .childHandler(channelInitializer)
             .option(ChannelOption.SO_BACKLOG, 128)
             .childOption(ChannelOption.SO_KEEPALIVE, configuration.keepAlive());
@@ -141,8 +142,8 @@ public class NettyServer {
         }
     }
 
-    private static EventLoopGroup newEventLoopGroup(int threads) {
-        return new MultiThreadIoEventLoopGroup(threads, NioIoHandler.newFactory());
+    private EventLoopGroup newEventLoopGroup(int threads) {
+        return new MultiThreadIoEventLoopGroup(threads, ioHandlerFactory.getIoHandlerFactory());
     }
 
     private InetSocketAddress resolvedAddress() {

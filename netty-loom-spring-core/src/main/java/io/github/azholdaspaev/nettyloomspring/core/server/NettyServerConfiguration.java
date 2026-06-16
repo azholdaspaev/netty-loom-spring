@@ -4,5 +4,6 @@ public record NettyServerConfiguration(
     int port,
     int bossThreads,
     int workerThreads,
-    boolean keepAlive
+    boolean keepAlive,
+    String transport
 ) {}
