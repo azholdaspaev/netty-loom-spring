@@ -108,7 +108,8 @@ public class NettyLoomAutoConfiguration {
     }
 
     @Bean
-    public HttpRequestDispatcher httpRequestDispatcher(DispatcherServlet dispatcherServlet) {
-        return new SpringHttpRequestDispatcher(dispatcherServlet);
+    public HttpRequestDispatcher httpRequestDispatcher(DispatcherServlet dispatcherServlet,
+                                                       NettyServletContext servletContext) {
+        return new SpringHttpRequestDispatcher(dispatcherServlet, servletContext);
     }
 }

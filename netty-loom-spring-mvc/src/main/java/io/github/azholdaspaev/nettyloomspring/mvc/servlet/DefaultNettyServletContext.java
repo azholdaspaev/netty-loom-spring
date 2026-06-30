@@ -1,5 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.Filter;
 import jakarta.servlet.FilterRegistration;
 import jakarta.servlet.Servlet;
@@ -10,12 +11,15 @@ import org.slf4j.LoggerFactory;
 import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,6 +33,11 @@ public class DefaultNettyServletContext implements NettyServletContext {
     private final ConcurrentMap<String, String> initParameters = new ConcurrentHashMap<>();
     private final Map<String, ServletRegistration> servletRegistrations = new LinkedHashMap<>();
     private final Map<String, FilterRegistration> filterRegistrations = new LinkedHashMap<>();
+    // Immutable snapshot of the executable filters, built once and reused on the per-request hot
+    // path. Invalidated (set to null) whenever a filter is registered, so a late registration
+    // rebuilds it on next read. Registration is single-threaded at startup; reads happen after
+    // server start, so the volatile field is sufficient for safe publication.
+    private volatile List<RegisteredFilter> registeredFiltersSnapshot;
 
     @Override
     public Object getAttribute(String name) {
@@ -100,25 +109,26 @@ public class DefaultNettyServletContext implements NettyServletContext {
         return Collections.unmodifiableMap(servletRegistrations);
     }
 
-    private FilterRegistration.Dynamic registerFilter(String filterName, String className) {
-        var registration = new NettyFilterRegistration(filterName, className);
+    private FilterRegistration.Dynamic registerFilter(String filterName, String className, Filter filter) {
+        var registration = new NettyFilterRegistration(filterName, className, filter);
         filterRegistrations.put(filterName, registration);
+        registeredFiltersSnapshot = null;
         return registration;
     }
 
     @Override
     public FilterRegistration.Dynamic addFilter(String filterName, String className) {
-        return registerFilter(filterName, className);
+        return registerFilter(filterName, className, null);
     }
 
     @Override
     public FilterRegistration.Dynamic addFilter(String filterName, Filter filter) {
-        return registerFilter(filterName, filter.getClass().getName());
+        return registerFilter(filterName, filter.getClass().getName(), filter);
     }
 
     @Override
     public FilterRegistration.Dynamic addFilter(String filterName, Class<? extends Filter> filterClass) {
-        return registerFilter(filterName, filterClass.getName());
+        return registerFilter(filterName, filterClass.getName(), null);
     }
 
     @Override
@@ -129,6 +139,26 @@ public class DefaultNettyServletContext implements NettyServletContext {
     @Override
     public Map<String, ? extends FilterRegistration> getFilterRegistrations() {
         return Collections.unmodifiableMap(filterRegistrations);
+    }
+
+    @Override
+    public List<RegisteredFilter> getRegisteredFilters() {
+        List<RegisteredFilter> snapshot = registeredFiltersSnapshot;
+        if (snapshot == null) {
+            snapshot = buildRegisteredFilters();
+            registeredFiltersSnapshot = snapshot;
+        }
+        return snapshot;
+    }
+
+    private List<RegisteredFilter> buildRegisteredFilters() {
+        var registered = new ArrayList<RegisteredFilter>();
+        for (var registration : filterRegistrations.values()) {
+            if (registration instanceof NettyFilterRegistration filterRegistration && filterRegistration.filter != null) {
+                registered.add(filterRegistration.toRegisteredFilter());
+            }
+        }
+        return Collections.unmodifiableList(registered);
     }
 
     @Override
@@ -292,13 +322,24 @@ public class DefaultNettyServletContext implements NettyServletContext {
 
     private static class NettyFilterRegistration extends AbstractNettyRegistration implements FilterRegistration.Dynamic {
 
-        NettyFilterRegistration(String name, String className) {
+        private final Filter filter;
+        private final Set<String> urlPatterns = new LinkedHashSet<>();
+        private final EnumSet<DispatcherType> dispatcherTypes = EnumSet.noneOf(DispatcherType.class);
+
+        NettyFilterRegistration(String name, String className, Filter filter) {
             super(name, className);
+            this.filter = filter;
         }
 
         @Override
-        public void addMappingForServletNames(java.util.EnumSet<jakarta.servlet.DispatcherType> dispatcherTypes,
+        public void addMappingForServletNames(EnumSet<DispatcherType> dispatcherTypes,
                                                boolean isMatchAfter, String... servletNames) {
+            // Servlet-name filter mappings are not executed by this server (only URL-pattern
+            // mappings are). Warn so the unsupported mapping is observable instead of a silent no-op.
+            if (servletNames != null && servletNames.length > 0) {
+                log.warn("Filter '{}' declares servlet-name mappings {} which are not supported "
+                    + "and will be ignored; map it by URL pattern instead.", getName(), List.of(servletNames));
+            }
         }
 
         @Override
@@ -307,13 +348,24 @@ public class DefaultNettyServletContext implements NettyServletContext {
         }
 
         @Override
-        public void addMappingForUrlPatterns(java.util.EnumSet<jakarta.servlet.DispatcherType> dispatcherTypes,
+        public void addMappingForUrlPatterns(EnumSet<DispatcherType> dispatcherTypes,
                                               boolean isMatchAfter, String... urlPatterns) {
+            // The servlet spec defaults to REQUEST when no dispatcher types are supplied; Spring
+            // Boot always passes EnumSet.of(REQUEST), but the spec allows null.
+            this.dispatcherTypes.addAll(dispatcherTypes == null ? EnumSet.of(DispatcherType.REQUEST) : dispatcherTypes);
+            Collections.addAll(this.urlPatterns, urlPatterns);
         }
 
         @Override
         public Collection<String> getUrlPatternMappings() {
-            return Collections.emptySet();
+            return Collections.unmodifiableSet(urlPatterns);
+        }
+
+        RegisteredFilter toRegisteredFilter() {
+            // EnumSet.copyOf(EnumSet) handles the empty case; an unmapped filter has no URL
+            // patterns either, so it never matches regardless of dispatcher types.
+            return new RegisteredFilter(getName(), filter, new LinkedHashSet<>(urlPatterns),
+                EnumSet.copyOf(dispatcherTypes));
         }
     }
 }

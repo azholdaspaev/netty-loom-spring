@@ -485,7 +485,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public DispatcherType getDispatcherType() {
-        return null;
+        return DispatcherType.REQUEST;
     }
 
     @Override

@@ -1,5 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.Filter;
 import jakarta.servlet.FilterRegistration;
 import jakarta.servlet.Servlet;
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.net.MalformedURLException;
+import java.util.EnumSet;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
@@ -410,6 +412,63 @@ class DefaultNettyServletContextTest {
         var registration = context.addFilter("f", "com.example.F");
 
         assertTrue(registration.getUrlPatternMappings().isEmpty());
+    }
+
+    @Test
+    void shouldStoreUrlPatternMappings() {
+        var registration = context.addFilter("f", new StubFilter());
+
+        registration.addMappingForUrlPatterns(EnumSet.of(DispatcherType.REQUEST), false, "/api/*", "/admin/*");
+
+        assertTrue(registration.getUrlPatternMappings().containsAll(List.of("/api/*", "/admin/*")));
+    }
+
+    @Test
+    void shouldDefaultDispatcherTypesToRequestWhenNullPassed() {
+        var registration = context.addFilter("f", new StubFilter());
+
+        registration.addMappingForUrlPatterns(null, false, "/*");
+
+        var registered = context.getRegisteredFilters();
+        assertEquals(1, registered.size());
+        assertTrue(registered.get(0).dispatcherTypes().contains(DispatcherType.REQUEST));
+    }
+
+    // --- Executable filter registrations (getRegisteredFilters) ---
+
+    @Test
+    void shouldRetainFilterInstanceInRegisteredFilters() {
+        Filter filter = new StubFilter();
+        var registration = context.addFilter("myFilter", filter);
+        registration.addMappingForUrlPatterns(EnumSet.of(DispatcherType.REQUEST), false, "/*");
+
+        var registered = context.getRegisteredFilters();
+
+        assertEquals(1, registered.size());
+        assertEquals("myFilter", registered.get(0).name());
+        assertEquals(filter, registered.get(0).filter());
+    }
+
+    @Test
+    void shouldPreserveRegistrationOrderInRegisteredFilters() {
+        context.addFilter("first", new StubFilter());
+        context.addFilter("second", new StubFilter());
+
+        var registered = context.getRegisteredFilters();
+
+        assertEquals(List.of("first", "second"), registered.stream().map(RegisteredFilter::name).toList());
+    }
+
+    @Test
+    void shouldExcludeClassNameOnlyRegistrationsFromRegisteredFilters() {
+        context.addFilter("instanceFilter", new StubFilter());
+        context.addFilter("classNameFilter", "com.example.MyFilter");
+        context.addFilter("classFilter", StubFilter.class);
+
+        var registered = context.getRegisteredFilters();
+
+        assertEquals(1, registered.size());
+        assertEquals("instanceFilter", registered.get(0).name());
     }
 
     // --- Resource methods (all return null) ---

@@ -1,18 +1,28 @@
 package io.github.azholdaspaev.nettyloomspring.mvc.handler;
 
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestDispatcher;
+import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyFilterChain;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyHttpServletRequest;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyHttpServletResponse;
+import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
+import io.github.azholdaspaev.nettyloomspring.mvc.servlet.RegisteredFilter;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
+import jakarta.servlet.FilterChain;
 import org.springframework.web.servlet.DispatcherServlet;
+
+import java.util.List;
 
 public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
 
-    private final DispatcherServlet dispatcherServlet;
+    private final NettyServletContext servletContext;
+    private final FilterChain terminal;
 
-    public SpringHttpRequestDispatcher(DispatcherServlet dispatcherServlet) {
-        this.dispatcherServlet = dispatcherServlet;
+    public SpringHttpRequestDispatcher(DispatcherServlet dispatcherServlet, NettyServletContext servletContext) {
+        this.servletContext = servletContext;
+        // The chain terminal hands the request to the DispatcherServlet; bound once here rather
+        // than re-creating the method reference per request.
+        this.terminal = dispatcherServlet::service;
     }
 
     @Override
@@ -20,7 +30,13 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
         NettyHttpServletRequest servletRequest = new NettyHttpServletRequest(request);
         NettyHttpServletResponse servletResponse = new NettyHttpServletResponse();
 
-        dispatcherServlet.service(servletRequest, servletResponse);
+        String requestPath = servletRequest.getRequestURI();
+        List<RegisteredFilter> applicable = servletContext.getRegisteredFilters().stream()
+            .filter(filter -> filter.matches(requestPath, servletRequest.getDispatcherType()))
+            .toList();
+
+        NettyFilterChain chain = new NettyFilterChain(applicable, terminal);
+        chain.doFilter(servletRequest, servletResponse);
 
         return servletResponse.toFullHttpResponse();
     }
