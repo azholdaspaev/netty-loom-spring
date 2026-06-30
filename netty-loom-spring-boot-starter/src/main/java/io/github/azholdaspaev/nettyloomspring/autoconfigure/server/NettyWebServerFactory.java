@@ -1,8 +1,10 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.server;
 
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyServer;
+import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyFilterConfig;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletConfig;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
+import io.github.azholdaspaev.nettyloomspring.mvc.servlet.RegisteredFilter;
 import jakarta.servlet.ServletException;
 import org.springframework.boot.web.server.WebServer;
 import org.springframework.boot.web.server.WebServerException;
@@ -33,6 +35,7 @@ public class NettyWebServerFactory implements ServletWebServerFactory {
     @Override
     public WebServer getWebServer(ServletContextInitializer... initializers) {
         initializeServletContext(initializers);
+        initializeFilters();
         initializeDispatcherServlet();
         return new NettyWebServer(nettyServer, shutdownGracePeriod);
     }
@@ -43,6 +46,16 @@ public class NettyWebServerFactory implements ServletWebServerFactory {
                 initializer.onStartup(servletContext);
             } catch (ServletException e) {
                 throw new WebServerException("Failed to run servlet context initializer", e);
+            }
+        }
+    }
+
+    private void initializeFilters() {
+        for (RegisteredFilter registeredFilter : servletContext.getRegisteredFilters()) {
+            try {
+                registeredFilter.filter().init(new NettyFilterConfig(registeredFilter.name(), servletContext));
+            } catch (ServletException e) {
+                throw new WebServerException("Failed to initialize filter '" + registeredFilter.name() + "'", e);
             }
         }
     }

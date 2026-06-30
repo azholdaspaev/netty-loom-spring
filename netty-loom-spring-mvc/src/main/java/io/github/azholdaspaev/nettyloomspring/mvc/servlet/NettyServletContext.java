@@ -16,10 +16,20 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Enumeration;
 import java.util.EventListener;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 public interface NettyServletContext extends ServletContext {
+
+    /**
+     * Returns the executable filter registrations (those backed by a live {@link Filter}
+     * instance) in registration order, which already reflects Spring Boot's {@code @Order}
+     * resolution. Not part of the Jakarta {@link ServletContext} contract.
+     */
+    default List<RegisteredFilter> getRegisteredFilters() {
+        return List.of();
+    }
 
     @Override
     default String getContextPath() {

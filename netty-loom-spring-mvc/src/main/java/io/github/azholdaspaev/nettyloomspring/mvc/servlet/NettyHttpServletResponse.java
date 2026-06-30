@@ -56,12 +56,23 @@ public class NettyHttpServletResponse implements HttpServletResponse {
 
     @Override
     public void sendError(int sc, String msg) throws IOException {
+        discardBody();
         this.status = sc;
     }
 
     @Override
     public void sendError(int sc) throws IOException {
+        discardBody();
         this.status = sc;
+    }
+
+    private void discardBody() {
+        // Per the Servlet spec, sendError clears the response buffer (but not other headers/status).
+        resetBuffer();
+        // The body is now empty, so a previously-set Content-Length would mis-frame the response
+        // (client hangs waiting for bytes that never arrive); drop it and let toFullHttpResponse
+        // recompute Content-Length: 0.
+        headers.remove(HttpHeaders.CONTENT_LENGTH);
     }
 
     @Override
@@ -219,6 +230,10 @@ public class NettyHttpServletResponse implements HttpServletResponse {
     @Override
     public void resetBuffer() {
         body.reset();
+        // Drop the cached writer/stream too: the writer (autoFlush=false) holds an encoder buffer
+        // whose unflushed chars would otherwise be re-flushed into the body by toFullHttpResponse().
+        writer = null;
+        outputStream = null;
     }
 
     @Override
@@ -228,12 +243,10 @@ public class NettyHttpServletResponse implements HttpServletResponse {
 
     @Override
     public void reset() {
-        body.reset();
+        resetBuffer();
         headers.clear();
         status = HttpServletResponse.SC_OK;
         characterEncoding = StandardCharsets.ISO_8859_1;
-        writer = null;
-        outputStream = null;
     }
 
     @Override
