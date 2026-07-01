@@ -53,6 +53,14 @@ Tests use JUnit 6 (`org.junit.gen6`) on JUnit Platform. All test tasks are confi
 
 GitHub Actions (`.github/workflows/build.yml`): builds on push to main and PRs, uses Temurin JDK 25.
 
+## Code Review
+
+The bug-focused review (`/code-review`) is tuned for correctness recall — it requires a concrete failure scenario per finding and ranks correctness above cleanup. That framing structurally under-weights *maintainability and consistency* issues, which have no crash and no quotable rule. After a bug-recall review, run a separate **maintainability/consistency pass** with an explicit lens for the following (read whole files and across the module, not hunk-by-hunk):
+
+- **Naming consistency (convention-by-example).** New types should match the emergent naming of their siblings even when no written rule exists. Example: everything in `core.handler` is `Http`-prefixed (`HttpRequestHandler`, `HttpRequestDispatcher`, `HttpExceptionHandler`, `HttpConnectionMetadata`) — a new class there should carry the prefix.
+- **Magic constants.** Flag bare literals that encode a named concept; prefer a named constant or an existing enum/util. Example: HTTP scheme names and their default ports come from `io.netty.handler.codec.http.HttpScheme` (`HttpScheme.HTTPS.toString()` → `"https"`, `HttpScheme.HTTPS.port()` → `443`) rather than hardcoded `"http"/"https"` or `80/443`. Sentinel values (e.g. `""`/`0` for an unknown address) should be named constants documenting their contract.
+- **Cross-file duplication of the same fact.** Watch for one concept expressed twice in different places — the coupling a per-hunk scan misses. Example: a scheme→port default living as strings in one class and as `80/443` in another is the *same* fact; centralize it in one owner and have the other delegate.
+
 ## Guidelines
 
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.

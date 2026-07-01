@@ -5,5 +5,5 @@ import io.netty.handler.codec.http.FullHttpResponse;
 
 public interface HttpRequestDispatcher {
 
-    FullHttpResponse handle(FullHttpRequest request) throws Exception;
+    FullHttpResponse handle(FullHttpRequest request, HttpConnectionMetadata connection) throws Exception;
 }
