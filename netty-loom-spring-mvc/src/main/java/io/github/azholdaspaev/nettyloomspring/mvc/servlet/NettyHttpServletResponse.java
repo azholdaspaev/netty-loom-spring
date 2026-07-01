@@ -7,6 +7,9 @@ import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.codec.http.cookie.CookieHeaderNames;
+import io.netty.handler.codec.http.cookie.DefaultCookie;
+import io.netty.handler.codec.http.cookie.ServerCookieEncoder;
 import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.WriteListener;
 import jakarta.servlet.http.Cookie;
@@ -25,6 +28,7 @@ import java.util.Collection;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 public class NettyHttpServletResponse implements HttpServletResponse {
 
@@ -37,6 +41,40 @@ public class NettyHttpServletResponse implements HttpServletResponse {
 
     @Override
     public void addCookie(Cookie cookie) {
+        DefaultCookie nettyCookie = new DefaultCookie(cookie.getName(), Objects.requireNonNullElse(cookie.getValue(), ""));
+        if (cookie.getPath() != null) {
+            nettyCookie.setPath(cookie.getPath());
+        }
+        if (cookie.getDomain() != null) {
+            nettyCookie.setDomain(cookie.getDomain());
+        }
+        // maxAge -1 marks a session cookie: leave Max-Age unset rather than emitting it.
+        if (cookie.getMaxAge() >= 0) {
+            nettyCookie.setMaxAge(cookie.getMaxAge());
+        }
+        nettyCookie.setSecure(cookie.getSecure());
+        nettyCookie.setHttpOnly(cookie.isHttpOnly());
+        CookieHeaderNames.SameSite sameSite = parseSameSite(cookie.getAttribute("SameSite"));
+        if (sameSite != null) {
+            nettyCookie.setSameSite(sameSite);
+        }
+        // version is intentionally NOT propagated: RFC 6265 / Netty have no Version field.
+        // STRICT validates RFC 6265 name/value octets and throws IllegalArgumentException for invalid
+        // input; we let it propagate (fail-fast, matching Tomcat's Rfc6265CookieProcessor) rather than
+        // silently dropping or mangling the cookie.
+        headers.add(HttpHeaders.SET_COOKIE, ServerCookieEncoder.STRICT.encode(nettyCookie));
+    }
+
+    private static CookieHeaderNames.SameSite parseSameSite(String value) {
+        if (value == null) {
+            return null;
+        }
+        for (CookieHeaderNames.SameSite candidate : CookieHeaderNames.SameSite.values()) {
+            if (candidate.name().equalsIgnoreCase(value)) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     @Override
