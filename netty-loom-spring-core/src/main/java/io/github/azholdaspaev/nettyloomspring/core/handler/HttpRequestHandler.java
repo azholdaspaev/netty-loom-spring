@@ -19,14 +19,15 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest request) {
         request.retain();
-        dispatch(ctx, request);
+        HttpConnectionMetadata connection = HttpConnectionMetadata.from(ctx);
+        dispatch(ctx, request, connection);
     }
 
-    private void dispatch(ChannelHandlerContext ctx, FullHttpRequest request) {
+    private void dispatch(ChannelHandlerContext ctx, FullHttpRequest request, HttpConnectionMetadata connection) {
         try {
             dispatchExecutor.execute(() -> {
                 try {
-                    ctx.writeAndFlush(requestDispatcher.handle(request));
+                    ctx.writeAndFlush(requestDispatcher.handle(request, connection));
                 } catch (Throwable cause) {
                     ctx.fireExceptionCaught(cause);
                 } finally {

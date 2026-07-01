@@ -38,7 +38,7 @@ class HttpRequestHandlerTest {
             HttpResponseStatus.OK,
             Unpooled.EMPTY_BUFFER);
         EmbeddedChannel channel = new EmbeddedChannel(
-            new HttpRequestHandler(_ -> canned, DIRECT));
+            new HttpRequestHandler((_, _) -> canned, DIRECT));
 
         channel.writeInbound(new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
@@ -62,6 +62,23 @@ class HttpRequestHandlerTest {
 
         assertSame(request, dispatcher.lastRequest,
             "handler must hand the inbound request to the dispatcher without wrapping");
+
+        FullHttpResponse out = channel.readOutbound();
+        out.release();
+        channel.finish();
+    }
+
+    @Test
+    void passesHttpConnectionMetadataToDispatcher() {
+        CapturingDispatcher dispatcher = new CapturingDispatcher();
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT));
+
+        channel.writeInbound(new DefaultFullHttpRequest(
+            HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
+        channel.runPendingTasks();
+
+        assertEquals(new HttpConnectionMetadata("", 0, "", 0, false), dispatcher.lastConnection,
+            "handler must snapshot the connection metadata and pass it to the dispatcher");
 
         FullHttpResponse out = channel.readOutbound();
         out.release();
@@ -96,7 +113,7 @@ class HttpRequestHandlerTest {
         RuntimeException boom = new RuntimeException("boom");
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         EmbeddedChannel channel = new EmbeddedChannel(
-            new HttpRequestHandler(_ -> { throw boom; }, DIRECT),
+            new HttpRequestHandler((_, _) -> { throw boom; }, DIRECT),
             capture);
 
         channel.writeInbound(new DefaultFullHttpRequest(
@@ -135,7 +152,7 @@ class HttpRequestHandlerTest {
         Executor rejecting = _ -> { throw rejection; };
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         EmbeddedChannel channel = new EmbeddedChannel(
-            new HttpRequestHandler(_ -> { throw new AssertionError("dispatcher must not run"); }, rejecting),
+            new HttpRequestHandler((_, _) -> { throw new AssertionError("dispatcher must not run"); }, rejecting),
             capture);
         FullHttpRequest request = new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.GET, "/");
@@ -153,11 +170,13 @@ class HttpRequestHandlerTest {
     private static final class CapturingDispatcher implements HttpRequestDispatcher {
 
         FullHttpRequest lastRequest;
+        HttpConnectionMetadata lastConnection;
         int callCount;
 
         @Override
-        public FullHttpResponse handle(FullHttpRequest request) {
+        public FullHttpResponse handle(FullHttpRequest request, HttpConnectionMetadata connection) {
             this.lastRequest = request;
+            this.lastConnection = connection;
             this.callCount++;
             return new DefaultFullHttpResponse(
                 HttpVersion.HTTP_1_1,

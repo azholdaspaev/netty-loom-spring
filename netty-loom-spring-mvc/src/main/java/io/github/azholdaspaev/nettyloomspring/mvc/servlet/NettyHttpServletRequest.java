@@ -1,5 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionMetadata;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.DateFormatter;
@@ -30,8 +31,11 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
+import java.net.InetSocketAddress;
 import java.nio.charset.Charset;
+import java.nio.charset.IllegalCharsetNameException;
 import java.nio.charset.StandardCharsets;
+import java.nio.charset.UnsupportedCharsetException;
 import java.security.Principal;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -44,39 +48,73 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import org.springframework.http.HttpHeaders;
+
 public class NettyHttpServletRequest implements HttpServletRequest {
 
     private final FullHttpRequest nettyRequest;
+    private final HttpConnectionMetadata connection;
+    private final NettyServletContext servletContext;
 
     private final Map<String, Object> attributes = new HashMap<>();
     private final String requestURI;
     private final String queryString;
-    private final Map<String, String[]> parameterMap;
-    private final Charset characterEncoding;
+    private final QueryStringDecoder queryDecoder;
+    private boolean hostResolved;
+    private String serverName;
+    private int serverPort;
+    private Map<String, String[]> parameterMap;
+    private List<Locale> locales;
+    private Charset characterEncoding;
     private ServletInputStream inputStream;
     private BufferedReader reader;
 
-    public NettyHttpServletRequest(FullHttpRequest nettyRequest) {
+    public NettyHttpServletRequest(FullHttpRequest nettyRequest,
+                                   HttpConnectionMetadata connection,
+                                   NettyServletContext servletContext) {
         this.nettyRequest = nettyRequest;
+        this.connection = connection;
+        this.servletContext = servletContext;
 
-        QueryStringDecoder decoder = new QueryStringDecoder(nettyRequest.uri());
-        this.requestURI = decoder.path();
-        String rawQuery = decoder.rawQuery();
+        this.queryDecoder = new QueryStringDecoder(nettyRequest.uri());
+        this.requestURI = queryDecoder.path();
+        String rawQuery = queryDecoder.rawQuery();
         this.queryString = rawQuery.isEmpty() ? null : rawQuery;
         this.characterEncoding = HttpUtil.getCharset(nettyRequest, null);
+    }
 
-        Map<String, List<String>> merged = new LinkedHashMap<>(decoder.parameters());
-        mergeFormBodyParameters(merged);
+    private void ensureHostResolved() {
+        if (hostResolved) {
+            return;
+        }
+        InetSocketAddress host = parseHostHeader(nettyRequest.headers().get(HttpHeaderNames.HOST));
+        if (host != null) {
+            this.serverName = host.getHostString();
+            this.serverPort = resolvePort(host.getPort());
+        } else {
+            this.serverName = bracketIfIpv6(connection.localAddr());
+            this.serverPort = resolvePort(connection.localPort());
+        }
+        this.hostResolved = true;
+    }
+
+    private void ensureParametersParsed() {
+        if (parameterMap != null) {
+            return;
+        }
+        Charset bodyCharset = characterEncoding != null ? characterEncoding : StandardCharsets.UTF_8;
+        // queryDecoder defaults to UTF-8, keeping query decoding independent of the body charset.
+        Map<String, List<String>> merged = new LinkedHashMap<>(queryDecoder.parameters());
+        mergeFormBodyParameters(merged, bodyCharset);
         this.parameterMap = toParameterMap(merged);
     }
 
-    private void mergeFormBodyParameters(Map<String, List<String>> target) {
+    private void mergeFormBodyParameters(Map<String, List<String>> target, Charset charset) {
         CharSequence mimeType = HttpUtil.getMimeType(nettyRequest);
         if (mimeType == null
             || !AsciiString.contentEqualsIgnoreCase(mimeType, HttpHeaderValues.APPLICATION_X_WWW_FORM_URLENCODED)) {
             return;
         }
-        Charset charset = characterEncoding != null ? characterEncoding : StandardCharsets.UTF_8;
         String body = nettyRequest.content().toString(charset);
         if (body.isEmpty()) {
             return;
@@ -85,6 +123,34 @@ public class NettyHttpServletRequest implements HttpServletRequest {
             new QueryStringDecoder(body, charset, false).parameters();
         formParams.forEach((name, values) ->
             target.computeIfAbsent(name, k -> new ArrayList<>()).addAll(values));
+    }
+
+    private int defaultPort() {
+        return connection.defaultPort();
+    }
+
+    private int resolvePort(int candidatePort) {
+        return candidatePort > 0 ? candidatePort : defaultPort();
+    }
+
+    private static String bracketIfIpv6(String host) {
+        if (host.indexOf(':') >= 0 && !host.startsWith("[")) {
+            return "[" + host + "]";
+        }
+        return host;
+    }
+
+    private static InetSocketAddress parseHostHeader(String host) {
+        if (host == null || host.isBlank()) {
+            return null;
+        }
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.HOST, host.trim());
+        InetSocketAddress address = headers.getHost();
+        if (address == null || address.getHostString().isBlank()) {
+            return null;
+        }
+        return address;
     }
 
     private static Map<String, String[]> toParameterMap(Map<String, List<String>> parameters) {
@@ -192,7 +258,19 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public StringBuffer getRequestURL() {
-        return null;
+        ensureHostResolved();
+        String authority = serverName;
+        if (authority == null || authority.isBlank()) {
+            authority = connection.localAddr();
+        }
+        StringBuffer url = new StringBuffer(connection.scheme()).append(':');
+        if (authority != null && !authority.isBlank()) {
+            url.append("//").append(authority);
+            if (serverPort != defaultPort()) {
+                url.append(':').append(serverPort);
+            }
+        }
+        return url.append(requestURI);
     }
 
     @Override
@@ -277,7 +355,18 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public void setCharacterEncoding(String encoding) throws UnsupportedEncodingException {
-
+        if (parameterMap != null || reader != null) {
+            return;
+        }
+        if (encoding == null) {
+            characterEncoding = null;
+            return;
+        }
+        try {
+            characterEncoding = Charset.forName(encoding);
+        } catch (IllegalCharsetNameException | UnsupportedCharsetException e) {
+            throw new UnsupportedEncodingException(encoding);
+        }
     }
 
     @Override
@@ -336,44 +425,50 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public String getParameter(String name) {
+        ensureParametersParsed();
         String[] values = parameterMap.get(name);
         return values == null ? null : values[0];
     }
 
     @Override
     public Enumeration<String> getParameterNames() {
+        ensureParametersParsed();
         return Collections.enumeration(parameterMap.keySet());
     }
 
     @Override
     public String[] getParameterValues(String name) {
+        ensureParametersParsed();
         String[] values = parameterMap.get(name);
         return values == null ? null : values.clone();
     }
 
     @Override
     public Map<String, String[]> getParameterMap() {
+        ensureParametersParsed();
         return parameterMap;
     }
 
     @Override
     public String getProtocol() {
-        return "";
+        return nettyRequest.protocolVersion().text();
     }
 
     @Override
     public String getScheme() {
-        return "";
+        return connection.scheme();
     }
 
     @Override
     public String getServerName() {
-        return "";
+        ensureHostResolved();
+        return serverName;
     }
 
     @Override
     public int getServerPort() {
-        return 0;
+        ensureHostResolved();
+        return serverPort;
     }
 
     @Override
@@ -382,7 +477,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
             throw new IllegalStateException("getInputStream() has already been called on this request");
         }
         if (reader == null) {
-            Charset charset = characterEncoding != null ? characterEncoding : StandardCharsets.ISO_8859_1;
+            Charset charset = characterEncoding != null ? characterEncoding : StandardCharsets.UTF_8;
             ByteBufInputStream stream = new ByteBufInputStream(nettyRequest.content().duplicate());
             reader = new BufferedReader(new InputStreamReader(stream, charset));
         }
@@ -391,12 +486,12 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public String getRemoteAddr() {
-        return "";
+        return connection.remoteAddr();
     }
 
     @Override
     public String getRemoteHost() {
-        return "";
+        return connection.remoteAddr();
     }
 
     @Override
@@ -415,17 +510,45 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public Locale getLocale() {
-        return null;
+        return resolveLocales().get(0);
     }
 
     @Override
     public Enumeration<Locale> getLocales() {
-        return null;
+        return Collections.enumeration(resolveLocales());
+    }
+
+    private List<Locale> resolveLocales() {
+        if (locales != null) {
+            return locales;
+        }
+        locales = parseLocales();
+        return locales;
+    }
+
+    private List<Locale> parseLocales() {
+        String header = nettyRequest.headers().get(HttpHeaderNames.ACCEPT_LANGUAGE);
+        if (header == null || header.isBlank()) {
+            return List.of(Locale.getDefault());
+        }
+        List<Locale> locales;
+        try {
+            locales = Locale.LanguageRange.parse(header).stream()
+                .filter(range -> range.getWeight() > 0)
+                .map(Locale.LanguageRange::getRange)
+                .filter(range -> !range.equals("*"))
+                .map(Locale::forLanguageTag)
+                .filter(locale -> !locale.toLanguageTag().equals("und"))
+                .toList();
+        } catch (IllegalArgumentException e) {
+            return List.of(Locale.getDefault());
+        }
+        return locales.isEmpty() ? List.of(Locale.getDefault()) : locales;
     }
 
     @Override
     public boolean isSecure() {
-        return false;
+        return connection.secure();
     }
 
     @Override
@@ -435,27 +558,27 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public int getRemotePort() {
-        return 0;
+        return connection.remotePort();
     }
 
     @Override
     public String getLocalName() {
-        return "";
+        return connection.localAddr();
     }
 
     @Override
     public String getLocalAddr() {
-        return "";
+        return connection.localAddr();
     }
 
     @Override
     public int getLocalPort() {
-        return 0;
+        return connection.localPort();
     }
 
     @Override
     public ServletContext getServletContext() {
-        return null;
+        return servletContext;
     }
 
     @Override

@@ -1,5 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.mvc.handler;
 
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionMetadata;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestDispatcher;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyFilterChain;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyHttpServletRequest;
@@ -26,8 +27,8 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
     }
 
     @Override
-    public FullHttpResponse handle(FullHttpRequest request) throws Exception {
-        NettyHttpServletRequest servletRequest = new NettyHttpServletRequest(request);
+    public FullHttpResponse handle(FullHttpRequest request, HttpConnectionMetadata connection) throws Exception {
+        NettyHttpServletRequest servletRequest = new NettyHttpServletRequest(request, connection, servletContext);
         NettyHttpServletResponse servletResponse = new NettyHttpServletResponse();
 
         String requestPath = servletRequest.getRequestURI();
