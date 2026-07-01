@@ -7,6 +7,7 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
 
 import java.io.UnsupportedEncodingException;
@@ -15,6 +16,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -281,5 +283,82 @@ class NettyHttpServletRequestTest {
         viaStream.setCharacterEncoding("ISO-8859-1");
         assertEquals("ISO-8859-1", viaStream.getCharacterEncoding());
         assertEquals("é", viaStream.getParameter("name"));
+    }
+
+    private static NettyHttpServletRequest cookieRequest(String... cookieHeaders) {
+        var nettyRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/");
+        for (String header : cookieHeaders) {
+            nettyRequest.headers().add(HttpHeaderNames.COOKIE, header);
+        }
+        return new NettyHttpServletRequest(
+            nettyRequest,
+            new HttpConnectionMetadata("", 0, "", 0, false),
+            new DefaultNettyServletContext());
+    }
+
+    @Test
+    void getCookiesParsesSingleCookie() {
+        Cookie[] cookies = cookieRequest("foo=bar").getCookies();
+
+        assertEquals(1, cookies.length);
+        assertEquals("foo", cookies[0].getName());
+        assertEquals("bar", cookies[0].getValue());
+    }
+
+    @Test
+    void getCookiesPreservesOrderOfMultiplePairs() {
+        Cookie[] cookies = cookieRequest("a=1; b=2; c=3").getCookies();
+
+        assertEquals(3, cookies.length);
+        assertEquals("a", cookies[0].getName());
+        assertEquals("b", cookies[1].getName());
+        assertEquals("c", cookies[2].getName());
+    }
+
+    @Test
+    void getCookiesReadsMultipleCookieHeaders() {
+        Cookie[] cookies = cookieRequest("a=1", "b=2").getCookies();
+
+        assertEquals(2, cookies.length);
+        assertEquals("a", cookies[0].getName());
+        assertEquals("1", cookies[0].getValue());
+        assertEquals("b", cookies[1].getName());
+        assertEquals("2", cookies[1].getValue());
+    }
+
+    @Test
+    void getCookiesKeepsDuplicateNamesInOrder() {
+        Cookie[] cookies = cookieRequest("foo=1; foo=2").getCookies();
+
+        assertEquals(2, cookies.length);
+        assertEquals("foo", cookies[0].getName());
+        assertEquals("1", cookies[0].getValue());
+        assertEquals("foo", cookies[1].getName());
+        assertEquals("2", cookies[1].getValue());
+    }
+
+    @Test
+    void getCookiesPreservesValuesVerbatim() {
+        Cookie[] encodedCookies = cookieRequest("foo=hello%20world").getCookies();
+
+        assertEquals(1, encodedCookies.length);
+        assertEquals("hello%20world", encodedCookies[0].getValue());
+
+        Cookie[] emptyCookies = cookieRequest("foo=").getCookies();
+
+        assertEquals(1, emptyCookies.length);
+        assertEquals("foo", emptyCookies[0].getName());
+        assertEquals("", emptyCookies[0].getValue());
+    }
+
+    @Test
+    void getCookiesReturnsNullForMalformedHeaderWithoutThrowing() {
+        assertNull(assertDoesNotThrow(() -> cookieRequest("=;;garbage").getCookies()));
+        assertNull(assertDoesNotThrow(() -> cookieRequest("").getCookies()));
+    }
+
+    @Test
+    void getCookiesReturnsNullWhenNoCookieHeader() {
+        assertNull(cookieRequest().getCookies());
     }
 }

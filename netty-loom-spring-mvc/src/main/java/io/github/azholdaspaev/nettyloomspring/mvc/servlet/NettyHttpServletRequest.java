@@ -9,6 +9,7 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.QueryStringDecoder;
+import io.netty.handler.codec.http.cookie.ServerCookieDecoder;
 import io.netty.util.AsciiString;
 import jakarta.servlet.AsyncContext;
 import jakarta.servlet.DispatcherType;
@@ -66,6 +67,8 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     private Map<String, String[]> parameterMap;
     private List<Locale> locales;
     private Charset characterEncoding;
+    private Cookie[] cookies;
+    private boolean cookiesParsed;
     private ServletInputStream inputStream;
     private BufferedReader reader;
 
@@ -107,6 +110,24 @@ public class NettyHttpServletRequest implements HttpServletRequest {
         Map<String, List<String>> merged = new LinkedHashMap<>(queryDecoder.parameters());
         mergeFormBodyParameters(merged, bodyCharset);
         this.parameterMap = toParameterMap(merged);
+    }
+
+    private void ensureCookiesParsed() {
+        if (cookiesParsed) {
+            return;
+        }
+        this.cookies = parseCookies();
+        this.cookiesParsed = true;
+    }
+
+    private Cookie[] parseCookies() {
+        List<Cookie> parsed = new ArrayList<>();
+        for (String header : nettyRequest.headers().getAll(HttpHeaderNames.COOKIE)) {
+            for (io.netty.handler.codec.http.cookie.Cookie cookie : ServerCookieDecoder.STRICT.decodeAll(header)) {
+                parsed.add(new Cookie(cookie.name(), cookie.value()));
+            }
+        }
+        return parsed.isEmpty() ? null : parsed.toArray(new Cookie[0]);
     }
 
     private void mergeFormBodyParameters(Map<String, List<String>> target, Charset charset) {
@@ -166,7 +187,8 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public Cookie[] getCookies() {
-        return new Cookie[0];
+        ensureCookiesParsed();
+        return cookies;
     }
 
     @Override
