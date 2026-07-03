@@ -188,7 +188,8 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     @Override
     public Cookie[] getCookies() {
         ensureCookiesParsed();
-        return cookies;
+        // Defensive copy (parity with getParameterValues): callers can't corrupt the cached array.
+        return cookies == null ? null : cookies.clone();
     }
 
     @Override
