@@ -136,6 +136,30 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
+    void addCookieTrimsPaddedSameSite() throws Exception {
+        var response = new NettyHttpServletResponse();
+        Cookie cookie = new Cookie("sid", "xyz");
+        // A padded value must not silently drop SameSite (weakening the intended policy).
+        cookie.setAttribute("SameSite", " Strict ");
+        response.addCookie(cookie);
+
+        FullHttpResponse httpResponse = response.toFullHttpResponse();
+        assertTrue(httpResponse.headers().get(HttpHeaderNames.SET_COOKIE).contains("SameSite=Strict"));
+    }
+
+    @Test
+    void addCookieMapsPartitionedAttribute() throws Exception {
+        var response = new NettyHttpServletResponse();
+        Cookie cookie = new Cookie("sid", "xyz");
+        // CHIPS: presence of the Partitioned attribute (empty value) marks a partitioned cookie.
+        cookie.setAttribute("Partitioned", "");
+        response.addCookie(cookie);
+
+        FullHttpResponse httpResponse = response.toFullHttpResponse();
+        assertTrue(httpResponse.headers().get(HttpHeaderNames.SET_COOKIE).contains("Partitioned"));
+    }
+
+    @Test
     void addCookieThrowsForInvalidCookieValue() {
         var response = new NettyHttpServletResponse();
         // The space is an invalid RFC 6265 cookie-octet. ServerCookieEncoder.STRICT rejects it,

@@ -32,6 +32,9 @@ import java.util.Objects;
 
 public class NettyHttpServletResponse implements HttpServletResponse {
 
+    // Hoisted so parseSameSite doesn't clone a fresh enum array on every addCookie (write path).
+    private static final CookieHeaderNames.SameSite[] SAME_SITE_VALUES = CookieHeaderNames.SameSite.values();
+
     private final FastByteArrayOutputStream body = new FastByteArrayOutputStream(256);
     private final HttpHeaders headers = new HttpHeaders();
     private int status = HttpServletResponse.SC_OK;
@@ -54,11 +57,17 @@ public class NettyHttpServletResponse implements HttpServletResponse {
         }
         nettyCookie.setSecure(cookie.getSecure());
         nettyCookie.setHttpOnly(cookie.isHttpOnly());
-        CookieHeaderNames.SameSite sameSite = parseSameSite(cookie.getAttribute("SameSite"));
+        CookieHeaderNames.SameSite sameSite = parseSameSite(cookie.getAttribute(CookieHeaderNames.SAMESITE));
         if (sameSite != null) {
             nettyCookie.setSameSite(sameSite);
         }
-        // version is intentionally NOT propagated: RFC 6265 / Netty have no Version field.
+        // CHIPS: propagate Partitioned when the attribute is present (its value is conventionally empty).
+        if (cookie.getAttribute(CookieHeaderNames.PARTITIONED) != null) {
+            nettyCookie.setPartitioned(true);
+        }
+        // Only the attributes above are mapped; Netty's Cookie has no arbitrary-attribute setter, so any
+        // other Servlet 6.0 attribute (e.g. Expires) is dropped. version is likewise NOT propagated: RFC
+        // 6265 / Netty have no Version field.
         // STRICT validates RFC 6265 name/value octets and throws IllegalArgumentException for invalid
         // input; we let it propagate (fail-fast, matching Tomcat's Rfc6265CookieProcessor) rather than
         // silently dropping or mangling the cookie.
@@ -69,8 +78,10 @@ public class NettyHttpServletResponse implements HttpServletResponse {
         if (value == null) {
             return null;
         }
-        for (CookieHeaderNames.SameSite candidate : CookieHeaderNames.SameSite.values()) {
-            if (candidate.name().equalsIgnoreCase(value)) {
+        // Trim so a padded value (e.g. " Strict ") isn't silently dropped, weakening the policy.
+        String trimmed = value.trim();
+        for (CookieHeaderNames.SameSite candidate : SAME_SITE_VALUES) {
+            if (candidate.name().equalsIgnoreCase(trimmed)) {
                 return candidate;
             }
         }

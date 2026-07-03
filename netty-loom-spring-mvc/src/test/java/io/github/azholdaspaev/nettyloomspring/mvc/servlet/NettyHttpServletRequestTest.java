@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -360,5 +361,21 @@ class NettyHttpServletRequestTest {
     @Test
     void getCookiesReturnsNullWhenNoCookieHeader() {
         assertNull(cookieRequest().getCookies());
+    }
+
+    @Test
+    void getCookiesReturnsDefensiveCopyButCachesElements() {
+        NettyHttpServletRequest request = cookieRequest("a=1; b=2");
+
+        Cookie[] first = request.getCookies();
+        Cookie[] second = request.getCookies();
+
+        // Each call hands back a fresh array (parity with getParameterValues), so a caller that
+        // mutates the returned array cannot corrupt a later getCookies() in the same request.
+        assertNotSame(first, second);
+        first[0] = null;
+        assertNotNull(request.getCookies()[0]);
+        // The shallow copy still shares element instances: cookies are parsed once, then cached.
+        assertSame(second[1], request.getCookies()[1]);
     }
 }
