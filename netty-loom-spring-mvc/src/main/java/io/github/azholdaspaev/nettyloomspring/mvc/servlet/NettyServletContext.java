@@ -23,6 +23,14 @@ import java.util.Set;
 public interface NettyServletContext extends ServletContext {
 
     /**
+     * Context path value meaning the application is mounted at the server root (no prefix). Matches
+     * Spring Boot's {@code ContextPath} normalization, which represents the root as an empty string
+     * (never {@code "/"}). Used as the sentinel by {@link #getContextPath()} and the request path
+     * logic that strips this prefix.
+     */
+    String ROOT_CONTEXT_PATH = "";
+
+    /**
      * Returns the executable filter registrations (those backed by a live {@link Filter}
      * instance) in registration order, which already reflects Spring Boot's {@code @Order}
      * resolution. Not part of the Jakarta {@link ServletContext} contract.
@@ -30,6 +38,13 @@ public interface NettyServletContext extends ServletContext {
     default List<RegisteredFilter> getRegisteredFilters() {
         return List.of();
     }
+
+    /**
+     * Sets the context path this server is mounted under, as resolved from
+     * {@code server.servlet.context-path}. A {@code null} value means the root context ({@code ""}).
+     * Not part of the Jakarta {@link ServletContext} contract.
+     */
+    void setContextPath(String contextPath);
 
     @Override
     default String getContextPath() {

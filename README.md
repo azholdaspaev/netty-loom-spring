@@ -67,20 +67,24 @@ public class DemoApplication {
 
 ```bash
 ./gradlew bootRun
-# server.netty.port=0 by default → OS picks a free port; set it explicitly in application.properties
+# Listens on server.port (default 8080); override it in application.properties
 ```
 
 ```properties
-server.netty.port=8080
+server.port=8080
 ```
 
 ## Configuration
 
-All properties live under the `server.netty` prefix (`NettyLoomProperties`).
+Standard knobs bind under Spring Boot's `server.*` namespace (`server.port`, `server.address`,
+`server.servlet.context-path`, `server.ssl.*`); Netty-only tuning lives under the `server.netty`
+prefix (`NettyLoomProperties`). See [ADR 0001](docs/adr/0001-server-properties-namespace.md).
 
 | Property | Type | Default | Description |
 | --- | --- | --- | --- |
-| `server.netty.port` | `int` | `0` | Listening port; `0` lets the OS select an available port |
+| `server.port` | `int` | `8080` | Listening port; `0` lets the OS select an available port |
+| `server.address` | `InetAddress` | all interfaces | Network address to bind; unset binds every interface |
+| `server.servlet.context-path` | `String` | `""` | Context path the application is mounted under |
 | `server.netty.boss-threads` | `int` | `1` | Netty boss group thread count (accepts connections) |
 | `server.netty.worker-threads` | `int` | `0` | Netty worker group thread count; `0` = Netty default (`CPU_COUNT * 2`) |
 | `server.netty.keep-alive` | `boolean` | `true` | TCP keep-alive on sockets |

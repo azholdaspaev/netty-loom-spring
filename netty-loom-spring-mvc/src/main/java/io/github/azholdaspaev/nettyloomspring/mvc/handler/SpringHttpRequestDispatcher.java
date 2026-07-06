@@ -10,6 +10,7 @@ import io.github.azholdaspaev.nettyloomspring.mvc.servlet.RegisteredFilter;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import jakarta.servlet.FilterChain;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.servlet.DispatcherServlet;
 
 import java.util.List;
@@ -29,11 +30,25 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
     @Override
     public FullHttpResponse handle(FullHttpRequest request, HttpConnectionMetadata connection) throws Exception {
         NettyHttpServletRequest servletRequest = new NettyHttpServletRequest(request, connection, servletContext);
+
+        String contextPath = servletContext.getContextPath();
+        String requestURI = servletRequest.getRequestURI();
+        // Out-of-context request: reject with a plain 404 before running filters or the servlet. Boot's
+        // PathPatternParser would otherwise throw on a URI outside the context path. Building the request
+        // first (a cheap, side-effect-free URI parse) lets the check reuse its already-parsed path.
+        if (!NettyServletContext.ROOT_CONTEXT_PATH.equals(contextPath)
+            && !(requestURI.equals(contextPath) || requestURI.startsWith(contextPath + "/"))) {
+            NettyHttpServletResponse notFound = new NettyHttpServletResponse();
+            notFound.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            return notFound.toFullHttpResponse();
+        }
+
         NettyHttpServletResponse servletResponse = new NettyHttpServletResponse();
 
-        String requestPath = servletRequest.getRequestURI();
+        // Filter URL patterns are context-relative, so match on the in-context servlet path.
+        String servletPath = servletRequest.getServletPath();
         List<RegisteredFilter> applicable = servletContext.getRegisteredFilters().stream()
-            .filter(filter -> filter.matches(requestPath, servletRequest.getDispatcherType()))
+            .filter(filter -> filter.matches(servletPath, servletRequest.getDispatcherType()))
             .toList();
 
         NettyFilterChain chain = new NettyFilterChain(applicable, terminal);

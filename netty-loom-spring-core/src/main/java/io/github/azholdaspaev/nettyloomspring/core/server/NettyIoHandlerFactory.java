@@ -18,9 +18,9 @@ public class NettyIoHandlerFactory {
 
     private final NettyTransport transport;
 
-    public NettyIoHandlerFactory(NettyServerConfiguration configuration) {
-        this.transport = NettyTransport.resolve(configuration.transport(), Epoll.isAvailable(), KQueue.isAvailable());
-        log.info("Netty transport selected: {}", transport);
+    public NettyIoHandlerFactory(String transport) {
+        this.transport = NettyTransport.resolve(transport, Epoll.isAvailable(), KQueue.isAvailable());
+        log.info("Netty transport selected: {}", this.transport);
     }
 
     public IoHandlerFactory getIoHandlerFactory() {

@@ -38,6 +38,7 @@ public class DefaultNettyServletContext implements NettyServletContext {
     // rebuilds it on next read. Registration is single-threaded at startup; reads happen after
     // server start, so the volatile field is sufficient for safe publication.
     private volatile List<RegisteredFilter> registeredFiltersSnapshot;
+    private volatile String contextPath = ROOT_CONTEXT_PATH;
 
     @Override
     public Object getAttribute(String name) {
@@ -182,8 +183,13 @@ public class DefaultNettyServletContext implements NettyServletContext {
     }
 
     @Override
+    public void setContextPath(String contextPath) {
+        this.contextPath = contextPath == null ? ROOT_CONTEXT_PATH : contextPath;
+    }
+
+    @Override
     public String getContextPath() {
-        return "";
+        return contextPath;
     }
 
     @Override

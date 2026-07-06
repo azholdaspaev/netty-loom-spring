@@ -9,9 +9,7 @@ import io.github.azholdaspaev.nettyloomspring.core.pipeline.DefaultNettyPipeline
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NamedChannelHandler;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineConfigurer;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyIoHandlerFactory;
-import io.github.azholdaspaev.nettyloomspring.core.server.NettyServer;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyServerChannelInitializer;
-import io.github.azholdaspaev.nettyloomspring.core.server.NettyServerConfiguration;
 import io.github.azholdaspaev.nettyloomspring.mvc.handler.SpringHttpRequestDispatcher;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.DefaultNettyServletContext;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
@@ -23,8 +21,10 @@ import io.netty.handler.timeout.ReadTimeoutHandler;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.web.server.autoconfigure.servlet.ServletWebServerConfiguration;
 import org.springframework.boot.webmvc.autoconfigure.WebMvcAutoConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.web.servlet.DispatcherServlet;
 
 import java.util.List;
@@ -34,6 +34,7 @@ import java.util.concurrent.TimeUnit;
 
 @AutoConfiguration(before = WebMvcAutoConfiguration.class)
 @EnableConfigurationProperties(NettyLoomProperties.class)
+@Import(ServletWebServerConfiguration.class)
 public class NettyLoomAutoConfiguration {
 
     private static final int MAX_HTTP_REQUEST_BODY_BYTES = 1024 * 1024;
@@ -42,34 +43,19 @@ public class NettyLoomAutoConfiguration {
     private static final int MAX_HTTP_CHUNK_SIZE = 10_000;
 
     @Bean
-    public NettyWebServerFactory nettyWebServerFactory(NettyServer nettyServer,
+    public NettyWebServerFactory nettyWebServerFactory(NettyIoHandlerFactory nettyIoHandlerFactory,
+                                                       NettyServerChannelInitializer nettyServerChannelInitializer,
+                                                       ChannelGroup nettyLoomChannelGroup,
                                                        NettyServletContext servletContext,
                                                        DispatcherServlet dispatcherServlet,
                                                        NettyLoomProperties properties) {
-        return new NettyWebServerFactory(nettyServer, servletContext, dispatcherServlet,
-            properties.shutdownGracePeriod());
+        return new NettyWebServerFactory(nettyIoHandlerFactory, nettyServerChannelInitializer,
+            nettyLoomChannelGroup, servletContext, dispatcherServlet, properties);
     }
 
     @Bean
-    public NettyServerConfiguration nettyServerConfiguration(NettyLoomProperties properties) {
-        return new NettyServerConfiguration(
-            properties.port(), properties.bossThreads(), properties.workerThreads(), properties.keepAlive(),
-            properties.transport()
-        );
-    }
-
-    @Bean
-    public NettyIoHandlerFactory nettyIoHandlerFactory(NettyServerConfiguration nettyServerConfiguration) {
-        return new NettyIoHandlerFactory(nettyServerConfiguration);
-    }
-
-    @Bean
-    public NettyServer nettyServer(NettyServerConfiguration nettyServerConfiguration,
-                                   NettyServerChannelInitializer nettyServerChannelInitializer,
-                                   NettyIoHandlerFactory nettyIoHandlerFactory,
-                                   ChannelGroup nettyLoomChannelGroup) {
-
-        return new NettyServer(nettyServerConfiguration, nettyServerChannelInitializer, nettyIoHandlerFactory, nettyLoomChannelGroup);
+    public NettyIoHandlerFactory nettyIoHandlerFactory(NettyLoomProperties properties) {
+        return new NettyIoHandlerFactory(properties.transport());
     }
 
     @Bean
