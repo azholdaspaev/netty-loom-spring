@@ -18,7 +18,7 @@ All three run an **identical** Spring MVC app (same controller, same two endpoin
 
 | Target | Server | Port | Config |
 |---|---|---|---|
-| `netty-loom` | this library's starter (Netty + one virtual thread per request) | 18080 | `server.netty.port=18080` |
+| `netty-loom` | this library's starter (Netty + one virtual thread per request) | 18080 | `server.port=18080` |
 | `tomcat-platform` | stock embedded Tomcat, classic thread-per-request | 18081 | `spring.threads.virtual.enabled=false` |
 | `tomcat-virtual` | embedded Tomcat dispatching onto virtual threads | 18082 | `spring.threads.virtual.enabled=true` |
 

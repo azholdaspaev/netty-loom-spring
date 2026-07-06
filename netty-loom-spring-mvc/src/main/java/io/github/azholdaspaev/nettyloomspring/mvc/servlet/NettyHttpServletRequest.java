@@ -246,7 +246,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public String getContextPath() {
-        return "";
+        return servletContext.getContextPath();
     }
 
     @Override
@@ -298,7 +298,9 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public String getServletPath() {
-        return "";
+        // In-context remainder of the request URI: "" when the request targets the context root,
+        // and identical to the full request URI when no context path is set.
+        return requestURI.substring(servletContext.getContextPath().length());
     }
 
     @Override

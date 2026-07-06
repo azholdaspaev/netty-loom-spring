@@ -57,6 +57,39 @@ class NettyHttpServletRequestTest {
         return new NettyHttpServletRequest(nettyRequest, connection, new DefaultNettyServletContext());
     }
 
+    private static NettyHttpServletRequest requestWithContext(String uri, String contextPath) {
+        var context = new DefaultNettyServletContext();
+        context.setContextPath(contextPath);
+        return new NettyHttpServletRequest(
+            new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri),
+            new HttpConnectionMetadata("", 0, "", 0, false),
+            context);
+    }
+
+    @Test
+    void contextPathAndServletPathReadTheServletContext() {
+        // Context "/app", URI "/app/hello?x=1": context path is the mount, servlet path is the
+        // in-context remainder, and the request URI stays the full decoded path.
+        var inContext = requestWithContext("/app/hello?x=1", "/app");
+        assertEquals("/app", inContext.getContextPath());
+        assertEquals("/app/hello", inContext.getRequestURI());
+        assertEquals("/hello", inContext.getServletPath());
+
+        // Request exactly at the context root: the servlet path is empty.
+        var atContextRoot = requestWithContext("/app", "/app");
+        assertEquals("/app", atContextRoot.getContextPath());
+        assertEquals("/app", atContextRoot.getRequestURI());
+        assertEquals("", atContextRoot.getServletPath());
+    }
+
+    @Test
+    void emptyContextLeavesPathGettersUnchanged() {
+        var noContext = requestWithContext("/hello", "");
+        assertEquals("", noContext.getContextPath());
+        assertEquals("/hello", noContext.getRequestURI());
+        assertEquals("/hello", noContext.getServletPath());
+    }
+
     @Test
     void networkGettersFromConnection() {
         var context = new DefaultNettyServletContext();

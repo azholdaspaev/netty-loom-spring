@@ -85,7 +85,7 @@ class NettyTransportTest {
     @EnabledOnOs(OS.LINUX)
     void selectsEpollOnLinux() {
         assertTrue(Epoll.isAvailable(), "epoll native library must be on the classpath on Linux");
-        NettyIoHandlerFactory factory = new NettyIoHandlerFactory(configWith("auto"));
+        NettyIoHandlerFactory factory = new NettyIoHandlerFactory("auto");
         assertEquals(EpollServerSocketChannel.class, factory.getServerChannelClass());
     }
 
@@ -93,17 +93,13 @@ class NettyTransportTest {
     @EnabledOnOs(OS.MAC)
     void selectsKqueueOnMac() {
         assertTrue(KQueue.isAvailable(), "kqueue native library must be on the classpath on macOS");
-        NettyIoHandlerFactory factory = new NettyIoHandlerFactory(configWith("auto"));
+        NettyIoHandlerFactory factory = new NettyIoHandlerFactory("auto");
         assertEquals(KQueueServerSocketChannel.class, factory.getServerChannelClass());
     }
 
     @Test
     void nioFactorySelectsNioServerChannel() {
-        NettyIoHandlerFactory factory = new NettyIoHandlerFactory(configWith("nio"));
+        NettyIoHandlerFactory factory = new NettyIoHandlerFactory("nio");
         assertEquals(NioServerSocketChannel.class, factory.getServerChannelClass());
-    }
-
-    private static NettyServerConfiguration configWith(String transport) {
-        return new NettyServerConfiguration(0, 0, 0, false, transport);
     }
 }

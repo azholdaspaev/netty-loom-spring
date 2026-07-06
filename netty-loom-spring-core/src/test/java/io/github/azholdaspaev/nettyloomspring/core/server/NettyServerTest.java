@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.net.ConnectException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.time.Duration;
@@ -27,12 +28,16 @@ class NettyServerTest {
 
     @BeforeEach
     void setup() {
-        NettyServerConfiguration configuration = new NettyServerConfiguration(0, 0, 0, false, "auto");
+        nettyServer = newServer(null);
+    }
+
+    private static NettyServer newServer(InetAddress address) {
+        NettyServerConfiguration configuration = new NettyServerConfiguration(0, address, 0, 0, false);
         NettyPipelineConfigurer pipelineConfigurer = new DefaultNettyPipelineConfigurer(List.of());
         ChannelGroup channelGroup = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
         NettyServerChannelInitializer channelInitializer = new NettyServerChannelInitializer(pipelineConfigurer, channelGroup);
-        NettyIoHandlerFactory nettyIoHandlerFactory = new NettyIoHandlerFactory(configuration);
-        nettyServer = new NettyServer(configuration, channelInitializer, nettyIoHandlerFactory, channelGroup);
+        NettyIoHandlerFactory nettyIoHandlerFactory = new NettyIoHandlerFactory("auto");
+        return new NettyServer(configuration, channelInitializer, nettyIoHandlerFactory, channelGroup);
     }
 
     @AfterEach
@@ -70,6 +75,24 @@ class NettyServerTest {
     void shouldReturnPort() {
         nettyServer.start();
 
+        assertTrue(nettyServer.getPort() > 0);
+    }
+
+    @Test
+    void shouldBindToConfiguredAddress() {
+        InetAddress loopback = InetAddress.getLoopbackAddress();
+        nettyServer = newServer(loopback);
+        nettyServer.start();
+
+        assertEquals(loopback, nettyServer.getBoundAddress().getAddress());
+        assertTrue(nettyServer.getPort() > 0);
+    }
+
+    @Test
+    void shouldBindToWildcardWhenAddressNull() {
+        nettyServer.start();
+
+        assertTrue(nettyServer.getBoundAddress().getAddress().isAnyLocalAddress());
         assertTrue(nettyServer.getPort() > 0);
     }
 

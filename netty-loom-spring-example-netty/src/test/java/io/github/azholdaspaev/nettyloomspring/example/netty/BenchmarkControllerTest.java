@@ -13,8 +13,7 @@ import java.util.concurrent.TimeUnit;
 @AutoConfigureRestTestClient
 @SpringBootTest(
     classes = NettyExampleApplication.class,
-    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = "server.netty.port=0"
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT
 )
 class BenchmarkControllerTest {
 

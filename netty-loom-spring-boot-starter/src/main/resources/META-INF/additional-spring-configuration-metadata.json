@@ -7,10 +7,6 @@
   ],
   "properties": [
     {
-      "name": "server.netty.port",
-      "description": "TCP port the Netty server binds to. Use 0 to let the OS assign an ephemeral port (useful for tests)."
-    },
-    {
       "name": "server.netty.boss-threads",
       "description": "Number of threads in the boss event loop group that accepts incoming connections. One is typically sufficient."
     },
@@ -52,15 +48,6 @@
         {
           "value": "kqueue",
           "description": "macOS/BSD native transport. Fails fast if unavailable."
-        }
-      ]
-    },
-    {
-      "name": "server.netty.port",
-      "values": [
-        {
-          "value": 0,
-          "description": "Bind to an ephemeral port chosen by the operating system."
         }
       ]
     },

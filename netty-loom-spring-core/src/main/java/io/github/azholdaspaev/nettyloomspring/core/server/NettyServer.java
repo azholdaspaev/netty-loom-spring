@@ -100,8 +100,16 @@ public class NettyServer {
     }
 
     public int getPort() {
-        InetSocketAddress address = resolvedAddress();
+        InetSocketAddress address = getBoundAddress();
         return address == null ? configuration.port() : address.getPort();
+    }
+
+    public InetSocketAddress getBoundAddress() {
+        RunningState current = state;
+        if (current != null && current.serverChannel().localAddress() instanceof InetSocketAddress addr) {
+            return addr;
+        }
+        return null;
     }
 
     public boolean isRunning() {
@@ -115,7 +123,7 @@ public class NettyServer {
             .childHandler(channelInitializer)
             .option(ChannelOption.SO_BACKLOG, 128)
             .childOption(ChannelOption.SO_KEEPALIVE, configuration.keepAlive());
-        return bootstrap.bind(configuration.port()).sync().channel();
+        return bootstrap.bind(new InetSocketAddress(configuration.address(), configuration.port())).sync().channel();
     }
 
     private boolean drainOrForceClose(Deadline deadline) throws InterruptedException {
@@ -144,14 +152,6 @@ public class NettyServer {
 
     private EventLoopGroup newEventLoopGroup(int threads) {
         return new MultiThreadIoEventLoopGroup(threads, ioHandlerFactory.getIoHandlerFactory());
-    }
-
-    private InetSocketAddress resolvedAddress() {
-        RunningState current = state;
-        if (current != null && current.serverChannel().localAddress() instanceof InetSocketAddress addr) {
-            return addr;
-        }
-        return null;
     }
 
     private record RunningState(Channel serverChannel, EventLoopGroup bossGroup, EventLoopGroup workerGroup) {
