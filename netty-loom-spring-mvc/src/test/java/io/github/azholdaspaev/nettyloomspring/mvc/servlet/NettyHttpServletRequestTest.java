@@ -91,6 +91,36 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
+    void isWithinContextAcceptsContextRootAndPrefix() {
+        assertTrue(requestWithContext("/app", "/app").isWithinContext());
+        assertTrue(requestWithContext("/app/hello", "/app").isWithinContext());
+        // A prefix without the "/" boundary is a different path, not in-context.
+        assertFalse(requestWithContext("/application", "/app").isWithinContext());
+    }
+
+    @Test
+    void isWithinContextRejectsOutOfContextUri() {
+        assertFalse(requestWithContext("/other", "/app").isWithinContext());
+        // URI shorter than the context path.
+        assertFalse(requestWithContext("/ap", "/app").isWithinContext());
+    }
+
+    @Test
+    void isWithinContextAlwaysTrueForRootContext() {
+        var root = requestWithContext("/anything", "");
+        assertTrue(root.isWithinContext());
+        assertEquals("/anything", root.getServletPath());
+    }
+
+    @Test
+    void getServletPathReturnsEmptyForUriShorterThanContextPath() {
+        // Out of context and shorter than the context path: getServletPath must not throw
+        // StringIndexOutOfBoundsException, it returns "" (the context-relative path is undefined here).
+        var request = requestWithContext("/ap", "/app");
+        assertEquals("", request.getServletPath());
+    }
+
+    @Test
     void networkGettersFromConnection() {
         var context = new DefaultNettyServletContext();
         var request = request(new HttpConnectionMetadata("203.0.113.7", 54321, "198.51.100.2", 8080, false), context);
