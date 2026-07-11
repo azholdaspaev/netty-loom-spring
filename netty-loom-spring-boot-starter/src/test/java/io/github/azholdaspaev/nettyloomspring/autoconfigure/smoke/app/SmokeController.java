@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -23,6 +24,11 @@ import java.util.Map;
 
 @RestController
 public class SmokeController {
+
+    // The origin and header the CORS endpoint below is configured to allow. Tests build their preflight
+    // requests from these so the allowance and the request under test cannot drift apart.
+    public static final String ALLOWED_CORS_ORIGIN = "https://allowed.example";
+    public static final String ALLOWED_CORS_HEADER = "X-Custom";
 
     @GetMapping(value = "/get")
     public String get() {
@@ -67,6 +73,12 @@ public class SmokeController {
     @PostMapping("/api/echo")
     public String echoForm(@RequestParam String msg) {
         return msg;
+    }
+
+    @CrossOrigin(origins = ALLOWED_CORS_ORIGIN, allowedHeaders = ALLOWED_CORS_HEADER)
+    @PostMapping("/api/cors/echo")
+    public Greeting corsEcho(@RequestBody Greeting input) {
+        return new Greeting("cors: " + input.message());
     }
 
     @PutMapping("/api/greetings/{name}")

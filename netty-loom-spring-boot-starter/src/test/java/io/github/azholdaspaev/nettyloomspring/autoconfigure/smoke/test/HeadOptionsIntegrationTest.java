@@ -1,5 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.test;
 
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.app.SmokeController;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -73,9 +74,8 @@ class HeadOptionsIntegrationTest extends BaseIntegrationTest {
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
     void shouldAnswerOptionsOnUnknownPathWithNotFoundAndNoAllowHeader() {
-        // Spring's HttpServlet.doOptions fallback would otherwise reflect over DispatcherServlet's do*
-        // methods and stamp an Allow header onto this 404 — advertising methods no handler serves. A
-        // real container swallows that write because sendError already committed the response.
+        // Spring's HttpServlet.doOptions fallback stamps a reflected Allow header onto any OPTIONS
+        // response no handler claimed; the 404 is already committed, so that write must be swallowed.
         restTestClient.options().uri("/does-not-exist")
             .exchange()
             .expectStatus().isNotFound()
@@ -86,14 +86,16 @@ class HeadOptionsIntegrationTest extends BaseIntegrationTest {
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
     void shouldAnswerCorsPreflightWithAccessControlHeaders() {
         restTestClient.options().uri("/api/cors/echo")
-            .header(HttpHeaders.ORIGIN, "https://allowed.example")
-            .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
-            .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "X-Custom")
+            .header(HttpHeaders.ORIGIN, SmokeController.ALLOWED_CORS_ORIGIN)
+            .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, HttpMethod.POST.name())
+            .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, SmokeController.ALLOWED_CORS_HEADER)
             .exchange()
             .expectStatus().isOk()
-            .expectHeader().valueEquals(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "https://allowed.example")
-            .expectHeader().value(HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS, value -> assertTrue(value.contains("POST")))
-            .expectHeader().value(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS, value -> assertTrue(value.contains("X-Custom")));
+            .expectHeader().valueEquals(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, SmokeController.ALLOWED_CORS_ORIGIN)
+            .expectHeader().value(HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS,
+                value -> assertTrue(value.contains(HttpMethod.POST.name())))
+            .expectHeader().value(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS,
+                value -> assertTrue(value.contains(SmokeController.ALLOWED_CORS_HEADER)));
     }
 
     @Test
