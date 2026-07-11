@@ -41,9 +41,18 @@ public class NettyHttpServletResponse implements HttpServletResponse {
     private Charset characterEncoding = StandardCharsets.ISO_8859_1;
     private ServletOutputStream outputStream;
     private PrintWriter writer;
+    // The whole response is buffered until toFullHttpResponse(), so nothing is ever on the wire early:
+    // sendError/sendRedirect are the only honest commit points, matching Tomcat's setAppCommitted(true).
+    // Once committed, status and header mutations are silently ignored, as the Servlet spec requires --
+    // without that, Spring's HttpServlet.doOptions fallback stamps a reflected Allow header onto an
+    // already-errored 404, advertising methods no handler serves.
+    private boolean committed;
 
     @Override
     public void addCookie(Cookie cookie) {
+        if (committed) {
+            return;
+        }
         DefaultCookie nettyCookie = new DefaultCookie(cookie.getName(), Objects.requireNonNullElse(cookie.getValue(), ""));
         if (cookie.getPath() != null) {
             nettyCookie.setPath(cookie.getPath());
@@ -107,12 +116,14 @@ public class NettyHttpServletResponse implements HttpServletResponse {
     public void sendError(int sc, String msg) throws IOException {
         discardBody();
         this.status = sc;
+        this.committed = true;
     }
 
     @Override
     public void sendError(int sc) throws IOException {
         discardBody();
         this.status = sc;
+        this.committed = true;
     }
 
     private void discardBody() {
@@ -127,7 +138,9 @@ public class NettyHttpServletResponse implements HttpServletResponse {
     @Override
     public void sendRedirect(String location, int sc, boolean clearBuffer) throws IOException {
         this.status = sc;
+        // Location must land before the commit closes the guard on setHeader.
         setHeader(HttpHeaders.LOCATION, location);
+        this.committed = true;
     }
 
     @Override
@@ -142,6 +155,9 @@ public class NettyHttpServletResponse implements HttpServletResponse {
 
     @Override
     public void setHeader(String name, String value) {
+        if (committed) {
+            return;
+        }
         if (value == null) {
             headers.remove(name);
             return;
@@ -152,7 +168,7 @@ public class NettyHttpServletResponse implements HttpServletResponse {
 
     @Override
     public void addHeader(String name, String value) {
-        if (value == null) {
+        if (committed || value == null) {
             return;
         }
         headers.add(name, value);
@@ -171,6 +187,9 @@ public class NettyHttpServletResponse implements HttpServletResponse {
 
     @Override
     public void setStatus(int sc) {
+        if (committed) {
+            return;
+        }
         this.status = sc;
     }
 
@@ -247,11 +266,14 @@ public class NettyHttpServletResponse implements HttpServletResponse {
 
     @Override
     public void setContentLength(int len) {
-        headers.setContentLength(len);
+        setContentLengthLong(len);
     }
 
     @Override
     public void setContentLengthLong(long len) {
+        if (committed) {
+            return;
+        }
         headers.setContentLength(len);
     }
 
@@ -287,7 +309,7 @@ public class NettyHttpServletResponse implements HttpServletResponse {
 
     @Override
     public boolean isCommitted() {
-        return false;
+        return committed;
     }
 
     @Override
@@ -296,6 +318,9 @@ public class NettyHttpServletResponse implements HttpServletResponse {
         headers.clear();
         status = HttpServletResponse.SC_OK;
         characterEncoding = StandardCharsets.ISO_8859_1;
+        // Unlike a streaming container, a commit here has sent nothing yet, so a full reset genuinely
+        // takes it back rather than lying about bytes already on the wire.
+        committed = false;
     }
 
     @Override

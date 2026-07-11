@@ -44,6 +44,49 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
+    void sendErrorCommitsTheResponse() throws Exception {
+        var response = new NettyHttpServletResponse();
+
+        response.sendError(HttpResponseStatus.NOT_FOUND.code());
+
+        assertTrue(response.isCommitted());
+    }
+
+    @Test
+    void headersSetAfterSendErrorAreIgnored() throws Exception {
+        var response = new NettyHttpServletResponse();
+        response.sendError(HttpResponseStatus.NOT_FOUND.code());
+
+        response.setHeader(HttpHeaderNames.ALLOW.toString(), "GET, HEAD, POST, PUT, DELETE, OPTIONS");
+
+        FullHttpResponse httpResponse = response.toFullHttpResponse();
+        assertFalse(httpResponse.headers().contains(HttpHeaderNames.ALLOW));
+    }
+
+    @Test
+    void statusSetAfterSendErrorIsIgnored() throws Exception {
+        var response = new NettyHttpServletResponse();
+        response.sendError(HttpResponseStatus.NOT_FOUND.code());
+
+        response.setStatus(HttpResponseStatus.OK.code());
+
+        FullHttpResponse httpResponse = response.toFullHttpResponse();
+        assertEquals(HttpResponseStatus.NOT_FOUND.code(), httpResponse.status().code());
+    }
+
+    @Test
+    void sendRedirectCommitsTheResponseAndKeepsLocation() throws Exception {
+        var response = new NettyHttpServletResponse();
+
+        response.sendRedirect("/elsewhere", HttpResponseStatus.FOUND.code(), true);
+
+        assertTrue(response.isCommitted());
+        FullHttpResponse httpResponse = response.toFullHttpResponse();
+        assertEquals(HttpResponseStatus.FOUND.code(), httpResponse.status().code());
+        assertEquals("/elsewhere", httpResponse.headers().get(HttpHeaderNames.LOCATION));
+    }
+
+    @Test
     void resetBufferDiscardsContentBufferedInTheWriter() throws Exception {
         var response = new NettyHttpServletResponse();
         // Writer uses autoFlush=false, so these chars sit in the writer's encoder buffer,
