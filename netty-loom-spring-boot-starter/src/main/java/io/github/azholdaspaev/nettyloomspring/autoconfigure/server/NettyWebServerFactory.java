@@ -21,9 +21,6 @@ import org.springframework.boot.web.servlet.ServletContextInitializer;
 import org.springframework.boot.webmvc.autoconfigure.DispatcherServletAutoConfiguration;
 import org.springframework.web.servlet.DispatcherServlet;
 
-import java.util.ArrayList;
-import java.util.List;
-
 public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
     implements ConfigurableServletWebServerFactory {
 
@@ -85,15 +82,20 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
     private void initializeServletContext(ServletContextInitializer... initializers) {
         // Run both the container-supplied initializers and any registered on this factory via the
         // inherited addInitializers/setInitializers (stored in the settings), mirroring the merge that
-        // AbstractServletWebServerFactory performs for Tomcat/Jetty.
-        List<ServletContextInitializer> merged = new ArrayList<>(List.of(initializers));
-        merged.addAll(getSettings().getInitializers());
-        for (ServletContextInitializer initializer : merged) {
-            try {
-                initializer.onStartup(servletContext);
-            } catch (ServletException e) {
-                throw new WebServerException("Failed to run servlet context initializer", e);
-            }
+        // AbstractServletWebServerFactory performs for Tomcat/Jetty. Container-supplied run first.
+        for (ServletContextInitializer initializer : initializers) {
+            runInitializer(initializer);
+        }
+        for (ServletContextInitializer initializer : getSettings().getInitializers()) {
+            runInitializer(initializer);
+        }
+    }
+
+    private void runInitializer(ServletContextInitializer initializer) {
+        try {
+            initializer.onStartup(servletContext);
+        } catch (ServletException e) {
+            throw new WebServerException("Failed to run servlet context initializer", e);
         }
     }
 
