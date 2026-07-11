@@ -1,6 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.port;
 
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.app.SmokeNettyLoomApplication;
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.support.ThrowableChains;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -47,7 +48,7 @@ class ServerPortBindingTest {
                 assertEquals(200, response.statusCode());
                 return;
             } catch (RuntimeException e) {
-                BindException bindFailure = findBindFailure(e);
+                BindException bindFailure = ThrowableChains.findInChain(e, BindException.class);
                 if (bindFailure == null) {
                     throw e;
                 }
@@ -56,14 +57,5 @@ class ServerPortBindingTest {
             }
         }
         throw new AssertionError("server.port binding lost the race " + MAX_ATTEMPTS + " times", lastBindFailure);
-    }
-
-    private static BindException findBindFailure(Throwable throwable) {
-        for (Throwable cause = throwable; cause != null; cause = cause.getCause()) {
-            if (cause instanceof BindException bindException) {
-                return bindException;
-            }
-        }
-        return null;
     }
 }

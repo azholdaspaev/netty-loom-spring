@@ -1,6 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.ssl;
 
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.app.SmokeNettyLoomApplication;
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.support.ThrowableChains;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -25,16 +26,7 @@ class SslNotSupportedTest {
                 .properties("server.port=0", "server.ssl.enabled=true")
                 .run());
 
-        assertTrue(messageChainMentions(failure, "issue #16"),
+        assertTrue(ThrowableChains.chainMentions(failure, "issue #16"),
             "startup failure should point at issue #16; was: " + failure);
-    }
-
-    private static boolean messageChainMentions(Throwable throwable, String needle) {
-        for (Throwable cause = throwable; cause != null; cause = cause.getCause()) {
-            if (cause.getMessage() != null && cause.getMessage().contains(needle)) {
-                return true;
-            }
-        }
-        return false;
     }
 }
