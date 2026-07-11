@@ -296,8 +296,26 @@ public class NettyHttpServletRequest implements HttpServletRequest {
         return url.append(requestURI);
     }
 
+    /**
+     * Whether the request URI falls within this server's context path — it equals the context path or
+     * begins with {@code "{contextPath}/"}. Always {@code true} for the root context ({@code ""}). This
+     * is the single owner of the in-context boundary fact: the dispatcher calls it to 404 out-of-context
+     * URIs, and {@link #getServletPath()} relies on it to strip the prefix safely.
+     */
+    public boolean isWithinContext() {
+        String contextPath = servletContext.getContextPath();
+        return NettyServletContext.ROOT_CONTEXT_PATH.equals(contextPath)
+            || requestURI.equals(contextPath)
+            || requestURI.startsWith(contextPath + "/");
+    }
+
     @Override
     public String getServletPath() {
+        if (!isWithinContext()) {
+            // Out-of-context URI: the context-relative path is undefined. Return "" rather than blindly
+            // stripping the prefix, which would throw when requestURI is shorter than the context path.
+            return "";
+        }
         // In-context remainder of the request URI: "" when the request targets the context root,
         // and identical to the full request URI when no context path is set.
         return requestURI.substring(servletContext.getContextPath().length());

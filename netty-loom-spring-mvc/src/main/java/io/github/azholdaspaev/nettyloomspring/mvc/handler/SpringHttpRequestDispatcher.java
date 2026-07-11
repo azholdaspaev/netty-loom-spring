@@ -31,13 +31,11 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
     public FullHttpResponse handle(FullHttpRequest request, HttpConnectionMetadata connection) throws Exception {
         NettyHttpServletRequest servletRequest = new NettyHttpServletRequest(request, connection, servletContext);
 
-        String contextPath = servletContext.getContextPath();
-        String requestURI = servletRequest.getRequestURI();
         // Out-of-context request: reject with a plain 404 before running filters or the servlet. Boot's
         // PathPatternParser would otherwise throw on a URI outside the context path. Building the request
-        // first (a cheap, side-effect-free URI parse) lets the check reuse its already-parsed path.
-        if (!NettyServletContext.ROOT_CONTEXT_PATH.equals(contextPath)
-            && !(requestURI.equals(contextPath) || requestURI.startsWith(contextPath + "/"))) {
+        // first (a cheap, side-effect-free URI parse) lets the check reuse its already-parsed path via the
+        // request's own boundary predicate, keeping the "is this in-context?" fact in one place.
+        if (!servletRequest.isWithinContext()) {
             NettyHttpServletResponse notFound = new NettyHttpServletResponse();
             notFound.setStatus(HttpServletResponse.SC_NOT_FOUND);
             return notFound.toFullHttpResponse();
