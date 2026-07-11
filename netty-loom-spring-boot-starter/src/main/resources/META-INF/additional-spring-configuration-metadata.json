@@ -15,8 +15,8 @@
       "description": "Number of threads in the worker event loop group that processes I/O for accepted connections. Use 0 to apply Netty's default of two times the number of available processors."
     },
     {
-      "name": "server.netty.keep-alive",
-      "description": "Enables TCP SO_KEEPALIVE on accepted child channels. This is the socket-level keep-alive, independent of HTTP keep-alive semantics."
+      "name": "server.netty.tcp-keep-alive",
+      "description": "Enables TCP SO_KEEPALIVE on accepted child channels. This is the socket-level keep-alive, independent of HTTP keep-alive semantics. HTTP keep-alive is protocol behaviour and is always on."
     },
     {
       "name": "server.netty.shutdown-grace-period",

@@ -87,7 +87,7 @@ prefix (`NettyLoomProperties`). See [ADR 0001](docs/adr/0001-server-properties-n
 | `server.servlet.context-path` | `String` | `""` | Context path the application is mounted under |
 | `server.netty.boss-threads` | `int` | `1` | Netty boss group thread count (accepts connections) |
 | `server.netty.worker-threads` | `int` | `0` | Netty worker group thread count; `0` = Netty default (`CPU_COUNT * 2`) |
-| `server.netty.keep-alive` | `boolean` | `true` | TCP keep-alive on sockets |
+| `server.netty.tcp-keep-alive` | `boolean` | `true` | TCP `SO_KEEPALIVE` socket option; unrelated to HTTP keep-alive, which is protocol behaviour and always on |
 | `server.netty.shutdown-grace-period` | `Duration` | `30s` | Time to wait for in-flight requests before forcibly closing |
 | `server.netty.read-timeout` | `Duration` | `30s` | Per-channel idle timeout; channels exceeding it are closed without a response (slow-loris defense) |
 

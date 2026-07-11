@@ -7,5 +7,5 @@ public record NettyServerConfiguration(
     InetAddress address,
     int bossThreads,
     int workerThreads,
-    boolean keepAlive
+    boolean tcpKeepAlive
 ) {}
