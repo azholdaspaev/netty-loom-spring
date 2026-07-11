@@ -122,7 +122,7 @@ public class NettyServer {
             .channel(ioHandlerFactory.getServerChannelClass())
             .childHandler(channelInitializer)
             .option(ChannelOption.SO_BACKLOG, 128)
-            .childOption(ChannelOption.SO_KEEPALIVE, configuration.keepAlive());
+            .childOption(ChannelOption.SO_KEEPALIVE, configuration.tcpKeepAlive());
         return bootstrap.bind(new InetSocketAddress(configuration.address(), configuration.port())).sync().channel();
     }
 
