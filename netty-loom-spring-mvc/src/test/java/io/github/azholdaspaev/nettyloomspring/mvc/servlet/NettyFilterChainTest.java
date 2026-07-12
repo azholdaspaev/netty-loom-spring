@@ -94,7 +94,7 @@ class NettyFilterChainTest {
         var original = new NettyHttpServletRequest(
             new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/x"),
             new HttpConnectionMetadata("", 0, "", 0, false),
-            new DefaultNettyServletContext());
+            new DefaultNettyServletContext(NettyFilterChainTest.class.getClassLoader()));
         var wrappedRequest = new HttpServletRequestWrapper(original);
         var wrappedResponse = new HttpServletResponseWrapper(new NettyHttpServletResponse());
 

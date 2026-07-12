@@ -6,6 +6,7 @@ junit = "6.0.3"
 
 [libraries]
 # Spring (versions managed by Spring BOM — no version needed in subprojects)
+spring-core = { module = "org.springframework:spring-core" }
 spring-web = { module = "org.springframework:spring-web" }
 spring-webmvc = { module = "org.springframework:spring-webmvc" }
 spring-context = { group = "org.springframework", name = "spring-context" }

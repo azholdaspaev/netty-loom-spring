@@ -1,0 +1,1 @@
+on the classpath but outside META-INF/resources

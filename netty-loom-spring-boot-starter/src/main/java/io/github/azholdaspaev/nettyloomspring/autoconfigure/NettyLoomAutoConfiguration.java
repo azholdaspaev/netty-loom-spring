@@ -23,6 +23,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.server.autoconfigure.servlet.ServletWebServerConfiguration;
 import org.springframework.boot.webmvc.autoconfigure.WebMvcAutoConfiguration;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.web.servlet.DispatcherServlet;
@@ -59,8 +60,10 @@ public class NettyLoomAutoConfiguration {
     }
 
     @Bean
-    public NettyServletContext nettyServletContext() {
-        return new DefaultNettyServletContext();
+    public NettyServletContext nettyServletContext(ApplicationContext applicationContext) {
+        // Resolve context resources against the application's loader, not this library's: under
+        // devtools the application lives in a RestartClassLoader that the library never sees.
+        return new DefaultNettyServletContext(applicationContext.getClassLoader());
     }
 
     @Bean
