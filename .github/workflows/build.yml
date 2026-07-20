@@ -10,6 +10,13 @@ jobs:
   build:
     # Run on both OSes so the auto-select logic and both native paths (epoll on Linux,
     # kqueue on macOS) are actually exercised.
+    #
+    # NOTE: the job name and these matrix values expand into the required status check
+    # contexts named in .github/rulesets/main-required-ci.json ("build (ubuntu-latest)",
+    # "build (macos-latest)"). Renaming the job or any matrix value must happen in the
+    # same PR as a ruleset update. That ruleset has no bypass actors, so a required check
+    # that stops being reported is worse than one that fails: every subsequent PR sits on
+    # "Expected — waiting for status" with no in-repo way out, only the web UI.
     strategy:
       fail-fast: false
       matrix:
