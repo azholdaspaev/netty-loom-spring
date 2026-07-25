@@ -7,6 +7,8 @@ import jakarta.servlet.Servlet;
 import jakarta.servlet.ServletRegistration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.MediaType;
+import org.springframework.http.MediaTypeFactory;
 
 import java.io.InputStream;
 import java.net.MalformedURLException;
@@ -29,6 +31,8 @@ public class DefaultNettyServletContext implements NettyServletContext {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultNettyServletContext.class);
 
+    private final ClasspathDocumentRoot documentRoot;
+
     private final ConcurrentMap<String, Object> attributes = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, String> initParameters = new ConcurrentHashMap<>();
     private final Map<String, ServletRegistration> servletRegistrations = new LinkedHashMap<>();
@@ -39,6 +43,16 @@ public class DefaultNettyServletContext implements NettyServletContext {
     // server start, so the volatile field is sufficient for safe publication.
     private volatile List<RegisteredFilter> registeredFiltersSnapshot;
     private volatile String contextPath = ROOT_CONTEXT_PATH;
+
+    /**
+     * @param classLoader loader backing the document root. Must be the application's loader, not this
+     *                    library's: under Spring Boot devtools the application is reloaded in a fresh
+     *                    {@code RestartClassLoader} while the library stays on the base loader, which
+     *                    would otherwise serve stale resources.
+     */
+    public DefaultNettyServletContext(ClassLoader classLoader) {
+        this.documentRoot = new ClasspathDocumentRoot(classLoader);
+    }
 
     @Override
     public Object getAttribute(String name) {
@@ -162,21 +176,39 @@ public class DefaultNettyServletContext implements NettyServletContext {
         return Collections.unmodifiableList(registered);
     }
 
+    /**
+     * Called by {@code ResourceHttpRequestHandler} for every static resource it serves, so this must not
+     * throw. A non-null answer takes precedence over the handler's own media-type map; {@code null} for
+     * an unrecognised extension is what the spec prescribes.
+     */
+    @Override
+    public String getMimeType(String file) {
+        return MediaTypeFactory.getMediaType(file)
+            .map(MediaType::toString)
+            .orElse(null);
+    }
+
     @Override
     public URL getResource(String path) throws MalformedURLException {
-        return null;
+        return documentRoot.resource(path);
     }
 
     @Override
     public InputStream getResourceAsStream(String path) {
-        return null;
+        return documentRoot.stream(path);
     }
 
     @Override
     public Set<String> getResourcePaths(String path) {
-        return null;
+        return documentRoot.paths(path);
     }
 
+    /**
+     * Always {@code null}: the document root is the classpath, which has no filesystem path. The spec
+     * allows {@code null} when a resource cannot be mapped to a real path, and it is what Tomcat returns
+     * for a jar-packaged application. Handing back the exploded build directory when one happens to exist
+     * would make behaviour diverge between development and a packaged jar.
+     */
     @Override
     public String getRealPath(String path) {
         return null;
@@ -224,7 +256,7 @@ public class DefaultNettyServletContext implements NettyServletContext {
 
     @Override
     public ClassLoader getClassLoader() {
-        return getClass().getClassLoader();
+        return documentRoot.classLoader();
     }
 
     @Override

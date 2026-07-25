@@ -29,6 +29,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NettyHttpServletRequestTest {
 
+    /** These tests exercise request parsing, not resources; any loader will do. */
+    private static DefaultNettyServletContext servletContext() {
+        return new DefaultNettyServletContext(NettyHttpServletRequestTest.class.getClassLoader());
+    }
+
     private static NettyHttpServletRequest request(HttpConnectionMetadata connection, NettyServletContext context) {
         return new NettyHttpServletRequest(
             new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/x"),
@@ -41,24 +46,24 @@ class NettyHttpServletRequestTest {
         if (host != null) {
             nettyRequest.headers().set(HttpHeaderNames.HOST, host);
         }
-        return new NettyHttpServletRequest(nettyRequest, connection, new DefaultNettyServletContext());
+        return new NettyHttpServletRequest(nettyRequest, connection, servletContext());
     }
 
     private static NettyHttpServletRequest formRequest(String uri, byte[] body, HttpConnectionMetadata connection) {
         var nettyRequest = new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.POST, uri, Unpooled.wrappedBuffer(body));
         nettyRequest.headers().set(HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.APPLICATION_X_WWW_FORM_URLENCODED);
-        return new NettyHttpServletRequest(nettyRequest, connection, new DefaultNettyServletContext());
+        return new NettyHttpServletRequest(nettyRequest, connection, servletContext());
     }
 
     private static NettyHttpServletRequest requestWithAcceptLanguage(String acceptLanguage, HttpConnectionMetadata connection) {
         var nettyRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/x");
         nettyRequest.headers().set(HttpHeaderNames.ACCEPT_LANGUAGE, acceptLanguage);
-        return new NettyHttpServletRequest(nettyRequest, connection, new DefaultNettyServletContext());
+        return new NettyHttpServletRequest(nettyRequest, connection, servletContext());
     }
 
     private static NettyHttpServletRequest requestWithContext(String uri, String contextPath) {
-        var context = new DefaultNettyServletContext();
+        var context = servletContext();
         context.setContextPath(contextPath);
         return new NettyHttpServletRequest(
             new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri),
@@ -122,7 +127,7 @@ class NettyHttpServletRequestTest {
 
     @Test
     void networkGettersFromConnection() {
-        var context = new DefaultNettyServletContext();
+        var context = servletContext();
         var request = request(new HttpConnectionMetadata("203.0.113.7", 54321, "198.51.100.2", 8080, false), context);
 
         assertEquals("203.0.113.7", request.getRemoteAddr());
@@ -140,7 +145,7 @@ class NettyHttpServletRequestTest {
     void remoteAndLocalHostsAreNotReverseDnsResolvedForIpv6() {
         var request = request(
             new HttpConnectionMetadata("::1", 9999, "::1", 8080, false),
-            new DefaultNettyServletContext());
+            servletContext());
 
         assertEquals("::1", request.getRemoteAddr());
         assertEquals("::1", request.getRemoteHost());
@@ -150,7 +155,7 @@ class NettyHttpServletRequestTest {
 
     @Test
     void protocolReflectsHttpVersion() {
-        var request = request(new HttpConnectionMetadata("", 0, "", 0, false), new DefaultNettyServletContext());
+        var request = request(new HttpConnectionMetadata("", 0, "", 0, false), servletContext());
 
         assertEquals("HTTP/1.1", request.getProtocol());
     }
@@ -248,7 +253,7 @@ class NettyHttpServletRequestTest {
         var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false);
         var nettyRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/x");
         nettyRequest.headers().set(HttpHeaderNames.ACCEPT_LANGUAGE, "da, en-gb;q=0.8, en;q=0.7");
-        var request = new NettyHttpServletRequest(nettyRequest, insecure, new DefaultNettyServletContext());
+        var request = new NettyHttpServletRequest(nettyRequest, insecure, servletContext());
 
         assertEquals(Locale.forLanguageTag("da"), request.getLocale());
         List<Locale> first = Collections.list(request.getLocales());
@@ -357,7 +362,7 @@ class NettyHttpServletRequestTest {
         return new NettyHttpServletRequest(
             nettyRequest,
             new HttpConnectionMetadata("", 0, "", 0, false),
-            new DefaultNettyServletContext());
+            servletContext());
     }
 
     @Test

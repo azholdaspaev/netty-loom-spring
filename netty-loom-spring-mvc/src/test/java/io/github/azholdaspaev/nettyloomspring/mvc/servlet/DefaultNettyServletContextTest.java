@@ -8,12 +8,23 @@ import jakarta.servlet.ServletRegistration;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.EnumSet;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.jar.JarOutputStream;
+import java.util.zip.ZipEntry;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -30,7 +41,7 @@ class DefaultNettyServletContextTest {
 
     @BeforeEach
     void setUp() {
-        context = new DefaultNettyServletContext();
+        context = new DefaultNettyServletContext(DefaultNettyServletContextTest.class.getClassLoader());
     }
 
     // --- Attribute methods ---
@@ -471,26 +482,163 @@ class DefaultNettyServletContextTest {
         assertEquals("instanceFilter", registered.get(0).name());
     }
 
-    // --- Resource methods (all return null) ---
+    // --- Resource methods ---
+    //
+    // The document root is the classpath's META-INF/resources/ tree, mirroring what a servlet
+    // container exposes for a jar-packaged application. Fixtures live in src/test/resources:
+    // META-INF/resources/doc-root.txt, META-INF/resources/sub/nested.txt, static/only-in-static.txt.
 
     @Test
-    void shouldReturnNullForGetResource() throws MalformedURLException {
-        assertNull(context.getResource("/index.html"));
+    void shouldResolveResourceFromDocumentRoot() throws MalformedURLException {
+        assertNotNull(context.getResource("/doc-root.txt"));
     }
 
     @Test
-    void shouldReturnNullForGetResourceAsStream() {
-        assertNull(context.getResourceAsStream("/index.html"));
+    void shouldReturnNullForResourceMissingFromDocumentRoot() throws MalformedURLException {
+        assertNull(context.getResource("/no-such-file.txt"));
+    }
+
+    /**
+     * Boot's other static locations are not part of the document root — {@code ResourceHttpRequestHandler}
+     * serves those off the classpath itself, never through the ServletContext. Tomcat returns null here
+     * too; pinning it keeps a future change from quietly widening the root and diverging from the spec.
+     */
+    @Test
+    void shouldNotResolveClasspathStaticAsDocumentRootResource() throws MalformedURLException {
+        assertNull(context.getResource("/static/only-in-static.txt"));
+        assertNull(context.getResource("/only-in-static.txt"));
     }
 
     @Test
-    void shouldReturnNullForGetResourcePaths() {
-        assertNull(context.getResourcePaths("/"));
+    void shouldThrowForResourcePathWithoutLeadingSlash() {
+        assertThrows(MalformedURLException.class, () -> context.getResource("doc-root.txt"));
     }
 
+    /**
+     * A resource path must not escape the document root. The fixture outside-document-root.txt sits on
+     * the classpath but outside META-INF/resources/, so a traversal that resolved would reach it — and
+     * on a real deployment would expose application classes and configuration.
+     */
+    @Test
+    void shouldNotEscapeDocumentRootViaParentTraversal() throws Exception {
+        assertNull(context.getResource("/../outside-document-root.txt"));
+        assertNull(context.getResourceAsStream("/../outside-document-root.txt"));
+        assertNull(context.getResource("/sub/../../outside-document-root.txt"));
+    }
+
+    @Test
+    void shouldReadResourceContentAsStream() throws IOException {
+        try (InputStream stream = context.getResourceAsStream("/doc-root.txt")) {
+            assertNotNull(stream);
+            assertEquals("document root resource\n", new String(stream.readAllBytes(), StandardCharsets.UTF_8));
+        }
+    }
+
+    /**
+     * Unlike getResource, the spec has getResourceAsStream report a bad path with null, not an exception.
+     */
+    @Test
+    void shouldReturnNullStreamForResourcePathWithoutLeadingSlash() {
+        assertNull(context.getResourceAsStream("doc-root.txt"));
+    }
+
+    @Test
+    void shouldListImmediateChildrenOfDocumentRoot() {
+        assertEquals(Set.of("/doc-root.txt", "/my file.txt", "/sub/"), context.getResourcePaths("/"));
+    }
+
+    /**
+     * The test classpath is a plain directory, so the exploded branch of the listing is the only one the
+     * other tests reach. Packaged applications hit the jar branch instead, which reads names out of the
+     * jar index rather than the filesystem — build a real jar so that path is covered too.
+     */
+    @Test
+    void shouldListImmediateChildrenInsideJar(@TempDir Path tempDir) throws Exception {
+        Path jar = tempDir.resolve("resources.jar");
+        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar))) {
+            out.putNextEntry(new ZipEntry("META-INF/resources/"));
+            out.putNextEntry(new ZipEntry("META-INF/resources/packaged.txt"));
+            out.write("packaged\n".getBytes(StandardCharsets.UTF_8));
+            out.putNextEntry(new ZipEntry("META-INF/resources/assets/"));
+            out.putNextEntry(new ZipEntry("META-INF/resources/assets/app.js"));
+            out.write("console.log(1)\n".getBytes(StandardCharsets.UTF_8));
+        }
+
+        try (URLClassLoader jarLoader = new URLClassLoader(new URL[] {jar.toUri().toURL()}, null)) {
+            DefaultNettyServletContext jarContext = new DefaultNettyServletContext(jarLoader);
+
+            assertEquals(Set.of("/packaged.txt", "/assets/"), jarContext.getResourcePaths("/"));
+            assertEquals(Set.of("/assets/app.js"), jarContext.getResourcePaths("/assets"));
+            assertNotNull(jarContext.getResource("/packaged.txt"));
+        }
+    }
+
+    @Test
+    void shouldListChildrenOfSubdirectory() {
+        assertEquals(Set.of("/sub/nested.txt"), context.getResourcePaths("/sub"));
+    }
+
+    @Test
+    void shouldReturnNullResourcePathsForUnknownDirectory() {
+        assertNull(context.getResourcePaths("/no-such-directory"));
+    }
+
+    /**
+     * The paths getResourcePaths hands back are ordinary context resource paths, so feeding one back
+     * into getResource must find the resource it just reported. That round trip breaks if the listing
+     * leaks percent-encoding from the underlying URL: the fixture "my file.txt" would come back as
+     * "my%20file.txt", which names no resource.
+     */
+    @Test
+    void shouldListPathsThatCanBeResolvedBack() throws MalformedURLException {
+        for (String path : context.getResourcePaths("/")) {
+            if (!path.endsWith("/")) {
+                assertNotNull(context.getResource(path), () -> "listed path did not resolve: " + path);
+            }
+        }
+    }
+
+    /**
+     * A directory name is a literal, not a glob. Were it spliced into an Ant pattern, the "*" here would
+     * match the real "sub" directory and report its children as though "s*b" existed.
+     */
+    @Test
+    void shouldNotTreatResourcePathAsGlobPattern() {
+        assertNull(context.getResourcePaths("/s*b"));
+    }
+
+    /**
+     * The document root lives on the classpath, which has no filesystem path. Null is what the spec
+     * prescribes and what Tomcat returns for a jar-packaged application.
+     */
     @Test
     void shouldReturnNullForGetRealPath() {
-        assertNull(context.getRealPath("/"));
+        assertNull(context.getRealPath("/doc-root.txt"));
+    }
+
+    // --- MIME types ---
+    //
+    // ResourceHttpRequestHandler.getMediaType calls getMimeType for every static resource it serves,
+    // so this must resolve rather than throw.
+
+    @Test
+    void shouldResolveMimeTypeFromFileExtension() {
+        assertEquals("text/html", context.getMimeType("index.html"));
+        assertEquals("text/plain", context.getMimeType("doc-root.txt"));
+    }
+
+    @Test
+    void shouldReturnNullMimeTypeForUnknownExtension() {
+        assertNull(context.getMimeType("archive.unknownext"));
+    }
+
+    // --- Class loader ---
+
+    @Test
+    void shouldExposeTheInjectedClassLoader() {
+        ClassLoader classLoader = new ClassLoader() {
+        };
+        assertEquals(classLoader, new DefaultNettyServletContext(classLoader).getClassLoader());
     }
 
     // --- Simple getters ---
