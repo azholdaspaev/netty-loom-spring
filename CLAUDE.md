@@ -17,12 +17,16 @@ Java 25 toolchain (LTS). No `--enable-preview` — the library targets only stab
 
 This is a Spring Boot integration library that replaces Tomcat/Jetty with a Netty-based web server using Java virtual threads (Project Loom).
 
-**Modules (flat layout, all included in settings.gradle.kts):**
+**Gradle modules (flat layout, all included in settings.gradle.kts):**
 
 - **netty-loom-spring-core** — Pure Netty layer, no Spring dependency. `NettyServer` manages lifecycle; `NettyServerChannelInitializer` delegates to `NettyPipelineConfigurer` SPI for channel pipeline setup. Netty transport, codec-http, handler, plus native epoll/kqueue transports.
 - **netty-loom-spring-mvc** — Spring MVC servlet bridge. Contains `NettyServletContext` interface (Jakarta ServletContext with default UnsupportedOperationException stubs) and `DefaultNettyServletContext` implementation that allows Spring MVC to run on top of Netty.
 - **netty-loom-spring-boot-starter** — Spring Boot auto-configuration entry point. `NettyWebServerFactory` implements `ServletWebServerFactory` SPI; `NettyWebServer` implements `WebServer`. Auto-config registered via `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`.
-- **netty-loom-spring-example-tomcat** / **netty-loom-spring-example-netty** — Example apps (placeholders).
+- **netty-loom-spring-example-netty** / **netty-loom-spring-example-tomcat** — Runnable Spring Boot apps (both apply the `spring.boot` plugin, so `bootJar`/`bootRun` work). Each has an application class, a `BenchmarkController` exposing `/ping` and `/work`, and a `@SpringBootTest` end-to-end test. `example-netty` depends on the starter (port 18080); `example-tomcat` depends on `spring-boot-starter-web` and is the comparison baseline, with `platform` and `virtual` profiles (ports 18081/18082). They are the load-generation targets for the benchmark harness below.
+
+**Not a Gradle module** (deliberately absent from settings.gradle.kts, no `src/`):
+
+- **netty-loom-spring-benchmarks** — k6 load-testing harness: `k6/*.js` scenarios, `scripts/run-all.sh`, and `results/`. Drives the example apps over HTTP; nothing here is compiled by Gradle. See README.md ("Benchmarks") for how to run it and how to read the numbers.
 
 **Package root:** `io.github.azholdaspaev.nettyloomspring`
 
