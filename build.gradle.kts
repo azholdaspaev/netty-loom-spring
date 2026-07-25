@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+
 plugins {
     java
     alias(libs.plugins.spring.dependency.management) apply false
@@ -21,8 +23,30 @@ subprojects {
         options.compilerArgs.add("-parameters")
     }
 
+    // Mockito must be loaded as a -javaagent: self-attaching is deprecated on the JDK 25
+    // toolchain and will be disallowed outright in a future release. Declared for every
+    // subproject but left empty by default — modules whose tests pull in Mockito opt in with
+    // `"mockitoAgent"(libs.mockito.core)`. An empty configuration contributes no jvm arg.
+    val mockitoAgent = configurations.dependencyScope("mockitoAgent")
+    val mockitoAgentClasspath = configurations.resolvable("mockitoAgentClasspath") {
+        extendsFrom(mockitoAgent.get())
+        isTransitive = false
+    }
+
     tasks.withType<Test> {
         useJUnitPlatform()
+
+        // Netty's epoll/kqueue transports call System::loadLibrary from the unnamed module.
+        jvmArgs("--enable-native-access=ALL-UNNAMED")
+
+        jvmArgumentProviders.add(CommandLineArgumentProvider {
+            mockitoAgentClasspath.get().files.map { "-javaagent:$it" }
+        })
+
+        testLogging {
+            showStandardStreams = true
+            exceptionFormat = TestExceptionFormat.FULL
+        }
     }
 
     pluginManager.withPlugin("io.spring.dependency-management") {
