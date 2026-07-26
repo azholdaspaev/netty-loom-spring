@@ -73,16 +73,21 @@ class HttpConnectionRegistryTest {
         connection.finish();
     }
 
+    /**
+     * The accept path defers registration to the worker loop, so a connection can land after
+     * {@link HttpConnectionRegistry#beginDrain()} has already walked the group. Left open it would
+     * either escape the close-future snapshot or hold it for the whole grace period.
+     */
     @Test
-    void shouldForceCloseEverythingOnCloseAll() {
+    void shouldCloseAConnectionThatArrivesAfterTheDrainHasBegun() {
         HttpConnectionRegistry registry = newRegistry();
-        EmbeddedChannel connection = register(registry);
-        registry.exchangeStarted(connection);
+        registry.beginDrain();
 
-        registry.closeAll();
-        connection.runPendingTasks();
+        EmbeddedChannel latecomer = new EmbeddedChannel();
+        registry.register(latecomer);
+        latecomer.runPendingTasks();
 
-        assertFalse(connection.isOpen(), "closeAll abandons whatever is still in flight");
+        assertFalse(latecomer.isOpen(), "a connection accepted after the drain pass must not linger");
     }
 
     @Test

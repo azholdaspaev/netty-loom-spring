@@ -40,9 +40,19 @@ public class HttpConnectionRegistry {
     /**
      * Adds an accepted connection. Called before the pipeline is configured, so a channel is always
      * tracked before it can carry a request.
+     *
+     * <p>A connection that arrives once the drain has begun is closed straight away. The accept path
+     * runs on the boss loop but defers {@code initChannel} — and therefore this call — to the worker
+     * loop, so a connection can land after {@link #beginDrain()} has already walked the group and
+     * would otherwise never be told to go: either it misses the close-future snapshot and lets the
+     * drain finish early, or it joins the snapshot and holds it open for the whole grace period.
+     * Nothing can be in flight on it yet, so closing is always right.
      */
     public void register(Channel connection) {
         connections.add(connection);
+        if (draining) {
+            connection.close();
+        }
     }
 
     public boolean isDraining() {
@@ -62,13 +72,12 @@ public class HttpConnectionRegistry {
     /**
      * Called on the event loop once a response has been written.
      *
-     * <p>Ignores a connection with nothing outstanding rather than going negative: the pipeline
-     * answers some requests that never became an exchange here — a malformed request line is
-     * rejected by the codec before any {@code HttpRequest} is emitted, yet its 400 still travels out
-     * past {@link HttpDrainHandler}. Letting the count drift below zero would make the next real
-     * request look like nothing was in flight, and a drain would close the connection under it.
-     * Those connections are closed by {@link HttpExceptionHandler} anyway, so declining to count
-     * them cannot strand the drain.
+     * <p>Ignores a connection with nothing outstanding rather than going negative. This is a safety
+     * net, not a case the pipeline is known to produce: every path audited today balances, including
+     * a malformed request line (the decoder emits an invalid {@code HttpRequest}, which is counted,
+     * and its 400 balances it). Should some future response ever go out unmatched, a negative count
+     * would make a genuinely busy connection look idle to {@link #beginDrain()} and get it closed
+     * mid-request — so the floor stays. It must not be read as licence to leave counts unbalanced.
      */
     public void exchangeFinished(Channel connection) {
         AtomicInteger inFlight = counter(connection);

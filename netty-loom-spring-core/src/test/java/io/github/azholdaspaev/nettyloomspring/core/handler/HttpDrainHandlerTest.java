@@ -22,17 +22,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HttpDrainHandlerTest {
 
-    @Test
-    void shouldCloseAConnectionCarryingNoRequest() {
-        HttpConnectionRegistry registry = newRegistry();
-        EmbeddedChannel channel = register(registry);
-
-        registry.beginDrain();
-        channel.runPendingTasks();
-
-        assertFalse(channel.isOpen(), "an idle keep-alive connection has nothing to drain");
-    }
-
     /**
      * The regression this handler exists for: counting only fully aggregated requests left a
      * connection mid-upload looking idle, so the drain reset it.
@@ -115,9 +104,9 @@ class HttpDrainHandlerTest {
     }
 
     /**
-     * A malformed request line is rejected by the codec before any {@code HttpRequest} is emitted,
-     * yet {@link HttpExceptionHandler} still writes a 400 out past this handler. Counting that
-     * response would drive the connection negative and make the next real request look idle.
+     * A floor, not a case the pipeline is known to produce — every audited path balances today. It
+     * exists because a count driven below zero would make a genuinely busy connection look idle to
+     * {@code beginDrain()} and get it closed mid-request.
      */
     @Test
     void shouldNotCountAResponseForARequestItNeverSaw() {

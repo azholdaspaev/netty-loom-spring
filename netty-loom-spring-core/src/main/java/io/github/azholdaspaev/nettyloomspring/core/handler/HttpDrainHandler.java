@@ -5,6 +5,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
+import io.netty.handler.codec.http.HttpStatusClass;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.LastHttpContent;
 
@@ -41,14 +42,32 @@ public class HttpDrainHandler extends ChannelDuplexHandler {
 
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+        // A 1xx is an interim answer, not the end of an exchange. The aggregator replies to
+        // Expect: 100-continue with a FullHttpResponse -- both an HttpResponse and a LastHttpContent
+        // -- so without this it would end the exchange before the body has even been sent, and stamp
+        // Connection: close on the very invitation to send it. Netty's own keep-alive handler
+        // exempts informational responses for the same reason.
+        if (isInformational(msg)) {
+            ctx.write(msg, promise);
+            return;
+        }
         if (msg instanceof HttpResponse response && isLastResponseOwedWhileDraining(ctx)) {
             HttpUtil.setKeepAlive(response.headers(), response.protocolVersion(), false);
         }
         // The exchange ends when the response is actually on the wire, not when it is queued.
+        // unvoid() because addListener on a void promise throws, and the write must then carry the
+        // unvoided promise or the listener would never be notified.
+        ChannelPromise writePromise = promise;
         if (msg instanceof LastHttpContent) {
-            promise.addListener(_ -> connectionRegistry.exchangeFinished(ctx.channel()));
+            writePromise = promise.unvoid();
+            writePromise.addListener(_ -> connectionRegistry.exchangeFinished(ctx.channel()));
         }
-        ctx.write(msg, promise);
+        ctx.write(msg, writePromise);
+    }
+
+    private static boolean isInformational(Object msg) {
+        return msg instanceof HttpResponse response
+            && response.status().codeClass() == HttpStatusClass.INFORMATIONAL;
     }
 
     private boolean isLastResponseOwedWhileDraining(ChannelHandlerContext ctx) {

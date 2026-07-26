@@ -31,7 +31,9 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -40,6 +42,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -93,8 +96,11 @@ class NettyServerDrainTest {
 
             releaseDispatcher.countDown();
 
-            assertEquals("HTTP/1.1 200 OK", readStatusLine(client),
+            List<String> response = readHeaderBlock(reader(client));
+            assertEquals("HTTP/1.1 200 OK", response.getFirst(),
                 "a request in flight when shutdown began must still receive its response");
+            assertTrue(hasHeader(response, "connection", "close"),
+                "the last response owed during a drain must stop the client reusing the connection");
             assertEquals(NettyShutdownResult.IDLE, shutdown.get(5, TimeUnit.SECONDS),
                 "shutdown completes as soon as the last in-flight request is answered");
         }
@@ -118,8 +124,41 @@ class NettyServerDrainTest {
 
             send(client, "hello");
 
-            assertEquals("HTTP/1.1 200 OK", readStatusLine(client),
+            assertEquals("HTTP/1.1 200 OK", readHeaderBlock(reader(client)).getFirst(),
                 "a request already on the wire when the drain began must still be answered");
+            assertEquals(NettyShutdownResult.IDLE, shutdown.get(5, TimeUnit.SECONDS));
+        }
+    }
+
+    /**
+     * The aggregator answers {@code Expect: 100-continue} itself, and its {@code 100 Continue} is a
+     * {@code FullHttpResponse} — so it is both an {@code HttpResponse} and a {@code LastHttpContent}
+     * on the way out through the drain handler. Treating that interim answer as the end of the
+     * exchange closes the connection before the client has sent a single body byte.
+     */
+    @Test
+    void shouldHonourExpectContinueWhileDraining() throws Exception {
+        releaseDispatcher.countDown();
+        try (Socket client = connect()) {
+            BufferedReader reader = reader(client);
+            send(client, "POST /upload HTTP/1.1\r\nHost: localhost\r\n"
+                + "Content-Length: 5\r\nExpect: 100-continue\r\n\r\n");
+            Thread.sleep(200);
+
+            Future<NettyShutdownResult> shutdown = shutdownExecutor.submit(
+                () -> nettyServer.shutdown(Duration.ofSeconds(10)));
+            Thread.sleep(200);
+
+            List<String> interim = readHeaderBlock(reader);
+            assertEquals("HTTP/1.1 100 Continue", interim.getFirst(),
+                "the server must still invite the body while draining");
+            assertFalse(hasHeader(interim, "connection", "close"),
+                "an interim 1xx must not carry Connection: close -- the exchange is not over");
+
+            send(client, "hello");
+
+            assertEquals("HTTP/1.1 200 OK", readHeaderBlock(reader).getFirst(),
+                "the upload invited by 100 Continue must still be answered");
             assertEquals(NettyShutdownResult.IDLE, shutdown.get(5, TimeUnit.SECONDS));
         }
     }
@@ -181,8 +220,24 @@ class NettyServerDrainTest {
         client.getOutputStream().flush();
     }
 
-    private static String readStatusLine(Socket client) throws IOException {
-        return new BufferedReader(
-            new InputStreamReader(client.getInputStream(), StandardCharsets.US_ASCII)).readLine();
+    /** One reader per socket: a fresh one would discard whatever the previous had already buffered. */
+    private static BufferedReader reader(Socket client) throws IOException {
+        return new BufferedReader(new InputStreamReader(client.getInputStream(), StandardCharsets.US_ASCII));
+    }
+
+    /** Status line plus headers, up to the blank line that ends the block. */
+    private static List<String> readHeaderBlock(BufferedReader reader) throws IOException {
+        List<String> lines = new ArrayList<>();
+        String line;
+        while ((line = reader.readLine()) != null && !line.isEmpty()) {
+            lines.add(line);
+        }
+        return lines;
+    }
+
+    private static boolean hasHeader(List<String> headerBlock, String name, String value) {
+        return headerBlock.stream()
+            .map(line -> line.toLowerCase(Locale.ROOT))
+            .anyMatch(line -> line.startsWith(name + ":") && line.contains(value));
     }
 }
