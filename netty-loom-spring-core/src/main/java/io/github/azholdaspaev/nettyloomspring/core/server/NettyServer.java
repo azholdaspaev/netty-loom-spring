@@ -154,6 +154,12 @@ public class NettyServer {
      * socket, so mapping the lot to {@link BindException} matches what the JDK already does for the
      * NIO transport — it reports address-in-use, permission-denied and unassignable-address alike as
      * a bind failure. Non-I/O failures are left alone; they did not come from the socket.
+     *
+     * <p>The original message is carried over verbatim rather than replaced with a tidier one: the
+     * type alone cannot tell those three cases apart, so the {@code strerror} text is the only thing
+     * that can, and callers classify by it. Rewording it would drop that discrimination with nothing
+     * at this layer to show for it, which is why the test pins the message and not just the type
+     * (issue #74).
      */
     private static Throwable asBindFailure(Throwable cause) {
         if (cause instanceof IOException && !(cause instanceof BindException)) {
