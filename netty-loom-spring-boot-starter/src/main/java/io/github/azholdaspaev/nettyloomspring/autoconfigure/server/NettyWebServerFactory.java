@@ -1,6 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.server;
 
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.properties.NettyLoomProperties;
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyIoHandlerFactory;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyServer;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyServerChannelInitializer;
@@ -9,7 +10,6 @@ import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyFilterConfig;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletConfig;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.RegisteredFilter;
-import io.netty.channel.group.ChannelGroup;
 import jakarta.servlet.ServletException;
 import org.springframework.boot.web.server.AbstractConfigurableWebServerFactory;
 import org.springframework.boot.web.server.Ssl;
@@ -28,20 +28,20 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
 
     private final NettyIoHandlerFactory ioHandlerFactory;
     private final NettyServerChannelInitializer channelInitializer;
-    private final ChannelGroup channelGroup;
+    private final HttpConnectionRegistry connectionRegistry;
     private final NettyServletContext servletContext;
     private final DispatcherServlet dispatcherServlet;
     private final NettyLoomProperties properties;
 
     public NettyWebServerFactory(NettyIoHandlerFactory ioHandlerFactory,
                                  NettyServerChannelInitializer channelInitializer,
-                                 ChannelGroup channelGroup,
+                                 HttpConnectionRegistry connectionRegistry,
                                  NettyServletContext servletContext,
                                  DispatcherServlet dispatcherServlet,
                                  NettyLoomProperties properties) {
         this.ioHandlerFactory = ioHandlerFactory;
         this.channelInitializer = channelInitializer;
-        this.channelGroup = channelGroup;
+        this.connectionRegistry = connectionRegistry;
         this.servletContext = servletContext;
         this.dispatcherServlet = dispatcherServlet;
         this.properties = properties;
@@ -65,7 +65,7 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
         NettyServerConfiguration configuration = new NettyServerConfiguration(
             getPort(), getAddress(), properties.bossThreads(), properties.workerThreads(),
             properties.tcpKeepAlive());
-        NettyServer nettyServer = new NettyServer(configuration, channelInitializer, ioHandlerFactory, channelGroup);
+        NettyServer nettyServer = new NettyServer(configuration, channelInitializer, ioHandlerFactory, connectionRegistry);
         return new NettyWebServer(nettyServer, properties.shutdownGracePeriod());
     }
 

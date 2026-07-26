@@ -2,6 +2,8 @@ package io.github.azholdaspaev.nettyloomspring.autoconfigure;
 
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.properties.NettyLoomProperties;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.NettyWebServerFactory;
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpDrainHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpExceptionHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestDispatcher;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestHandler;
@@ -13,7 +15,6 @@ import io.github.azholdaspaev.nettyloomspring.core.server.NettyServerChannelInit
 import io.github.azholdaspaev.nettyloomspring.mvc.handler.SpringHttpRequestDispatcher;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.DefaultNettyServletContext;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
-import io.netty.channel.group.ChannelGroup;
 import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
@@ -46,12 +47,12 @@ public class NettyLoomAutoConfiguration {
     @Bean
     public NettyWebServerFactory nettyWebServerFactory(NettyIoHandlerFactory nettyIoHandlerFactory,
                                                        NettyServerChannelInitializer nettyServerChannelInitializer,
-                                                       ChannelGroup nettyLoomChannelGroup,
+                                                       HttpConnectionRegistry httpConnectionRegistry,
                                                        NettyServletContext servletContext,
                                                        DispatcherServlet dispatcherServlet,
                                                        NettyLoomProperties properties) {
         return new NettyWebServerFactory(nettyIoHandlerFactory, nettyServerChannelInitializer,
-            nettyLoomChannelGroup, servletContext, dispatcherServlet, properties);
+            httpConnectionRegistry, servletContext, dispatcherServlet, properties);
     }
 
     @Bean
@@ -65,25 +66,30 @@ public class NettyLoomAutoConfiguration {
     }
 
     @Bean
-    public ChannelGroup nettyLoomChannelGroup() {
-        return new DefaultChannelGroup("netty-loom-channels", GlobalEventExecutor.INSTANCE);
+    public HttpConnectionRegistry httpConnectionRegistry() {
+        return new HttpConnectionRegistry(new DefaultChannelGroup("netty-loom-channels", GlobalEventExecutor.INSTANCE));
     }
 
     @Bean
     public NettyServerChannelInitializer nettyServerChannelInitializer(NettyPipelineConfigurer nettyPipelineConfigurer,
-                                                                       ChannelGroup nettyLoomChannelGroup) {
-        return new NettyServerChannelInitializer(nettyPipelineConfigurer, nettyLoomChannelGroup);
+                                                                       HttpConnectionRegistry httpConnectionRegistry) {
+        return new NettyServerChannelInitializer(nettyPipelineConfigurer, httpConnectionRegistry);
     }
 
     @Bean
     public NettyPipelineConfigurer nettyPipelineConfigurer(NettyLoomProperties properties,
                                                            HttpRequestDispatcher httpRequestDispatcher,
-                                                           ExecutorService nettyLoomDispatchExecutor) {
+                                                           ExecutorService nettyLoomDispatchExecutor,
+                                                           HttpConnectionRegistry httpConnectionRegistry) {
         long readTimeoutMillis = properties.readTimeout().toMillis();
         return new DefaultNettyPipelineConfigurer(List.of(
             new NamedChannelHandler("readTimeout", () -> new ReadTimeoutHandler(readTimeoutMillis, TimeUnit.MILLISECONDS)),
             new NamedChannelHandler("httpCodec", () -> new HttpServerCodec(MAX_HTTP_INITIAL_LINE_LENGTH, MAX_HTTP_HEADER_SIZE, MAX_HTTP_CHUNK_SIZE)),
             new NamedChannelHandler("httpKeepAlive", HttpServerKeepAliveHandler::new),
+            // Above the aggregator so a connection counts as busy from the head of a request, before
+            // its body has finished arriving; outbound of httpKeepAlive so it can stamp
+            // Connection: close before that handler decides whether to close.
+            new NamedChannelHandler("drain", () -> new HttpDrainHandler(httpConnectionRegistry)),
             new NamedChannelHandler("aggregator", () -> new HttpObjectAggregator(MAX_HTTP_REQUEST_BODY_BYTES)),
             new NamedChannelHandler("dispatcher", () -> new HttpRequestHandler(httpRequestDispatcher, nettyLoomDispatchExecutor)),
             NamedChannelHandler.shared("exceptionHandler", new HttpExceptionHandler())
