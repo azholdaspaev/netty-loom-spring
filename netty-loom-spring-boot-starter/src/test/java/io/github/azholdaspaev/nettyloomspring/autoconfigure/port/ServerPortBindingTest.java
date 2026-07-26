@@ -24,25 +24,32 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * and can never observe a specific value), which means a free port has to be picked in advance. That
  * pick-then-rebind carries an inherent TOCTOU window, so the test retries on the rare bind collision
  * rather than flaking CI.
+ *
+ * <p>The timeout is derived from {@link #MAX_ATTEMPTS} rather than written as a literal so the retry
+ * budget cannot drift from the loop it bounds: a run that exhausts every attempt has to fit inside
+ * it, or the anti-flake mechanism is unreachable (issue #68).
  */
 class ServerPortBindingTest {
 
     private static final int MAX_ATTEMPTS = 3;
+    /** Cold Spring boot + bind + probe + drain, with slack for a loaded CI runner. */
+    private static final int SECONDS_PER_ATTEMPT = 5;
 
     @Test
-    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    @Timeout(value = MAX_ATTEMPTS * SECONDS_PER_ATTEMPT, unit = TimeUnit.SECONDS)
     void shouldBindStandardServerPort() throws Exception {
         BindException lastBindFailure = null;
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             int chosenPort = TestSocketUtils.findAvailableTcpPort();
             try (ConfigurableApplicationContext context = new SpringApplicationBuilder(SmokeNettyLoomApplication.class)
                 .properties("server.port=" + chosenPort)
-                .run()) {
+                .run();
+                 HttpClient client = HttpClient.newHttpClient()) {
 
                 int boundPort = ((WebServerApplicationContext) context).getWebServer().getPort();
                 assertEquals(chosenPort, boundPort);
 
-                HttpResponse<String> response = HttpClient.newHttpClient().send(
+                HttpResponse<String> response = client.send(
                     HttpRequest.newBuilder(URI.create("http://localhost:" + chosenPort + "/get")).build(),
                     HttpResponse.BodyHandlers.ofString());
                 assertEquals(200, response.statusCode());

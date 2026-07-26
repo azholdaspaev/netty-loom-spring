@@ -75,8 +75,10 @@ class ContextPathIntegrationTest {
     }
 
     private static HttpResponse<String> get(String uri) throws Exception {
-        return HttpClient.newHttpClient().send(
-            HttpRequest.newBuilder(URI.create(uri)).build(),
-            HttpResponse.BodyHandlers.ofString());
+        try (HttpClient client = HttpClient.newHttpClient()) {
+            return client.send(
+                HttpRequest.newBuilder(URI.create(uri)).build(),
+                HttpResponse.BodyHandlers.ofString());
+        }
     }
 }
