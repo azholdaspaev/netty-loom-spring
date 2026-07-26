@@ -138,7 +138,9 @@ class NettyServerTest {
 
             assertInstanceOf(BindException.class, failure.getCause());
             // The type is the same for a taken port, a denied permission and an unassignable address,
-            // so the OS text is the only thing that separates them and callers classify by it.
+            // so the OS text is the only thing that separates them. Boot's PortInUseException matches
+            // message.toLowerCase(Locale.ROOT).contains("in use") -- named here because the literal
+            // below is its rule, and core carries no Spring dependency to point at.
             // Normalizing the type must not normalize the message away.
             assertTrue(failure.getCause().getMessage().toLowerCase(Locale.ROOT).contains("in use"),
                 "bind failure should carry the OS text; was: " + failure.getCause().getMessage());
