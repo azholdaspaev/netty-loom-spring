@@ -1,12 +1,12 @@
 package io.github.azholdaspaev.nettyloomspring.core.server;
 
 import io.github.azholdaspaev.nettyloomspring.core.exception.NettyServerException;
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
-import io.netty.channel.group.ChannelGroup;
 import io.netty.util.concurrent.Future;
 
 import java.net.InetSocketAddress;
@@ -21,18 +21,18 @@ public class NettyServer {
     private final NettyServerConfiguration configuration;
     private final NettyServerChannelInitializer channelInitializer;
     private final NettyIoHandlerFactory ioHandlerFactory;
-    private final ChannelGroup channelGroup;
+    private final HttpConnectionRegistry connectionRegistry;
 
     private volatile RunningState state;
 
     public NettyServer(NettyServerConfiguration configuration,
                        NettyServerChannelInitializer channelInitializer,
                        NettyIoHandlerFactory ioHandlerFactory,
-                       ChannelGroup channelGroup) {
+                       HttpConnectionRegistry connectionRegistry) {
         this.configuration = configuration;
         this.channelInitializer = channelInitializer;
         this.ioHandlerFactory = ioHandlerFactory;
-        this.channelGroup = channelGroup;
+        this.connectionRegistry = connectionRegistry;
     }
 
     public void start() {
@@ -40,6 +40,7 @@ public class NettyServer {
             if (state != null) {
                 return;
             }
+            connectionRegistry.reset();
             EventLoopGroup boss = newEventLoopGroup(configuration.bossThreads());
             EventLoopGroup worker = newEventLoopGroup(configuration.workerThreads());
             boolean bound = false;
@@ -83,6 +84,9 @@ public class NettyServer {
      * Closes the server socket so new connections are refused while keeping running state,
      * allowing in-flight requests to drain. Finish the shutdown by calling
      * {@link #shutdown(Duration)}. While in this drain window {@link #isRunning()} stays true.
+     *
+     * <p>Idle connections are closed here rather than waited on: with keep-alive they would
+     * otherwise sit open for the whole grace period with no request on them.
      */
     public void stopAcceptingConnections() {
         synchronized (lock) {
@@ -96,6 +100,7 @@ public class NettyServer {
                 Thread.currentThread().interrupt();
                 throw new NettyServerException("Interrupted closing server channel", e);
             }
+            connectionRegistry.beginDrain();
         }
     }
 
@@ -126,10 +131,17 @@ public class NettyServer {
         return bootstrap.bind(new InetSocketAddress(configuration.address(), configuration.port())).sync().channel();
     }
 
+    /**
+     * Waits for in-flight requests, not for open sockets: {@link HttpConnectionRegistry#beginDrain()}
+     * closes the connections that are idle and marks the rest to close once they have replied, so
+     * this completes as soon as the last exchange is answered rather than when a pooling client
+     * happens to hang up (issue #67).
+     */
     private boolean drainOrForceClose(Deadline deadline) throws InterruptedException {
-        boolean drained = channelGroup.newCloseFuture().await(deadline.remainingMillis(), TimeUnit.MILLISECONDS);
+        boolean drained = connectionRegistry.beginDrain()
+            .await(deadline.remainingMillis(), TimeUnit.MILLISECONDS);
         if (!drained) {
-            channelGroup.close().sync();
+            connectionRegistry.closeAll().sync();
         }
         return drained;
     }

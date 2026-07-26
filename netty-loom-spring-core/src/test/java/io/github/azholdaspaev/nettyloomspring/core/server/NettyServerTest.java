@@ -1,8 +1,11 @@
 package io.github.azholdaspaev.nettyloomspring.core.server;
 
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.DefaultNettyPipelineConfigurer;
+import io.github.azholdaspaev.nettyloomspring.core.pipeline.NamedChannelHandler;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineConfigurer;
-import io.netty.channel.group.ChannelGroup;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import org.junit.jupiter.api.AfterEach;
@@ -15,6 +18,8 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -32,12 +37,28 @@ class NettyServerTest {
     }
 
     private static NettyServer newServer(InetAddress address) {
+        return newServer(address, null);
+    }
+
+    /**
+     * @param accepted counted down once the server has accepted a connection, so a test can act on a
+     *                 connection the server definitely knows about rather than racing the accept.
+     */
+    private static NettyServer newServer(InetAddress address, CountDownLatch accepted) {
         NettyServerConfiguration configuration = new NettyServerConfiguration(0, address, 0, 0, false);
-        NettyPipelineConfigurer pipelineConfigurer = new DefaultNettyPipelineConfigurer(List.of());
-        ChannelGroup channelGroup = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
-        NettyServerChannelInitializer channelInitializer = new NettyServerChannelInitializer(pipelineConfigurer, channelGroup);
+        NettyPipelineConfigurer pipelineConfigurer = new DefaultNettyPipelineConfigurer(
+            accepted == null ? List.of() : List.of(new NamedChannelHandler("accepted", () -> new ChannelInboundHandlerAdapter() {
+                @Override
+                public void channelActive(ChannelHandlerContext ctx) {
+                    accepted.countDown();
+                    ctx.fireChannelActive();
+                }
+            })));
+        HttpConnectionRegistry connectionRegistry = new HttpConnectionRegistry(
+            new DefaultChannelGroup(GlobalEventExecutor.INSTANCE));
+        NettyServerChannelInitializer channelInitializer = new NettyServerChannelInitializer(pipelineConfigurer, connectionRegistry);
         NettyIoHandlerFactory nettyIoHandlerFactory = new NettyIoHandlerFactory("auto");
-        return new NettyServer(configuration, channelInitializer, nettyIoHandlerFactory, channelGroup);
+        return new NettyServer(configuration, channelInitializer, nettyIoHandlerFactory, connectionRegistry);
     }
 
     @AfterEach
@@ -119,6 +140,27 @@ class NettyServerTest {
                 socket.connect(new InetSocketAddress("127.0.0.1", port), 500);
             }
         });
+    }
+
+    @Test
+    void shouldNotWaitOutGracePeriodForIdleConnections() throws Exception {
+        CountDownLatch accepted = new CountDownLatch(1);
+        nettyServer = newServer(null, accepted);
+        nettyServer.start();
+
+        try (Socket idle = new Socket()) {
+            idle.connect(new InetSocketAddress("127.0.0.1", nettyServer.getPort()), 1_000);
+            assertTrue(accepted.await(5, TimeUnit.SECONDS), "server must have accepted the connection");
+
+            long startedAt = System.nanoTime();
+            NettyShutdownResult result = nettyServer.shutdown(Duration.ofSeconds(5));
+            long elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000L;
+
+            assertEquals(NettyShutdownResult.IDLE, result,
+                "an idle connection carries no in-flight request, so nothing is left to drain");
+            assertTrue(elapsedMillis < 1_000,
+                "shutdown must not wait out the grace period on an idle connection, took " + elapsedMillis + "ms");
+        }
     }
 
     @Test
