@@ -22,6 +22,7 @@ import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.time.Duration;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -136,6 +137,11 @@ class NettyServerTest {
             NettyServerException failure = assertThrows(NettyServerException.class, nettyServer::start);
 
             assertInstanceOf(BindException.class, failure.getCause());
+            // The type is the same for a taken port, a denied permission and an unassignable address,
+            // so the OS text is the only thing that separates them and callers classify by it.
+            // Normalizing the type must not normalize the message away.
+            assertTrue(failure.getCause().getMessage().toLowerCase(Locale.ROOT).contains("in use"),
+                "bind failure should carry the OS text; was: " + failure.getCause().getMessage());
         }
     }
 
