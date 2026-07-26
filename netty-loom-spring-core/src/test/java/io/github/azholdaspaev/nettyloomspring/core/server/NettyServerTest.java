@@ -16,6 +16,7 @@ import java.net.ConnectException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -160,6 +161,25 @@ class NettyServerTest {
                 "an idle connection carries no in-flight request, so nothing is left to drain");
             assertTrue(elapsedMillis < 1_000,
                 "shutdown must not wait out the grace period on an idle connection, took " + elapsedMillis + "ms");
+        }
+    }
+
+    /**
+     * The registry outlives any one server run — it is a container-scoped singleton — so a drain flag
+     * left set would make the restarted server hang up on every connection it accepts.
+     */
+    @Test
+    void shouldAcceptConnectionsAgainAfterRestart() throws Exception {
+        nettyServer.start();
+        nettyServer.shutdown(Duration.ofSeconds(1));
+
+        nettyServer.start();
+
+        try (Socket client = new Socket()) {
+            client.connect(new InetSocketAddress("127.0.0.1", nettyServer.getPort()), 1_000);
+            client.setSoTimeout(300);
+            assertThrows(SocketTimeoutException.class, () -> client.getInputStream().read(),
+                "a restarted server must not treat new connections as leftovers of the previous drain");
         }
     }
 
