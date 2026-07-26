@@ -4,11 +4,14 @@ import io.github.azholdaspaev.nettyloomspring.core.exception.NettyServerExceptio
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
 import io.netty.util.concurrent.Future;
 
+import java.io.IOException;
+import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -35,6 +38,11 @@ public class NettyServer {
         this.connectionRegistry = connectionRegistry;
     }
 
+    /**
+     * Binds the server socket, starting the event loops. A bind failure is reported as
+     * {@link NettyServerException} caused by a {@link BindException} on every transport — callers may
+     * rely on that type to tell a taken port from any other startup failure.
+     */
     public void start() {
         synchronized (lock) {
             if (state != null) {
@@ -128,7 +136,32 @@ public class NettyServer {
             .childHandler(channelInitializer)
             .option(ChannelOption.SO_BACKLOG, 128)
             .childOption(ChannelOption.SO_KEEPALIVE, configuration.tcpKeepAlive());
-        return bootstrap.bind(new InetSocketAddress(configuration.address(), configuration.port())).sync().channel();
+        InetSocketAddress address = new InetSocketAddress(configuration.address(), configuration.port());
+        ChannelFuture future = bootstrap.bind(address).await();
+        if (!future.isSuccess()) {
+            throw new NettyServerException("Failed to bind " + address, asBindFailure(future.cause()));
+        }
+        return future.channel();
+    }
+
+    /**
+     * Normalizes the bind error, which is otherwise transport-specific: NIO surfaces the JDK's
+     * {@link BindException} while epoll and kqueue surface {@code Errors.NativeIoException}, which
+     * extends {@link IOException} directly. Since the transport is chosen at runtime, a caller keying
+     * off the failure type would work on one platform and not another (issue #68).
+     *
+     * <p>Every I/O error reachable here comes from creating, binding, or listening on the server
+     * socket, so mapping the lot to {@link BindException} matches what the JDK already does for the
+     * NIO transport — it reports address-in-use, permission-denied and unassignable-address alike as
+     * a bind failure. Non-I/O failures are left alone; they did not come from the socket.
+     */
+    private static Throwable asBindFailure(Throwable cause) {
+        if (cause instanceof IOException && !(cause instanceof BindException)) {
+            BindException bindFailure = new BindException(cause.getMessage());
+            bindFailure.initCause(cause);
+            return bindFailure;
+        }
+        return cause;
     }
 
     /**

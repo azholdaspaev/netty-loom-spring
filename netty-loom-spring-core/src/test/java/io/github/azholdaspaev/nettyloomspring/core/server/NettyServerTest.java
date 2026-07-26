@@ -1,5 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.core.server;
 
+import io.github.azholdaspaev.nettyloomspring.core.exception.NettyServerException;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.DefaultNettyPipelineConfigurer;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NamedChannelHandler;
@@ -12,9 +13,11 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.net.BindException;
 import java.net.ConnectException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.time.Duration;
@@ -25,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -38,15 +42,16 @@ class NettyServerTest {
     }
 
     private static NettyServer newServer(InetAddress address) {
-        return newServer(address, null);
+        return newServer(address, null, 0);
     }
 
     /**
      * @param accepted counted down once the server has accepted a connection, so a test can act on a
      *                 connection the server definitely knows about rather than racing the accept.
+     * @param port     0 to let the OS choose; a specific port to bind exactly there.
      */
-    private static NettyServer newServer(InetAddress address, CountDownLatch accepted) {
-        NettyServerConfiguration configuration = new NettyServerConfiguration(0, address, 0, 0, false);
+    private static NettyServer newServer(InetAddress address, CountDownLatch accepted, int port) {
+        NettyServerConfiguration configuration = new NettyServerConfiguration(port, address, 0, 0, false);
         NettyPipelineConfigurer pipelineConfigurer = new DefaultNettyPipelineConfigurer(
             accepted == null ? List.of() : List.of(new NamedChannelHandler("accepted", () -> new ChannelInboundHandlerAdapter() {
                 @Override
@@ -118,6 +123,22 @@ class NettyServerTest {
         assertTrue(nettyServer.getPort() > 0);
     }
 
+    /**
+     * Runs on whichever transport this machine selects, which is the point: the guarantee has to hold
+     * on all of them. See {@code NettyServer#asBindFailure} for why they would otherwise differ.
+     */
+    @Test
+    void shouldReportBindFailureAsBindExceptionOnEveryTransport() throws Exception {
+        // Held open for the whole attempt so the bind is guaranteed to collide.
+        try (ServerSocket squatter = new ServerSocket(0)) {
+            nettyServer = newServer(null, null, squatter.getLocalPort());
+
+            NettyServerException failure = assertThrows(NettyServerException.class, nettyServer::start);
+
+            assertInstanceOf(BindException.class, failure.getCause());
+        }
+    }
+
     @Test
     void shouldReturnIdleWhenNoActiveConnections() {
         nettyServer.start();
@@ -146,7 +167,7 @@ class NettyServerTest {
     @Test
     void shouldNotWaitOutGracePeriodForIdleConnections() throws Exception {
         CountDownLatch accepted = new CountDownLatch(1);
-        nettyServer = newServer(null, accepted);
+        nettyServer = newServer(null, accepted, 0);
         nettyServer.start();
 
         try (Socket idle = new Socket()) {
