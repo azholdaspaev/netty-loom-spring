@@ -40,8 +40,10 @@ public class NettyServer {
 
     /**
      * Binds the server socket, starting the event loops. A bind failure is reported as
-     * {@link NettyServerException} caused by a {@link BindException} on every transport — callers may
-     * rely on that type to tell a taken port from any other startup failure.
+     * {@link NettyServerException} caused by a {@link BindException} on every transport, carrying the
+     * operating system's message unchanged. That type tells a bind failure from any other startup
+     * failure — it does not tell a taken port from a denied permission or an unassignable address,
+     * since the OS reports all three alike; only the message separates them (issue #74).
      */
     public void start() {
         synchronized (lock) {
@@ -158,8 +160,8 @@ public class NettyServer {
      * <p>The original message is carried over verbatim rather than replaced with a tidier one: the
      * type alone cannot tell those three cases apart, so the {@code strerror} text is the only thing
      * that can, and callers classify by it. Rewording it would drop that discrimination with nothing
-     * at this layer to show for it, which is why the test pins the message and not just the type
-     * (issue #74).
+     * at this layer to show for it, which is why the test asserts the text still identifies the
+     * errno, not just the type (issue #74).
      */
     private static Throwable asBindFailure(Throwable cause) {
         if (cause instanceof IOException && !(cause instanceof BindException)) {
