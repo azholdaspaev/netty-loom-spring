@@ -105,11 +105,11 @@ class NettyServerPipeliningTest {
      */
     private HttpRequestDispatcher overtakingDispatcher() {
         return (request, _) -> {
-            if (!"/first".equals(request.uri())) {
+            if ("/first".equals(request.uri())) {
+                secondResponded.await(OVERTAKE_WINDOW.toMillis(), TimeUnit.MILLISECONDS);
+            } else {
                 secondResponded.countDown();
-                return textResponse(request.uri());
             }
-            secondResponded.await(OVERTAKE_WINDOW.toMillis(), TimeUnit.MILLISECONDS);
             return textResponse(request.uri());
         };
     }

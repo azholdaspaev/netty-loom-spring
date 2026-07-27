@@ -36,6 +36,15 @@ import java.util.Deque;
  * need an explicit interim-response exemption precisely because they sit above it; this one does not.
  * It belongs <em>above</em> the dispatcher, so requests are gated before dispatch while responses from
  * both the dispatcher and the tail exception handler still pass back through it.
+ *
+ * <p>Below the aggregator also means it <em>depends</em> on one. Nothing else in the pipeline produces a
+ * {@link FullHttpRequest}, so in a hand-built pipeline assembled without an aggregator every message takes
+ * the pass-through branch and this handler is silently inert rather than merely unused.
+ *
+ * <p>That placement is a trade, not a free win: the aggregator answers {@code Expect: 100-continue} and
+ * rejects an oversized body with {@code 413} from its own context, so those responses originate above this
+ * handler and are never sequenced by it. Both can still overtake a response being computed for an earlier
+ * request — the ordering violation this handler otherwise exists to prevent (issue #78).
  */
 public class HttpPipeliningHandler extends ChannelDuplexHandler {
 
@@ -84,7 +93,8 @@ public class HttpPipeliningHandler extends ChannelDuplexHandler {
      */
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
-        releasePending();
+        pending.forEach(FullHttpRequest::release);
+        pending.clear();
         ctx.fireChannelInactive();
     }
 
@@ -95,12 +105,5 @@ public class HttpPipeliningHandler extends ChannelDuplexHandler {
             return;
         }
         ctx.fireChannelRead(next);
-    }
-
-    private void releasePending() {
-        FullHttpRequest queued;
-        while ((queued = pending.pollFirst()) != null) {
-            queued.release();
-        }
     }
 }
