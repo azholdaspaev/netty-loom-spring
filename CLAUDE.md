@@ -51,7 +51,7 @@ Sub-packages: `core.server`, `core.pipeline`, `core.handler`, `mvc.servlet`, `mv
 
 All source code changes must strictly follow TDD (Test-Driven Development): write a failing test first, then write the minimal production code to make it pass, then refactor. Never write production code without a corresponding test already in place.
 
-Tests use JUnit 6 (`org.junit.gen6`) on JUnit Platform. All test tasks are configured with `useJUnitPlatform()` and require `--enable-preview`.
+Tests use JUnit 6 (`org.junit.jupiter.api`, via `org.junit.jupiter:junit-jupiter`) on JUnit Platform. All test tasks are configured with `useJUnitPlatform()` and run with `--enable-native-access=ALL-UNNAMED`.
 
 ## CI
 
