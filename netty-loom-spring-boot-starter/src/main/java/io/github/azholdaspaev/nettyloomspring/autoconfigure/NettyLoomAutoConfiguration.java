@@ -5,6 +5,7 @@ import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.NettyWebServe
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpDrainHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpExceptionHandler;
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpPipeliningHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestDispatcher;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestHandler;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.DefaultNettyPipelineConfigurer;
@@ -91,6 +92,10 @@ public class NettyLoomAutoConfiguration {
             // Connection: close before that handler decides whether to close.
             new NamedChannelHandler("drain", () -> new HttpDrainHandler(httpConnectionRegistry)),
             new NamedChannelHandler("aggregator", () -> new HttpObjectAggregator(MAX_HTTP_REQUEST_BODY_BYTES)),
+            // Below the aggregator so it gates whole requests, and so the aggregator's 100 Continue --
+            // written from that handler's own context, towards the head -- never reaches it; above the
+            // dispatcher so requests are gated before dispatch while responses still pass back through.
+            new NamedChannelHandler("pipelining", HttpPipeliningHandler::new),
             new NamedChannelHandler("dispatcher", () -> new HttpRequestHandler(httpRequestDispatcher, nettyLoomDispatchExecutor)),
             NamedChannelHandler.shared("exceptionHandler", new HttpExceptionHandler())
         ));
