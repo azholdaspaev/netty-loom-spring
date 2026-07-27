@@ -29,6 +29,11 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  */
 class HttpPipeliningHandlerTest {
 
+    /**
+     * Withholding and releasing are asserted together on purpose: the release on its own would pass
+     * against a handler that gates nothing, since both requests would simply reach the tail in order.
+     * It is the {@code assertNull} in between that gives it teeth.
+     */
     @Test
     void shouldWithholdAPipelinedRequestUntilTheOneBeforeItIsAnswered() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpPipeliningHandler());
@@ -39,14 +44,6 @@ class HttpPipeliningHandlerTest {
             "the first request must be passed on straight away");
         assertNull(channel.readInbound(),
             "a request pipelined behind an unanswered one must not be dispatched alongside it");
-        channel.finishAndReleaseAll();
-    }
-
-    @Test
-    void shouldPassOnTheWithheldRequestOnceTheResponseIsWritten() {
-        EmbeddedChannel channel = new EmbeddedChannel(new HttpPipeliningHandler());
-        channel.writeInbound(request("/first"), request("/second"));
-        uriOf(channel.readInbound());
 
         channel.writeOutbound(okResponse());
 
