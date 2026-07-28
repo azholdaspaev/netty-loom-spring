@@ -242,7 +242,10 @@ public class DefaultNettyServletContext implements NettyServletContext {
 
     @Override
     public void setSessionTimeout(int sessionTimeout) {
-        sessionManager.setDefaultMaxInactiveInterval(sessionTimeout * SECONDS_PER_MINUTE);
+        // Widened before the multiply and clamped, for the same reason the Duration overload on the
+        // manager is: the wrap lands on a plausible-looking value rather than an obviously wrong one.
+        sessionManager.setDefaultMaxInactiveInterval(
+            Math.clamp((long) sessionTimeout * SECONDS_PER_MINUTE, Integer.MIN_VALUE, Integer.MAX_VALUE));
     }
 
     @Override
