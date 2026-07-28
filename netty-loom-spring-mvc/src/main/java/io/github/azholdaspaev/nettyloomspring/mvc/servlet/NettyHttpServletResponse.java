@@ -24,6 +24,7 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
 import java.util.List;
@@ -81,6 +82,28 @@ public class NettyHttpServletResponse implements HttpServletResponse {
         // input; we let it propagate (fail-fast, matching Tomcat's Rfc6265CookieProcessor) rather than
         // silently dropping or mangling the cookie.
         headers.add(HttpHeaders.SET_COOKIE, ServerCookieEncoder.STRICT.encode(nettyCookie));
+    }
+
+    /**
+     * Adds {@code cookie}, first dropping any {@code Set-Cookie} already written for the same name.
+     *
+     * <p>For cookies whose value supersedes rather than accompanies an earlier one -- the session id
+     * being the case that matters -- appending would leave a stale value as the first header of that
+     * name. {@link #addCookie} keeps the plain appending semantics the Servlet API specifies.
+     */
+    void setCookie(Cookie cookie) {
+        if (committed) {
+            return;
+        }
+        List<String> existing = headers.get(HttpHeaders.SET_COOKIE);
+        if (existing != null) {
+            String prefix = cookie.getName() + "=";
+            List<String> retained = existing.stream().filter(header -> !header.startsWith(prefix)).toList();
+            if (retained.size() != existing.size()) {
+                headers.put(HttpHeaders.SET_COOKIE, new ArrayList<>(retained));
+            }
+        }
+        addCookie(cookie);
     }
 
     private static CookieHeaderNames.SameSite parseSameSite(String value) {

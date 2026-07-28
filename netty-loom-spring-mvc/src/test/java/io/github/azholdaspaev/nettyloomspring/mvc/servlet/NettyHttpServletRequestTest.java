@@ -459,7 +459,7 @@ class NettyHttpServletRequestTest {
     private static final HttpConnectionMetadata SECURE = new HttpConnectionMetadata("", 0, "", 0, true);
 
     /** One request/response pair over a shared servlet context, as the dispatcher builds them. */
-    private record Exchange(NettyHttpServletRequest request, NettyHttpServletResponse response) {
+    record Exchange(NettyHttpServletRequest request, NettyHttpServletResponse response) {
 
         List<String> setCookies() {
             return List.copyOf(response.getHeaders(HttpHeaders.SET_COOKIE));
@@ -647,8 +647,10 @@ class NettyHttpServletRequestTest {
 
         assertNotSame(first, second);
         assertNotEquals(firstId, second.getId());
-        assertEquals(2, exchange.setCookies().size(), "Each creation emits its own cookie; last one wins");
-        assertTrue(exchange.setCookies().getLast().startsWith("JSESSIONID=" + second.getId()));
+        // Replaced, not appended: leaving the first id as an earlier Set-Cookie of the same name would
+        // hand any client reading that header an id already unbound from the store.
+        assertEquals(1, exchange.setCookies().size(), "Actual: " + exchange.setCookies());
+        assertTrue(exchange.setCookie().startsWith("JSESSIONID=" + second.getId()));
     }
 
     // --- Session cookie attributes ---
@@ -812,5 +814,107 @@ class NettyHttpServletRequestTest {
         var exchange = exchange(new DefaultNettyServletContext());
 
         assertThrows(IllegalStateException.class, () -> exchange.request().changeSessionId());
+    }
+
+    @Test
+    void changeSessionIdRepointsTheRequestedIdAtTheNewOne() {
+        var context = new DefaultNettyServletContext();
+        var existing = context.getSessionManager().create();
+        var exchange = exchange(context, INSECURE, "JSESSIONID=" + existing.getId());
+
+        String newId = exchange.request().changeSessionId();
+
+        // Carrying the pre-rotation id would have getRequestedSessionId() name a session that no longer
+        // exists, and contradict isRequestedSessionIdValid().
+        assertEquals(newId, exchange.request().getRequestedSessionId());
+        assertTrue(exchange.request().isRequestedSessionIdValid());
+    }
+
+    @Test
+    void changeSessionIdReplacesTheEarlierCookieRatherThanAppending() {
+        var exchange = exchange(new DefaultNettyServletContext());
+        exchange.request().getSession(true);
+
+        String newId = exchange.request().changeSessionId();
+
+        assertEquals(1, exchange.setCookies().size(),
+            "the pre-rotation id is already unbound; leaving it as an earlier Set-Cookie of the same "
+                + "name hands it to any client that reads the first one. Actual: " + exchange.setCookies());
+        assertTrue(exchange.setCookie().startsWith("JSESSIONID=" + newId));
+    }
+
+    // --- Creating a session too late (Servlet contract) ---
+
+    @Test
+    void creatingASessionAfterTheResponseIsCommittedThrows() throws Exception {
+        var exchange = exchange(new DefaultNettyServletContext());
+        exchange.response().sendRedirect("/elsewhere");
+
+        // The Servlet contract: "If the container is using cookies to maintain session integrity and is
+        // asked to create a new session when the response is committed, an IllegalStateException is
+        // thrown." Returning a session whose id can never reach the client would leave the application
+        // silently starting a new one on every request.
+        assertThrows(IllegalStateException.class, () -> exchange.request().getSession(true));
+    }
+
+    @Test
+    void aSessionCreatedAfterCommitIsNotLeftInTheStore() throws Exception {
+        var context = new DefaultNettyServletContext();
+        var exchange = exchange(context);
+        exchange.response().sendRedirect("/elsewhere");
+
+        assertThrows(IllegalStateException.class, () -> exchange.request().getSession(true));
+
+        assertEquals(0, context.getSessionManager().size(), "the refusal must precede the creation");
+    }
+
+    @Test
+    void resolvingAnExistingSessionAfterCommitStillWorks() throws Exception {
+        // Only *creation* is barred: an already-tracked session needs no new cookie.
+        var context = new DefaultNettyServletContext();
+        var existing = context.getSessionManager().create();
+        var exchange = exchange(context, INSECURE, "JSESSIONID=" + existing.getId());
+        exchange.response().sendRedirect("/elsewhere");
+
+        assertSame(existing, exchange.request().getSession(true));
+    }
+
+    @Test
+    void creatingASessionAfterCommitIsAllowedWhenCookieTrackingIsDisabled() throws Exception {
+        // The spec conditions the throw on the container using cookies; with tracking off there is no
+        // id to deliver and nothing is lost.
+        var context = new DefaultNettyServletContext();
+        context.setSessionTrackingModes(java.util.Set.of());
+        var exchange = exchange(context);
+        exchange.response().sendRedirect("/elsewhere");
+
+        assertNotNull(exchange.request().getSession(true));
+    }
+
+    // --- isRequestedSessionIdValid tracks the store, it is not latched ---
+
+    @Test
+    void isRequestedSessionIdValidTurnsFalseOnceTheSessionIsInvalidated() {
+        var context = new DefaultNettyServletContext();
+        var existing = context.getSessionManager().create();
+        var exchange = exchange(context, INSECURE, "JSESSIONID=" + existing.getId());
+        assertTrue(exchange.request().isRequestedSessionIdValid());
+
+        exchange.request().getSession(false).invalidate();
+
+        // The contract is whether the id is *still* valid; latching the first answer would keep Spring
+        // Security's InvalidSessionStrategy from ever firing for a session killed mid-dispatch.
+        assertFalse(exchange.request().isRequestedSessionIdValid());
+    }
+
+    @Test
+    void isRequestedSessionIdValidDoesNotRefreshTheSession() {
+        var context = new DefaultNettyServletContext();
+        var existing = context.getSessionManager().create();
+        var exchange = exchange(context, INSECURE, "JSESSIONID=" + existing.getId());
+
+        exchange.request().isRequestedSessionIdValid();
+
+        assertTrue(existing.isNew(), "a validity query must not clear isNew or touch the access time");
     }
 }

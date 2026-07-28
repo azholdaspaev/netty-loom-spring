@@ -25,7 +25,6 @@ import org.springframework.boot.web.servlet.ServletContextInitializer;
 import org.springframework.boot.webmvc.autoconfigure.DispatcherServletAutoConfiguration;
 import org.springframework.web.servlet.DispatcherServlet;
 
-import java.time.Duration;
 
 public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
     implements ConfigurableServletWebServerFactory {
@@ -96,7 +95,10 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
      */
     private void configureSessions() {
         Session session = getSettings().getSession();
-        servletContext.getSessionManager().setDefaultMaxInactiveInterval(timeoutSeconds(session.getTimeout()));
+        verifySessionPersistenceNotConfigured(session);
+        // The conversion itself belongs to the manager, which owns the field and the "zero means never
+        // expires" rule; the factory only decides which setting feeds it.
+        servletContext.getSessionManager().setDefaultMaxInactiveInterval(session.getTimeout());
         Cookie.SameSite sameSite = session.getCookie().getSameSite();
         if (sameSite != null && sameSite.attributeValue() != null) {
             servletContext.getSessionCookieConfig()
@@ -104,16 +106,15 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
         }
     }
 
-    /**
-     * Converts Boot's configured {@code Duration} to the manager's unit. Zero or less means "never
-     * expires", matching Boot's own {@code isZeroOrLess} rule; anything positive keeps second
-     * resolution rather than being rounded to a whole minute the way the ServletContext API forces.
-     */
-    static int timeoutSeconds(Duration timeout) {
-        if (timeout == null || timeout.isZero() || timeout.isNegative()) {
-            return 0;
+    private void verifySessionPersistenceNotConfigured(Session session) {
+        // Under Tomcat this writes SESSIONS.ser and survives a restart. This container has an in-memory
+        // store only (issue #13 non-goal), so honouring the property is impossible and ignoring it would
+        // silently lose every session on deploy -- the same fail-fast contract as server.ssl.*.
+        if (session.isPersistent()) {
+            throw new WebServerException("server.servlet.session.persistent=true is configured but "
+                + "netty-loom-spring stores sessions in memory only and cannot persist them across "
+                + "restarts. Remove the property, or use Spring Session for a durable store.", null);
         }
-        return (int) Math.max(1, timeout.toSeconds());
     }
 
     private void initializeServletContext(ServletContextInitializer... initializers) {
@@ -123,6 +124,10 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
         for (ServletContextInitializer initializer : ServletContextInitializers.from(getSettings(), initializers)) {
             runInitializer(initializer);
         }
+        // Initialization is over, so the session cookie is frozen: every SessionCookieConfig setter is
+        // specified to throw from here on, and the cookie name in particular is read live on every
+        // request -- renaming it at runtime would orphan every logged-in user.
+        servletContext.getSessionManager().markContextInitialized();
     }
 
     private void runInitializer(ServletContextInitializer initializer) {

@@ -218,7 +218,8 @@ k6 run --env BASE_URL=http://localhost:18080 --env VUS=10000 --env DURATION=60s 
 
 - **Full buffering only** — request and response bodies are accumulated in memory (no streaming); fine for virtual threads, unsuitable for very large payloads.
 - **Synchronous only** — `startAsync()` returns `null`, `isAsyncSupported()` is `false`, `setReadListener` throws; servlet async is not supported.
-- **Sessions are in-memory and cookie-tracked** — no URL rewriting (`encodeURL` is the identity), no persistence across restarts, and no distributed store; use Spring Session for that. `HttpSessionListener` and friends are not fired yet — only `HttpSessionBindingListener` is.
+- **Sessions are in-memory and cookie-tracked** — no URL rewriting (`encodeURL` is the identity), no persistence across restarts (`server.servlet.session.persistent=true` fails startup rather than silently losing sessions), and no distributed store; use Spring Session for that. `HttpSessionListener` and friends are not fired yet — only `HttpSessionBindingListener` is.
+- **No forwarded-header support, so the session cookie is not `Secure` behind a TLS-terminating proxy** — `Secure` is derived from the actual connection, and `server.forward-headers-strategy` is not honoured (issue #84). If you terminate TLS at nginx/ALB, set `server.servlet.session.cookie.secure=true` explicitly, or the session id can leak over a forced plaintext request (CWE-614).
 - **No auth** — `getUserPrincipal()` → `null`, `isUserInRole()` → `false`; `authenticate`/`login`/`logout` are no-ops.
 - **No resource serving / JSP** — `getResource*`/`getRealPath` return `null`; resource paths and request dispatch throw `UnsupportedOperationException`. Intended for application logic only.
 - **Network metadata stubbed** — `getRemoteAddr/Host/Port`, `getScheme`, `getServerName/Port` return empty/0; designed for proxied deployments.
