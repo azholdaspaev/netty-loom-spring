@@ -3,8 +3,10 @@ package io.github.azholdaspaev.nettyloomspring.core.handler;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
+import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -20,6 +22,8 @@ import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.timeout.ReadTimeoutException;
 import io.netty.util.ReferenceCountUtil;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.concurrent.TimeUnit;
 
@@ -96,7 +100,12 @@ class HttpReadTimeoutHandlerTest {
             assertTrue(channel.isOpen(), "a connection answering requests is never idle");
         }
 
-        elapse(channel, TIMEOUT_MILLIS);
+        // Two steps rather than one bulk elapse: the tick after a response re-arms for the *remainder* of
+        // the interval, and a bulk advance cannot tell that from re-arming a whole one — which would
+        // overshoot the configured timeout by half on every keep-alive connection, silently.
+        elapse(channel, TIMEOUT_MILLIS - 1);
+        assertTrue(channel.isOpen(), "the last exchange restarted the clock, so a full interval is owed");
+        elapse(channel, 1);
         assertFalse(channel.isOpen(), "it closes once it stops being used");
     }
 
@@ -149,9 +158,10 @@ class HttpReadTimeoutHandlerTest {
 
     /**
      * A response counts the exchange out when it is handed to the socket, not when the bytes are accepted.
-     * Keying on write completion would let a peer whose receive window stays at zero hold the connection,
-     * its buffered response and its virtual thread for ever — the stock head-mounted handler reclaimed
-     * that case, so losing it would be a regression rather than a documented gap.
+     * Keying on write completion would let a peer whose receive window stays at zero hold the connection
+     * and its buffered response for ever — the stock head-mounted handler reclaimed that case, so losing
+     * it would be a regression rather than a documented gap. (The dispatch thread is already gone by
+     * then: {@code HttpRequestHandler} does not await the write future.)
      */
     @Test
     void shouldCloseWhenThePeerNeverAcceptsTheResponseBytes() {
@@ -205,14 +215,60 @@ class HttpReadTimeoutHandlerTest {
         assertFalse(channel.isOpen(), "the exchange ends with the last of the response");
     }
 
-    /** What a non-positive timeout meant to the stock handler, and has to keep meaning here. */
-    @Test
-    void shouldDisableItselfWhenTheTimeoutIsNotPositive() {
-        EmbeddedChannel channel = newChannel(0);
+    /**
+     * What a non-positive timeout meant to the stock handler, and has to keep meaning here. Negative is
+     * covered as well as zero because both are now a documented contract: were a negative value to arm
+     * the timer instead, it would fire on the next loop turn and hang up on every connection before a
+     * byte could arrive.
+     */
+    @ParameterizedTest
+    @ValueSource(longs = {0, -1})
+    void shouldDisableItselfWhenTheTimeoutIsNotPositive(long timeoutMillis) {
+        EmbeddedChannel channel = newChannel(timeoutMillis);
 
         elapse(channel, TIMEOUT_MILLIS * 5);
 
-        assertTrue(channel.isOpen(), "a timeout of zero turns the guard off rather than closing at once");
+        assertTrue(channel.isOpen(), "a non-positive timeout turns the guard off rather than closing at once");
+    }
+
+    /**
+     * The events matter more than the data here: {@link HttpPipeliningHandler} sits directly below in the
+     * auto-configured pipeline, and its {@code channelInactive} is the only thing that releases requests
+     * still queued behind an unanswered exchange. Swallowing the event would leak a pooled buffer per
+     * connection, silently.
+     */
+    @Test
+    void shouldPassLifecycleEventsOnDownThePipeline() {
+        RecordingEvents downstream = new RecordingEvents();
+        EmbeddedChannel channel = new EmbeddedChannel(
+            new HttpReadTimeoutHandler(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS), downstream);
+
+        assertTrue(downstream.active, "channelActive must reach handlers below");
+
+        channel.close();
+        assertTrue(downstream.inactive, "channelInactive must reach handlers below");
+    }
+
+    /**
+     * A gate below this handler that re-opened only on write <em>completion</em> would never release the
+     * next pipelined request against a peer that stops reading, leaving the exchange permanently
+     * unanswered — and this handler would then suspend its clock for ever. This handler's close is the
+     * only thing that reclaims such a connection, so the pairing is asserted rather than assumed.
+     */
+    @Test
+    void shouldCloseAPipelinedBurstWhosePeerNeverAcceptsTheResponseBytes() {
+        EmbeddedChannel channel = new EmbeddedChannel(
+            new NeverCompletingWrite(),
+            new HttpReadTimeoutHandler(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS),
+            new HttpPipeliningHandler(),
+            new RespondToEveryRequest());
+        channel.freezeTime();
+
+        channel.writeInbound(new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/first"));
+        channel.writeInbound(new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/second"));
+
+        elapse(channel, TIMEOUT_MILLIS);
+        assertFalse(channel.isOpen(), "a latched gate must not make the connection immortal");
     }
 
     /**
@@ -271,6 +327,33 @@ class HttpReadTimeoutHandlerTest {
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
             ReferenceCountUtil.release(msg);
+        }
+    }
+
+    /** Stands in for the dispatcher, answering on the event loop instead of a virtual thread. */
+    private static final class RespondToEveryRequest extends SimpleChannelInboundHandler<FullHttpRequest> {
+
+        @Override
+        protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest request) {
+            ctx.writeAndFlush(okResponse());
+        }
+    }
+
+    private static final class RecordingEvents extends ChannelInboundHandlerAdapter {
+
+        private boolean active;
+        private boolean inactive;
+
+        @Override
+        public void channelActive(ChannelHandlerContext ctx) {
+            active = true;
+            ctx.fireChannelActive();
+        }
+
+        @Override
+        public void channelInactive(ChannelHandlerContext ctx) {
+            inactive = true;
+            ctx.fireChannelInactive();
         }
     }
 }

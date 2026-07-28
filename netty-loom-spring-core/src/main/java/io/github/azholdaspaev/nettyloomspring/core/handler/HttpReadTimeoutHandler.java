@@ -21,7 +21,8 @@ import java.util.concurrent.TimeUnit;
  * interval in a client pool therefore has only the remainder left to deliver its next request, which is
  * the cost of measuring requests rather than bytes; see the trade-offs in README. Time spent dispatching
  * is exempt, so a handler slower than the timeout still gets to answer. That is the parity Tomcat's
- * {@code connectionTimeout} and Jetty's {@code idleTimeout} offer, and it is what Netty's stock
+ * {@code connectionTimeout} offers — it governs waiting for the request line and headers and does not
+ * run during servlet execution — and it is what Netty's stock
  * {@link io.netty.handler.timeout.ReadTimeoutHandler} cannot express: it is an
  * {@code IdleStateHandler} armed on reader-idle alone, and {@code IdleStateHandler} stamps its clock in
  * {@code channelReadComplete} — which fires before the dispatch has even begun, because
@@ -34,9 +35,11 @@ import java.util.concurrent.TimeUnit;
  * byte-level clock keeps alive indefinitely. It belongs <em>above</em> the pipelining gate so that the
  * count means "complete requests the client has delivered and we have not answered" — a property of the
  * client, which is what this measures — rather than "requests the gate has currently released", which
- * would tie the timeout to that handler's scheduling. Correctness does not turn on the side: a handler
- * below the gate would still see every queued request as it was released, one at a time, and the count
- * would stay above zero across a pipelined burst either way.
+ * would tie the timeout to that handler's scheduling. Correctness does not turn on the side, but not
+ * because the count behaves the same: below the gate a response reaches this handler <em>before</em>
+ * that one, so the count drops to zero after every pipelined response and only returns when the next
+ * request is released. It is safe there because {@link #requestAnswered} refreshes the clock in the same
+ * call, so the connection is never read as idle during the dip.
  *
  * <p>It does not reuse {@link HttpConnectionRegistry}'s in-flight count, which tracks the same idea one
  * step further out. That window opens at the <em>head</em> of a request, above the aggregator, so
@@ -56,6 +59,14 @@ import java.util.concurrent.TimeUnit;
  * — so the suspension would never end and the connection would become immortal. The stock head-mounted
  * handler reclaimed that case because it keyed on reads, and losing it would be a regression, not merely
  * an undocumented gap.
+ *
+ * <p><strong>Nothing below this handler may latch on write completion either.</strong>
+ * {@link HttpDrainHandler} and {@link HttpPipeliningHandler} both key on it, which is right for what they
+ * do — but this handler's close is the <em>only</em> thing that can reclaim a connection those two have
+ * latched, and a gate that never re-opens leaves an exchange permanently unanswered, which suspends this
+ * clock for ever. That is why {@link HttpPipeliningHandler} re-opens on write invocation rather than on
+ * the promise: a pipelined burst against a peer that stops reading would otherwise pin the count above
+ * zero, strand every queued request, and make the connection immortal.
  *
  * <p>Every field is touched only on the event loop. A response written from a dispatch thread is hopped
  * onto the loop by Netty before it reaches {@link #write}, and the timeout task runs there by
@@ -95,6 +106,7 @@ public class HttpReadTimeoutHandler extends ChannelDuplexHandler {
      */
     private boolean initialized;
 
+    /** Redundant with the {@code isOpen()} check in {@link #run}; kept so a cancelled task cannot race. */
     private boolean destroyed;
 
     public HttpReadTimeoutHandler(long timeout, TimeUnit unit) {

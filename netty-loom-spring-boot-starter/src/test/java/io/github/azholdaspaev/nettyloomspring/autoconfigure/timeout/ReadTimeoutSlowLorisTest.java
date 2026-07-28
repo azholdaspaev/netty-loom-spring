@@ -11,29 +11,34 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Keeps its own 500ms rather than following {@link SlowHandlerNotTimedOutTest} up to 1s: the dribble test
- * needs the timeout to sit well above {@link #DRIBBLE_INTERVAL_MILLIS} to stay distinguishable from the
- * no-bytes case, and raising it would lengthen the dribble in proportion. The differing property means a
- * second context, which is the price of keeping both gates sharp.
+ * Keeps its own 500ms rather than following {@link SlowHandlerNotTimedOutTest} up to 1s. Not because the
+ * dribble needs it — a longer timeout would if anything make that relation more comfortable — but because
+ * both tests here close <em>at</em> the timeout, so sharing 1s would add about a second of sleeping to
+ * save a context boot measured at 60-100ms on this branch. The second context is the cheaper half.
  */
 @SpringBootTest(
     classes = TimeoutTestApplication.class,
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = "server.netty.read-timeout=500ms"
+    properties = "server.netty.read-timeout=" + ReadTimeoutSlowLorisTest.READ_TIMEOUT_MILLIS + "ms"
 )
 class ReadTimeoutSlowLorisTest {
+
+    /** The server's own deadline. Shared with the annotation above so the two cannot drift apart. */
+    static final int READ_TIMEOUT_MILLIS = 500;
 
     /** A request the client never finishes, sent a byte at a time. Its length sets how long that lasts. */
     private static final String DRIBBLE = "GET /a/path/this/client/never/finishes/sending";
 
-    /** Comfortably inside the 500ms timeout, so only a per-byte clock would survive the dribble. */
+    /** Must stay well inside {@link #READ_TIMEOUT_MILLIS} — see the assertions in the dribble test. */
     private static final int DRIBBLE_INTERVAL_MILLIS = 100;
 
     @LocalServerPort
@@ -43,9 +48,18 @@ class ReadTimeoutSlowLorisTest {
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
     void shouldCloseConnectionWhenClientSendsNoBytes() throws Exception {
         try (Socket socket = connect(5_000)) {
+            long start = System.nanoTime();
+
             int firstByte = socket.getInputStream().read();
 
+            long elapsedMillis = Duration.ofNanos(System.nanoTime() - start).toMillis();
             assertEquals(-1, firstByte, "server should close the connection (EOF) after readTimeout");
+            // Brackets the configured value end to end. Without this nothing ties the property to the
+            // behaviour: hardcoding the wiring to any timeout in (0, 5000ms] left the whole suite green.
+            assertTrue(elapsedMillis >= READ_TIMEOUT_MILLIS * 4 / 5,
+                "closed after " + elapsedMillis + "ms, before the configured " + READ_TIMEOUT_MILLIS + "ms");
+            assertTrue(elapsedMillis < READ_TIMEOUT_MILLIS * 6L,
+                "closed after " + elapsedMillis + "ms, far past the configured " + READ_TIMEOUT_MILLIS + "ms");
         }
     }
 
@@ -57,20 +71,31 @@ class ReadTimeoutSlowLorisTest {
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
     void shouldCloseConnectionWhenClientDribblesARequestItNeverCompletes() throws Exception {
-        // The teeth of this test are in the arithmetic: the read deadline has to expire while the client
-        // is still dribbling. Let the dribble finish first and the client falls silent, at which point
-        // even a byte-level clock closes the connection and this passes against the very bug it guards.
         int soTimeout = (DRIBBLE.length() * DRIBBLE_INTERVAL_MILLIS) * 2 / 3;
-        assertTrue(soTimeout < DRIBBLE.length() * DRIBBLE_INTERVAL_MILLIS,
-            "the read must time out mid-dribble or the test stops discriminating");
+
+        // This is the discrimination, and the only relation that carries it: a byte-level clock survives
+        // a dribble only while each byte lands inside the timeout. Raise the interval past it -- a
+        // plausible edit, to cut CPU -- and such a clock closes the connection too, greenlighting the
+        // exact bug this guards while every assertion below still passes.
+        assertTrue(DRIBBLE_INTERVAL_MILLIS < READ_TIMEOUT_MILLIS,
+            "the dribble must out-pace the server's deadline or a byte-level clock would expire too");
+        // Otherwise a regression surfaces as SocketTimeoutException rather than the assertion. Shortening
+        // DRIBBLE far enough drags soTimeout under the server's deadline and trips this.
+        assertTrue(READ_TIMEOUT_MILLIS < soTimeout,
+            "the server must close before the client's read deadline, or the failure is unreadable");
 
         AtomicBoolean dribbling = new AtomicBoolean(true);
+        AtomicInteger flushed = new AtomicInteger();
         try (Socket socket = connect(soTimeout)) {
-            Thread dribbler = Thread.ofVirtual().start(() -> dribble(socket, dribbling));
+            Thread dribbler = Thread.ofVirtual().start(() -> dribble(socket, dribbling, flushed));
             try {
                 int firstByte = socket.getInputStream().read();
 
                 assertEquals(-1, firstByte, "a request that never completes must not hold the connection open");
+                // Without this, a dribbler slow to be scheduled sends nothing, and the test silently
+                // degrades into a duplicate of shouldCloseConnectionWhenClientSendsNoBytes -- passing.
+                assertTrue(flushed.get() >= 2,
+                    "the client must actually have dribbled; got " + flushed.get() + " bytes");
             } finally {
                 dribbling.set(false);
                 dribbler.join();
@@ -85,7 +110,7 @@ class ReadTimeoutSlowLorisTest {
         return socket;
     }
 
-    private static void dribble(Socket socket, AtomicBoolean dribbling) {
+    private static void dribble(Socket socket, AtomicBoolean dribbling, AtomicInteger flushed) {
         try {
             OutputStream out = socket.getOutputStream();
             for (byte character : DRIBBLE.getBytes(StandardCharsets.US_ASCII)) {
@@ -94,6 +119,7 @@ class ReadTimeoutSlowLorisTest {
                 }
                 out.write(character);
                 out.flush();
+                flushed.incrementAndGet();
                 Thread.sleep(DRIBBLE_INTERVAL_MILLIS);
             }
         } catch (IOException | InterruptedException expected) {

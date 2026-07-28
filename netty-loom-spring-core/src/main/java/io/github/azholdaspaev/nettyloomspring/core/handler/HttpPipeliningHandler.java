@@ -79,12 +79,16 @@ public class HttpPipeliningHandler extends ChannelDuplexHandler {
             ctx.write(msg, promise);
             return;
         }
-        // unvoid() because addListener on a void promise throws, and the write must then carry the
-        // unvoided promise or the listener would never be notified. Re-opening on write completion
-        // rather than inline here also keeps an inbound event from being fired out of an outbound call.
-        ChannelPromise writePromise = promise.unvoid();
-        writePromise.addListener(_ -> serveNext(ctx));
-        ctx.write(msg, writePromise);
+        ctx.write(msg, promise);
+        // Re-opened once this response is queued, not once it has been flushed. Waiting for the write
+        // promise reads as the safer choice and is not: a peer whose receive window stays at zero never
+        // completes it, so the gate would latch shut for ever, the queued requests would never be
+        // released or freed, and -- because the exchange stays unanswered -- HttpReadTimeoutHandler
+        // would suspend its clock indefinitely and never reclaim the connection (issue #76 review).
+        // Ordering is unaffected: this response is already in the outbound buffer, so the next one is
+        // necessarily written behind it. Deferred to the next loop turn rather than called inline so an
+        // inbound event is still never fired out of an outbound call.
+        ctx.executor().execute(() -> serveNext(ctx));
     }
 
     /**

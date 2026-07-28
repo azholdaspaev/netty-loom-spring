@@ -82,7 +82,9 @@ public class NettyLoomAutoConfiguration {
                                                            HttpRequestDispatcher httpRequestDispatcher,
                                                            ExecutorService nettyLoomDispatchExecutor,
                                                            HttpConnectionRegistry httpConnectionRegistry) {
-        long readTimeoutMillis = properties.readTimeout().toMillis();
+        // Nanoseconds, not millis: toMillis() truncates, so a sub-millisecond read-timeout would arrive as
+        // zero -- which the handler treats as "disabled", silently turning the slow-loris guard off.
+        long readTimeoutNanos = properties.readTimeout().toNanos();
         return new DefaultNettyPipelineConfigurer(List.of(
             new NamedChannelHandler("httpCodec", () -> new HttpServerCodec(MAX_HTTP_INITIAL_LINE_LENGTH, MAX_HTTP_HEADER_SIZE, MAX_HTTP_CHUNK_SIZE)),
             new NamedChannelHandler("httpKeepAlive", HttpServerKeepAliveHandler::new),
@@ -95,7 +97,7 @@ public class NettyLoomAutoConfiguration {
             // it saw none of the exchange and so counted dispatch time, closing a slow handler's connection
             // mid-request. Above the pipelining gate so its count stays a property of what the client has
             // delivered rather than of what that handler has released; correctness holds on either side.
-            new NamedChannelHandler("readTimeout", () -> new HttpReadTimeoutHandler(readTimeoutMillis, TimeUnit.MILLISECONDS)),
+            new NamedChannelHandler("readTimeout", () -> new HttpReadTimeoutHandler(readTimeoutNanos, TimeUnit.NANOSECONDS)),
             // Below the aggregator so it gates whole requests, and so the aggregator's 100 Continue --
             // written from that handler's own context, towards the head -- never reaches it; above the
             // dispatcher so requests are gated before dispatch while responses still pass back through.
