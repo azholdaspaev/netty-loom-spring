@@ -60,13 +60,23 @@ import java.util.concurrent.TimeUnit;
  * handler reclaimed that case because it keyed on reads, and losing it would be a regression, not merely
  * an undocumented gap.
  *
- * <p><strong>Nothing below this handler may latch on write completion either.</strong>
- * {@link HttpDrainHandler} and {@link HttpPipeliningHandler} both key on it, which is right for what they
- * do — but this handler's close is the <em>only</em> thing that can reclaim a connection those two have
- * latched, and a gate that never re-opens leaves an exchange permanently unanswered, which suspends this
- * clock for ever. That is why {@link HttpPipeliningHandler} re-opens on write invocation rather than on
- * the promise: a pipelined burst against a peer that stops reading would otherwise pin the count above
- * zero, strand every queued request, and make the connection immortal.
+ * <p><strong>Nothing below this handler may latch on write completion either.</strong> A gate that never
+ * re-opens leaves an exchange permanently unanswered, which suspends this clock for ever — and while a
+ * positive timeout is configured, this handler's close is the only thing that reclaims such a connection.
+ * {@link HttpPipeliningHandler} sits below and is the one that could: it re-opens on write invocation
+ * rather than on the promise precisely because a pipelined burst against a peer that stops reading would
+ * otherwise pin the count above zero, strand every queued request, and make the connection immortal.
+ *
+ * <p>{@link HttpDrainHandler} does latch on write completion, and is exempt because it sits <em>above</em>
+ * this handler, not below: an outbound {@code LastHttpContent} travels tail-ward to head, so it reaches
+ * this handler — which counts the exchange out on invocation — before it ever reaches drain. Drain
+ * therefore cannot suspend this clock, and its completion latch is the right choice for what it does; the
+ * reason it is safe on its own terms is recorded there.
+ *
+ * <p>The reclamation guarantee is conditional, and the condition is configurable: a timeout of zero or
+ * less disables this handler (see below), which removes the only thing that reclaims a latched connection
+ * short of {@link HttpConnectionRegistry#closeAll()} at shutdown. That is the cost of the off switch and
+ * it is worth knowing before reaching for it.
  *
  * <p>Every field is touched only on the event loop. A response written from a dispatch thread is hopped
  * onto the loop by Netty before it reaches {@link #write}, and the timeout task runs there by
@@ -106,7 +116,14 @@ public class HttpReadTimeoutHandler extends ChannelDuplexHandler {
      */
     private boolean initialized;
 
-    /** Redundant with the {@code isOpen()} check in {@link #run}; kept so a cancelled task cannot race. */
+    /**
+     * Load-bearing at {@link #initialize}, where it stops {@link #channelActive} arming a fresh timer
+     * after {@link #handlerRemoved} on a channel that is still open — which the {@code isOpen()} check in
+     * {@link #run} would not catch, the channel being open. The check in {@link #run} is belt and braces:
+     * a cancelled one-shot task never runs its body ({@code ScheduledFutureTask} guards it behind
+     * {@code setUncancellableInternal}), and destroy and run share the event loop, so there is no race
+     * there to lose.
+     */
     private boolean destroyed;
 
     public HttpReadTimeoutHandler(long timeout, TimeUnit unit) {

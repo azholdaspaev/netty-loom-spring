@@ -1,6 +1,10 @@
 package io.github.azholdaspaev.nettyloomspring.core.handler;
 
 import io.netty.buffer.Unpooled;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
+import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -12,6 +16,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
+import io.netty.util.ReferenceCountUtil;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -87,6 +92,63 @@ class HttpPipeliningHandlerTest {
         channel.finishAndReleaseAll();
     }
 
+    /**
+     * The gate re-opens when the response is handed to the socket, not when the socket accepts it. Keying
+     * on the write promise reads as the safer choice and is not: a peer whose receive window stays at zero
+     * never completes it, so the gate would latch shut for ever and every queued request would be stranded
+     * — unanswered, so {@link HttpReadTimeoutHandler} would suspend its clock and never reclaim the
+     * connection either (issue #76 review).
+     *
+     * <p>This lives here rather than only in {@code HttpReadTimeoutHandlerTest} because that is the only
+     * place it used to live: reverting this handler to a promise listener left this class entirely green,
+     * so editing this file and running its own suite reported success on the regression.
+     */
+    @Test
+    void shouldReleaseAQueuedRequestEvenWhenTheResponseIsNeverAcceptedBySocket() {
+        EmbeddedChannel channel = new EmbeddedChannel(new NeverCompletingWrite(), new HttpPipeliningHandler());
+        channel.writeInbound(request("/first"), request("/second"));
+        uriOf(channel.readInbound());
+
+        channel.write(okResponse());
+        channel.runPendingTasks();
+
+        assertEquals("/second", uriOf(channel.readInbound()),
+            "a queued request must be released once the response is written, not once it is flushed");
+        channel.finishAndReleaseAll();
+    }
+
+    /**
+     * Releasing the next request is deferred to the next loop turn, and that is structural rather than
+     * stylistic: {@link HttpRequestHandler} fires {@code exceptionCaught} <em>synchronously</em> on the
+     * event loop when its dispatch executor rejects — reachable on shutdown, or on any bounded pool — so
+     * the tail exception handler answers in-loop and re-enters {@link HttpPipeliningHandler#write}. Once
+     * per queued request. Deferred, that is iterative; inline, it recurses and exhausts the stack.
+     *
+     * <p>The responder writes without flushing on purpose. {@code EmbeddedChannel}'s flush re-enters
+     * {@code runPendingTasks}, so a responder using {@code writeAndFlush} overflows even with the deferral
+     * in place — recursion through the harness, not through the handler — and this test would then pass
+     * against both versions while appearing to prove the opposite.
+     */
+    @Test
+    void shouldNotRecurseWhenABurstIsAnsweredSynchronously() {
+        HoldFirstThenAnswerInLoop responder = new HoldFirstThenAnswerInLoop();
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpPipeliningHandler(), responder);
+
+        // The first request holds the gate; every one after it piles into the queue.
+        int queued = 20_000;
+        for (int i = 0; i <= queued; i++) {
+            channel.writeInbound(request("/" + i));
+        }
+
+        // Answering the first releases the whole burst, each answered inside the write that released it.
+        channel.write(okResponse());
+        channel.runPendingTasks();
+
+        assertEquals(queued + 1, responder.seen,
+            "the whole burst must drain iteratively rather than exhaust the stack");
+        channel.finishAndReleaseAll();
+    }
+
     @Test
     void shouldPassThroughInboundMessagesThatAreNotRequests() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpPipeliningHandler());
@@ -96,6 +158,30 @@ class HttpPipeliningHandlerTest {
         assertEquals("not a request", channel.readInbound(),
             "only requests are gated; anything else must travel on untouched");
         channel.finishAndReleaseAll();
+    }
+
+    /** A peer whose receive window never opens: the message is taken, the promise is never completed. */
+    private static class NeverCompletingWrite extends ChannelOutboundHandlerAdapter {
+        @Override
+        public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+            ReferenceCountUtil.release(msg);
+        }
+    }
+
+    /**
+     * Holds the first request without answering it — a dispatch on a virtual thread — then answers every
+     * later one in-loop, which is the shape {@link HttpExceptionHandler} produces on a rejected dispatch.
+     */
+    private static class HoldFirstThenAnswerInLoop extends SimpleChannelInboundHandler<FullHttpRequest> {
+        private int seen;
+
+        @Override
+        protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest msg) {
+            if (seen++ == 0) {
+                return;
+            }
+            ctx.write(okResponse());
+        }
     }
 
     private static FullHttpRequest request(String uri) {

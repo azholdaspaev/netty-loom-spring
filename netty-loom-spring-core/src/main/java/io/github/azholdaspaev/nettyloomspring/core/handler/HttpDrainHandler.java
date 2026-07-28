@@ -54,7 +54,15 @@ public class HttpDrainHandler extends ChannelDuplexHandler {
         if (msg instanceof HttpResponse response && isLastResponseOwedWhileDraining(ctx)) {
             HttpUtil.setKeepAlive(response.headers(), response.protocolVersion(), false);
         }
-        // The exchange ends when the response is actually on the wire, not when it is queued.
+        // The exchange ends when the response is actually on the wire, not when it is queued -- graceful
+        // shutdown is meant to wait for bytes to reach the client, so this handler wants completion where
+        // HttpPipeliningHandler and HttpReadTimeoutHandler deliberately want invocation. That latch cannot
+        // strand the connection the way theirs would: a close fails every outstanding write promise
+        // (AbstractUnsafe.close calls outboundBuffer.failFlushed, and remove0 safeFails unconditionally),
+        // so this listener always runs and inFlight always settles. Do not "align" it with the other two
+        // for consistency -- keying on invocation here would let shutdown abandon responses still
+        // unflushed, which is the one thing the grace period exists to prevent.
+        //
         // unvoid() because addListener on a void promise throws, and the write must then carry the
         // unvoided promise or the listener would never be notified.
         ChannelPromise writePromise = promise;
