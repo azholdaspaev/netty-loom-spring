@@ -16,8 +16,10 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -239,15 +241,29 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void closeStopsAStartedSweeperAndIsIdempotent() {
-        // create() is what starts the sweeper, so without it this would assert nothing: an empty close()
-        // body would pass, and the shutdownNow branch would be covered nowhere in the suite.
+    void closeShutsDownTheSweeperItStartedAndIsIdempotent() {
+        // Asserting on the executor, not just on size(): the eviction alone satisfies size() == 0, so
+        // without this, deleting shutdownNow() would leave the suite green -- and a leaked sweeper is one
+        // live platform thread per ApplicationContext, which is what @AfterEach here exists to prevent.
         manager.create();
+        var sweeper = manager.sweeper();
+        assertNotNull(sweeper, "create() should have started the sweeper");
 
         manager.close();
 
         assertEquals(0, manager.size());
+        assertTrue(sweeper.isShutdown(), "close() must shut down the sweeper it started");
         assertDoesNotThrow(manager::close);
+    }
+
+    @Test
+    void createAfterCloseIsRefusedAndStartsNoSweeper() {
+        // A request thread can still be in the dispatcher while the context is torn down. Storing that
+        // session would leave it un-expired -- and resurrecting the sweeper would leak the thread.
+        manager.close();
+
+        assertThrows(IllegalStateException.class, manager::create);
+        assertNull(manager.sweeper(), "a closed manager must not start a background thread again");
     }
 
     @Test
@@ -281,6 +297,21 @@ class NettySessionManagerTest {
         clock.set(ONE_MINUTE * 1000L);
 
         assertFalse(manager.isValidId(session.getId()));
+    }
+
+    @Test
+    void aScheduledSweepSwallowsEvenAnError() {
+        // scheduleWithFixedDelay cancels the task on anything that escapes -- silently, and for the
+        // lifetime of the application. sweep() already isolates per session, so this outer guard is the
+        // backstop for the sweep machinery itself; an Error is what distinguishes it from catching only
+        // RuntimeException.
+        var exploding = new NettySessionManager(new DefaultNettyServletContext(), () -> {
+            throw new Error("clock exploded");
+        });
+
+        assertDoesNotThrow(exploding::sweepQuietly);
+
+        exploding.close();
     }
 
     @Test

@@ -136,15 +136,41 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void rebindingTheSameInstanceDoesNotUnbindIt() {
+    void rebindingTheSameInstanceNotifiesNeitherSide() {
         NettyHttpSession session = manager.create();
         RecordingValue value = new RecordingValue();
         session.setAttribute("callback", value);
 
         session.setAttribute("callback", value);
 
-        assertEquals(List.of("bound:callback", "bound:callback"), value.events(),
-            "Re-binding the identical instance must not fire valueUnbound: the value is still bound");
+        // Neither bound nor unbound: the value was already bound under this name and still is. Firing
+        // valueBound again while valueUnbound stays guarded would make an acquire-in-bound /
+        // release-in-unbound listener acquire twice and release once. Tomcat guards both sides too.
+        assertEquals(List.of("bound:callback"), value.events());
+    }
+
+    @Test
+    void bindingEventsCarryTheValue() {
+        // The canonical HttpSessionBindingListener is a resource holder that reads event.getValue() to
+        // know what to release; the two-argument HttpSessionBindingEvent leaves it null.
+        NettyHttpSession session = manager.create();
+        var seen = new java.util.ArrayList<Object>();
+        var value = new HttpSessionBindingListener() {
+            @Override
+            public void valueBound(HttpSessionBindingEvent event) {
+                seen.add(event.getValue());
+            }
+
+            @Override
+            public void valueUnbound(HttpSessionBindingEvent event) {
+                seen.add(event.getValue());
+            }
+        };
+
+        session.setAttribute("callback", value);
+        session.removeAttribute("callback");
+
+        assertEquals(List.of(value, value), seen, "both callbacks must receive the bound value");
     }
 
     @Test

@@ -244,6 +244,7 @@ public class DefaultNettyServletContext implements NettyServletContext {
     public void setSessionTimeout(int sessionTimeout) {
         // Widened before the multiply and clamped, for the same reason the Duration overload on the
         // manager is: the wrap lands on a plausible-looking value rather than an obviously wrong one.
+        // The manager's setter enforces the shared post-initialization freeze.
         sessionManager.setDefaultMaxInactiveInterval(
             Math.clamp((long) sessionTimeout * SECONDS_PER_MINUTE, Integer.MIN_VALUE, Integer.MAX_VALUE));
     }

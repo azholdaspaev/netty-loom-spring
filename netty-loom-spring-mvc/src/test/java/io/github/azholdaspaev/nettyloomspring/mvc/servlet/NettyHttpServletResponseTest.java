@@ -7,6 +7,7 @@ import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -225,5 +226,69 @@ class NettyHttpServletResponseTest {
         assertTrue(setCookie.startsWith("sid=xyz"));
         // RFC 6265 / Netty have no Version field — it is never emitted.
         assertFalse(setCookie.contains("Version"));
+    }
+
+    // --- setCookie: replaces rather than appends (issue #13) ---
+
+    private static List<String> setCookieHeaders(NettyHttpServletResponse response) throws Exception {
+        return response.toFullHttpResponse().headers().getAll(HttpHeaderNames.SET_COOKIE);
+    }
+
+    @Test
+    void setCookieReplacesAnEarlierCookieOfTheSameName() throws Exception {
+        var response = new NettyHttpServletResponse();
+        response.setCookie(new Cookie("sid", "first"));
+
+        response.setCookie(new Cookie("sid", "second"));
+
+        List<String> headers = setCookieHeaders(response);
+        assertEquals(1, headers.size(), "Actual: " + headers);
+        assertTrue(headers.getFirst().startsWith("sid=second"), "Actual: " + headers);
+    }
+
+    @Test
+    void setCookieLeavesCookiesOfOtherNamesAlone() throws Exception {
+        var response = new NettyHttpServletResponse();
+        response.addCookie(new Cookie("theme", "dark"));
+
+        response.setCookie(new Cookie("sid", "xyz"));
+
+        List<String> headers = setCookieHeaders(response);
+        assertEquals(2, headers.size(), "Actual: " + headers);
+        assertTrue(headers.stream().anyMatch(h -> h.startsWith("theme=dark")), "Actual: " + headers);
+    }
+
+    @Test
+    void setCookieDoesNotDropACookieWhoseNameMerelyStartsWithTheSameText() throws Exception {
+        // The scan matches on "name=", so a longer name sharing a prefix must survive.
+        var response = new NettyHttpServletResponse();
+        response.addCookie(new Cookie("SIDE", "kept"));
+
+        response.setCookie(new Cookie("SID", "xyz"));
+
+        List<String> headers = setCookieHeaders(response);
+        assertEquals(2, headers.size(), "Actual: " + headers);
+        assertTrue(headers.stream().anyMatch(h -> h.startsWith("SIDE=kept")), "Actual: " + headers);
+    }
+
+    @Test
+    void setCookieWithNoPriorHeaderJustAdds() throws Exception {
+        var response = new NettyHttpServletResponse();
+
+        response.setCookie(new Cookie("sid", "xyz"));
+
+        assertEquals(1, setCookieHeaders(response).size());
+    }
+
+    @Test
+    void setCookieIsIgnoredOnceCommitted() throws Exception {
+        // Matches addCookie: the Servlet contract says a cookie written after the commit has no effect.
+        // Reachable because the session rotation path is deliberately best-effort about its write.
+        var response = new NettyHttpServletResponse();
+        response.sendRedirect("/elsewhere");
+
+        response.setCookie(new Cookie("sid", "xyz"));
+
+        assertTrue(setCookieHeaders(response).isEmpty());
     }
 }

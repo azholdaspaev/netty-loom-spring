@@ -1,15 +1,21 @@
 package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
+import jakarta.servlet.http.HttpSessionBindingEvent;
+import jakarta.servlet.http.HttpSessionBindingListener;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -99,19 +105,83 @@ class NettySessionManagerConcurrencyTest {
     }
 
     @Test
+    void aValueBoundWhileTheSessionIsTornDownIsStillUnbound() throws InterruptedException {
+        // The re-check in setAttribute exists for exactly this: checkValid() can pass and invalidation
+        // land during the put, leaving a value in a session nothing will ever tear down. The <= 1 half
+        // is what holds the remove(key, value) claim honest against a double release.
+        for (int round = 0; round < ROUNDS; round++) {
+            NettyHttpSession session = manager.create();
+            var unbound = new AtomicInteger();
+            var value = new HttpSessionBindingListener() {
+                @Override
+                public void valueUnbound(HttpSessionBindingEvent event) {
+                    unbound.incrementAndGet();
+                }
+            };
+
+            race(() -> session.setAttribute("k", value), session::invalidate);
+
+            assertTrue(session.isInvalidated(), "round " + round + ": invalidate must win eventually");
+            assertFalse(session.hasBoundAttributes(),
+                "round " + round + ": teardown must leave no attribute bound");
+            assertTrue(unbound.get() <= 1,
+                "round " + round + ": a value must be unbound at most once, got " + unbound.get());
+        }
+    }
+
+    @Test
     void findNeverHandsBackASessionTheSweeperHasExpired() throws InterruptedException {
-        // The sweeper can evict and expire between find()'s map read and its return.
+        // The session must still be live when the race starts, and the *sweeping* thread must be the one
+        // that advances the clock -- otherwise find() arrives after the deadline has already passed,
+        // always takes its own eviction branch, and the test asserts nothing about the race at all.
         for (int round = 0; round < ROUNDS; round++) {
             NettyHttpSession session = manager.create();
             String id = session.getId();
-            clock.set(ONE_MINUTE * 1000L * (round + 1));
+            long deadline = clock.get() + ONE_MINUTE * 1000L;
 
             var resolved = new NettyHttpSession[1];
-            race(() -> resolved[0] = manager.find(id), () -> manager.sweep(clock.get()));
+            race(() -> resolved[0] = manager.find(id),
+                () -> {
+                    clock.set(deadline);
+                    manager.sweep(deadline);
+                });
 
-            assertTrue(resolved[0] == null || !resolved[0].isInvalidated(),
-                "round " + round + ": find() returned a session that had already been invalidated");
+            // Deliberately not "the returned session is still usable": once find() has returned, the
+            // sweeper may legitimately expire the session an instant later, so that assertion fails for
+            // a correct implementation. What must hold is that the store and the session never disagree
+            // -- nothing invalidated may remain reachable, and nothing reachable may be invalidated.
             assertEquals(0, manager.size(), "round " + round + ": the expired session must be gone");
+            assertNull(manager.find(id), "round " + round + ": an evicted session must not resolve");
+            assertTrue(session.isInvalidated(),
+                "round " + round + ": a session removed from the store must have been marked invalid");
+            clock.set(deadline);
         }
+    }
+
+    @Test
+    void aSessionExtendedWhileTheSweeperWaitsForTheLockIsNotEvicted() throws InterruptedException {
+        // The widest form of the window, made deterministic by holding the lock: the sweeper judges the
+        // session expired, blocks entering the eviction, and an ordinary setMaxInactiveInterval -- a
+        // plain volatile write, taking no lock -- extends it before the sweeper gets in. Deciding expiry
+        // outside the lock and then evicting unconditionally destroys a session that is now live for
+        // another hour, and the request that extended it sees IllegalStateException on its next access.
+        NettyHttpSession session = manager.create();
+        long deadline = ONE_MINUTE * 1000L;
+        clock.set(deadline);
+
+        Thread sweeper;
+        synchronized (session.lock()) {
+            sweeper = Thread.ofPlatform().start(() -> manager.sweep(deadline));
+            // Long enough for the sweeper to reach the monitor and block on it. Establishing an
+            // interleaving, not waiting on a timeout -- the assertions below do not depend on it.
+            Thread.sleep(200);
+            session.setMaxInactiveInterval(ONE_MINUTE * 60);
+        }
+        sweeper.join();
+
+        assertFalse(session.isInvalidated(),
+            "an extension that landed before the eviction took the lock must be honoured");
+        assertEquals(1, manager.size(), "the extended session must still be reachable");
+        assertDoesNotThrow(() -> session.getAttribute("probe"));
     }
 }
