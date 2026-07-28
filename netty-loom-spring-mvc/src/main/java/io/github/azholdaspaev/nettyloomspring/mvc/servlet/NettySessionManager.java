@@ -187,6 +187,17 @@ public class NettySessionManager {
         String id = newSessionId();
         NettyHttpSession session = new NettyHttpSession(id, this, now, defaultMaxInactiveInterval);
         sessions.put(id, session);
+        // Re-checked after the publish, for the same reason NettyHttpSession.setAttribute re-checks after
+        // its put: the guard above is not atomic with this line -- ensureSweeperStarted and newSessionId
+        // both take monitors in between -- so close() can run the whole drain while this thread is
+        // between them. A session published afterwards would sit in the store never invalidated and
+        // never unbound, which is precisely the @PreDestroy the stop-phase teardown exists to guarantee.
+        if (closed) {
+            sessions.remove(id, session);
+            session.markInvalidated();
+            throw new IllegalStateException(
+                "The servlet context has been closed; no new sessions can be created");
+        }
         return session;
     }
 
@@ -466,6 +477,24 @@ public class NettySessionManager {
     }
 
     /**
+     * Reverses {@link #close()}, letting the store accept sessions again.
+     *
+     * <p>Public where {@code close()} is package-private, because closing is a decision only the context's
+     * owner may take while reopening merely undoes it. Called from the stop/start lifecycle: Spring
+     * restarts the stop phase on {@code ApplicationContext.start()}, {@code restart()} and CRaC restore,
+     * and without this the store would stay closed for the life of the JVM -- every subsequent
+     * {@code getSession(true)} throwing, on an application that is otherwise serving normally.
+     *
+     * <p>The sweeper is deliberately not restarted here: {@code ensureSweeperStarted} is lazy, so the
+     * next session creation brings it back and an application that creates none stays thread-free.
+     */
+    public void open() {
+        synchronized (this) {
+            closed = false;
+        }
+    }
+
+    /**
      * Stops the sweeper and drops every session. Package-private deliberately: the manager is reachable
      * from any request handler via {@code ServletContext.getSessionManager()}, and wiping the store is a
      * lifecycle operation that belongs to whoever owns the context, not to request-handling code.
@@ -504,6 +533,18 @@ public class NettySessionManager {
         }
         if (!sessions.isEmpty()) {
             log.warn("{} session(s) could not be drained during shutdown", sessions.size());
+            // Still marked on the way out: the loop giving up is a reason to stop retrying removal, not a
+            // reason to abandon the invariant that a session leaving the store is invalid and has unbound
+            // its values. Dropping them silently is the same missed @PreDestroy the drain above prevents.
+            for (NettyHttpSession session : sessions.values()) {
+                try {
+                    if (session.markInvalidated()) {
+                        session.unbindAll();
+                    }
+                } catch (Throwable failure) {
+                    log.warn("Failed to expire session {} during shutdown", session.getId(), failure);
+                }
+            }
             sessions.clear();
         }
     }

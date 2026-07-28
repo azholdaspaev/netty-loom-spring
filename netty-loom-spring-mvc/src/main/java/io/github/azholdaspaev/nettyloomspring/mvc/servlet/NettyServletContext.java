@@ -62,6 +62,17 @@ public interface NettyServletContext extends ServletContext, AutoCloseable {
     default void close() {
     }
 
+    /**
+     * Reverses {@link #close()}, so the context can serve sessions again after a stop/start cycle.
+     *
+     * <p>Needed because {@code close()} is no longer only a teardown: it runs in the <em>stop</em> phase,
+     * and Spring restarts that phase on {@code ApplicationContext.start()}, {@code restart()} and CRaC
+     * restore. Without this the store stays permanently closed and every {@code getSession(true)} after a
+     * restart fails.
+     */
+    default void open() {
+    }
+
     @Override
     default String getContextPath() {
         throw new UnsupportedOperationException();

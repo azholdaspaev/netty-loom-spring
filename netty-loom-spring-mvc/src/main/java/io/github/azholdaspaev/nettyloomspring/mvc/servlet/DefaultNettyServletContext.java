@@ -255,6 +255,11 @@ public class DefaultNettyServletContext implements NettyServletContext {
     }
 
     @Override
+    public void open() {
+        sessionManager.open();
+    }
+
+    @Override
     public String getServletContextName() {
         return "NettyServletContext";
     }

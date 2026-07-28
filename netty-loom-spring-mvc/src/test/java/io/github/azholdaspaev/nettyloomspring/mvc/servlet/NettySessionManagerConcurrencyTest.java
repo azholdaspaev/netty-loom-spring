@@ -47,6 +47,19 @@ class NettySessionManagerConcurrencyTest {
         manager.close();
     }
 
+    /**
+     * Spins until {@code thread} is blocked entering a monitor, so the interleaving under test is
+     * established rather than hoped for. Sleeping instead would make the assertions vacuous whenever the
+     * sleep lost -- and vacuous means green, which is the failure mode worth engineering away.
+     */
+    private static void awaitBlockedOnTheSessionLock(Thread thread) {
+        long limit = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (thread.getState() != Thread.State.BLOCKED) {
+            assertTrue(System.nanoTime() < limit, "the thread never blocked on the session lock");
+            Thread.onSpinWait();
+        }
+    }
+
     /** Runs both bodies on two threads released together, so they interleave rather than queue. */
     private static void race(Runnable first, Runnable second) throws InterruptedException {
         var start = new CountDownLatch(1);
@@ -130,32 +143,102 @@ class NettySessionManagerConcurrencyTest {
     }
 
     @Test
-    void findNeverHandsBackASessionTheSweeperHasExpired() throws InterruptedException {
-        // The session must still be live when the race starts, and the *sweeping* thread must be the one
-        // that advances the clock -- otherwise find() arrives after the deadline has already passed,
-        // always takes its own eviction branch, and the test asserts nothing about the race at all.
+    void reBindingAnInstanceWhileTheSessionIsTornDownDoesNotUnbindItTwice() throws InterruptedException {
+        // setAttribute skips valueBound when the identical instance is already bound, and separately
+        // re-checks invalidation after its put. Combined naively those give one bind and *two* unbinds:
+        // the teardown claims the value and fires once, the losing put resurrects it into the map, and
+        // the re-check claims it again. A listener that acquires in bound and releases in unbound
+        // double-releases; a @SessionScope bean runs @PreDestroy twice.
+        for (int round = 0; round < ROUNDS; round++) {
+            NettyHttpSession session = manager.create();
+            var bound = new AtomicInteger();
+            var unbound = new AtomicInteger();
+            var value = new HttpSessionBindingListener() {
+                @Override
+                public void valueBound(HttpSessionBindingEvent event) {
+                    bound.incrementAndGet();
+                }
+
+                @Override
+                public void valueUnbound(HttpSessionBindingEvent event) {
+                    unbound.incrementAndGet();
+                }
+            };
+            // Already bound, so the re-bind below is the no-valueBound path -- what
+            // DefaultSessionAttributeStore.storeAttribute does on every request for @SessionAttributes.
+            session.setAttribute("k", value);
+
+            race(() -> {
+                try {
+                    session.setAttribute("k", value);
+                } catch (IllegalStateException expected) {
+                    // The invalidation won; the point is how many notifications it produced.
+                }
+            }, session::invalidate);
+
+            assertEquals(1, bound.get(), "round " + round + ": re-binding must not re-notify valueBound");
+            assertEquals(unbound.get(), bound.get(),
+                "round " + round + ": every bind must be released exactly once, got "
+                    + bound.get() + " bound / " + unbound.get() + " unbound");
+        }
+    }
+
+    @Test
+    void sweepingConcurrentlyWithFindLeavesTheStoreAndTheSessionAgreeing() throws InterruptedException {
+        // Named for what it checks, which is weaker than the race it runs: every assertion here is made
+        // after both threads have joined, so this pins the *outcome* invariant -- nothing invalidated
+        // stays reachable, nothing reachable is invalidated -- and not the locking that produces it.
+        // find()'s own guards are covered deterministically by the two tests below.
         for (int round = 0; round < ROUNDS; round++) {
             NettyHttpSession session = manager.create();
             String id = session.getId();
             long deadline = clock.get() + ONE_MINUTE * 1000L;
 
-            var resolved = new NettyHttpSession[1];
-            race(() -> resolved[0] = manager.find(id),
+            race(() -> manager.find(id),
                 () -> {
                     clock.set(deadline);
                     manager.sweep(deadline);
                 });
 
-            // Deliberately not "the returned session is still usable": once find() has returned, the
-            // sweeper may legitimately expire the session an instant later, so that assertion fails for
-            // a correct implementation. What must hold is that the store and the session never disagree
-            // -- nothing invalidated may remain reachable, and nothing reachable may be invalidated.
             assertEquals(0, manager.size(), "round " + round + ": the expired session must be gone");
             assertNull(manager.find(id), "round " + round + ": an evicted session must not resolve");
             assertTrue(session.isInvalidated(),
                 "round " + round + ": a session removed from the store must have been marked invalid");
             clock.set(deadline);
         }
+    }
+
+    @Test
+    void findRefusesAnInvalidatedSessionStillPresentInTheStore() {
+        // find()'s in-lock isInvalidated() guard, without a race: the state it exists for -- marked but
+        // not yet unbound from the store -- is exactly what the teardown paths pass through, and can be
+        // constructed directly. Racing for it only ever covered it by luck.
+        NettyHttpSession session = manager.create();
+        session.markInvalidated();
+
+        assertEquals(1, manager.size(), "the session must still be in the store for the guard to matter");
+        assertNull(manager.find(session.getId()),
+            "find() must not hand back a session that has already been marked invalid");
+    }
+
+    @Test
+    void findWaitsForAnEvictionThatHasAlreadyTakenTheSessionLock() throws InterruptedException {
+        // That find() takes the *session's* lock rather than merely reading flags. Holding the production
+        // monitor from the test thread is what makes this deterministic; asserting the finder actually
+        // reaches BLOCKED is what stops it going quietly vacuous if find() ever stops locking.
+        NettyHttpSession session = manager.create();
+        String id = session.getId();
+
+        Thread finder;
+        var resolved = new NettyHttpSession[1];
+        synchronized (session.lock()) {
+            finder = Thread.ofPlatform().start(() -> resolved[0] = manager.find(id));
+            awaitBlockedOnTheSessionLock(finder);
+            session.markInvalidated();
+        }
+        finder.join();
+
+        assertNull(resolved[0], "find() must observe the invalidation it was made to wait for");
     }
 
     @Test
@@ -172,9 +255,7 @@ class NettySessionManagerConcurrencyTest {
         Thread sweeper;
         synchronized (session.lock()) {
             sweeper = Thread.ofPlatform().start(() -> manager.sweep(deadline));
-            // Long enough for the sweeper to reach the monitor and block on it. Establishing an
-            // interleaving, not waiting on a timeout -- the assertions below do not depend on it.
-            Thread.sleep(200);
+            awaitBlockedOnTheSessionLock(sweeper);
             session.setMaxInactiveInterval(ONE_MINUTE * 60);
         }
         sweeper.join();

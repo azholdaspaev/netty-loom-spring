@@ -824,17 +824,23 @@ class NettyHttpServletRequestTest {
         // changeSessionId declares IllegalStateException only for "no session"; the commit-time throw
         // belongs to getSession(create). Tomcat routes the rotated cookie through addCookie, which is
         // specified to have no effect after a commit -- so this is silent there and must be here.
+        // The session is created through the request, so its cookie is already on the response before the
+        // commit. That is what makes the assertion below discriminating: "no further cookie" alone is
+        // satisfied by addCookie's guard, whereas an unguarded rotation would strip the emitted header
+        // as it scanned for the name to replace, leaving the client with no session cookie at all.
         var context = new DefaultNettyServletContext();
-        var existing = context.getSessionManager().create();
-        var exchange = exchange(context, INSECURE, NettySessionCookieConfig.DEFAULT_NAME + "=" + existing.getId());
-        exchange.request().getSession(false);
+        var exchange = exchange(context);
+        var existing = exchange.request().getSession(true);
+        String originalId = existing.getId();
         exchange.response().sendRedirect("/elsewhere");
 
         String newId = assertDoesNotThrow(() -> exchange.request().changeSessionId());
 
+        assertNotEquals(originalId, newId, "the rotation must still produce a new id");
         assertSame(existing, context.getSessionManager().find(newId),
             "the rotation itself must still take effect");
-        assertTrue(exchange.setCookies().isEmpty(), "a committed response can carry no further cookie");
+        assertTrue(exchange.setCookie().startsWith(NettySessionCookieConfig.DEFAULT_NAME + "=" + originalId),
+            "a committed response keeps the cookie it already emitted; Actual: " + exchange.setCookies());
     }
 
     @Test
