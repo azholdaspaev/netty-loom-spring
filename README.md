@@ -89,7 +89,7 @@ prefix (`NettyLoomProperties`). See [ADR 0001](docs/adr/0001-server-properties-n
 | `server.netty.worker-threads` | `int` | `0` | Netty worker group thread count; `0` = Netty default (`CPU_COUNT * 2`) |
 | `server.netty.tcp-keep-alive` | `boolean` | `true` | TCP `SO_KEEPALIVE` socket option; unrelated to HTTP keep-alive, which is protocol behaviour and always on |
 | `server.netty.shutdown-grace-period` | `Duration` | `30s` | Time to wait for in-flight requests before forcibly closing |
-| `server.netty.read-timeout` | `Duration` | `30s` | How long the server waits on the client. A **single** interval measured from the previous response, covering idle time and delivery of the next request together — not one interval each. Handler execution time does **not** count against it. Channels exceeding it are closed without a response (slow-loris defense); `0` or negative disables |
+| `server.netty.read-timeout` | `Duration` | `30s` | How long the server waits on the client. A **single** interval measured from the previous response — or from the connection being accepted, which is what makes it a slow-loris defense — covering idle time and delivery of the next request together, not one interval each. Handler execution time does **not** count against it. Channels exceeding it are closed without a response; `0` or negative disables |
 
 Fixed HTTP frame limits (not yet configurable): max initial line, header, and chunk size = **10 KB** each; max aggregated body = **1 MB**.
 
@@ -132,7 +132,9 @@ The event loop only accepts and decodes; all blocking application work happens o
 
 `HttpReadTimeoutHandler` sits below the aggregator deliberately. It counts requests, not bytes, so the interval is a deadline for the client to deliver a whole request — a client dribbling a header a byte at a time is closed, where a byte-level clock would be refreshed by every byte and hold the connection forever. It also means a request being dispatched suspends the clock, so however long your controller blocks, the connection is never closed out from under it.
 
-The cost of counting requests rather than bytes is that idle time and delivery share one budget. The clock restarts when a response is written and nothing inbound advances it, so a pooled connection that sits idle for most of the interval has only the remainder left to deliver its next request:
+The clock arms when the connection is accepted — a client that connects and says nothing is closed one interval later, which is the slow-loris defense — and restarts each time a response is written.
+
+The cost of counting requests rather than bytes is that idle time and delivery share one budget. Nothing inbound advances the clock, so a pooled connection that sits idle for most of the interval has only the remainder left to deliver its next request:
 
 | Scenario (30s timeout) | Outcome |
 | --- | --- |
@@ -216,7 +218,7 @@ k6 run --env BASE_URL=http://localhost:18080 --env VUS=10000 --env DURATION=60s 
 - **No sessions / auth** — `getSession()` → `null`, `getCookies()` → empty, `getUserPrincipal()` → `null`, `isUserInRole()` → `false`.
 - **No resource serving / JSP** — `getResource*`/`getRealPath` return `null`; resource paths and request dispatch throw `UnsupportedOperationException`. Intended for application logic only.
 - **Network metadata stubbed** — `getRemoteAddr/Host/Port`, `getScheme`, `getServerName/Port` return empty/0; designed for proxied deployments.
-- **No write-timeout handler** — only `HttpReadTimeoutHandler` is configured; slow-write / stalled-response scenarios are not yet protected.
+- **No write-timeout handler** — only `HttpReadTimeoutHandler` is configured. A peer that stops reading is still reclaimed, because the read timeout restarts once a response is handed to the socket and closes the connection an interval later; what is unprotected is the response itself, which can sit in the outbound buffer for that whole interval with no deadline of its own.
 - **No request/dispatch deadline** — the read timeout deliberately does not bound handler execution, so a handler that never returns holds its connection indefinitely. Nothing reclaims it short of shutdown.
 - HTTP frame-size limits are fixed (not yet configurable).
 
