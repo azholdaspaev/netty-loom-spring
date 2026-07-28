@@ -18,9 +18,16 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * Issue #76 regression gate, end to end. The read timeout is set to a third of the handler's own
- * duration; before the fix the connection was closed at 500ms and the client got no response at all —
- * not a 504, just EOF — because the timeout ran against the dispatch rather than against the client.
+ * Issue #76 regression gate, end to end. The handler outlasts the read timeout, and before the fix that
+ * closed the connection with no response at all — not a 504, just EOF — because the timeout ran against
+ * the dispatch rather than against the client.
+ *
+ * <p>The timeout must stay below {@link SlowController#DELAY_MILLIS} for the gate to have teeth, and far
+ * enough below it to absorb the connect-to-request window: the clock arms when the connection is
+ * accepted and only stops once the whole request has arrived, so a stalled runner between
+ * {@code connect()} and {@code flush()} would close the connection and fail with the same null status
+ * line the real regression produces. A flake here would read as a genuine bug, which is why the budget
+ * is 1s rather than the tightest value that passes.
  *
  * <p>Raw socket rather than a client library: the distinction being asserted is a status line versus a
  * bare TCP close, which is exactly what an HTTP client hides behind an IOException.
@@ -28,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 @SpringBootTest(
     classes = TimeoutTestApplication.class,
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = "server.netty.read-timeout=500ms"
+    properties = "server.netty.read-timeout=1s"
 )
 class SlowHandlerNotTimedOutTest {
 
@@ -36,11 +43,13 @@ class SlowHandlerNotTimedOutTest {
     int port;
 
     @Test
-    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
     void shouldAnswerAHandlerThatRunsLongerThanTheReadTimeout() throws Exception {
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress("127.0.0.1", port));
-            socket.setSoTimeout((int) (SlowController.DELAY_MILLIS * 10));
+            // Comfortably past the handler's own delay, and inside the method timeout above so the socket
+            // deadline is the one that can actually fire.
+            socket.setSoTimeout((int) (SlowController.DELAY_MILLIS * 3));
 
             OutputStream out = socket.getOutputStream();
             out.write(("GET " + SlowController.PATH + " HTTP/1.1\r\nHost: localhost\r\n\r\n")
