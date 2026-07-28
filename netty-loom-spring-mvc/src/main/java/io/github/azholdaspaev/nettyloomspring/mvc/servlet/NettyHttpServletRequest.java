@@ -56,6 +56,10 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     private final FullHttpRequest nettyRequest;
     private final HttpConnectionMetadata connection;
     private final NettyServletContext servletContext;
+    // Held so a session created mid-request can emit its Set-Cookie immediately. Deferring that to the
+    // end of the dispatch would lose it: addCookie is a no-op once the response is committed, and
+    // RedirectView creates the session (saving the flash map) before it calls sendRedirect.
+    private final HttpServletResponse response;
 
     private final Map<String, Object> attributes = new HashMap<>();
     private final String requestURI;
@@ -71,13 +75,20 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     private boolean cookiesParsed;
     private ServletInputStream inputStream;
     private BufferedReader reader;
+    private NettyHttpSession session;
+    private boolean sessionResolved;
+    private String requestedSessionId;
+    private boolean requestedSessionIdResolved;
+    private boolean requestedSessionIdValid;
 
     public NettyHttpServletRequest(FullHttpRequest nettyRequest,
                                    HttpConnectionMetadata connection,
-                                   NettyServletContext servletContext) {
+                                   NettyServletContext servletContext,
+                                   HttpServletResponse response) {
         this.nettyRequest = nettyRequest;
         this.connection = connection;
         this.servletContext = servletContext;
+        this.response = response;
 
         this.queryDecoder = new QueryStringDecoder(nettyRequest.uri());
         this.requestURI = queryDecoder.path();
@@ -271,7 +282,20 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public String getRequestedSessionId() {
-        return "";
+        if (!requestedSessionIdResolved) {
+            requestedSessionIdResolved = true;
+            // DispatcherServlet resolves the flash map on every request, which calls getSession(false)
+            // and so lands here even for stateless endpoints. Netty's headers().getAll(name) allocates
+            // a list whether or not the header exists; contains() does not, so a request with no
+            // cookies costs one hash lookup and no garbage.
+            if (nettyRequest.headers().contains(HttpHeaderNames.COOKIE)) {
+                // The shared cookie parse, not a second one: re-deriving ServerCookieDecoder.STRICT's
+                // quoting and legacy-attribute handling would only drift from it.
+                ensureCookiesParsed();
+                requestedSessionId = servletContext.getSessionManager().readSessionId(cookies);
+            }
+        }
+        return requestedSessionId;
     }
 
     @Override
@@ -323,27 +347,55 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public HttpSession getSession(boolean create) {
-        return null;
+        if (session != null && session.isInvalidated()) {
+            // Invalidated during this request (or swept underneath it): forget it, so a following
+            // getSession(true) issues a genuinely new session and a new cookie.
+            session = null;
+        }
+        if (session == null && !sessionResolved) {
+            sessionResolved = true;
+            String id = getRequestedSessionId();
+            if (id != null) {
+                session = servletContext.getSessionManager().find(id);
+                requestedSessionIdValid = session != null;
+            }
+        }
+        if (session == null && create) {
+            session = servletContext.getSessionManager().create();
+            servletContext.getSessionManager().writeSessionCookie(response, session, connection.secure());
+        }
+        return session;
     }
 
     @Override
     public HttpSession getSession() {
-        return null;
+        return getSession(true);
     }
 
     @Override
     public String changeSessionId() {
-        return "";
+        // Spring Security's ChangeSessionIdAuthenticationStrategy calls this on login to defeat session
+        // fixation (CWE-384). A no-op here would leave an attacker-planted id valid after authentication
+        // while Security believed it had rotated.
+        if (getSession(false) == null) {
+            throw new IllegalStateException("changeSessionId() requires an existing session");
+        }
+        String newId = servletContext.getSessionManager().changeId(session);
+        servletContext.getSessionManager().writeSessionCookie(response, session, connection.secure());
+        return newId;
     }
 
     @Override
     public boolean isRequestedSessionIdValid() {
-        return false;
+        // Resolving the session is what decides validity, so make sure the lookup has happened.
+        getSession(false);
+        return requestedSessionIdValid;
     }
 
     @Override
     public boolean isRequestedSessionIdFromCookie() {
-        return false;
+        // COOKIE is the only effective tracking mode, so a presented id necessarily came from one.
+        return getRequestedSessionId() != null;
     }
 
     @Override

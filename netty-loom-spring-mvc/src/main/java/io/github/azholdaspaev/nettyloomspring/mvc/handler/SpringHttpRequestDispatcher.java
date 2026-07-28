@@ -29,19 +29,21 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
 
     @Override
     public FullHttpResponse handle(FullHttpRequest request, HttpConnectionMetadata connection) throws Exception {
-        NettyHttpServletRequest servletRequest = new NettyHttpServletRequest(request, connection, servletContext);
+        // The response is built first because the request holds on to it: a session created mid-dispatch
+        // has to write its Set-Cookie straight away, since addCookie is ignored once the response is
+        // committed by sendRedirect or sendError.
+        NettyHttpServletResponse servletResponse = new NettyHttpServletResponse();
+        NettyHttpServletRequest servletRequest =
+            new NettyHttpServletRequest(request, connection, servletContext, servletResponse);
 
         // Out-of-context request: reject with a plain 404 before running filters or the servlet. Boot's
         // PathPatternParser would otherwise throw on a URI outside the context path. Building the request
         // first (a cheap, side-effect-free URI parse) lets the check reuse its already-parsed path via the
         // request's own boundary predicate, keeping the "is this in-context?" fact in one place.
         if (!servletRequest.isWithinContext()) {
-            NettyHttpServletResponse notFound = new NettyHttpServletResponse();
-            notFound.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            return notFound.toFullHttpResponse();
+            servletResponse.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            return servletResponse.toFullHttpResponse();
         }
-
-        NettyHttpServletResponse servletResponse = new NettyHttpServletResponse();
 
         // Filter URL patterns are context-relative, so match on the in-context servlet path.
         String servletPath = servletRequest.getServletPath();

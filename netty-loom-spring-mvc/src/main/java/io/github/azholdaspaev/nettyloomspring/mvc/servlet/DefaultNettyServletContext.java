@@ -5,6 +5,8 @@ import jakarta.servlet.Filter;
 import jakarta.servlet.FilterRegistration;
 import jakarta.servlet.Servlet;
 import jakarta.servlet.ServletRegistration;
+import jakarta.servlet.SessionCookieConfig;
+import jakarta.servlet.SessionTrackingMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,6 +30,12 @@ import java.util.concurrent.ConcurrentMap;
 public class DefaultNettyServletContext implements NettyServletContext {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultNettyServletContext.class);
+
+    private static final int SECONDS_PER_MINUTE = 60;
+
+    // Constructed here rather than injected: the manager needs a ServletContext for
+    // HttpSession.getServletContext(), so a separate bean would mean a cycle or two-phase init.
+    private final NettySessionManager sessionManager = new NettySessionManager(this);
 
     private final ConcurrentMap<String, Object> attributes = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, String> initParameters = new ConcurrentHashMap<>();
@@ -190,6 +198,54 @@ public class DefaultNettyServletContext implements NettyServletContext {
     @Override
     public String getContextPath() {
         return contextPath;
+    }
+
+    // --- Sessions: the manager is the single owner, this is pure delegation (issue #13) ---
+
+    @Override
+    public NettySessionManager getSessionManager() {
+        return sessionManager;
+    }
+
+    @Override
+    public SessionCookieConfig getSessionCookieConfig() {
+        return sessionManager.getCookieConfig();
+    }
+
+    @Override
+    public void setSessionTrackingModes(Set<SessionTrackingMode> sessionTrackingModes) {
+        sessionManager.setTrackingModes(sessionTrackingModes);
+    }
+
+    @Override
+    public Set<SessionTrackingMode> getDefaultSessionTrackingModes() {
+        return sessionManager.getDefaultTrackingModes();
+    }
+
+    @Override
+    public Set<SessionTrackingMode> getEffectiveSessionTrackingModes() {
+        return sessionManager.getTrackingModes();
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Rounds up rather than truncating: the manager stores seconds, so a 30-second timeout would
+     * otherwise report as 0 minutes -- which in this API means "never expires".
+     */
+    @Override
+    public int getSessionTimeout() {
+        return Math.ceilDiv(sessionManager.getDefaultMaxInactiveInterval(), SECONDS_PER_MINUTE);
+    }
+
+    @Override
+    public void setSessionTimeout(int sessionTimeout) {
+        sessionManager.setDefaultMaxInactiveInterval(sessionTimeout * SECONDS_PER_MINUTE);
+    }
+
+    @Override
+    public void close() {
+        sessionManager.close();
     }
 
     @Override

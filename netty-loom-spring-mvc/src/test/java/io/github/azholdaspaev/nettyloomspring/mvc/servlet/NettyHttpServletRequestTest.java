@@ -8,10 +8,13 @@ import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import jakarta.servlet.http.Cookie;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
 
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
@@ -20,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -33,7 +37,8 @@ class NettyHttpServletRequestTest {
         return new NettyHttpServletRequest(
             new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/x"),
             connection,
-            context);
+            context,
+            new NettyHttpServletResponse());
     }
 
     private static NettyHttpServletRequest request(String uri, String host, HttpConnectionMetadata connection) {
@@ -41,20 +46,23 @@ class NettyHttpServletRequestTest {
         if (host != null) {
             nettyRequest.headers().set(HttpHeaderNames.HOST, host);
         }
-        return new NettyHttpServletRequest(nettyRequest, connection, new DefaultNettyServletContext());
+        return new NettyHttpServletRequest(
+            nettyRequest, connection, new DefaultNettyServletContext(), new NettyHttpServletResponse());
     }
 
     private static NettyHttpServletRequest formRequest(String uri, byte[] body, HttpConnectionMetadata connection) {
         var nettyRequest = new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.POST, uri, Unpooled.wrappedBuffer(body));
         nettyRequest.headers().set(HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.APPLICATION_X_WWW_FORM_URLENCODED);
-        return new NettyHttpServletRequest(nettyRequest, connection, new DefaultNettyServletContext());
+        return new NettyHttpServletRequest(
+            nettyRequest, connection, new DefaultNettyServletContext(), new NettyHttpServletResponse());
     }
 
     private static NettyHttpServletRequest requestWithAcceptLanguage(String acceptLanguage, HttpConnectionMetadata connection) {
         var nettyRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/x");
         nettyRequest.headers().set(HttpHeaderNames.ACCEPT_LANGUAGE, acceptLanguage);
-        return new NettyHttpServletRequest(nettyRequest, connection, new DefaultNettyServletContext());
+        return new NettyHttpServletRequest(
+            nettyRequest, connection, new DefaultNettyServletContext(), new NettyHttpServletResponse());
     }
 
     private static NettyHttpServletRequest requestWithContext(String uri, String contextPath) {
@@ -63,7 +71,8 @@ class NettyHttpServletRequestTest {
         return new NettyHttpServletRequest(
             new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri),
             new HttpConnectionMetadata("", 0, "", 0, false),
-            context);
+            context,
+            new NettyHttpServletResponse());
     }
 
     @Test
@@ -248,7 +257,8 @@ class NettyHttpServletRequestTest {
         var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false);
         var nettyRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/x");
         nettyRequest.headers().set(HttpHeaderNames.ACCEPT_LANGUAGE, "da, en-gb;q=0.8, en;q=0.7");
-        var request = new NettyHttpServletRequest(nettyRequest, insecure, new DefaultNettyServletContext());
+        var request = new NettyHttpServletRequest(
+            nettyRequest, insecure, new DefaultNettyServletContext(), new NettyHttpServletResponse());
 
         assertEquals(Locale.forLanguageTag("da"), request.getLocale());
         List<Locale> first = Collections.list(request.getLocales());
@@ -357,7 +367,8 @@ class NettyHttpServletRequestTest {
         return new NettyHttpServletRequest(
             nettyRequest,
             new HttpConnectionMetadata("", 0, "", 0, false),
-            new DefaultNettyServletContext());
+            new DefaultNettyServletContext(),
+            new NettyHttpServletResponse());
     }
 
     @Test
@@ -440,5 +451,366 @@ class NettyHttpServletRequestTest {
         assertNotNull(request.getCookies()[0]);
         // The shallow copy still shares element instances: cookies are parsed once, then cached.
         assertSame(second[1], request.getCookies()[1]);
+    }
+
+    // --- Sessions (issue #13) ---
+
+    private static final HttpConnectionMetadata INSECURE = new HttpConnectionMetadata("", 0, "", 0, false);
+    private static final HttpConnectionMetadata SECURE = new HttpConnectionMetadata("", 0, "", 0, true);
+
+    /** One request/response pair over a shared servlet context, as the dispatcher builds them. */
+    private record Exchange(NettyHttpServletRequest request, NettyHttpServletResponse response) {
+
+        List<String> setCookies() {
+            return List.copyOf(response.getHeaders(HttpHeaders.SET_COOKIE));
+        }
+
+        String setCookie() {
+            List<String> all = setCookies();
+            assertEquals(1, all.size(), "Expected exactly one Set-Cookie but got " + all);
+            return all.getFirst();
+        }
+    }
+
+    // Creating a session lazily starts a sweeper thread, so every context these tests build has to be
+    // closed again or the whole mvc suite carries one leaked thread per session test.
+    private final List<NettyServletContext> sessionContexts = new ArrayList<>();
+
+    @AfterEach
+    void closeSessionContexts() {
+        sessionContexts.forEach(NettyServletContext::close);
+    }
+
+    private Exchange exchange(DefaultNettyServletContext context,
+                              HttpConnectionMetadata connection,
+                              String cookieHeader) {
+        sessionContexts.add(context);
+        var nettyRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/x");
+        if (cookieHeader != null) {
+            nettyRequest.headers().set(HttpHeaderNames.COOKIE, cookieHeader);
+        }
+        var response = new NettyHttpServletResponse();
+        return new Exchange(new NettyHttpServletRequest(nettyRequest, connection, context, response), response);
+    }
+
+    private Exchange exchange(DefaultNettyServletContext context) {
+        return exchange(context, INSECURE, null);
+    }
+
+    @Test
+    void getSessionFalseReturnsNullWhenNoCookieIsPresent() {
+        var exchange = exchange(new DefaultNettyServletContext());
+
+        assertNull(exchange.request().getSession(false));
+    }
+
+    @Test
+    void getSessionFalseWritesNoSetCookie() {
+        // DispatcherServlet calls getSession(false) on every request via SessionFlashMapManager, so this
+        // is the stateless hot path: it must neither create a session nor touch the response.
+        var exchange = exchange(new DefaultNettyServletContext());
+
+        exchange.request().getSession(false);
+
+        assertTrue(exchange.setCookies().isEmpty());
+    }
+
+    @Test
+    void getSessionTrueCreatesASessionAndEmitsTheCookie() {
+        var context = new DefaultNettyServletContext();
+        var exchange = exchange(context);
+
+        var session = exchange.request().getSession(true);
+
+        assertNotNull(session);
+        assertTrue(session.isNew());
+        assertEquals(1, context.getSessionManager().size());
+        assertTrue(exchange.setCookie().startsWith("JSESSIONID=" + session.getId()));
+    }
+
+    @Test
+    void noArgGetSessionCreates() {
+        var exchange = exchange(new DefaultNettyServletContext());
+
+        assertNotNull(exchange.request().getSession());
+    }
+
+    @Test
+    void getSessionTrueIsIdempotentWithinOneRequest() {
+        var exchange = exchange(new DefaultNettyServletContext());
+
+        var first = exchange.request().getSession(true);
+        var second = exchange.request().getSession(true);
+
+        assertSame(first, second);
+        assertEquals(1, exchange.setCookies().size(), "The cookie is emitted once, at creation");
+    }
+
+    @Test
+    void anExistingSessionResolvesFromTheCookieWithoutReEmitting() {
+        var context = new DefaultNettyServletContext();
+        var existing = context.getSessionManager().create();
+
+        var exchange = exchange(context, INSECURE, "JSESSIONID=" + existing.getId());
+
+        assertSame(existing, exchange.request().getSession(false));
+        assertTrue(exchange.setCookies().isEmpty(),
+            "The client already holds this cookie; re-sending it on every response is pure overhead");
+    }
+
+    @Test
+    void aSessionCookieAmongOthersIsStillFound() {
+        var context = new DefaultNettyServletContext();
+        var existing = context.getSessionManager().create();
+
+        var exchange = exchange(context, INSECURE, "theme=dark; JSESSIONID=" + existing.getId() + "; lang=en");
+
+        assertSame(existing, exchange.request().getSession(false));
+    }
+
+    @Test
+    void anUnknownSessionIdYieldsNoSessionButAStaleRequestedId() {
+        var exchange = exchange(new DefaultNettyServletContext(), INSECURE, "JSESSIONID=DEADBEEF");
+
+        // SessionManagementFilter keys on exactly this triple to detect an expired session.
+        assertNull(exchange.request().getSession(false));
+        assertEquals("DEADBEEF", exchange.request().getRequestedSessionId());
+        assertFalse(exchange.request().isRequestedSessionIdValid());
+        assertTrue(exchange.request().isRequestedSessionIdFromCookie());
+    }
+
+    @Test
+    void anUnknownSessionIdStillAllowsCreatingAFreshSession() {
+        var context = new DefaultNettyServletContext();
+        var exchange = exchange(context, INSECURE, "JSESSIONID=DEADBEEF");
+
+        var created = exchange.request().getSession(true);
+
+        assertNotEquals("DEADBEEF", created.getId());
+        assertTrue(exchange.setCookie().startsWith("JSESSIONID=" + created.getId()));
+    }
+
+    @Test
+    void getRequestedSessionIdIsNullWhenNoCookieIsPresent() {
+        // Not "": SessionManagementFilter treats any non-null requested id as a session to validate, so
+        // an empty string would make it fire its invalid-session strategy on every stateless request.
+        var exchange = exchange(new DefaultNettyServletContext());
+
+        assertNull(exchange.request().getRequestedSessionId());
+        assertFalse(exchange.request().isRequestedSessionIdValid());
+        assertFalse(exchange.request().isRequestedSessionIdFromCookie());
+    }
+
+    @Test
+    void getRequestedSessionIdIsNullWhenOtherCookiesArePresent() {
+        var exchange = exchange(new DefaultNettyServletContext(), INSECURE, "theme=dark");
+
+        assertNull(exchange.request().getRequestedSessionId());
+    }
+
+    @Test
+    void isRequestedSessionIdValidForALiveSession() {
+        var context = new DefaultNettyServletContext();
+        var existing = context.getSessionManager().create();
+
+        var exchange = exchange(context, INSECURE, "JSESSIONID=" + existing.getId());
+
+        assertTrue(exchange.request().isRequestedSessionIdValid());
+        assertEquals(existing.getId(), exchange.request().getRequestedSessionId());
+    }
+
+    @Test
+    void isRequestedSessionIdFromUrlIsAlwaysFalse() {
+        // URL rewriting is permanently out of scope: encodeURL is the identity, and COOKIE is the only
+        // effective tracking mode.
+        assertFalse(exchange(new DefaultNettyServletContext()).request().isRequestedSessionIdFromURL());
+    }
+
+    @Test
+    void getSessionFalseAfterInvalidateReturnsNull() {
+        var exchange = exchange(new DefaultNettyServletContext());
+        exchange.request().getSession(true).invalidate();
+
+        assertNull(exchange.request().getSession(false),
+            "The memoized session must be dropped once it is invalidated");
+    }
+
+    @Test
+    void getSessionTrueAfterInvalidateCreatesAFreshSessionAndCookie() {
+        var context = new DefaultNettyServletContext();
+        var exchange = exchange(context);
+        var first = exchange.request().getSession(true);
+        String firstId = first.getId();
+        first.invalidate();
+
+        var second = exchange.request().getSession(true);
+
+        assertNotSame(first, second);
+        assertNotEquals(firstId, second.getId());
+        assertEquals(2, exchange.setCookies().size(), "Each creation emits its own cookie; last one wins");
+        assertTrue(exchange.setCookies().getLast().startsWith("JSESSIONID=" + second.getId()));
+    }
+
+    // --- Session cookie attributes ---
+
+    @Test
+    void theSessionCookieIsHttpOnlyByDefault() {
+        var exchange = exchange(new DefaultNettyServletContext());
+        exchange.request().getSession(true);
+
+        assertTrue(exchange.setCookie().contains("HTTPOnly"), "Actual: " + exchange.setCookie());
+    }
+
+    @Test
+    void theSessionCookieHasNoMaxAgeByDefault() {
+        var exchange = exchange(new DefaultNettyServletContext());
+        exchange.request().getSession(true);
+
+        assertFalse(exchange.setCookie().contains("Max-Age"),
+            "A browser-session cookie carries no Max-Age");
+    }
+
+    @Test
+    void theSessionCookiePathDefaultsToRootForTheRootContext() {
+        var exchange = exchange(new DefaultNettyServletContext());
+        exchange.request().getSession(true);
+
+        // The root context path is the "" sentinel; an empty Path= attribute would be meaningless, so
+        // this is the one place it must be translated to "/".
+        assertTrue(exchange.setCookie().contains("Path=/"), "Actual: " + exchange.setCookie());
+    }
+
+    @Test
+    void theSessionCookiePathDefaultsToTheContextPath() {
+        var context = new DefaultNettyServletContext();
+        context.setContextPath("/app");
+        var exchange = exchange(context);
+        exchange.request().getSession(true);
+
+        assertTrue(exchange.setCookie().contains("Path=/app"), "Actual: " + exchange.setCookie());
+    }
+
+    @Test
+    void aConfiguredPathWinsOverTheContextPath() {
+        var context = new DefaultNettyServletContext();
+        context.setContextPath("/app");
+        context.getSessionCookieConfig().setPath("/");
+        var exchange = exchange(context);
+        exchange.request().getSession(true);
+
+        assertTrue(exchange.setCookie().contains("Path=/"), "Actual: " + exchange.setCookie());
+    }
+
+    @Test
+    void theSessionCookieUsesTheConfiguredName() {
+        var context = new DefaultNettyServletContext();
+        context.getSessionCookieConfig().setName("SID");
+        var exchange = exchange(context);
+
+        var session = exchange.request().getSession(true);
+
+        assertTrue(exchange.setCookie().startsWith("SID=" + session.getId()));
+    }
+
+    @Test
+    void aConfiguredCookieNameIsAlsoAcceptedOnTheWayIn() {
+        var context = new DefaultNettyServletContext();
+        context.getSessionCookieConfig().setName("SID");
+        var existing = context.getSessionManager().create();
+
+        var exchange = exchange(context, INSECURE, "SID=" + existing.getId());
+
+        assertSame(existing, exchange.request().getSession(false));
+    }
+
+    @Test
+    void theSessionCookieCarriesConfiguredAttributes() {
+        var context = new DefaultNettyServletContext();
+        context.getSessionCookieConfig().setDomain("example.test");
+        context.getSessionCookieConfig().setMaxAge(60);
+        context.getSessionCookieConfig().setAttribute("SameSite", "Lax");
+        var exchange = exchange(context);
+
+        exchange.request().getSession(true);
+
+        String setCookie = exchange.setCookie();
+        assertTrue(setCookie.contains("Domain=example.test"), "Actual: " + setCookie);
+        assertTrue(setCookie.contains("Max-Age=60"), "Actual: " + setCookie);
+        assertTrue(setCookie.contains("SameSite=Lax"), "Actual: " + setCookie);
+    }
+
+    @Test
+    void theSessionCookieIsSecureOverASecureConnection() {
+        var exchange = exchange(new DefaultNettyServletContext(), SECURE, null);
+
+        exchange.request().getSession(true);
+
+        assertTrue(exchange.setCookie().contains("Secure"), "Actual: " + exchange.setCookie());
+    }
+
+    @Test
+    void theSessionCookieIsNotSecureOverAPlaintextConnection() {
+        var exchange = exchange(new DefaultNettyServletContext());
+
+        exchange.request().getSession(true);
+
+        assertFalse(exchange.setCookie().contains("Secure"), "Actual: " + exchange.setCookie());
+    }
+
+    @Test
+    void aConfiguredSecureFlagAppliesEvenOverPlaintext() {
+        var context = new DefaultNettyServletContext();
+        context.getSessionCookieConfig().setSecure(true);
+        var exchange = exchange(context);
+
+        exchange.request().getSession(true);
+
+        assertTrue(exchange.setCookie().contains("Secure"), "Actual: " + exchange.setCookie());
+    }
+
+    @Test
+    void noCookieIsEmittedWhenCookieTrackingIsDisabled() {
+        var context = new DefaultNettyServletContext();
+        context.setSessionTrackingModes(java.util.Set.of());
+        var exchange = exchange(context);
+
+        assertNotNull(exchange.request().getSession(true), "The session still exists, it is just not tracked");
+        assertTrue(exchange.setCookies().isEmpty());
+    }
+
+    // --- changeSessionId (session fixation, issue #52) ---
+
+    @Test
+    void changeSessionIdRotatesTheIdAndReEmitsTheCookie() {
+        var context = new DefaultNettyServletContext();
+        var exchange = exchange(context);
+        var session = exchange.request().getSession(true);
+        String oldId = session.getId();
+
+        String newId = exchange.request().changeSessionId();
+
+        assertNotEquals(oldId, newId);
+        assertEquals(newId, session.getId());
+        assertSame(session, context.getSessionManager().find(newId));
+        assertNull(context.getSessionManager().find(oldId));
+        assertTrue(exchange.setCookies().getLast().startsWith("JSESSIONID=" + newId));
+    }
+
+    @Test
+    void changeSessionIdPreservesAttributes() {
+        var exchange = exchange(new DefaultNettyServletContext());
+        var session = exchange.request().getSession(true);
+        session.setAttribute("user", "alice");
+
+        exchange.request().changeSessionId();
+
+        assertEquals("alice", session.getAttribute("user"));
+    }
+
+    @Test
+    void changeSessionIdWithoutASessionThrows() {
+        var exchange = exchange(new DefaultNettyServletContext());
+
+        assertThrows(IllegalStateException.class, () -> exchange.request().changeSessionId());
     }
 }

@@ -5,6 +5,7 @@ import jakarta.servlet.Filter;
 import jakarta.servlet.FilterRegistration;
 import jakarta.servlet.Servlet;
 import jakarta.servlet.ServletRegistration;
+import jakarta.servlet.SessionTrackingMode;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,7 @@ import java.util.EnumSet;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -21,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -533,6 +536,108 @@ class DefaultNettyServletContextTest {
     @Test
     void shouldReturnClassLoader() {
         assertNotNull(context.getClassLoader());
+    }
+
+    // --- Session support (issue #13) ---
+
+    @Test
+    void shouldOwnASessionManager() {
+        assertNotNull(context.getSessionManager());
+        assertSame(context.getSessionManager(), context.getSessionManager());
+    }
+
+    @Test
+    void shouldExposeTheSessionManagersCookieConfig() {
+        assertSame(context.getSessionManager().getCookieConfig(), context.getSessionCookieConfig());
+    }
+
+    @Test
+    void shouldDefaultSessionTimeoutToThirtyMinutes() {
+        assertEquals(30, context.getSessionTimeout());
+    }
+
+    @Test
+    void shouldRoundTripSessionTimeoutThroughMinutes() {
+        context.setSessionTimeout(5);
+
+        assertEquals(5, context.getSessionTimeout());
+        assertEquals(300, context.getSessionManager().getDefaultMaxInactiveInterval(),
+            "ServletContext speaks minutes; the manager stores seconds");
+    }
+
+    @Test
+    void shouldRoundSubMinuteTimeoutUpToOneMinute() {
+        // The manager keeps seconds so a 30s configuration is honoured exactly. Reporting that through
+        // the minutes-based ServletContext API must round up: truncating to 0 would mean "never
+        // expires", turning a 30-second timeout into an infinite one.
+        context.getSessionManager().setDefaultMaxInactiveInterval(30);
+
+        assertEquals(1, context.getSessionTimeout());
+    }
+
+    @Test
+    void shouldTreatZeroSessionTimeoutAsNeverExpires() {
+        context.setSessionTimeout(0);
+
+        assertEquals(0, context.getSessionTimeout());
+        assertEquals(0, context.getSessionManager().getDefaultMaxInactiveInterval());
+    }
+
+    @Test
+    void shouldTrackSessionsByCookieOnly() {
+        assertEquals(Set.of(SessionTrackingMode.COOKIE), context.getDefaultSessionTrackingModes());
+        assertEquals(Set.of(SessionTrackingMode.COOKIE), context.getEffectiveSessionTrackingModes());
+    }
+
+    @Test
+    void shouldAcceptCookieSessionTrackingMode() {
+        context.setSessionTrackingModes(Set.of(SessionTrackingMode.COOKIE));
+
+        assertEquals(Set.of(SessionTrackingMode.COOKIE), context.getEffectiveSessionTrackingModes());
+    }
+
+    @Test
+    void shouldAcceptEmptySessionTrackingModes() {
+        context.setSessionTrackingModes(Set.of());
+
+        assertTrue(context.getEffectiveSessionTrackingModes().isEmpty(),
+            "An empty set legitimately disables the session cookie");
+    }
+
+    @Test
+    void shouldRejectUrlSessionTrackingMode() {
+        // Silently ignoring it would leave sessions quietly broken with no signal, so fail fast the way
+        // the factory already does for server.ssl.*.
+        var thrown = assertThrows(IllegalArgumentException.class,
+            () -> context.setSessionTrackingModes(Set.of(SessionTrackingMode.URL)));
+
+        assertTrue(thrown.getMessage().contains("URL"), "The message should name the rejected mode");
+        assertTrue(thrown.getMessage().contains("server.servlet.session.tracking-modes"),
+            "The message should name the property to change");
+    }
+
+    @Test
+    void shouldRejectSslSessionTrackingMode() {
+        assertThrows(IllegalArgumentException.class,
+            () -> context.setSessionTrackingModes(Set.of(SessionTrackingMode.SSL)));
+    }
+
+    @Test
+    void shouldLeaveTrackingModesUnchangedWhenRejectingAnUnsupportedMode() {
+        assertThrows(IllegalArgumentException.class,
+            () -> context.setSessionTrackingModes(EnumSet.of(SessionTrackingMode.COOKIE, SessionTrackingMode.URL)));
+
+        assertEquals(Set.of(SessionTrackingMode.COOKIE), context.getEffectiveSessionTrackingModes());
+    }
+
+    @Test
+    void shouldCloseTheSessionManager() {
+        context.getSessionManager().create();
+        assertEquals(1, context.getSessionManager().size());
+
+        context.close();
+
+        assertEquals(0, context.getSessionManager().size());
     }
 
     private static List<String> collectNames(Enumeration<String> enumeration) {
