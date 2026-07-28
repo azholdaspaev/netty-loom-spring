@@ -13,7 +13,7 @@ io.github.azholdaspaev:netty-loom-spring-boot-starter:0.1.0-SNAPSHOT
 - Standard Spring MVC programming model (`DispatcherServlet`, blocking controllers)
 - Java NIO transport (`NioServerSocketChannel`) on every platform
 - Two-phase **graceful shutdown** with configurable drain timeout
-- **Slow-loris protection** via per-channel `ReadTimeoutHandler` (closes idle connections without a response)
+- **Slow-loris protection** via a per-channel read timeout that measures the client, not your handler
 - HTTP frame-size limits to defeat parser abuse
 - Pluggable pipeline and dispatch via two clean SPI seams
 
@@ -89,7 +89,7 @@ prefix (`NettyLoomProperties`). See [ADR 0001](docs/adr/0001-server-properties-n
 | `server.netty.worker-threads` | `int` | `0` | Netty worker group thread count; `0` = Netty default (`CPU_COUNT * 2`) |
 | `server.netty.tcp-keep-alive` | `boolean` | `true` | TCP `SO_KEEPALIVE` socket option; unrelated to HTTP keep-alive, which is protocol behaviour and always on |
 | `server.netty.shutdown-grace-period` | `Duration` | `30s` | Time to wait for in-flight requests before forcibly closing |
-| `server.netty.read-timeout` | `Duration` | `30s` | Per-channel idle timeout; channels exceeding it are closed without a response (slow-loris defense) |
+| `server.netty.read-timeout` | `Duration` | `30s` | How long the server waits on the client: one interval to deliver a complete request, one interval idle between requests. Handler execution time does **not** count against it. Channels exceeding it are closed without a response (slow-loris defense); `0` disables |
 
 Fixed HTTP frame limits (not yet configurable): max initial line, header, and chunk size = **10 KB** each; max aggregated body = **1 MB**.
 
@@ -113,9 +113,12 @@ Three library modules, dependency flow **`starter → mvc → core`** (core has 
 ```
 TCP accept (Netty boss loop)
   → worker loop pipeline:
-      ReadTimeoutHandler(30s)        # idle-connection / slow-loris guard
-      → HttpServerCodec
+      HttpServerCodec                # decodes the request, encodes the response
+      → HttpServerKeepAliveHandler   # honours Connection: close
+      → HttpDrainHandler             # counts the exchange so graceful shutdown can wait for it
       → HttpObjectAggregator(1MB)    # buffers full request body
+      → HttpReadTimeoutHandler(30s)  # client-progress deadline; suspended while dispatching
+      → HttpPipeliningHandler        # one exchange at a time, so responses leave in request order
       → HttpRequestHandler           # retains request, hands off to...
           → virtual thread (Executors.newVirtualThreadPerTaskExecutor)
               → SpringHttpRequestDispatcher
@@ -126,6 +129,8 @@ TCP accept (Netty boss loop)
 ```
 
 The event loop only accepts and decodes; all blocking application work happens on the per-request virtual thread, leaving the loop free to keep accepting connections.
+
+`HttpReadTimeoutHandler` sits below the aggregator deliberately. It counts requests, not bytes, so the interval is a deadline for the client to deliver a whole request — a client dribbling a header a byte at a time is closed, where a byte-level clock would be refreshed by every byte and hold the connection forever. It also means a request being dispatched suspends the clock, so however long your controller blocks, the connection is never closed out from under it.
 
 `HttpExceptionHandler` maps: `ReadTimeoutException` → close; `ClosedChannelException`/client-disconnect `IOException` → clean close; `TooLongFrameException` → 413; `DecoderException`/`IllegalArgumentException` → 400; `UnsupportedOperationException` → 501; else → 500 (5xx logged as error, <5xx as warn).
 
@@ -200,7 +205,8 @@ k6 run --env BASE_URL=http://localhost:18080 --env VUS=10000 --env DURATION=60s 
 - **No sessions / auth** — `getSession()` → `null`, `getCookies()` → empty, `getUserPrincipal()` → `null`, `isUserInRole()` → `false`.
 - **No resource serving / JSP** — `getResource*`/`getRealPath` return `null`; resource paths and request dispatch throw `UnsupportedOperationException`. Intended for application logic only.
 - **Network metadata stubbed** — `getRemoteAddr/Host/Port`, `getScheme`, `getServerName/Port` return empty/0; designed for proxied deployments.
-- **No write-timeout handler** — only `ReadTimeoutHandler` is configured; slow-write / stalled-response scenarios are not yet protected.
+- **No write-timeout handler** — only `HttpReadTimeoutHandler` is configured; slow-write / stalled-response scenarios are not yet protected.
+- **No request/dispatch deadline** — the read timeout deliberately does not bound handler execution, so a handler that never returns holds its connection indefinitely. Nothing reclaims it short of shutdown.
 - HTTP frame-size limits are fixed (not yet configurable).
 
 ## License
