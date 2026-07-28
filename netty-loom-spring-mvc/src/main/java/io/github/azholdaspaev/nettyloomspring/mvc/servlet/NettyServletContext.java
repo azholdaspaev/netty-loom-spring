@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-public interface NettyServletContext extends ServletContext {
+public interface NettyServletContext extends ServletContext, AutoCloseable {
 
     /**
      * Context path value meaning the application is mounted at the server root (no prefix). Matches
@@ -45,6 +45,22 @@ public interface NettyServletContext extends ServletContext {
      * Not part of the Jakarta {@link ServletContext} contract.
      */
     void setContextPath(String contextPath);
+
+    /**
+     * The store backing {@code HttpServletRequest.getSession(...)}. Not part of the Jakarta
+     * {@code ServletContext} contract: the servlet API exposes only configuration of sessions, never
+     * the store itself, but the request needs it to resolve and create them.
+     */
+    NettySessionManager getSessionManager();
+
+    /**
+     * Releases whatever the context holds open -- today the session sweeper thread. On the interface
+     * rather than only the implementation because owning a background thread is part of this seam:
+     * whoever holds a {@code NettyServletContext} is responsible for closing it.
+     */
+    @Override
+    default void close() {
+    }
 
     @Override
     default String getContextPath() {
