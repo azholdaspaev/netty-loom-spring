@@ -12,8 +12,12 @@ public class SlowController {
 
     public static final String PATH = "/slow";
 
-    /** Comfortably past the 500ms the timeout tests configure, without padding the suite further. */
-    public static final long DELAY_MILLIS = 750;
+    /**
+     * Must stay above the {@code server.netty.read-timeout} that {@code SlowHandlerNotTimedOutTest}
+     * configures, or that regression gate passes vacuously. Not a ratio to trim for suite time: the gap
+     * is headroom for the connect-to-request window, which spends the same budget.
+     */
+    public static final long DELAY_MILLIS = 1_500;
 
     @GetMapping(PATH)
     public String slow() throws InterruptedException {

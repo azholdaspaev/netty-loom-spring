@@ -37,8 +37,8 @@ class ReadTimeoutPipelineOrderTest {
                 "readTimeout must sit below the aggregator so it measures whole requests rather than "
                     + "bytes, and so the aggregator's own interim responses never reach it; got " + names);
             assertTrue(names.indexOf("readTimeout") < names.indexOf("pipelining"),
-                "readTimeout must sit above the pipelining gate, which releases queued requests towards "
-                    + "the tail and would otherwise hide a pipelined burst from it; got " + names);
+                "readTimeout must sit above the pipelining gate so its count stays a property of what the "
+                    + "client has delivered rather than of what that gate has released; got " + names);
 
             channel.finishAndReleaseAll();
         }

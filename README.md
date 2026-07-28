@@ -89,7 +89,7 @@ prefix (`NettyLoomProperties`). See [ADR 0001](docs/adr/0001-server-properties-n
 | `server.netty.worker-threads` | `int` | `0` | Netty worker group thread count; `0` = Netty default (`CPU_COUNT * 2`) |
 | `server.netty.tcp-keep-alive` | `boolean` | `true` | TCP `SO_KEEPALIVE` socket option; unrelated to HTTP keep-alive, which is protocol behaviour and always on |
 | `server.netty.shutdown-grace-period` | `Duration` | `30s` | Time to wait for in-flight requests before forcibly closing |
-| `server.netty.read-timeout` | `Duration` | `30s` | How long the server waits on the client: one interval to deliver a complete request, one interval idle between requests. Handler execution time does **not** count against it. Channels exceeding it are closed without a response (slow-loris defense); `0` disables |
+| `server.netty.read-timeout` | `Duration` | `30s` | How long the server waits on the client. A **single** interval measured from the previous response, covering idle time and delivery of the next request together — not one interval each. Handler execution time does **not** count against it. Channels exceeding it are closed without a response (slow-loris defense); `0` or negative disables |
 
 Fixed HTTP frame limits (not yet configurable): max initial line, header, and chunk size = **10 KB** each; max aggregated body = **1 MB**.
 
@@ -131,6 +131,17 @@ TCP accept (Netty boss loop)
 The event loop only accepts and decodes; all blocking application work happens on the per-request virtual thread, leaving the loop free to keep accepting connections.
 
 `HttpReadTimeoutHandler` sits below the aggregator deliberately. It counts requests, not bytes, so the interval is a deadline for the client to deliver a whole request — a client dribbling a header a byte at a time is closed, where a byte-level clock would be refreshed by every byte and hold the connection forever. It also means a request being dispatched suspends the clock, so however long your controller blocks, the connection is never closed out from under it.
+
+The cost of counting requests rather than bytes is that idle time and delivery share one budget. The clock restarts when a response is written and nothing inbound advances it, so a pooled connection that sits idle for most of the interval has only the remainder left to deliver its next request:
+
+| Scenario (30s timeout) | Outcome |
+| --- | --- |
+| Slow handler, any duration | answered — dispatch is exempt |
+| Idle 5s, then a request arrives | fine — 25s left to deliver it |
+| **Idle 29s, then a large upload begins** | **closed 1s in, mid-upload** |
+| Header dribbled a byte at a time | closed — the loris defense |
+
+The last two are the same mechanism. If your clients pool connections and send large bodies after long idle periods, size `read-timeout` for the sum, not for either part.
 
 `HttpExceptionHandler` maps: `ReadTimeoutException` → close; `ClosedChannelException`/client-disconnect `IOException` → clean close; `TooLongFrameException` → 413; `DecoderException`/`IllegalArgumentException` → 400; `UnsupportedOperationException` → 501; else → 500 (5xx logged as error, <5xx as warn).
 

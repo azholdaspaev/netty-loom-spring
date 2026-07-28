@@ -15,9 +15,12 @@ import java.util.concurrent.TimeUnit;
  * Closes a connection the client has stopped making progress on, without counting the time we spend
  * answering it (issue #76).
  *
- * <p>The timeout measures how long we wait on the <em>client</em>: it allows one interval to deliver a
- * complete request, and one interval of sitting idle between exchanges. Time spent dispatching is
- * exempt, so a handler slower than the timeout still gets to answer. That is the parity Tomcat's
+ * <p>The timeout measures how long we wait on the <em>client</em>. It is a <em>single</em> interval,
+ * measured from the previous response (or from the connection being accepted), covering idle time and
+ * request delivery <em>together</em> — not one interval for each. A connection that idles most of the
+ * interval in a client pool therefore has only the remainder left to deliver its next request, which is
+ * the cost of measuring requests rather than bytes; see the trade-offs in README. Time spent dispatching
+ * is exempt, so a handler slower than the timeout still gets to answer. That is the parity Tomcat's
  * {@code connectionTimeout} and Jetty's {@code idleTimeout} offer, and it is what Netty's stock
  * {@link io.netty.handler.timeout.ReadTimeoutHandler} cannot express: it is an
  * {@code IdleStateHandler} armed on reader-idle alone, and {@code IdleStateHandler} stamps its clock in
@@ -28,10 +31,17 @@ import java.util.concurrent.TimeUnit;
  * <p><strong>Placement is the contract.</strong> It belongs <em>below</em> the aggregator, so it sees whole
  * requests rather than bytes: that is what makes the interval a deadline to deliver a request rather than
  * a byte-level idle timeout, and it closes a client dribbling a header a byte at a time — which a
- * byte-level clock keeps alive indefinitely. It belongs <em>above</em> the pipelining gate, because
- * {@link HttpPipeliningHandler} releases a queued request with {@code fireChannelRead} from its own
- * context, travelling towards the tail: below it, those requests would never be seen and a pipelined
- * burst would be undercounted.
+ * byte-level clock keeps alive indefinitely. It belongs <em>above</em> the pipelining gate so that the
+ * count means "complete requests the client has delivered and we have not answered" — a property of the
+ * client, which is what this measures — rather than "requests the gate has currently released", which
+ * would tie the timeout to that handler's scheduling. Correctness does not turn on the side: a handler
+ * below the gate would still see every queued request as it was released, one at a time, and the count
+ * would stay above zero across a pipelined burst either way.
+ *
+ * <p>It does not reuse {@link HttpConnectionRegistry}'s in-flight count, which tracks the same idea one
+ * step further out. That window opens at the <em>head</em> of a request, above the aggregator, so
+ * suspending on it would exempt a client that sends complete headers and then stalls mid-body — for
+ * ever, reopening the very hole this closes.
  *
  * <p>Below the aggregator also means it never sees that handler's own {@code 100 Continue} or {@code 413}
  * — both are written from the aggregator's context, towards the head. So, like
@@ -39,9 +49,17 @@ import java.util.concurrent.TimeUnit;
  * exemption. The trade is that an {@code Expect: 100-continue} upload is not exempt from the deadline
  * either; the body must still arrive within the interval.
  *
+ * <p>The exchange is counted out when the response is <em>handed to</em> the socket, not when the bytes
+ * are accepted by it. Keying on write completion is the obvious choice and is wrong: a peer whose receive
+ * window stays at zero leaves the promise uncompleted for ever — Netty parks the message in
+ * {@code ChannelOutboundBuffer} and the high-water mark only flips writability, it never fails the write
+ * — so the suspension would never end and the connection would become immortal. The stock head-mounted
+ * handler reclaimed that case because it keyed on reads, and losing it would be a regression, not merely
+ * an undocumented gap.
+ *
  * <p>Every field is touched only on the event loop. A response written from a dispatch thread is hopped
- * onto the loop by Netty before it reaches {@link #write}, the promise listener is notified there too,
- * and the timeout task runs there by construction.
+ * onto the loop by Netty before it reaches {@link #write}, and the timeout task runs there by
+ * construction.
  *
  * <p>A timeout of zero or less disables the handler entirely, matching what the stock handler did with a
  * non-positive timeout.
@@ -62,10 +80,21 @@ public class HttpReadTimeoutHandler extends ChannelDuplexHandler {
     /** When the client last finished making progress: connection established, or an exchange answered. */
     private long lastActivityNanos;
 
-    /** Complete requests read but not yet answered. A count, not a flag, because requests pipeline. */
-    private int outstanding;
+    /**
+     * Complete requests read but not yet answered. A count, not a flag, because requests pipeline.
+     *
+     * <p>Deliberately not called {@code inFlight}: {@link HttpConnectionRegistry} uses that name for the
+     * wider window opening at the head of a request, and the two are not interchangeable.
+     */
+    private int unansweredRequests;
 
+    /**
+     * Load-bearing rather than defensive: in production both {@link #handlerAdded} and
+     * {@link #channelActive} reach {@link #initialize}, and without this the second would arm a second
+     * timer.
+     */
     private boolean initialized;
+
     private boolean destroyed;
 
     public HttpReadTimeoutHandler(long timeout, TimeUnit unit) {
@@ -76,7 +105,10 @@ public class HttpReadTimeoutHandler extends ChannelDuplexHandler {
     public void handlerAdded(ChannelHandlerContext ctx) {
         ticker = ctx.executor().ticker();
         if (ctx.channel().isActive() && ctx.channel().isRegistered()) {
-            // Added to a channel that is already up -- channelActive will not come, so start here.
+            // This is the arming path in production, not a fallback: register0 sets registered, then runs
+            // invokeHandlerAddedIfNeeded -- where the pipeline is built -- and only then fires
+            // channelRegistered and channelActive. An accepted child channel is connected by that point,
+            // so the timer starts here and the channelActive path below no-ops on the initialized guard.
             initialize(ctx);
         }
     }
@@ -101,7 +133,7 @@ public class HttpReadTimeoutHandler extends ChannelDuplexHandler {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
         if (msg instanceof FullHttpRequest) {
-            outstanding++;
+            unansweredRequests++;
         }
         ctx.fireChannelRead(msg);
     }
@@ -110,18 +142,12 @@ public class HttpReadTimeoutHandler extends ChannelDuplexHandler {
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
         // The exchange ends with the last of the response, which for a FullHttpResponse is the response
         // itself. Keying on LastHttpContent rather than on the dispatcher's return value keeps this
-        // correct for a response written in parts.
-        if (!(msg instanceof LastHttpContent)) {
-            ctx.write(msg, promise);
-            return;
+        // correct for a response written in parts: a streamed response restarts the clock at its end, not
+        // at its head.
+        if (msg instanceof LastHttpContent) {
+            requestAnswered();
         }
-        // unvoid() because addListener on a void promise throws, and the write must then carry the
-        // unvoided promise or the listener would never be notified. Counting the exchange out on write
-        // completion rather than inline here also keeps a response still going out over a slow socket
-        // from being cut short by its own timeout.
-        ChannelPromise writePromise = promise.unvoid();
-        writePromise.addListener(_ -> exchangeFinished());
-        ctx.write(msg, writePromise);
+        ctx.write(msg, promise);
     }
 
     /**
@@ -129,9 +155,9 @@ public class HttpReadTimeoutHandler extends ChannelDuplexHandler {
      * {@link HttpConnectionRegistry#exchangeFinished} gives at length: a count below zero leaves a busy
      * connection looking idle.
      */
-    private void exchangeFinished() {
-        if (outstanding > 0) {
-            outstanding--;
+    private void requestAnswered() {
+        if (unansweredRequests > 0) {
+            unansweredRequests--;
         }
         lastActivityNanos = ticker.nanoTime();
     }
@@ -167,7 +193,7 @@ public class HttpReadTimeoutHandler extends ChannelDuplexHandler {
         if (destroyed || !ctx.channel().isOpen()) {
             return;
         }
-        if (outstanding > 0) {
+        if (unansweredRequests > 0) {
             schedule(ctx, timeoutNanos);
             return;
         }

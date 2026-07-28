@@ -93,8 +93,8 @@ public class NettyLoomAutoConfiguration {
             new NamedChannelHandler("aggregator", () -> new HttpObjectAggregator(MAX_HTTP_REQUEST_BODY_BYTES)),
             // Below the aggregator so the timeout measures whole requests rather than bytes -- at the head
             // it saw none of the exchange and so counted dispatch time, closing a slow handler's connection
-            // mid-request; above the pipelining gate, which releases queued requests towards the tail and
-            // would otherwise hide a pipelined burst from it.
+            // mid-request. Above the pipelining gate so its count stays a property of what the client has
+            // delivered rather than of what that handler has released; correctness holds on either side.
             new NamedChannelHandler("readTimeout", () -> new HttpReadTimeoutHandler(readTimeoutMillis, TimeUnit.MILLISECONDS)),
             // Below the aggregator so it gates whole requests, and so the aggregator's 100 Continue --
             // written from that handler's own context, towards the head -- never reaches it; above the

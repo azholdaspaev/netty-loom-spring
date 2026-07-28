@@ -1,22 +1,31 @@
 package io.github.azholdaspaev.nettyloomspring.core.handler;
 
+import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
+import io.netty.handler.codec.http.DefaultHttpResponse;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.timeout.ReadTimeoutException;
+import io.netty.util.ReferenceCountUtil;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -138,6 +147,64 @@ class HttpReadTimeoutHandlerTest {
         assertTrue(channel.isOpen(), "the request in flight must still suspend the timeout");
     }
 
+    /**
+     * A response counts the exchange out when it is handed to the socket, not when the bytes are accepted.
+     * Keying on write completion would let a peer whose receive window stays at zero hold the connection,
+     * its buffered response and its virtual thread for ever — the stock head-mounted handler reclaimed
+     * that case, so losing it would be a regression rather than a documented gap.
+     */
+    @Test
+    void shouldCloseWhenThePeerNeverAcceptsTheResponseBytes() {
+        EmbeddedChannel channel = new EmbeddedChannel(
+            new NeverCompletingWrite(),
+            new HttpReadTimeoutHandler(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS));
+        channel.freezeTime();
+        receiveRequest(channel);
+
+        channel.write(okResponse());
+
+        elapse(channel, TIMEOUT_MILLIS);
+        assertFalse(channel.isOpen(), "a response the peer never drains must not suspend the timeout for ever");
+    }
+
+    /**
+     * Only complete requests suspend the timeout. Counting anything inbound would let a raw {@code ByteBuf}
+     * — after a protocol upgrade, or if this handler were ever moved above the aggregator — pin the count
+     * above zero and silently disable the guard.
+     */
+    @Test
+    void shouldNotCountInboundMessagesThatAreNotRequests() {
+        EmbeddedChannel channel = newChannel();
+
+        channel.writeInbound(Unpooled.copiedBuffer(new byte[] {1, 2, 3}));
+        ByteBuf passedOn = channel.readInbound();
+        passedOn.release();
+
+        elapse(channel, TIMEOUT_MILLIS);
+        assertFalse(channel.isOpen(), "a message that is not a request must not suspend the timeout");
+    }
+
+    /**
+     * The clock restarts at the end of a response, not at its head. Keying on {@code HttpResponse} instead
+     * would cut a streamed response off mid-body one interval after its headers went out.
+     */
+    @Test
+    void shouldNotEndTheExchangeOnANonFinalPartOfTheResponse() {
+        EmbeddedChannel channel = newChannel();
+        receiveRequest(channel);
+
+        channel.writeOutbound(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
+        HttpResponse head = channel.readOutbound();
+
+        elapse(channel, TIMEOUT_MILLIS * 5);
+        assertTrue(channel.isOpen(), "the response head is not the end of the exchange");
+        assertInstanceOf(HttpResponse.class, head);
+
+        channel.writeOutbound(LastHttpContent.EMPTY_LAST_CONTENT);
+        elapse(channel, TIMEOUT_MILLIS);
+        assertFalse(channel.isOpen(), "the exchange ends with the last of the response");
+    }
+
     /** What a non-positive timeout meant to the stock handler, and has to keep meaning here. */
     @Test
     void shouldDisableItselfWhenTheTimeoutIsNotPositive() {
@@ -186,11 +253,24 @@ class HttpReadTimeoutHandlerTest {
     }
 
     private static void respond(EmbeddedChannel channel) {
+        channel.writeOutbound(okResponse());
+        FullHttpResponse written = channel.readOutbound();
+        written.release();
+    }
+
+    private static FullHttpResponse okResponse() {
         FullHttpResponse response = new DefaultFullHttpResponse(
             HttpVersion.HTTP_1_1, HttpResponseStatus.OK, Unpooled.EMPTY_BUFFER);
         response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH, 0);
-        channel.writeOutbound(response);
-        FullHttpResponse written = channel.readOutbound();
-        written.release();
+        return response;
+    }
+
+    /** Swallows the write and never completes its promise, as a peer with a zero receive window does. */
+    private static final class NeverCompletingWrite extends ChannelOutboundHandlerAdapter {
+
+        @Override
+        public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+            ReferenceCountUtil.release(msg);
+        }
     }
 }

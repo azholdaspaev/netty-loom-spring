@@ -24,7 +24,7 @@
     },
     {
       "name": "server.netty.read-timeout",
-      "description": "How long the server waits on the client before closing the connection: one interval to deliver a complete request, and one interval of sitting idle between requests on a keep-alive connection. Time spent handling a request does not count against it, so a handler slower than the timeout still gets to answer. A connection that expires is closed without a response. Use 0 to disable. Defaults to 30 seconds."
+      "description": "How long the server waits on the client before closing the connection. A single interval measured from the previous response, covering idle time on a keep-alive connection and delivery of the next request together -- not one interval for each, so a connection that idles most of the interval has only the remainder left to deliver its next request. Time spent handling a request does not count against it, so a handler slower than the timeout still gets to answer. A connection that expires is closed without a response. Use 0 or a negative value to disable. Defaults to 30 seconds."
     },
     {
       "name": "server.netty.transport",
@@ -61,6 +61,15 @@
         {
           "value": 0,
           "description": "Use Netty's default (2 x Runtime.getRuntime().availableProcessors())."
+        }
+      ]
+    },
+    {
+      "name": "server.netty.read-timeout",
+      "values": [
+        {
+          "value": "0",
+          "description": "Disable the read timeout entirely; connections are never closed for client inactivity."
         }
       ]
     }

@@ -15,10 +15,13 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Shares {@link TimeoutTestApplication} and the shortened timeout with {@link SlowHandlerNotTimedOutTest}
- * so both classes run against one cached context rather than booting a server each.
+ * Keeps its own 500ms rather than following {@link SlowHandlerNotTimedOutTest} up to 1s: the dribble test
+ * needs the timeout to sit well above {@link #DRIBBLE_INTERVAL_MILLIS} to stay distinguishable from the
+ * no-bytes case, and raising it would lengthen the dribble in proportion. The differing property means a
+ * second context, which is the price of keeping both gates sharp.
  */
 @SpringBootTest(
     classes = TimeoutTestApplication.class,
@@ -26,6 +29,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
     properties = "server.netty.read-timeout=500ms"
 )
 class ReadTimeoutSlowLorisTest {
+
+    /** A request the client never finishes, sent a byte at a time. Its length sets how long that lasts. */
+    private static final String DRIBBLE = "GET /a/path/this/client/never/finishes/sending";
+
+    /** Comfortably inside the 500ms timeout, so only a per-byte clock would survive the dribble. */
+    private static final int DRIBBLE_INTERVAL_MILLIS = 100;
 
     @LocalServerPort
     int port;
@@ -48,10 +57,15 @@ class ReadTimeoutSlowLorisTest {
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
     void shouldCloseConnectionWhenClientDribblesARequestItNeverCompletes() throws Exception {
+        // The teeth of this test are in the arithmetic: the read deadline has to expire while the client
+        // is still dribbling. Let the dribble finish first and the client falls silent, at which point
+        // even a byte-level clock closes the connection and this passes against the very bug it guards.
+        int soTimeout = (DRIBBLE.length() * DRIBBLE_INTERVAL_MILLIS) * 2 / 3;
+        assertTrue(soTimeout < DRIBBLE.length() * DRIBBLE_INTERVAL_MILLIS,
+            "the read must time out mid-dribble or the test stops discriminating");
+
         AtomicBoolean dribbling = new AtomicBoolean(true);
-        // The read deadline is shorter than the dribble lasts, so a connection held open reads as a
-        // failure rather than as the test simply outlasting the client.
-        try (Socket socket = connect(3_000)) {
+        try (Socket socket = connect(soTimeout)) {
             Thread dribbler = Thread.ofVirtual().start(() -> dribble(socket, dribbling));
             try {
                 int firstByte = socket.getInputStream().read();
@@ -71,17 +85,16 @@ class ReadTimeoutSlowLorisTest {
         return socket;
     }
 
-    /** One byte every 100ms — well inside the 500ms timeout, so only a per-byte clock would survive it. */
     private static void dribble(Socket socket, AtomicBoolean dribbling) {
         try {
             OutputStream out = socket.getOutputStream();
-            for (byte character : "GET /a/path/this/client/never/finishes/sending".getBytes(StandardCharsets.US_ASCII)) {
+            for (byte character : DRIBBLE.getBytes(StandardCharsets.US_ASCII)) {
                 if (!dribbling.get()) {
                     return;
                 }
                 out.write(character);
                 out.flush();
-                Thread.sleep(100);
+                Thread.sleep(DRIBBLE_INTERVAL_MILLIS);
             }
         } catch (IOException | InterruptedException expected) {
             // The server closing the connection mid-dribble is the outcome under test.
