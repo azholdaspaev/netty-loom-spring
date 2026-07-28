@@ -10,16 +10,22 @@ import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyFilterConfig;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletConfig;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.RegisteredFilter;
+import io.netty.handler.codec.http.cookie.CookieHeaderNames;
 import jakarta.servlet.ServletException;
 import org.springframework.boot.web.server.AbstractConfigurableWebServerFactory;
+import org.springframework.boot.web.server.Cookie;
 import org.springframework.boot.web.server.Ssl;
 import org.springframework.boot.web.server.WebServer;
 import org.springframework.boot.web.server.WebServerException;
 import org.springframework.boot.web.server.servlet.ConfigurableServletWebServerFactory;
+import org.springframework.boot.web.server.servlet.ServletContextInitializers;
 import org.springframework.boot.web.server.servlet.ServletWebServerSettings;
+import org.springframework.boot.web.server.servlet.Session;
 import org.springframework.boot.web.servlet.ServletContextInitializer;
 import org.springframework.boot.webmvc.autoconfigure.DispatcherServletAutoConfiguration;
 import org.springframework.web.servlet.DispatcherServlet;
+
+import java.time.Duration;
 
 public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
     implements ConfigurableServletWebServerFactory {
@@ -59,6 +65,7 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
         // that reads ServletContext.getContextPath() during onStartup/init sees the configured value,
         // as the Jakarta contract requires (rather than the default "").
         servletContext.setContextPath(getContextPath());
+        configureSessions();
         initializeServletContext(initializers);
         initializeFilters();
         initializeDispatcherServlet();
@@ -79,14 +86,41 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
         }
     }
 
-    private void initializeServletContext(ServletContextInitializer... initializers) {
-        // Run both the container-supplied initializers and any registered on this factory via the
-        // inherited addInitializers/setInitializers (stored in the settings), mirroring the merge that
-        // AbstractServletWebServerFactory performs for Tomcat/Jetty. Container-supplied run first.
-        for (ServletContextInitializer initializer : initializers) {
-            runInitializer(initializer);
+    /**
+     * Applies the two session settings Boot's own {@code SessionConfiguringInitializer} does not carry.
+     * The cookie properties arrive with that initializer during
+     * {@link #initializeServletContext(ServletContextInitializer...)}; the timeout it never touches, and
+     * {@code same-site} it applies through a container-specific path (a Tomcat cookie processor) rather
+     * than the {@code ServletContext}. Both are set before the initializers run so an application
+     * initializer can still override them.
+     */
+    private void configureSessions() {
+        Session session = getSettings().getSession();
+        servletContext.getSessionManager().setDefaultMaxInactiveInterval(timeoutSeconds(session.getTimeout()));
+        Cookie.SameSite sameSite = session.getCookie().getSameSite();
+        if (sameSite != null && sameSite.attributeValue() != null) {
+            servletContext.getSessionCookieConfig()
+                .setAttribute(CookieHeaderNames.SAMESITE, sameSite.attributeValue());
         }
-        for (ServletContextInitializer initializer : getSettings().getInitializers()) {
+    }
+
+    /**
+     * Converts Boot's configured {@code Duration} to the manager's unit. Zero or less means "never
+     * expires", matching Boot's own {@code isZeroOrLess} rule; anything positive keeps second
+     * resolution rather than being rounded to a whole minute the way the ServletContext API forces.
+     */
+    static int timeoutSeconds(Duration timeout) {
+        if (timeout == null || timeout.isZero() || timeout.isNegative()) {
+            return 0;
+        }
+        return (int) Math.max(1, timeout.toSeconds());
+    }
+
+    private void initializeServletContext(ServletContextInitializer... initializers) {
+        // Boot's own merge, rather than a hand-rolled one: it prepends the initializers that apply
+        // server.servlet.context-parameters and the session cookie configuration, so those properties
+        // reach the context by exactly the route they take for Tomcat and Jetty.
+        for (ServletContextInitializer initializer : ServletContextInitializers.from(getSettings(), initializers)) {
             runInitializer(initializer);
         }
     }

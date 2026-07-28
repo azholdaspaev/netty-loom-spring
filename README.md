@@ -85,6 +85,9 @@ prefix (`NettyLoomProperties`). See [ADR 0001](docs/adr/0001-server-properties-n
 | `server.port` | `int` | `8080` | Listening port; `0` lets the OS select an available port |
 | `server.address` | `InetAddress` | all interfaces | Network address to bind; unset binds every interface |
 | `server.servlet.context-path` | `String` | `""` | Context path the application is mounted under |
+| `server.servlet.session.timeout` | `Duration` | `30m` | Session idle timeout; honoured at second resolution, and `0` (or less) means sessions never expire |
+| `server.servlet.session.cookie.*` | — | `JSESSIONID`, `HttpOnly` | Session cookie name, path, domain, `http-only`, `secure`, `max-age`, `same-site` |
+| `server.servlet.session.tracking-modes` | `Set` | `cookie` | Only `cookie` is supported; anything else fails startup rather than being silently ignored |
 | `server.netty.boss-threads` | `int` | `1` | Netty boss group thread count (accepts connections) |
 | `server.netty.worker-threads` | `int` | `0` | Netty worker group thread count; `0` = Netty default (`CPU_COUNT * 2`) |
 | `server.netty.tcp-keep-alive` | `boolean` | `true` | TCP `SO_KEEPALIVE` socket option; unrelated to HTTP keep-alive, which is protocol behaviour and always on |
@@ -215,7 +218,8 @@ k6 run --env BASE_URL=http://localhost:18080 --env VUS=10000 --env DURATION=60s 
 
 - **Full buffering only** — request and response bodies are accumulated in memory (no streaming); fine for virtual threads, unsuitable for very large payloads.
 - **Synchronous only** — `startAsync()` returns `null`, `isAsyncSupported()` is `false`, `setReadListener` throws; servlet async is not supported.
-- **No sessions / auth** — `getSession()` → `null`, `getCookies()` → empty, `getUserPrincipal()` → `null`, `isUserInRole()` → `false`.
+- **Sessions are in-memory and cookie-tracked** — no URL rewriting (`encodeURL` is the identity), no persistence across restarts, and no distributed store; use Spring Session for that. `HttpSessionListener` and friends are not fired yet — only `HttpSessionBindingListener` is.
+- **No auth** — `getUserPrincipal()` → `null`, `isUserInRole()` → `false`; `authenticate`/`login`/`logout` are no-ops.
 - **No resource serving / JSP** — `getResource*`/`getRealPath` return `null`; resource paths and request dispatch throw `UnsupportedOperationException`. Intended for application logic only.
 - **Network metadata stubbed** — `getRemoteAddr/Host/Port`, `getScheme`, `getServerName/Port` return empty/0; designed for proxied deployments.
 - **No write-timeout handler, and no bound on queued responses** — only `HttpReadTimeoutHandler` is configured, and it measures the client, not the socket. A peer that stops reading is reclaimed only *between* exchanges, and only while `read-timeout` is positive: the clock is suspended for as long as requests are outstanding, so a client that pipelines steadily while never reading holds the connection open indefinitely and the responses accumulate in Netty's outbound buffer with no ceiling. Because the server generates far more than the client sends, this amplifies — one connection, ~900 bytes in, has been measured queuing ~5.7 MB out (issue #88). Setting `read-timeout` to `0` or a negative value removes the reclamation entirely, leaving only shutdown.
