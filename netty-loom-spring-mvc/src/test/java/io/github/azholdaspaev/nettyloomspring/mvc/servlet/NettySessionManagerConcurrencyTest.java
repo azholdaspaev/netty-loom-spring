@@ -176,8 +176,12 @@ class NettySessionManagerConcurrencyTest {
                 }
             }, session::invalidate);
 
-            assertEquals(1, bound.get(), "round " + round + ": re-binding must not re-notify valueBound");
-            assertEquals(unbound.get(), bound.get(),
+            // Pairing, not a fixed count: the teardown can remove the value between checkValid() and the
+            // re-bind's own read, and a setAttribute that then legitimately finds nothing bound fires
+            // valueBound and pairs it on the way out. Two balanced notifications are correct there; what
+            // must never happen is a bind released twice. (That a *quiet* re-bind stays quiet is pinned
+            // single-threaded by NettyHttpSessionTest#rebindingTheSameInstanceNotifiesNeitherSide.)
+            assertEquals(bound.get(), unbound.get(),
                 "round " + round + ": every bind must be released exactly once, got "
                     + bound.get() + " bound / " + unbound.get() + " unbound");
         }
