@@ -576,6 +576,17 @@ class DefaultNettyServletContextTest {
     }
 
     @Test
+    void shouldClampAnImplausiblyLargeSessionTimeoutRatherThanWrap() {
+        // Unchecked int arithmetic here would make Integer.MAX_VALUE minutes store -60 seconds, which
+        // isExpired reads as "never expires", and 35_791_395 minutes wrap to a plausible small positive
+        // timeout. web.xml's <session-timeout> and any ServletContextInitializer can reach this, and
+        // Integer.MAX_VALUE is a common way to spell "effectively never".
+        context.setSessionTimeout(Integer.MAX_VALUE);
+
+        assertEquals(Integer.MAX_VALUE, context.getSessionManager().getDefaultMaxInactiveInterval());
+    }
+
+    @Test
     void shouldTreatZeroSessionTimeoutAsNeverExpires() {
         context.setSessionTimeout(0);
 
