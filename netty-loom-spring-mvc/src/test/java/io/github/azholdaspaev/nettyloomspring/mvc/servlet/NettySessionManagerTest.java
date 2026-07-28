@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Duration;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -264,6 +265,44 @@ class NettySessionManagerTest {
 
         assertThrows(IllegalStateException.class, manager::create);
         assertNull(manager.sweeper(), "a closed manager must not start a background thread again");
+    }
+
+    @Test
+    void aSessionPublishedAfterTheDrainIsRefusedRatherThanLeftInTheStore() {
+        // The guard at the top of create() is not atomic with its put -- ensureSweeperStarted and
+        // newSessionId both take monitors in between -- so close() can run the whole drain while a
+        // request thread sits mid-create, and the session lands in an already-drained store. It would
+        // then never be invalidated or unbound, and no @SessionScope @PreDestroy would run for it: the
+        // very guarantee the stop-phase teardown was introduced to provide.
+        //
+        // The window is opened deterministically rather than raced for. create() reads the clock between
+        // its guard and its put, so an injected clock that closes the manager on the way through lands
+        // exactly in the gap -- no threads, no timing, and the same code path a real loser takes.
+        var closed = new AtomicBoolean();
+        var racing = new NettySessionManager[1];
+        racing[0] = new NettySessionManager(new DefaultNettyServletContext(), () -> {
+            if (closed.compareAndSet(false, true)) {
+                racing[0].close();
+            }
+            return clock.get();
+        });
+
+        assertThrows(IllegalStateException.class, racing[0]::create,
+            "a session that cannot be torn down must not be handed to a request either");
+        assertEquals(0, racing[0].size(), "nothing may remain in the store once the drain has finished");
+    }
+
+    @Test
+    void openLetsTheStoreServeAgainAfterAStopStartCycle() {
+        // close() runs in the stop phase now, and Spring restarts that phase on context start/restart and
+        // on CRaC restore. Without a reopen the store stays closed for the life of the JVM and every
+        // getSession(true) after a restart throws, on an application that is otherwise serving normally.
+        manager.close();
+        manager.open();
+
+        NettyHttpSession session = assertDoesNotThrow(manager::create);
+        assertSame(session, manager.find(session.getId()));
+        assertNotNull(manager.sweeper(), "a reopened store must be able to reclaim memory again");
     }
 
     @Test

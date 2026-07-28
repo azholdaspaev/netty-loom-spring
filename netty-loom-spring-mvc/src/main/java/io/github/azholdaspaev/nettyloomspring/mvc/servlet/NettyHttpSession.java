@@ -166,18 +166,46 @@ public class NettyHttpSession implements HttpSession {
         // symmetric with the unbind below -- a listener that acquires in valueBound and releases in
         // valueUnbound would otherwise acquire once per re-bind and release once in total. Tomcat reads
         // the old value first for the same reason (notifyBindingListenerOnUnchangedValue is false).
-        if (attributes.get(name) != value && value instanceof HttpSessionBindingListener listener) {
+        boolean bound = attributes.get(name) != value;
+        if (bound && value instanceof HttpSessionBindingListener listener) {
             listener.valueBound(new HttpSessionBindingEvent(this, name, value));
         }
-        Object previous = attributes.put(name, value);
+        // Published only if the session is still valid, and that decision is made *inside* compute so it
+        // is atomic with the write. A plain put cannot be made to balance whatever the loser does next:
+        // removing loudly afterwards double-unbinds a value the teardown already claimed, and removing
+        // silently steals one it had not reached yet, so the original valueBound is never released.
+        //
+        // What makes this airtight is that compute holds the bin lock while it reads the flag, and
+        // unbindAll's remove(key, value) takes that same lock -- while unbindAll strictly follows the CAS
+        // that sets it. So if the teardown has already claimed this key, the flag is necessarily set by
+        // the time compute looks, and the value cannot be resurrected into a session nothing will tear
+        // down again. When invalidated, the map is left exactly as found rather than cleared: returning
+        // null here would drop a binding the teardown still owes a valueUnbound for.
+        //
+        // No listener runs inside the mapping function -- that would execute application code while
+        // holding a bin lock.
+        var previous = new Object[1];
+        var published = new boolean[1];
+        attributes.compute(name, (key, existing) -> {
+            previous[0] = existing;
+            published[0] = !invalidated.get();
+            return published[0] ? value : existing;
+        });
         // Re-binding the identical instance is not an unbind -- the value is still bound.
-        if (previous != value && previous instanceof HttpSessionBindingListener listener) {
-            notifyUnbound(listener, name, previous);
+        if (published[0] && previous[0] != value && previous[0] instanceof HttpSessionBindingListener listener) {
+            notifyUnbound(listener, name, previous[0]);
         }
-        // Re-checked after the put, because the check at the top of this method can be overtaken: a
-        // concurrent invalidate() may have already swept the map, in which case this value would sit in
-        // a session nothing will ever tear down and would never receive valueUnbound.
+        if (!published[0]) {
+            // The teardown claimed this key first, so it never saw this value. Anything *this* call bound
+            // is therefore ours to release; a re-bind that fired no valueBound has nothing to pair with.
+            if (bound && value instanceof HttpSessionBindingListener listener) {
+                notifyUnbound(listener, name, value);
+            }
+            throw new IllegalStateException("Session " + id + " has been invalidated");
+        }
         if (invalidated.get()) {
+            // Published, and only then invalidated. Claim the value back -- and if the teardown got there
+            // first, remove(key, value) fails and it is that claim, not this one, that notified.
             removeIfStillBound(name, value);
             throw new IllegalStateException("Session " + id + " has been invalidated");
         }

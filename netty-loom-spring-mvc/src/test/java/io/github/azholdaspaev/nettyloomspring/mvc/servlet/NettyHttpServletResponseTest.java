@@ -284,11 +284,20 @@ class NettyHttpServletResponseTest {
     void setCookieIsIgnoredOnceCommitted() throws Exception {
         // Matches addCookie: the Servlet contract says a cookie written after the commit has no effect.
         // Reachable because the session rotation path is deliberately best-effort about its write.
+        //
+        // A cookie is seeded before the commit deliberately: without one, "no Set-Cookie appeared" is
+        // satisfied by addCookie's own guard, which setCookie delegates to, and deleting setCookie's
+        // guard changes nothing. What is unique to it is the replace scan that runs *before* that
+        // delegation -- unguarded, a post-commit write strips an already-emitted header off a response
+        // whose content is by definition already decided.
         var response = new NettyHttpServletResponse();
+        response.addCookie(new Cookie("sid", "first"));
+
         response.sendRedirect("/elsewhere");
+        response.setCookie(new Cookie("sid", "second"));
 
-        response.setCookie(new Cookie("sid", "xyz"));
-
-        assertTrue(setCookieHeaders(response).isEmpty());
+        List<String> headers = setCookieHeaders(response);
+        assertEquals(1, headers.size(), "Actual: " + headers);
+        assertTrue(headers.getFirst().startsWith("sid=first"), "Actual: " + headers.getFirst());
     }
 }
