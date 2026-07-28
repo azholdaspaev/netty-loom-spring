@@ -6,6 +6,7 @@ import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistr
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpDrainHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpExceptionHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpPipeliningHandler;
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpReadTimeoutHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestDispatcher;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestHandler;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.DefaultNettyPipelineConfigurer;
@@ -20,7 +21,6 @@ import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.HttpServerKeepAliveHandler;
-import io.netty.handler.timeout.ReadTimeoutHandler;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -84,7 +84,6 @@ public class NettyLoomAutoConfiguration {
                                                            HttpConnectionRegistry httpConnectionRegistry) {
         long readTimeoutMillis = properties.readTimeout().toMillis();
         return new DefaultNettyPipelineConfigurer(List.of(
-            new NamedChannelHandler("readTimeout", () -> new ReadTimeoutHandler(readTimeoutMillis, TimeUnit.MILLISECONDS)),
             new NamedChannelHandler("httpCodec", () -> new HttpServerCodec(MAX_HTTP_INITIAL_LINE_LENGTH, MAX_HTTP_HEADER_SIZE, MAX_HTTP_CHUNK_SIZE)),
             new NamedChannelHandler("httpKeepAlive", HttpServerKeepAliveHandler::new),
             // Above the aggregator so a connection counts as busy from the head of a request, before
@@ -92,6 +91,11 @@ public class NettyLoomAutoConfiguration {
             // Connection: close before that handler decides whether to close.
             new NamedChannelHandler("drain", () -> new HttpDrainHandler(httpConnectionRegistry)),
             new NamedChannelHandler("aggregator", () -> new HttpObjectAggregator(MAX_HTTP_REQUEST_BODY_BYTES)),
+            // Below the aggregator so the timeout measures whole requests rather than bytes -- at the head
+            // it saw none of the exchange and so counted dispatch time, closing a slow handler's connection
+            // mid-request; above the pipelining gate, which releases queued requests towards the tail and
+            // would otherwise hide a pipelined burst from it.
+            new NamedChannelHandler("readTimeout", () -> new HttpReadTimeoutHandler(readTimeoutMillis, TimeUnit.MILLISECONDS)),
             // Below the aggregator so it gates whole requests, and so the aggregator's 100 Continue --
             // written from that handler's own context, towards the head -- never reaches it; above the
             // dispatcher so requests are gated before dispatch while responses still pass back through.

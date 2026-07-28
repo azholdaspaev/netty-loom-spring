@@ -23,6 +23,10 @@
       "description": "Maximum time to wait for in-flight HTTP requests to complete when Spring Boot invokes graceful shutdown (server.shutdown=graceful). After this deadline, remaining connections are force-closed. Defaults to 30 seconds, matching spring.lifecycle.timeout-per-shutdown-phase."
     },
     {
+      "name": "server.netty.read-timeout",
+      "description": "How long the server waits on the client before closing the connection: one interval to deliver a complete request, and one interval of sitting idle between requests on a keep-alive connection. Time spent handling a request does not count against it, so a handler slower than the timeout still gets to answer. A connection that expires is closed without a response. Use 0 to disable. Defaults to 30 seconds."
+    },
+    {
       "name": "server.netty.transport",
       "type": "java.lang.String",
       "description": "Netty I/O transport to use. 'auto' picks the best native transport for the platform (epoll on Linux, kqueue on macOS/BSD) and falls back to NIO when none is available. 'nio' forces the portable Java NIO transport. 'epoll' or 'kqueue' force that native transport and fail fast at startup if it is not available on the platform.",
