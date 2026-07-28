@@ -13,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -49,9 +50,9 @@ class SessionConfigurationTest {
     }
 
     /**
-     * That the property reaches the manager at all. The {@code Duration}-to-seconds conversion itself is
-     * a pure function, table-tested in {@code NettyWebServerFactoryTimeoutTest} rather than by booting
-     * an application per case.
+     * That the property reaches the manager at all. The {@code Duration}-to-seconds conversion itself
+     * belongs to the manager and is table-tested in {@code NettySessionManagerTest}, rather than by
+     * booting an application per case.
      */
     @Test
     void aConfiguredTimeoutReachesTheSessionManager() {
@@ -96,5 +97,42 @@ class SessionConfigurationTest {
 
         assertTrue(ThrowableChains.chainMentions(failure, "server.servlet.session.tracking-modes"),
             "the failure should name the property to change; was: " + failure);
+    }
+
+    @Test
+    void sessionPersistenceFailsStartupRatherThanBeingSilentlyIgnored() {
+        // Under Tomcat this writes SESSIONS.ser and survives a restart. An in-memory store cannot, and
+        // ignoring the property would silently drop every session on deploy.
+        RuntimeException failure = assertThrows(RuntimeException.class,
+            () -> run("server.servlet.session.persistent=true").close());
+
+        assertTrue(ThrowableChains.chainMentions(failure, "server.servlet.session.persistent"),
+            "the failure should name the property to change; was: " + failure);
+    }
+
+    @Test
+    void aDisabledPartitionedFlagIsNotEmitted() {
+        // Boot maps this property through Object::toString, so `false` reaches the cookie config as the
+        // string "false" -- which, stored verbatim, is *present* and would emit the flag it disables.
+        try (var context = run("server.servlet.session.cookie.partitioned=false")) {
+            assertNull(servletContext(context).getSessionCookieConfig().getAttribute("Partitioned"));
+        }
+    }
+
+    @Test
+    void anEnabledPartitionedFlagIsEmitted() {
+        try (var context = run("server.servlet.session.cookie.partitioned=true")) {
+            assertEquals("", servletContext(context).getSessionCookieConfig().getAttribute("Partitioned"));
+        }
+    }
+
+    @Test
+    void theCookieConfigurationIsFrozenOnceTheContextHasStarted() {
+        // The cookie name is read live on every request, so a runtime rename from any bean holding the
+        // ServletContext would orphan every logged-in user. The spec requires the refusal.
+        try (var context = run()) {
+            assertThrows(IllegalStateException.class,
+                () -> servletContext(context).getSessionCookieConfig().setName("SID"));
+        }
     }
 }

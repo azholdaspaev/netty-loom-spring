@@ -11,6 +11,7 @@ import java.util.Collections;
 import java.util.Enumeration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class NettyHttpSession implements HttpSession {
@@ -58,7 +59,7 @@ public class NettyHttpSession implements HttpSession {
 
     boolean isExpired(long now) {
         int interval = maxInactiveInterval;
-        return interval > 0 && now - thisAccessedTime >= interval * 1000L;
+        return interval > 0 && now - thisAccessedTime >= TimeUnit.SECONDS.toMillis(interval);
     }
 
     boolean isInvalidated() {
@@ -70,14 +71,13 @@ public class NettyHttpSession implements HttpSession {
     }
 
     /**
-     * Expiry as driven by the store (lazily on lookup, or by the sweeper). Unlike {@link #invalidate()}
-     * this is silent when the session is already gone, and does not call back into the manager -- the
-     * caller has already evicted it.
+     * Takes the one-way transition to invalid, reporting whether this caller made it. Split from
+     * {@link #unbindAll()} so the manager can mark under the session's monitor -- which is what keeps a
+     * concurrent lookup from returning a half-evicted session -- while running application listeners
+     * outside it.
      */
-    void expire() {
-        if (invalidated.compareAndSet(false, true)) {
-            unbindAll();
-        }
+    boolean markInvalidated() {
+        return invalidated.compareAndSet(false, true);
     }
 
     private void checkValid() {
@@ -149,6 +149,13 @@ public class NettyHttpSession implements HttpSession {
         if (previous != value && previous instanceof HttpSessionBindingListener listener) {
             notifyUnbound(listener, name);
         }
+        // Re-checked after the put, because the check at the top of this method can be overtaken: a
+        // concurrent invalidate() may have already swept the map, in which case this value would sit in
+        // a session nothing will ever tear down and would never receive valueUnbound.
+        if (invalidated.get()) {
+            removeIfStillBound(name, value);
+            throw new IllegalStateException("Session " + id + " has been invalidated");
+        }
     }
 
     @Override
@@ -161,10 +168,14 @@ public class NettyHttpSession implements HttpSession {
 
     @Override
     public void invalidate() {
-        if (!invalidated.compareAndSet(false, true)) {
-            throw new IllegalStateException("Session " + id + " has already been invalidated");
+        // The mark and the store removal go together under the monitor, matching the manager's eviction
+        // paths, so a concurrent lookup cannot resolve this session once either has begun.
+        synchronized (this) {
+            if (!markInvalidated()) {
+                throw new IllegalStateException("Session " + id + " has already been invalidated");
+            }
+            manager.remove(this);
         }
-        manager.remove(this);
         unbindAll();
     }
 
@@ -174,14 +185,29 @@ public class NettyHttpSession implements HttpSession {
         return isNew;
     }
 
-    private void unbindAll() {
-        for (Map.Entry<String, Object> entry : attributes.entrySet()) {
-            if (entry.getValue() instanceof HttpSessionBindingListener listener) {
-                notifyUnbound(listener, entry.getKey());
-            }
-        }
-        attributes.clear();
+    /**
+     * Notifies and drops every bound value. Each entry is removed with the two-argument
+     * {@code remove(key, value)} so exactly one caller can claim it: a plain iterate-then-clear lets
+     * this and a concurrent {@code removeAttribute} both notify the same listener, which double-releases
+     * whatever it was holding.
+     */
+    void unbindAll() {
+        // A value bound by a request that raced this teardown may land after the iteration passes its
+        // key; that request's own re-check in setAttribute removes and unbinds it, so nothing is left
+        // silently bound and a second pass here would be redundant.
+        attributes.forEach(this::removeIfStillBound);
         // HttpSessionListener.sessionDestroyed would fire here once addListener is supported (issue #17).
+    }
+
+    /** Removes {@code name} only if it still holds {@code value}, unbinding it if so. */
+    private boolean removeIfStillBound(String name, Object value) {
+        if (!attributes.remove(name, value)) {
+            return false;
+        }
+        if (value instanceof HttpSessionBindingListener listener) {
+            notifyUnbound(listener, name);
+        }
+        return true;
     }
 
     /**

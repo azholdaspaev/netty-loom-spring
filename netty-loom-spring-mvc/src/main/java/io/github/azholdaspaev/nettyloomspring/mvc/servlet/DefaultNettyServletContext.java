@@ -31,6 +31,8 @@ public class DefaultNettyServletContext implements NettyServletContext {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultNettyServletContext.class);
 
+    // ServletContext expresses the session timeout in minutes while HttpSession and the manager use
+    // seconds, so the two session-timeout methods below convert. This names that factor.
     private static final int SECONDS_PER_MINUTE = 60;
 
     // Constructed here rather than injected: the manager needs a ServletContext for

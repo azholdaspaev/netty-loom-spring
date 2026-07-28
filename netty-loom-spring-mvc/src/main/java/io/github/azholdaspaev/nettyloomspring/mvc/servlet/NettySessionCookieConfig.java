@@ -27,6 +27,10 @@ public class NettySessionCookieConfig implements SessionCookieConfig {
     /** How {@code Cookie} encodes a set flag; absent means unset. */
     private static final String FLAG_SET = "";
 
+    /** The attributes whose presence, not value, carries the meaning. */
+    private static final String[] FLAG_ATTRIBUTES = {
+        CookieHeaderNames.SECURE, CookieHeaderNames.HTTPONLY, CookieHeaderNames.PARTITIONED};
+
     // Case-insensitive because cookie attribute names are, and Boot and Jakarta callers are not
     // consistent about which casing they use. Taking it from the map rather than folding a list of
     // known names means every attribute folds, not just the ones we happened to enumerate.
@@ -34,6 +38,7 @@ public class NettySessionCookieConfig implements SessionCookieConfig {
         new ConcurrentSkipListMap<>(String.CASE_INSENSITIVE_ORDER);
 
     private volatile String name = DEFAULT_NAME;
+    private volatile boolean initialized;
 
     public NettySessionCookieConfig() {
         // HttpOnly by default, matching Tomcat: the session id is never legitimately read by scripts.
@@ -42,6 +47,7 @@ public class NettySessionCookieConfig implements SessionCookieConfig {
 
     @Override
     public void setName(String name) {
+        requireNotInitialized();
         this.name = name;
     }
 
@@ -72,10 +78,18 @@ public class NettySessionCookieConfig implements SessionCookieConfig {
 
     @Override
     public void setComment(String comment) {
-        throw new UnsupportedOperationException(
-            "Cookie comments were removed by RFC 6265 and have no equivalent in Netty's cookie encoder");
+        // Specified as "If called, this method has no effect" since Servlet 6.0, and deprecated for
+        // removal. Throwing would abort context refresh for any legacy initializer that defensively
+        // calls it, where Tomcat and Jetty start fine.
+        requireNotInitialized();
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Always {@code null}: {@link #setComment} is specified to have no effect, so there is never a
+     * comment to report. RFC 6265 dropped the attribute and Netty's encoder has no field for it.
+     */
     @Override
     public String getComment() {
         return null;
@@ -114,11 +128,29 @@ public class NettySessionCookieConfig implements SessionCookieConfig {
 
     @Override
     public void setAttribute(String name, String value) {
+        requireNotInitialized();
+        if (name == null || name.isEmpty()) {
+            throw new IllegalArgumentException("Cookie attribute name must not be null or empty");
+        }
         if (value == null) {
             attributes.remove(name);
-        } else {
-            attributes.put(name, value);
+            return;
         }
+        if (isFlag(name)) {
+            // Boolean attributes are presence-encoded, but callers hand them over as text: Boot maps
+            // server.servlet.session.cookie.partitioned through Object::toString, so a configured
+            // `false` arrives here as the string "false" and, stored verbatim, would emit the flag it
+            // was meant to suppress. Normalising in the one owner keeps the invariant the class
+            // documents from depending on every caller knowing it.
+            setFlag(name, !Boolean.toString(false).equalsIgnoreCase(value));
+            return;
+        }
+        if (CookieHeaderNames.MAX_AGE.equalsIgnoreCase(name)) {
+            // Parsed now rather than at the first session-creating request, where it would surface as a
+            // 500 with a stack trace pointing nowhere near the misconfiguration.
+            Integer.parseInt(value);
+        }
+        attributes.put(name, value);
     }
 
     @Override
@@ -131,7 +163,37 @@ public class NettySessionCookieConfig implements SessionCookieConfig {
         return Map.copyOf(attributes);
     }
 
+    /**
+     * Freezes the configuration, as every setter's {@code IllegalStateException} clause requires once
+     * the owning {@code ServletContext} has been initialized. Without it a bean holding the context
+     * could rename the cookie at runtime and orphan every logged-in user's session.
+     */
+    void markInitialized() {
+        this.initialized = true;
+    }
+
+    private void requireNotInitialized() {
+        if (initialized) {
+            throw new IllegalStateException(
+                "The session cookie cannot be reconfigured once the ServletContext has been initialized");
+        }
+    }
+
+    private static boolean isFlag(String name) {
+        for (String flag : FLAG_ATTRIBUTES) {
+            if (flag.equalsIgnoreCase(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void setFlag(String name, boolean set) {
-        setAttribute(name, set ? FLAG_SET : null);
+        requireNotInitialized();
+        if (set) {
+            attributes.put(name, FLAG_SET);
+        } else {
+            attributes.remove(name);
+        }
     }
 }

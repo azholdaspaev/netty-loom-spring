@@ -3,6 +3,7 @@ package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -134,10 +135,61 @@ class NettySessionCookieConfigTest {
     // --- Removed-in-practice accessors ---
 
     @Test
-    void commentAccessorsAreUnsupported() {
-        // Cookie comments were dropped by RFC 6265; Netty's encoder has no Comment field either, so
-        // silently accepting one would advertise support that cannot be honoured.
+    void setCommentIsIgnoredRatherThanRejected() {
+        // Servlet 6.0 specifies setComment as "If called, this method has no effect" and deprecates it
+        // for removal. Throwing would abort context refresh for a legacy initializer that calls it
+        // defensively, where Tomcat and Jetty start fine.
+        assertDoesNotThrow(() -> config.setComment("anything"));
         assertNull(config.getComment());
-        assertThrows(UnsupportedOperationException.class, () -> config.setComment("anything"));
+    }
+
+    // --- Validation and the post-initialization freeze ---
+
+    @Test
+    void aBooleanAttributeGivenAsTextIsNormalisedToTheFlagEncoding() {
+        // Boot maps server.servlet.session.cookie.partitioned through Object::toString, so a configured
+        // `false` arrives as text. Stored verbatim it would be *present*, and so emit the very flag it
+        // was meant to suppress.
+        config.setAttribute("Partitioned", "false");
+        assertNull(config.getAttribute("Partitioned"), "a false flag must be absent, not the text \"false\"");
+
+        config.setAttribute("Partitioned", "true");
+        assertEquals("", config.getAttribute("Partitioned"));
+
+        config.setAttribute("HttpOnly", "false");
+        assertFalse(config.isHttpOnly());
+    }
+
+    @Test
+    void anUnparseableMaxAgeIsRejectedWhereItIsConfigured() {
+        // Rather than at the first session-creating request, as a 500 pointing nowhere near the cause.
+        assertThrows(NumberFormatException.class, () -> config.setAttribute("Max-Age", "forever"));
+    }
+
+    @Test
+    void aNullOrEmptyAttributeNameIsRejected() {
+        assertThrows(IllegalArgumentException.class, () -> config.setAttribute(null, "x"));
+        assertThrows(IllegalArgumentException.class, () -> config.setAttribute("", "x"));
+    }
+
+    @Test
+    void theConfigurationIsFrozenOnceTheContextIsInitialized() {
+        config.markInitialized();
+
+        // The cookie name is read live on every request, so a runtime rename would orphan every
+        // logged-in user's session. The spec declares IllegalStateException on every setter for this.
+        assertThrows(IllegalStateException.class, () -> config.setName("SID"));
+        assertThrows(IllegalStateException.class, () -> config.setPath("/other"));
+        assertThrows(IllegalStateException.class, () -> config.setHttpOnly(false));
+        assertThrows(IllegalStateException.class, () -> config.setAttribute("SameSite", "Strict"));
+    }
+
+    @Test
+    void readingStaysAvailableAfterTheFreeze() {
+        config.setName("SID");
+        config.markInitialized();
+
+        assertEquals("SID", config.getName());
+        assertTrue(config.isHttpOnly());
     }
 }

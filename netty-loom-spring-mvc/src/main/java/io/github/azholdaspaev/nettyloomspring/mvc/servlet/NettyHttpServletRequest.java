@@ -59,7 +59,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     // Held so a session created mid-request can emit its Set-Cookie immediately. Deferring that to the
     // end of the dispatch would lose it: addCookie is a no-op once the response is committed, and
     // RedirectView creates the session (saving the flash map) before it calls sendRedirect.
-    private final HttpServletResponse response;
+    private final NettyHttpServletResponse response;
 
     private final Map<String, Object> attributes = new HashMap<>();
     private final String requestURI;
@@ -79,12 +79,11 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     private boolean sessionResolved;
     private String requestedSessionId;
     private boolean requestedSessionIdResolved;
-    private boolean requestedSessionIdValid;
 
     public NettyHttpServletRequest(FullHttpRequest nettyRequest,
                                    HttpConnectionMetadata connection,
                                    NettyServletContext servletContext,
-                                   HttpServletResponse response) {
+                                   NettyHttpServletResponse response) {
         this.nettyRequest = nettyRequest;
         this.connection = connection;
         this.servletContext = servletContext;
@@ -354,15 +353,10 @@ public class NettyHttpServletRequest implements HttpServletRequest {
         }
         if (session == null && !sessionResolved) {
             sessionResolved = true;
-            String id = getRequestedSessionId();
-            if (id != null) {
-                session = servletContext.getSessionManager().find(id);
-                requestedSessionIdValid = session != null;
-            }
+            session = servletContext.getSessionManager().find(getRequestedSessionId());
         }
         if (session == null && create) {
-            session = servletContext.getSessionManager().create();
-            servletContext.getSessionManager().writeSessionCookie(response, session, connection.secure());
+            session = servletContext.getSessionManager().createAndTrack(response, connection.secure());
         }
         return session;
     }
@@ -381,15 +375,23 @@ public class NettyHttpServletRequest implements HttpServletRequest {
             throw new IllegalStateException("changeSessionId() requires an existing session");
         }
         String newId = servletContext.getSessionManager().changeId(session);
+        // The client presented the pre-rotation id, but it is unbound now; carrying it for the rest of
+        // the request would have getRequestedSessionId() name a session that no longer exists. Tomcat's
+        // Request.changeSessionId does the same reassignment.
+        if (requestedSessionId != null) {
+            requestedSessionId = newId;
+        }
         servletContext.getSessionManager().writeSessionCookie(response, session, connection.secure());
         return newId;
     }
 
     @Override
     public boolean isRequestedSessionIdValid() {
-        // Resolving the session is what decides validity, so make sure the lookup has happened.
-        getSession(false);
-        return requestedSessionIdValid;
+        // Re-queried rather than latched at first resolution: the contract is whether the id is *still*
+        // valid, and a session invalidated earlier in this same dispatch must report false -- that is
+        // what gates Spring Security's InvalidSessionStrategy. The query deliberately does not go
+        // through find(), which would refresh the access time and clear isNew as a side effect.
+        return servletContext.getSessionManager().isValidId(getRequestedSessionId());
     }
 
     @Override
