@@ -67,6 +67,13 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
         initializeServletContext(initializers);
         initializeFilters();
         initializeDispatcherServlet();
+        // Only now is initialization over, so the session configuration freezes: every
+        // SessionCookieConfig and ServletContext session setter is specified to throw from here on.
+        // Deliberately after filter and servlet init rather than after the initializers -- Tomcat is
+        // still in STARTING_PREP during those, so a Filter.init that configures the session cookie
+        // starts there and must start here. Boot's SessionConfiguringInitializer runs earlier either
+        // way, and any initializer failure aborts startup before the server is returned.
+        servletContext.getSessionManager().markContextInitialized();
         NettyServerConfiguration configuration = new NettyServerConfiguration(
             getPort(), getAddress(), properties.bossThreads(), properties.workerThreads(),
             properties.tcpKeepAlive());
@@ -123,10 +130,6 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
         for (ServletContextInitializer initializer : ServletContextInitializers.from(getSettings(), initializers)) {
             runInitializer(initializer);
         }
-        // Initialization is over, so the session cookie is frozen: every SessionCookieConfig setter is
-        // specified to throw from here on, and the cookie name in particular is read live on every
-        // request -- renaming it at runtime would orphan every logged-in user.
-        servletContext.getSessionManager().markContextInitialized();
     }
 
     private void runInitializer(ServletContextInitializer initializer) {

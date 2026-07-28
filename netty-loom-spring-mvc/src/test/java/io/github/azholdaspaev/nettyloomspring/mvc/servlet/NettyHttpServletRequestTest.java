@@ -13,11 +13,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 
 import java.io.UnsupportedEncodingException;
+import java.net.HttpCookie;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -470,6 +472,11 @@ class NettyHttpServletRequestTest {
             assertEquals(1, all.size(), "Expected exactly one Set-Cookie but got " + all);
             return all.getFirst();
         }
+
+        /** The emitted cookie's Path, parsed rather than substring-matched. */
+        String cookiePath() {
+            return HttpCookie.parse(setCookie()).getFirst().getPath();
+        }
     }
 
     // Creating a session lazily starts a sweeper thread, so every context these tests build has to be
@@ -525,7 +532,7 @@ class NettyHttpServletRequestTest {
         assertNotNull(session);
         assertTrue(session.isNew());
         assertEquals(1, context.getSessionManager().size());
-        assertTrue(exchange.setCookie().startsWith("JSESSIONID=" + session.getId()));
+        assertTrue(exchange.setCookie().startsWith(NettySessionCookieConfig.DEFAULT_NAME + "=" + session.getId()));
     }
 
     @Test
@@ -551,7 +558,7 @@ class NettyHttpServletRequestTest {
         var context = new DefaultNettyServletContext();
         var existing = context.getSessionManager().create();
 
-        var exchange = exchange(context, INSECURE, "JSESSIONID=" + existing.getId());
+        var exchange = exchange(context, INSECURE, NettySessionCookieConfig.DEFAULT_NAME + "=" + existing.getId());
 
         assertSame(existing, exchange.request().getSession(false));
         assertTrue(exchange.setCookies().isEmpty(),
@@ -587,7 +594,7 @@ class NettyHttpServletRequestTest {
         var created = exchange.request().getSession(true);
 
         assertNotEquals("DEADBEEF", created.getId());
-        assertTrue(exchange.setCookie().startsWith("JSESSIONID=" + created.getId()));
+        assertTrue(exchange.setCookie().startsWith(NettySessionCookieConfig.DEFAULT_NAME + "=" + created.getId()));
     }
 
     @Test
@@ -613,7 +620,7 @@ class NettyHttpServletRequestTest {
         var context = new DefaultNettyServletContext();
         var existing = context.getSessionManager().create();
 
-        var exchange = exchange(context, INSECURE, "JSESSIONID=" + existing.getId());
+        var exchange = exchange(context, INSECURE, NettySessionCookieConfig.DEFAULT_NAME + "=" + existing.getId());
 
         assertTrue(exchange.request().isRequestedSessionIdValid());
         assertEquals(existing.getId(), exchange.request().getRequestedSessionId());
@@ -650,7 +657,7 @@ class NettyHttpServletRequestTest {
         // Replaced, not appended: leaving the first id as an earlier Set-Cookie of the same name would
         // hand any client reading that header an id already unbound from the store.
         assertEquals(1, exchange.setCookies().size(), "Actual: " + exchange.setCookies());
-        assertTrue(exchange.setCookie().startsWith("JSESSIONID=" + second.getId()));
+        assertTrue(exchange.setCookie().startsWith(NettySessionCookieConfig.DEFAULT_NAME + "=" + second.getId()));
     }
 
     // --- Session cookie attributes ---
@@ -678,8 +685,9 @@ class NettyHttpServletRequestTest {
         exchange.request().getSession(true);
 
         // The root context path is the "" sentinel; an empty Path= attribute would be meaningless, so
-        // this is the one place it must be translated to "/".
-        assertTrue(exchange.setCookie().contains("Path=/"), "Actual: " + exchange.setCookie());
+        // this is the one place it must be translated to "/". Parsed rather than matched by substring:
+        // "Path=/" is a prefix of every other path, so contains() would accept any of them.
+        assertEquals("/", exchange.cookiePath(), "Actual: " + exchange.setCookie());
     }
 
     @Test
@@ -689,18 +697,20 @@ class NettyHttpServletRequestTest {
         var exchange = exchange(context);
         exchange.request().getSession(true);
 
-        assertTrue(exchange.setCookie().contains("Path=/app"), "Actual: " + exchange.setCookie());
+        assertEquals("/app", exchange.cookiePath(), "Actual: " + exchange.setCookie());
     }
 
     @Test
     void aConfiguredPathWinsOverTheContextPath() {
+        // The configured value is deliberately not a prefix of the context path, and vice versa: with
+        // "/" against "/app" the assertion would hold whichever won.
         var context = new DefaultNettyServletContext();
         context.setContextPath("/app");
-        context.getSessionCookieConfig().setPath("/");
+        context.getSessionCookieConfig().setPath("/custom");
         var exchange = exchange(context);
         exchange.request().getSession(true);
 
-        assertTrue(exchange.setCookie().contains("Path=/"), "Actual: " + exchange.setCookie());
+        assertEquals("/custom", exchange.cookiePath(), "Actual: " + exchange.setCookie());
     }
 
     @Test
@@ -773,7 +783,7 @@ class NettyHttpServletRequestTest {
     @Test
     void noCookieIsEmittedWhenCookieTrackingIsDisabled() {
         var context = new DefaultNettyServletContext();
-        context.setSessionTrackingModes(java.util.Set.of());
+        context.setSessionTrackingModes(Set.of());
         var exchange = exchange(context);
 
         assertNotNull(exchange.request().getSession(true), "The session still exists, it is just not tracked");
@@ -795,7 +805,7 @@ class NettyHttpServletRequestTest {
         assertEquals(newId, session.getId());
         assertSame(session, context.getSessionManager().find(newId));
         assertNull(context.getSessionManager().find(oldId));
-        assertTrue(exchange.setCookies().getLast().startsWith("JSESSIONID=" + newId));
+        assertTrue(exchange.setCookies().getLast().startsWith(NettySessionCookieConfig.DEFAULT_NAME + "=" + newId));
     }
 
     @Test
@@ -810,6 +820,24 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
+    void changeSessionIdAfterCommitStillRotatesAndDoesNotThrow() throws Exception {
+        // changeSessionId declares IllegalStateException only for "no session"; the commit-time throw
+        // belongs to getSession(create). Tomcat routes the rotated cookie through addCookie, which is
+        // specified to have no effect after a commit -- so this is silent there and must be here.
+        var context = new DefaultNettyServletContext();
+        var existing = context.getSessionManager().create();
+        var exchange = exchange(context, INSECURE, NettySessionCookieConfig.DEFAULT_NAME + "=" + existing.getId());
+        exchange.request().getSession(false);
+        exchange.response().sendRedirect("/elsewhere");
+
+        String newId = assertDoesNotThrow(() -> exchange.request().changeSessionId());
+
+        assertSame(existing, context.getSessionManager().find(newId),
+            "the rotation itself must still take effect");
+        assertTrue(exchange.setCookies().isEmpty(), "a committed response can carry no further cookie");
+    }
+
+    @Test
     void changeSessionIdWithoutASessionThrows() {
         var exchange = exchange(new DefaultNettyServletContext());
 
@@ -820,7 +848,7 @@ class NettyHttpServletRequestTest {
     void changeSessionIdRepointsTheRequestedIdAtTheNewOne() {
         var context = new DefaultNettyServletContext();
         var existing = context.getSessionManager().create();
-        var exchange = exchange(context, INSECURE, "JSESSIONID=" + existing.getId());
+        var exchange = exchange(context, INSECURE, NettySessionCookieConfig.DEFAULT_NAME + "=" + existing.getId());
 
         String newId = exchange.request().changeSessionId();
 
@@ -840,7 +868,7 @@ class NettyHttpServletRequestTest {
         assertEquals(1, exchange.setCookies().size(),
             "the pre-rotation id is already unbound; leaving it as an earlier Set-Cookie of the same "
                 + "name hands it to any client that reads the first one. Actual: " + exchange.setCookies());
-        assertTrue(exchange.setCookie().startsWith("JSESSIONID=" + newId));
+        assertTrue(exchange.setCookie().startsWith(NettySessionCookieConfig.DEFAULT_NAME + "=" + newId));
     }
 
     // --- Creating a session too late (Servlet contract) ---
@@ -873,7 +901,7 @@ class NettyHttpServletRequestTest {
         // Only *creation* is barred: an already-tracked session needs no new cookie.
         var context = new DefaultNettyServletContext();
         var existing = context.getSessionManager().create();
-        var exchange = exchange(context, INSECURE, "JSESSIONID=" + existing.getId());
+        var exchange = exchange(context, INSECURE, NettySessionCookieConfig.DEFAULT_NAME + "=" + existing.getId());
         exchange.response().sendRedirect("/elsewhere");
 
         assertSame(existing, exchange.request().getSession(true));
@@ -884,7 +912,7 @@ class NettyHttpServletRequestTest {
         // The spec conditions the throw on the container using cookies; with tracking off there is no
         // id to deliver and nothing is lost.
         var context = new DefaultNettyServletContext();
-        context.setSessionTrackingModes(java.util.Set.of());
+        context.setSessionTrackingModes(Set.of());
         var exchange = exchange(context);
         exchange.response().sendRedirect("/elsewhere");
 
@@ -897,7 +925,7 @@ class NettyHttpServletRequestTest {
     void isRequestedSessionIdValidTurnsFalseOnceTheSessionIsInvalidated() {
         var context = new DefaultNettyServletContext();
         var existing = context.getSessionManager().create();
-        var exchange = exchange(context, INSECURE, "JSESSIONID=" + existing.getId());
+        var exchange = exchange(context, INSECURE, NettySessionCookieConfig.DEFAULT_NAME + "=" + existing.getId());
         assertTrue(exchange.request().isRequestedSessionIdValid());
 
         exchange.request().getSession(false).invalidate();
@@ -911,7 +939,7 @@ class NettyHttpServletRequestTest {
     void isRequestedSessionIdValidDoesNotRefreshTheSession() {
         var context = new DefaultNettyServletContext();
         var existing = context.getSessionManager().create();
-        var exchange = exchange(context, INSECURE, "JSESSIONID=" + existing.getId());
+        var exchange = exchange(context, INSECURE, NettySessionCookieConfig.DEFAULT_NAME + "=" + existing.getId());
 
         exchange.request().isRequestedSessionIdValid();
 

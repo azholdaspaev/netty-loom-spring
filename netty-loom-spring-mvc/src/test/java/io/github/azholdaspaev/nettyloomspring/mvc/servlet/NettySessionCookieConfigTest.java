@@ -31,7 +31,7 @@ class NettySessionCookieConfigTest {
 
     @Test
     void nameDefaultsToJsessionid() {
-        assertEquals("JSESSIONID", config.getName());
+        assertEquals(NettySessionCookieConfig.DEFAULT_NAME, config.getName());
     }
 
     @Test
@@ -112,6 +112,25 @@ class NettySessionCookieConfigTest {
         config.setAttribute("SameSite", null);
 
         assertNull(config.getAttribute("SameSite"));
+    }
+
+    @Test
+    void getAttributesIsCaseInsensitiveLikeTheBackingMap() {
+        // Map.copyOf would key the snapshot by plain equals and drop the comparator, so one class would
+        // answer the same question two ways -- getAttribute("path") finds it, getAttributes() does not.
+        config.setPath("/app");
+
+        assertEquals("/app", config.getAttributes().get("path"));
+        assertEquals("/app", config.getAttributes().get("PATH"));
+    }
+
+    @Test
+    void anAttributeNameWithReservedCharactersIsRejected() {
+        // jakarta Cookie would reject it later anyway, but on the first session-creating request as a
+        // 500 pointing nowhere near the configuration.
+        assertThrows(IllegalArgumentException.class, () -> config.setAttribute("Max Age", "600"));
+        assertThrows(IllegalArgumentException.class, () -> config.setAttribute("a;b", "c"));
+        assertThrows(IllegalArgumentException.class, () -> config.setAttribute("a=b", "c"));
     }
 
     @Test

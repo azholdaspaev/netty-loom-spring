@@ -1,6 +1,9 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.session;
 
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.session.app.SessionController;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.session.app.SessionTestApplication;
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.support.ResponseCookies;
+import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettySessionCookieConfig;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -10,6 +13,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.client.RestTestClient;
 
+import java.net.HttpCookie;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -34,13 +38,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(value = 30, unit = TimeUnit.SECONDS)
 class SessionIntegrationTest {
 
-    private static final String SESSION_COOKIE = "JSESSIONID";
+    private static final String SESSION_COOKIE = NettySessionCookieConfig.DEFAULT_NAME;
 
     @Autowired
     private RestTestClient restTestClient;
 
     private static String sessionIdFrom(HttpHeaders headers) {
-        return SessionCookies.valueOf(headers, SESSION_COOKIE);
+        return ResponseCookies.valueOf(headers, SESSION_COOKIE);
     }
 
     private String createSessionWith(String value) {
@@ -75,7 +79,7 @@ class SessionIntegrationTest {
         restTestClient.get().uri("/session/get")
             .exchange()
             .expectStatus().isOk()
-            .expectBody(String.class).isEqualTo("none");
+            .expectBody(String.class).isEqualTo(SessionController.NONE);
     }
 
     @Test
@@ -105,9 +109,12 @@ class SessionIntegrationTest {
             .expectBody(String.class).returnResult();
 
         String setCookie = result.getResponseHeaders().get(HttpHeaders.SET_COOKIE).getFirst();
+        HttpCookie parsed = HttpCookie.parse(setCookie).getFirst();
         assertTrue(setCookie.contains("HTTPOnly"), "Actual: " + setCookie);
-        assertTrue(setCookie.contains("Path=/"), "Actual: " + setCookie);
-        assertFalse(setCookie.contains("Max-Age"), "A browser-session cookie carries no Max-Age: " + setCookie);
+        // Parsed, not substring-matched: "Path=/" is a prefix of every path, so contains() would hold
+        // whatever the container actually emitted.
+        assertEquals("/", parsed.getPath(), "Actual: " + setCookie);
+        assertEquals(-1, parsed.getMaxAge(), "A browser-session cookie carries no Max-Age: " + setCookie);
     }
 
     @Test
@@ -140,7 +147,7 @@ class SessionIntegrationTest {
             .cookie(SESSION_COOKIE, sessionId)
             .exchange()
             .expectStatus().isOk()
-            .expectBody(String.class).isEqualTo("none");
+            .expectBody(String.class).isEqualTo(SessionController.NONE);
 
         // ...and asking for a session again mints a different one.
         var recreated = restTestClient.get().uri("/session/set?value=again")
@@ -178,7 +185,7 @@ class SessionIntegrationTest {
             .cookie("theme", "dark")
             .exchange()
             .expectStatus().isOk()
-            .expectBody(String.class).isEqualTo("none")
+            .expectBody(String.class).isEqualTo(SessionController.NONE)
             .returnResult();
 
         assertNull(sessionIdFrom(result.getResponseHeaders()));
@@ -212,7 +219,7 @@ class SessionIntegrationTest {
             .cookie(SESSION_COOKIE, originalId)
             .exchange()
             .expectStatus().isOk()
-            .expectBody(String.class).isEqualTo("none");
+            .expectBody(String.class).isEqualTo(SessionController.NONE);
     }
 
     // --- Cookie emission across a commit: the regression these two tests exist for ---
@@ -254,6 +261,6 @@ class SessionIntegrationTest {
         restTestClient.get().uri("/session/flash-target")
             .exchange()
             .expectStatus().isOk()
-            .expectBody(String.class).isEqualTo("none");
+            .expectBody(String.class).isEqualTo(SessionController.NONE);
     }
 }

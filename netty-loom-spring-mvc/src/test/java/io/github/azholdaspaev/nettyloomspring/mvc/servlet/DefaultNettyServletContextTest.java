@@ -631,6 +631,26 @@ class DefaultNettyServletContextTest {
     }
 
     @Test
+    void shouldRejectSessionReconfigurationOnceInitialized() {
+        // setSessionTrackingModes and setSessionTimeout carry the same "already initialized" clause as
+        // the SessionCookieConfig setters. The tracking modes are read live on every request, so
+        // disabling cookie tracking at runtime would silently stop issuing and reading session cookies.
+        context.getSessionManager().markContextInitialized();
+
+        assertThrows(IllegalStateException.class, () -> context.setSessionTrackingModes(Set.of()));
+        assertThrows(IllegalStateException.class, () -> context.setSessionTimeout(5));
+    }
+
+    @Test
+    void shouldStillReportSessionConfigurationOnceInitialized() {
+        context.setSessionTimeout(5);
+        context.getSessionManager().markContextInitialized();
+
+        assertEquals(5, context.getSessionTimeout());
+        assertEquals(Set.of(SessionTrackingMode.COOKIE), context.getEffectiveSessionTrackingModes());
+    }
+
+    @Test
     void shouldCloseTheSessionManager() {
         context.getSessionManager().create();
         assertEquals(1, context.getSessionManager().size());

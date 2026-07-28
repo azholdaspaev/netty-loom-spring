@@ -27,6 +27,18 @@ public class NettyHttpSession implements HttpSession {
     // and so the sweeper can take the same transition silently.
     private final AtomicBoolean invalidated = new AtomicBoolean();
 
+    /**
+     * Serialises this session's store bindings -- rotation, removal, eviction and lookup.
+     *
+     * <p>Deliberately <em>not</em> {@code this}. {@code WebUtils.getSessionMutex} hands the session
+     * instance itself to application code as Spring's session mutex whenever no
+     * {@code HttpSessionMutexListener} has been registered -- which is always here, since
+     * {@code addListener} is unsupported until issue #17 -- and {@code SessionScope} holds that mutex
+     * across arbitrary bean instantiation. Locking on the session would put the sweeper and the
+     * per-request lookup behind application code, and open an ABBA deadlock against the singleton lock.
+     */
+    private final Object lock = new Object();
+
     private volatile String id;
     private volatile long lastAccessedTime;
     private volatile long thisAccessedTime;
@@ -78,6 +90,16 @@ public class NettyHttpSession implements HttpSession {
      */
     boolean markInvalidated() {
         return invalidated.compareAndSet(false, true);
+    }
+
+    /** Whether anything is still bound. Readable after invalidation, unlike {@link #getAttributeNames()}. */
+    boolean hasBoundAttributes() {
+        return !attributes.isEmpty();
+    }
+
+    /** The monitor every store binding is taken under. See the field's javadoc for why it is not {@code this}. */
+    Object lock() {
+        return lock;
     }
 
     private void checkValid() {
@@ -140,14 +162,17 @@ public class NettyHttpSession implements HttpSession {
             return;
         }
         // Bound fires before the put, and its failure propagates: this runs inside a request, where the
-        // application can still see and handle the error.
-        if (value instanceof HttpSessionBindingListener listener) {
-            listener.valueBound(new HttpSessionBindingEvent(this, name));
+        // application can still see and handle the error. Guarded on the value actually changing, and so
+        // symmetric with the unbind below -- a listener that acquires in valueBound and releases in
+        // valueUnbound would otherwise acquire once per re-bind and release once in total. Tomcat reads
+        // the old value first for the same reason (notifyBindingListenerOnUnchangedValue is false).
+        if (attributes.get(name) != value && value instanceof HttpSessionBindingListener listener) {
+            listener.valueBound(new HttpSessionBindingEvent(this, name, value));
         }
         Object previous = attributes.put(name, value);
         // Re-binding the identical instance is not an unbind -- the value is still bound.
         if (previous != value && previous instanceof HttpSessionBindingListener listener) {
-            notifyUnbound(listener, name);
+            notifyUnbound(listener, name, previous);
         }
         // Re-checked after the put, because the check at the top of this method can be overtaken: a
         // concurrent invalidate() may have already swept the map, in which case this value would sit in
@@ -161,16 +186,17 @@ public class NettyHttpSession implements HttpSession {
     @Override
     public void removeAttribute(String name) {
         checkValid();
-        if (attributes.remove(name) instanceof HttpSessionBindingListener listener) {
-            notifyUnbound(listener, name);
+        Object removed = attributes.remove(name);
+        if (removed instanceof HttpSessionBindingListener listener) {
+            notifyUnbound(listener, name, removed);
         }
     }
 
     @Override
     public void invalidate() {
-        // The mark and the store removal go together under the monitor, matching the manager's eviction
+        // The mark and the store removal go together under the lock, matching the manager's eviction
         // paths, so a concurrent lookup cannot resolve this session once either has begun.
-        synchronized (this) {
+        synchronized (lock) {
             if (!markInvalidated()) {
                 throw new IllegalStateException("Session " + id + " has already been invalidated");
             }
@@ -205,7 +231,7 @@ public class NettyHttpSession implements HttpSession {
             return false;
         }
         if (value instanceof HttpSessionBindingListener listener) {
-            notifyUnbound(listener, name);
+            notifyUnbound(listener, name, value);
         }
         return true;
     }
@@ -215,9 +241,9 @@ public class NettyHttpSession implements HttpSession {
      * position to handle a failure, so one bad listener must not strand the remaining values or kill
      * the sweeper thread.
      */
-    private void notifyUnbound(HttpSessionBindingListener listener, String name) {
+    private void notifyUnbound(HttpSessionBindingListener listener, String name, Object value) {
         try {
-            listener.valueUnbound(new HttpSessionBindingEvent(this, name));
+            listener.valueUnbound(new HttpSessionBindingEvent(this, name, value));
         } catch (RuntimeException e) {
             log.warn("HttpSessionBindingListener for session attribute '{}' failed on valueUnbound", name, e);
         }

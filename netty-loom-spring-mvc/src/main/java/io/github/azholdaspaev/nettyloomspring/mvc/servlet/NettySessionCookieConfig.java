@@ -3,7 +3,9 @@ package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 import io.netty.handler.codec.http.cookie.CookieHeaderNames;
 import jakarta.servlet.SessionCookieConfig;
 
+import java.util.Collections;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
@@ -19,10 +21,15 @@ import java.util.concurrent.ConcurrentSkipListMap;
  */
 public class NettySessionCookieConfig implements SessionCookieConfig {
 
-    static final String DEFAULT_NAME = "JSESSIONID";
+    /** The servlet-conventional default; public so tests on both sides of the module boundary
+     *  can assert against the one owner rather than restating the literal. */
+    public static final String DEFAULT_NAME = "JSESSIONID";
 
     /** -1 marks a browser-session cookie: {@code addCookie} then omits {@code Max-Age} entirely. */
     private static final int SESSION_COOKIE_MAX_AGE = -1;
+
+    /** RFC 6265 separators; {@code jakarta.servlet.http.Cookie} rejects the same set. */
+    private static final String RESERVED_NAME_CHARACTERS = ",; \t()<>@:\"/[]?={}";
 
     /** How {@code Cookie} encodes a set flag; absent means unset. */
     private static final String FLAG_SET = "";
@@ -129,9 +136,7 @@ public class NettySessionCookieConfig implements SessionCookieConfig {
     @Override
     public void setAttribute(String name, String value) {
         requireNotInitialized();
-        if (name == null || name.isEmpty()) {
-            throw new IllegalArgumentException("Cookie attribute name must not be null or empty");
-        }
+        requireValidAttributeName(name);
         if (value == null) {
             attributes.remove(name);
             return;
@@ -158,9 +163,19 @@ public class NettySessionCookieConfig implements SessionCookieConfig {
         return attributes.get(name);
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The returned map is case-insensitive, as the contract requires. {@code Map.copyOf} would key
+     * the copy by plain {@code equals} and silently drop the comparator the backing map carries, so
+     * {@code getAttribute("path")} and {@code getAttributes().get("path")} would disagree -- and mixed
+     * casing really is present here, since this class writes Netty's spellings while Boot writes its own.
+     */
     @Override
     public Map<String, String> getAttributes() {
-        return Map.copyOf(attributes);
+        TreeMap<String, String> snapshot = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        snapshot.putAll(attributes);
+        return Collections.unmodifiableMap(snapshot);
     }
 
     /**
@@ -176,6 +191,25 @@ public class NettySessionCookieConfig implements SessionCookieConfig {
         if (initialized) {
             throw new IllegalStateException(
                 "The session cookie cannot be reconfigured once the ServletContext has been initialized");
+        }
+    }
+
+    /**
+     * Rejects a name {@code jakarta.servlet.http.Cookie} would reject later anyway -- but here, where
+     * the misconfiguration is, rather than as a 500 on the first session-creating request. Same reason
+     * the {@code Max-Age} value is parsed eagerly above.
+     */
+    private static void requireValidAttributeName(String name) {
+        if (name == null || name.isEmpty()) {
+            throw new IllegalArgumentException("Cookie attribute name must not be null or empty");
+        }
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            // RFC 6265 token: no CTLs, no separators.
+            if (c < 0x20 || c >= 0x7f || RESERVED_NAME_CHARACTERS.indexOf(c) >= 0) {
+                throw new IllegalArgumentException(
+                    "Cookie attribute name '" + name + "' contains a character not permitted in a cookie name");
+            }
         }
     }
 

@@ -2,6 +2,7 @@ package io.github.azholdaspaev.nettyloomspring.autoconfigure;
 
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.properties.NettyLoomProperties;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.NettyWebServerFactory;
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.SessionStoreLifecycle;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpDrainHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpExceptionHandler;
@@ -64,6 +65,14 @@ public class NettyLoomAutoConfiguration {
     @Bean
     public NettyServletContext nettyServletContext() {
         return new DefaultNettyServletContext();
+    }
+
+    // Sessions are torn down here rather than only by the context's inferred close(): a destroy callback
+    // runs after the application's own singletons are gone, so @SessionScope @PreDestroy would see
+    // closed data sources. close() stays as the idempotent backstop for a failed startup.
+    @Bean
+    public SessionStoreLifecycle sessionStoreLifecycle(NettyServletContext servletContext) {
+        return new SessionStoreLifecycle(servletContext);
     }
 
     @Bean

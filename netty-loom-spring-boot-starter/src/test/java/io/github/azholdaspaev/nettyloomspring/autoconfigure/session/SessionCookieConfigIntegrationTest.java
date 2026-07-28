@@ -1,6 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.session;
 
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.session.app.SessionTestApplication;
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.support.ResponseCookies;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -53,7 +54,7 @@ class SessionCookieConfigIntegrationTest {
     }
 
     private String createSessionId() {
-        return SessionCookies.valueOf(createSessionResponseHeaders(), "SID");
+        return ResponseCookies.valueOf(createSessionResponseHeaders(), "SID");
     }
 
     @Test

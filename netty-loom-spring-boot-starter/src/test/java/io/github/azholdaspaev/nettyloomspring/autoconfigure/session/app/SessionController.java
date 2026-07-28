@@ -14,7 +14,7 @@ import java.util.Map;
 public class SessionController {
 
     /** What an endpoint returns when there is no session, or no attribute, to report. */
-    static final String NONE = "none";
+    public static final String NONE = "none";
 
     @GetMapping("/session/set")
     @ResponseBody
