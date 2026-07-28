@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
@@ -58,7 +59,11 @@ class ReadTimeoutSlowLorisTest {
             // behaviour: hardcoding the wiring to any timeout in (0, 5000ms] left the whole suite green.
             assertTrue(elapsedMillis >= READ_TIMEOUT_MILLIS * 4 / 5,
                 "closed after " + elapsedMillis + "ms, before the configured " + READ_TIMEOUT_MILLIS + "ms");
-            assertTrue(elapsedMillis < READ_TIMEOUT_MILLIS * 6L,
+            // Tight enough to kill a mis-wiring to 1000ms -- the value the sibling timeout test configures,
+            // so the likeliest constant to end up here by copy-paste, and one a looser bound waves through
+            // as a silent 2x. The bound has to clear the real close time, not some fraction of soTimeout:
+            // measured 501-526ms, so this leaves ~475ms of headroom.
+            assertTrue(elapsedMillis < READ_TIMEOUT_MILLIS * 2L,
                 "closed after " + elapsedMillis + "ms, far past the configured " + READ_TIMEOUT_MILLIS + "ms");
         }
     }
@@ -89,9 +94,8 @@ class ReadTimeoutSlowLorisTest {
         try (Socket socket = connect(soTimeout)) {
             Thread dribbler = Thread.ofVirtual().start(() -> dribble(socket, dribbling, flushed));
             try {
-                int firstByte = socket.getInputStream().read();
+                assertServerClosedTheConnection(socket);
 
-                assertEquals(-1, firstByte, "a request that never completes must not hold the connection open");
                 // Without this, a dribbler slow to be scheduled sends nothing, and the test silently
                 // degrades into a duplicate of shouldCloseConnectionWhenClientSendsNoBytes -- passing.
                 assertTrue(flushed.get() >= 2,
@@ -100,6 +104,28 @@ class ReadTimeoutSlowLorisTest {
                 dribbling.set(false);
                 dribbler.join();
             }
+        }
+    }
+
+    /**
+     * The dribbling client is closed on while bytes it sent are still sitting unread in the server's
+     * receive buffer, and TCP answers a close with pending unread data by sending RST rather than FIN. So
+     * the client sees either a clean EOF or a reset depending on how the last dribbled byte raced the
+     * close — observed as a "Connection reset" failure once under full-build load having passed 5/5 in
+     * isolation. Both outcomes are the server closing the connection, which is the whole assertion; only
+     * the kernel's choice between them is racy, and it is not something the server can control.
+     *
+     * <p>Deliberately catches {@link SocketException} and not {@link IOException}: a {@code soTimeout}
+     * expiry arrives as {@link java.net.SocketTimeoutException}, which extends
+     * {@link java.io.InterruptedIOException} rather than {@code SocketException}, so a server that never
+     * closes at all still fails here instead of being swallowed.
+     */
+    private static void assertServerClosedTheConnection(Socket socket) throws IOException {
+        try {
+            assertEquals(-1, socket.getInputStream().read(),
+                "a request that never completes must not hold the connection open");
+        } catch (SocketException reset) {
+            // A reset is the server having closed too; see above.
         }
     }
 

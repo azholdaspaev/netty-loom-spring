@@ -8,6 +8,7 @@ import io.netty.handler.codec.http.LastHttpContent;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * Serves one HTTP exchange at a time per connection, so pipelined responses leave in request order
@@ -22,13 +23,19 @@ import java.util.Deque;
  * request has a safe method; serving one at a time needs no method analysis and is what the servlet
  * containers do.
  *
- * <p>Ordering is positional rather than correlated: because only one exchange is ever outstanding, the
- * next response to come back is necessarily the one owed, so no request-to-response identity is needed.
- * That is what lets the gate live here rather than inside the dispatcher.
+ * <p>Ordering is positional rather than correlated: at most one request is ever <em>un-answered</em>, so
+ * the next response to come back is necessarily the one owed and no request-to-response identity is
+ * needed. That is what lets the gate live here rather than inside the dispatcher.
+ *
+ * <p>The premise is un-answered, not un-flushed, and the difference is load-bearing. The gate re-opens
+ * when a response is handed to the socket, so exchange N may still be queued on the wire — unflushed,
+ * certainly unacked — while N+1 is being dispatched. What keeps the wire in order is that responses enter
+ * a FIFO outbound path in write-invocation order, and the response for N is invoked before N is even
+ * released. See the placement contract below for what that requires of the handlers above.
  *
  * <p>{@code serving} and {@code pending} are touched only on the event loop. A response written from a
- * dispatch thread is hopped onto the loop by Netty before it reaches {@link #write}, and the promise
- * listener that re-opens the gate is notified there too.
+ * dispatch thread is hopped onto the loop by Netty before it reaches {@link #write}, and the task that
+ * re-opens the gate is submitted from there onto that same loop.
  *
  * <p><strong>Placement is the contract.</strong> It belongs <em>below</em> the aggregator, so it gates
  * whole requests and so the aggregator's {@code 100 Continue} — written from that handler's own context,
@@ -36,6 +43,13 @@ import java.util.Deque;
  * need an explicit interim-response exemption precisely because they sit above it; this one does not.
  * It belongs <em>above</em> the dispatcher, so requests are gated before dispatch while responses from
  * both the dispatcher and the tail exception handler still pass back through it.
+ *
+ * <p>Every handler <em>above</em> it on the outbound path must preserve write order — that, and only that,
+ * is what makes position sufficient. It is tempting to state the stronger fact that the bytes are already
+ * in {@code ChannelOutboundBuffer} by the time {@link #write} returns, which is true of today's pipeline;
+ * it is not the requirement, and it is the half that goes first. {@code SslHandler} (pending #16) holds
+ * writes in {@code pendingUnencryptedWrites} until flush and {@code ChunkedWriteHandler} likewise, and
+ * both still preserve order — so ordering survives them while residency does not.
  *
  * <p>Below the aggregator also means it <em>depends</em> on one. Nothing else in the pipeline produces a
  * {@link FullHttpRequest}, so in a hand-built pipeline assembled without an aggregator every message takes
@@ -51,7 +65,10 @@ public class HttpPipeliningHandler extends ChannelDuplexHandler {
     /** Requests read while an earlier exchange was still being served. Event loop only. */
     private final Deque<FullHttpRequest> pending = new ArrayDeque<>();
 
-    /** Set from the moment a request is passed on until its response has been written. */
+    /**
+     * Set from the moment a request is passed on until its response has been <em>handed to</em> the socket
+     * — write invoked, not flush completed. That distinction is the whole of {@link #write}.
+     */
     private boolean serving;
 
     @Override
@@ -80,15 +97,30 @@ public class HttpPipeliningHandler extends ChannelDuplexHandler {
             return;
         }
         ctx.write(msg, promise);
-        // Re-opened once this response is queued, not once it has been flushed. Waiting for the write
-        // promise reads as the safer choice and is not: a peer whose receive window stays at zero never
-        // completes it, so the gate would latch shut for ever, the queued requests would never be
-        // released or freed, and -- because the exchange stays unanswered -- HttpReadTimeoutHandler
+        // Re-opened once this response is handed to the socket, not once it has been flushed. Waiting for
+        // the write promise reads as the safer choice and is not: a peer whose receive window stays at
+        // zero never completes it, so the gate would latch shut for ever, the queued requests would never
+        // be released or freed, and -- because the exchange stays unanswered -- HttpReadTimeoutHandler
         // would suspend its clock indefinitely and never reclaim the connection (issue #76 review).
-        // Ordering is unaffected: this response is already in the outbound buffer, so the next one is
-        // necessarily written behind it. Deferred to the next loop turn rather than called inline so an
-        // inbound event is still never fired out of an outbound call.
-        ctx.executor().execute(() -> serveNext(ctx));
+        // Ordering is unaffected: this response has already been written towards the head, and every
+        // handler above preserves write order, so the next response is necessarily behind it.
+        //
+        // Deferred rather than called inline because the recursion is otherwise unbounded, not merely
+        // untidy: HttpRequestHandler fires exceptionCaught synchronously on this loop when its dispatch
+        // executor rejects, so a burst queued behind one slow exchange is answered in-loop, re-entering
+        // this method once per queued request. Deferral makes that iterative. It also happens to keep the
+        // rule that an inbound event is never fired out of an outbound call -- which the promise listener
+        // did not reliably do, since an already-failed write notifies its listeners inline.
+        try {
+            ctx.executor().execute(() -> serveNext(ctx));
+        } catch (RejectedExecutionException shuttingDown) {
+            // The loop rejects once it is shutting down, and a straggling write can still arrive after
+            // that. Swallowed rather than propagated because this method has already handed the message
+            // on successfully: letting it out would have Netty fail the response promise for a write that
+            // did happen, firing the keep-alive and drain completion listeners on a false failure. The
+            // gate staying shut costs nothing here -- the channel is going away, and channelInactive
+            // releases whatever is still queued.
+        }
     }
 
     /**
