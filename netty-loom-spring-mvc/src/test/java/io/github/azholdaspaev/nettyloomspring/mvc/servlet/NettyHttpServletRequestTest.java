@@ -598,6 +598,54 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
+    void aStaleDuplicateSessionCookieDoesNotMaskTheLiveSession() {
+        // Issue #91, through the real cookie decoder: the stale duplicate arrives first on the wire and
+        // used to win outright. See NettySessionManager.readSessionId's javadoc for why that ordering is
+        // the common one and why the stale cookie is never overwritten.
+        var context = new DefaultNettyServletContext();
+        var existing = context.getSessionManager().create();
+
+        var exchange = exchange(context, INSECURE,
+            NettySessionCookieConfig.DEFAULT_NAME + "=DEADBEEF; "
+                + NettySessionCookieConfig.DEFAULT_NAME + "=" + existing.getId());
+
+        assertSame(existing, exchange.request().getSession(false), "the live duplicate must be the one resolved");
+        assertEquals(existing.getId(), exchange.request().getRequestedSessionId());
+        assertTrue(exchange.request().isRequestedSessionIdValid());
+    }
+
+    @Test
+    void duplicateSessionCookiesThatAreAllStaleReportTheLastAsTheRequestedId() {
+        var exchange = exchange(new DefaultNettyServletContext(), INSECURE, "JSESSIONID=DEAD1; JSESSIONID=DEAD2");
+
+        // The same triple SessionManagementFilter keys on as the single-cookie case: an id was presented
+        // and it is not valid, which is an expired session -- not a request that carried none.
+        assertNull(exchange.request().getSession(false));
+        assertEquals("DEAD2", exchange.request().getRequestedSessionId());
+        assertFalse(exchange.request().isRequestedSessionIdValid());
+        assertTrue(exchange.request().isRequestedSessionIdFromCookie());
+    }
+
+    @Test
+    void aSessionCookieNamedInADifferentCaseIsNotTheSessionCookie() {
+        // The security edge of RFC 6265 4.1.1: a mis-cased cookie, which anything sharing the host can
+        // set, must not be read as the session id even when it names a live session and the
+        // correctly-named one is dead.
+        var context = new DefaultNettyServletContext();
+        var live = context.getSessionManager().create();
+
+        // Derived, not spelled out: a literal "jsessionid" would quietly stop being a case variant --
+        // and this test would stop testing anything -- if the default name ever changed.
+        String miscased = NettySessionCookieConfig.DEFAULT_NAME.toLowerCase(Locale.ROOT);
+        var exchange = exchange(context, INSECURE,
+            miscased + "=" + live.getId() + "; " + NettySessionCookieConfig.DEFAULT_NAME + "=DEADBEEF");
+
+        assertNull(exchange.request().getSession(false), "the mis-cased cookie must not resolve a session");
+        assertEquals("DEADBEEF", exchange.request().getRequestedSessionId());
+        assertFalse(exchange.request().isRequestedSessionIdValid());
+    }
+
+    @Test
     void getRequestedSessionIdIsNullWhenNoCookieIsPresent() {
         // Not "": SessionManagementFilter treats any non-null requested id as a session to validate, so
         // an empty string would make it fire its invalid-session strategy on every stateless request.

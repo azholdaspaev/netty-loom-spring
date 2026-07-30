@@ -40,6 +40,9 @@ class SessionIntegrationTest {
 
     private static final String SESSION_COOKIE = NettySessionCookieConfig.DEFAULT_NAME;
 
+    /** Well-formed as an id the server could have minted -- 32 uppercase hex -- but naming no session. */
+    private static final String UNKNOWN_SESSION_ID = "0123456789ABCDEF0123456789ABCDEF";
+
     @Autowired
     private RestTestClient restTestClient;
 
@@ -80,6 +83,22 @@ class SessionIntegrationTest {
             .exchange()
             .expectStatus().isOk()
             .expectBody(String.class).isEqualTo(SessionController.NONE);
+    }
+
+    @Test
+    void aStaleDuplicateSessionCookieDoesNotMaskTheLiveOne() {
+        // Issue #91, over the wire: what this adds over the unit tests is that a duplicated cookie name
+        // survives the real socket and HttpServerCodec un-merged and in order. Hence the raw header
+        // rather than two .cookie(...) calls -- whether RestTestClient's cookie map serialises a
+        // duplicated name into one header is undocumented, and that is exactly the premise under test.
+        String sessionId = createSessionWith("hello");
+
+        restTestClient.get().uri("/session/get")
+            .header(HttpHeaders.COOKIE,
+                SESSION_COOKIE + "=" + UNKNOWN_SESSION_ID + "; " + SESSION_COOKIE + "=" + sessionId)
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody(String.class).isEqualTo("hello");
     }
 
     @Test
@@ -163,10 +182,10 @@ class SessionIntegrationTest {
     void anUnknownSessionIdIsReportedAsRequestedButInvalid() {
         // SessionManagementFilter keys on exactly this pair to detect an expired session.
         restTestClient.get().uri("/session/requested-id")
-            .cookie(SESSION_COOKIE, "0123456789ABCDEF0123456789ABCDEF")
+            .cookie(SESSION_COOKIE, UNKNOWN_SESSION_ID)
             .exchange()
             .expectStatus().isOk()
-            .expectBody(String.class).isEqualTo("0123456789ABCDEF0123456789ABCDEF:false");
+            .expectBody(String.class).isEqualTo(UNKNOWN_SESSION_ID + ":false");
     }
 
     @Test

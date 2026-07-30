@@ -1,5 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpSessionBindingEvent;
 import jakarta.servlet.http.HttpSessionBindingListener;
 
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -371,5 +373,131 @@ class NettySessionManagerTest {
 
         assertTrue(ordinary.isInvalidated(), "a poisoned session must not strand the ones after it");
         assertEquals(0, manager.size());
+    }
+
+    // --- Reading the requested id from the request cookies (issue #91) ---
+
+    private static final String SESSION_COOKIE = NettySessionCookieConfig.DEFAULT_NAME;
+
+    /** Cookies as the request presents them, in wire order: name, value, name, value... */
+    private static Cookie[] cookies(String... nameValuePairs) {
+        Cookie[] presented = new Cookie[nameValuePairs.length / 2];
+        for (int i = 0; i < presented.length; i++) {
+            presented[i] = new Cookie(nameValuePairs[2 * i], nameValuePairs[2 * i + 1]);
+        }
+        return presented;
+    }
+
+    @Test
+    void readSessionIdSkipsAStaleDuplicateAndReturnsTheLiveId() {
+        // Issue #91: the stale duplicate routinely arrives first, and reading it hands find() an id that
+        // is not in the store, so the user is logged out on every request. The javadoc on readSessionId
+        // owns the explanation of why duplicates happen and why the stale one is never overwritten.
+        NettyHttpSession live = manager.create();
+
+        String resolved = manager.readSessionId(cookies(SESSION_COOKIE, "DEADBEEF", SESSION_COOKIE, live.getId()));
+
+        assertEquals(live.getId(), resolved, "a live duplicate must win over the stale one preceding it");
+    }
+
+    @Test
+    void readSessionIdKeepsTheFirstLiveIdWhenAStaleDuplicateFollowsIt() {
+        // The tie-break is "first live", not "last live": preferring a later candidate would make which
+        // session a request binds to depend on cookie order even when the first one is perfectly usable.
+        NettyHttpSession live = manager.create();
+
+        String resolved = manager.readSessionId(cookies(SESSION_COOKIE, live.getId(), SESSION_COOKIE, "DEADBEEF"));
+
+        assertEquals(live.getId(), resolved);
+    }
+
+    @Test
+    void readSessionIdFallsBackToTheLastMatchWhenNoCandidateIsLive() {
+        // Nothing resolves, but an id must still be reported: SessionManagementFilter tells "presented an
+        // expired id" from "presented none" purely by getRequestedSessionId() being non-null. Last rather
+        // than first is Tomcat parity; which dead id it is cannot be observed, they are equally dead.
+        String resolved = manager.readSessionId(cookies(SESSION_COOKIE, "STALE1", SESSION_COOKIE, "STALE2"));
+
+        assertEquals("STALE2", resolved);
+    }
+
+    @Test
+    void readSessionIdTreatsAnExpiredDuplicateAsDeadBeforeAnySweep() {
+        // Liveness here is find()'s predicate, deadline included -- not mere presence in the store. The
+        // sweeper runs on a delay, so an expired session stays mapped until it fires, and a
+        // containsKey-shaped check would keep selecting it for that whole window.
+        NettyHttpSession expiring = manager.create();
+        clock.set(ONE_MINUTE * 1000L - 1);
+        NettyHttpSession live = manager.create();
+        clock.set(ONE_MINUTE * 1000L);
+
+        String resolved =
+            manager.readSessionId(cookies(SESSION_COOKIE, expiring.getId(), SESSION_COOKIE, live.getId()));
+
+        assertEquals(live.getId(), resolved, "an expired candidate must not mask a live one");
+        assertEquals(2, manager.size(), "reading an id must evict nothing; expiry is find()'s job and the sweep's");
+    }
+
+    @Test
+    void readSessionIdSkipsAnInvalidatedDuplicate() {
+        // A logout in another tab leaves its cookie in the browser under whatever Path it was set with.
+        NettyHttpSession invalidated = manager.create();
+        NettyHttpSession live = manager.create();
+        invalidated.invalidate();
+
+        assertEquals(live.getId(),
+            manager.readSessionId(cookies(SESSION_COOKIE, invalidated.getId(), SESSION_COOKIE, live.getId())),
+            "an invalidated id must not mask the session that survived");
+    }
+
+    @Test
+    void readSessionIdDoesNotTouchTheSessionsItInspects() {
+        // The scan asks isValidId, not find, for the same reason isRequestedSessionIdValid() does: find()
+        // refreshes the access time and clears isNew, so merely resolving the requested id would silently
+        // age a session -- and mark it established -- before the application has asked for it.
+        NettyHttpSession live = manager.create();
+
+        manager.readSessionId(cookies(SESSION_COOKIE, "DEADBEEF", SESSION_COOKIE, live.getId()));
+
+        assertTrue(live.isNew(), "resolving the requested id must not clear isNew");
+    }
+
+    @Test
+    void readSessionIdMatchesTheCookieNameCaseSensitively() {
+        // RFC 6265 4.1.1: cookie names are case-sensitive, so "jsessionid" is a different cookie -- one
+        // anything sharing the host can set, a sibling subdomain included. Folding case would let it
+        // supply the session id, and with liveness breaking the tie it would beat the real one outright.
+        NettyHttpSession live = manager.create();
+
+        // Derived, not spelled out: a literal "jsessionid" would quietly stop being a case variant --
+        // and this test would stop testing anything -- if the default name ever changed.
+        String miscased = SESSION_COOKIE.toLowerCase(Locale.ROOT);
+        String resolved = manager.readSessionId(cookies(miscased, live.getId(), SESSION_COOKIE, "DEADBEEF"));
+
+        assertEquals("DEADBEEF", resolved, "only the exactly-named cookie may be read as the session id");
+    }
+
+    @Test
+    void readSessionIdIgnoresCookiesWhenCookieTrackingIsDisabled() {
+        NettyHttpSession live = manager.create();
+        manager.setTrackingModes(Set.of());
+
+        assertNull(manager.readSessionId(cookies(SESSION_COOKIE, live.getId())),
+            "with COOKIE tracking off the container must not read a session id from one either");
+    }
+
+    @Test
+    void readSessionIdReturnsNullWhenNoCookieCarriesTheConfiguredName() {
+        assertNull(manager.readSessionId(cookies("theme", "dark", "lang", "en")));
+        assertNull(manager.readSessionId(null), "a request with no cookies at all presents no id");
+    }
+
+    @Test
+    void anEmptyDuplicateValueIsJustAnotherDeadCandidate() {
+        // "JSESSIONID=" names no session, so it must lose the tie-break like any other dead candidate.
+        NettyHttpSession live = manager.create();
+
+        assertEquals(live.getId(),
+            manager.readSessionId(cookies(SESSION_COOKIE, "", SESSION_COOKIE, live.getId())));
     }
 }
