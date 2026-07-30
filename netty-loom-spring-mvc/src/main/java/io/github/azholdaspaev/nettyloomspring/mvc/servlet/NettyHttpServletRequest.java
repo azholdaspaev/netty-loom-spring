@@ -283,6 +283,9 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     public String getRequestedSessionId() {
         if (!requestedSessionIdResolved) {
             requestedSessionIdResolved = true;
+            // The latch is not only an allocation saving: since issue #91 readSessionId picks among
+            // duplicate cookies by liveness, so re-resolving mid-dispatch could name a different id once
+            // the winner is invalidated. Pinning it keeps the request's identity fixed for the dispatch.
             // DispatcherServlet resolves the flash map on every request, which calls getSession(false)
             // and so lands here even for stateless endpoints. Netty's headers().getAll(name) allocates
             // a list whether or not the header exists; contains() does not, so a request with no

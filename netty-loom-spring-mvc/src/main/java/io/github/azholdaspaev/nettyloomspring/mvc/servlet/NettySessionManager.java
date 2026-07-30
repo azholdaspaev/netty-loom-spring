@@ -275,20 +275,44 @@ public class NettySessionManager {
      * with {@link #writeSessionCookie} so both directions read the same name and the same tracking-mode
      * gate; splitting them across classes is how the two drift.
      *
-     * @param cookies the request's already-parsed cookies, or {@code null} if it sent none
+     * <p>The client can legitimately present this name more than once. RFC 6265 &sect;5.4 sends one pair
+     * per <em>stored</em> cookie, and cookies whose Path or Domain differ at all are distinct -- so a
+     * {@code JSESSIONID} left behind by an earlier context path, an earlier
+     * {@code server.servlet.session.cookie.path}, or a host-only cookie shadowed by a later
+     * Domain-scoped one arrives alongside the current one, and usually <em>before</em> it, since
+     * &sect;5.4 orders longest-path-first. It is never overwritten either: every {@code Set-Cookie}
+     * written here carries the current Path, so it cannot replace a cookie stored under a different one.
+     * Taking the first match on faith therefore strands the user on a dead id for as long as the stale
+     * cookie lives, minting a fresh session per request (issue #91).
+     *
+     * <p>The name selects the candidates; liveness picks among them. Failing that the last candidate
+     * stands, so {@code getRequestedSessionId()} still reports what the client sent and
+     * {@code isRequestedSessionIdValid()} can call it expired -- the pair Spring Security's
+     * {@code SessionManagementFilter} keys on to tell an expired session from a request that carried
+     * none. Both halves match Tomcat's {@code CoyoteAdapter.parseSessionCookiesId}, which replaces its
+     * candidate for as long as {@code isRequestedSessionIdValid()} is false.
+     *
+     * @param cookies the request's already-parsed cookies, in wire order, or {@code null} if it sent none
      */
     String readSessionId(Cookie[] cookies) {
         if (cookies == null || !isCookieTrackingEnabled()) {
             return null;
         }
         String name = cookieConfig.getName();
+        String lastMatch = null;
         for (Cookie cookie : cookies) {
-            // Cookie names are case-sensitive (RFC 6265). First match wins.
-            if (name.equals(cookie.getName())) {
+            // Case-sensitive, per RFC 6265 4.1.1: a name differing only in case is a different cookie,
+            // and anything sharing the host can set one. Folding case would let it supply the session
+            // id -- outright, now that being live wins the tie.
+            if (!name.equals(cookie.getName())) {
+                continue;
+            }
+            if (isValidId(cookie.getValue())) {
                 return cookie.getValue();
             }
+            lastMatch = cookie.getValue();
         }
-        return null;
+        return lastMatch;
     }
 
     /**
