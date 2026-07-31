@@ -212,6 +212,12 @@ k6 run --env BASE_URL=http://localhost:18080 --env VUS=10000 --env DURATION=60s 
 ./gradlew test --tests 'io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.test.SmokeControllerTest'  # Single test
 ```
 
+### CI
+
+Every push to `main` and every pull request runs `./gradlew build` on Linux and macOS (`.github/workflows/build.yml`); both matrix cells must pass to merge.
+
+Labelling a pull request `review/claude` additionally runs an automated two-pass Claude review that leaves inline comments. It is advisory only — never a required check, and it does not run unless a maintainer applies the label.
+
 ## Limitations & status
 
 **Early / `0.1.0-SNAPSHOT`** — API may change, and the artifact is not yet published to Maven Central. The servlet bridge is deliberately minimal:
