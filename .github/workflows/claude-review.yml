@@ -54,6 +54,11 @@ jobs:
       # Scoped to this workflow's own identity, not `.user.type == "Bot"`, which would admit any
       # bot installed on the repo. Bodies are truncated to keep the token bill small.
       #
+      # This login is correct ONLY because the action is passed `github_token` below: that skips
+      # the OIDC exchange, so inline comments are authored by github-actions[bot]. On the default
+      # OIDC path the author is claude[bot] instead and this filter would match nothing --
+      # silently, leaving the file permanently `[]` and dedupe a no-op. The two must stay in sync.
+      #
       # This filter is NOT a trust boundary. Pass 1's comments quote code from the diff, so
       # attacker-controlled text reaches this file through a bot author — which is why the prompt
       # marks the file untrusted rather than relying on provenance.
@@ -72,9 +77,20 @@ jobs:
       # SHA-pinned, unlike the @v4 float tags elsewhere in this repo. This is the only action here
       # handed CLAUDE_CODE_OAUTH_TOKEN — a year-long subscription credential, not a job-scoped
       # GITHUB_TOKEN — so whoever can move the mutable `v1` tag would get it on the next run.
-      - uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b # v1
+      - id: review
+        uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # Required, not optional. setupGitHubToken() returns this input if set and otherwise
+          # goes straight to OIDC -- there is no fallback to github.token -- and getOidcToken()
+          # needs ACTIONS_ID_TOKEN_REQUEST_*, injected only under `id-token: write`. Without this
+          # the step throws at auth before doing any work.
+          #
+          # Passing the workflow token rather than granting id-token: write also keeps the
+          # OIDC-exchanged GitHub App installation token off the runner entirely, and makes the
+          # github-actions[bot] filter above correct.
+          github_token: ${{ github.token }}
 
           # Pass 1 is the official bug/correctness plugin, fetched at run time. The marketplace
           # cannot be pinned to a SHA (claude-code-action#1229, open): the input regex requires a
@@ -93,7 +109,7 @@ jobs:
           # track_progress and use_sticky_comment are left at their defaults (both off) on
           # purpose: any comment posted before pass 1 runs would trip its step-1 "Claude has
           # already commented" abort and silence the bug pass on its very first run. The summary
-          # comment is posted explicitly at the end instead, by the prompt below.
+          # comment is posted by the deterministic YAML step after this one instead.
 
           # --model rather than the deprecated `model:` input. Note this pins the orchestrator and
           # pass 2 only: the plugin names its own sub-agent models in prose, so its haiku/sonnet/
@@ -104,23 +120,36 @@ jobs:
           # nothing. `Task` is required because pass 1 is entirely sub-agent fan-out. `gh api`,
           # git, and every edit tool are absent on purpose: the bot never pushes commits.
           #
-          # `Bash(gh pr comment:*)` is deliberately NOT granted. A trailing wildcard leaves every
-          # argument after the prefix unconstrained, so the rule would also permit
-          # `gh pr comment <N> --body-file <any path>` — publishing any readable file verbatim to a
-          # public URL. The credential is reachable that way: action.yml sets
-          # CLAUDE_CODE_OAUTH_TOKEN as step-level env and parse-sdk-options.ts forwards
-          # {...process.env} to the SDK, stripping only the two ACTIONS_ID_TOKEN_REQUEST_* keys.
-          # The summary is posted by a deterministic YAML step below instead. Consequence: the
-          # plugin's clean-case `gh pr comment` is denied and logs a permission error; that path is
-          # covered by the summary step.
+          # COMMA-separated, not space-separated. parse-tools.ts consumes each token after the flag
+          # and splits it on "," only, so one space-separated quoted string collapses to a single
+          # nonsense entry. install-mcp-server.ts then gates on
+          # `list.some(t => t.startsWith("mcp__github_inline_comment__"))`, which is false because
+          # that entry starts with `Read(**)` — the MCP server is never installed and both passes
+          # silently post nothing. parse-sdk-options.ts splits the same way.
+          #
+          # `Bash(gh pr comment:*)` is DENIED, not merely absent. Omission is not denial: the
+          # plugin's command frontmatter carries its own `allowed-tools:` line including
+          # `Bash(gh pr comment:*)`, which re-grants it for pass 1's turn. Only a deny survives
+          # that — "if a tool is denied at any level, no other level can allow it". The grant
+          # matters because a trailing wildcard leaves every argument unconstrained, so it permits
+          # `gh pr comment <N> --body-file <any path>`: any readable file published verbatim to a
+          # public URL.
+          #
+          # The cat/head/tail/grep/find/diff denials close that channel from the other side. Those
+          # are in Claude Code's built-in read-only Bash set, which "runs without a permission
+          # prompt in every mode" and "is not configurable; to require a prompt for one of these
+          # commands, add an ask or deny rule for it". Without them `cat /proc/self/environ`
+          # bypasses `Read(**)` entirely, and the inline-comment sink does not save us:
+          # sanitizer.ts redacts only ghp_/gho_/ghu_/ghs_/ghr_/github_pat_, so an sk-ant-oat01-
+          # credential passes through unredacted. Readers outside that built-in set already need
+          # an allowlist entry they do not have.
           #
           # `Read(**)` rather than bare `Read`: a relative allow rule resolves against the working
-          # directory, so reads outside the workspace — /proc/self/environ, runner temp files — are
-          # refused. Bare `Read` would leave the environment readable.
+          # directory, so the Read tool cannot reach outside the workspace.
           claude_args: >-
             --model claude-opus-5
-            --allowedTools "Read(**) Grep Glob Task Skill Bash(gh pr view:*) Bash(gh pr diff:*) mcp__github_inline_comment__create_inline_comment"
-            --disallowedTools "WebSearch WebFetch"
+            --allowedTools "Read(**),Grep,Glob,Task,Skill,Bash(gh pr view:*),Bash(gh pr diff:*),mcp__github_inline_comment__create_inline_comment"
+            --disallowedTools "WebSearch,WebFetch,Bash(gh pr comment:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(grep:*),Bash(find:*),Bash(diff:*)"
 
           # Pass 1 MUST run first and finish first, for the step-1 abort reason above. --comment is
           # mandatory — without it the plugin computes a full review and posts nothing (#1087), and
@@ -157,13 +186,23 @@ jobs:
       # `gh pr comment`, which would have required granting a prefix rule whose arguments are
       # unconstrained. Writing the summary to a file for this step to publish would not be a fix
       # either: it relocates the channel rather than closing it.
+      # `if: always()` because this step's whole purpose is to report -- skipping it exactly when
+      # the review fails or hits timeout-minutes would defeat that.
+      #
+      # `set -o pipefail` is load-bearing, not hygiene: a plain `run:` is `bash -e {0}` with no
+      # pipefail, so a failing `gh api` feeds empty stdin to `jq -s 'add // 0'`, which yields 0,
+      # exits 0, and the arithmetic below posts a NEGATIVE count as if it were a real result.
+      # Partial pagination failure has the same shape. Fail loudly instead.
       - name: Post review summary
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
+          REVIEW_OUTCOME: ${{ steps.review.outcome }}
         run: |
+          set -o pipefail
           before=$(jq 'length' .claude-review-existing-comments.json)
           after=$(gh api --paginate "repos/${{ github.repository }}/pulls/${PR}/comments?per_page=100" \
             --jq '[.[] | select(.user.login == "github-actions[bot]")] | length' | jq -s 'add // 0')
           gh pr comment "$PR" \
-            --body "Claude review complete — $((after - before)) new inline comment(s) this run. Advisory only."
+            --body "Claude review step: ${REVIEW_OUTCOME}. $((after - before)) new inline comment(s) this run. Advisory only."
