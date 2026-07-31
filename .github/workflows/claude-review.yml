@@ -215,7 +215,8 @@ jobs:
       # step failed, this file is absent and the step would die before posting -- the exact case
       # the relaxed `if:` exists to cover.
       - name: Post review summary
-        if: ${{ !cancelled() }}
+    # Step-level, not job-level: a job-budget expiry is a CANCELLATION, which `!cancelled()` on the
+    # summary step skips. A step timeout is a FAILURE, so the summary still runs and reports it.
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
