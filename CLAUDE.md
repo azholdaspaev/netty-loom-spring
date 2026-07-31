@@ -57,7 +57,7 @@ Tests use JUnit 6 (`org.junit.jupiter.api`, via `org.junit.jupiter:junit-jupiter
 
 GitHub Actions (`.github/workflows/build.yml`): builds on push to main and PRs, uses Temurin JDK 25.
 
-`.github/workflows/claude-review.yml` runs both passes described under "Code Review" — the bug pass first, then the maintainability pass — on any pull request labelled `review/claude`. It is gated on that label, skips drafts and forks, posts findings as inline review comments, and is deliberately not a required status check. The bug pass will not re-review a PR it has already commented on, so a later push re-runs only the maintainability pass.
+`.github/workflows/claude-review.yml` runs both passes described under "Code Review" — the bug pass first, then the maintainability pass — on any pull request labelled `review/claude`. It is gated on that label, skips drafts and forks, posts findings as inline review comments, and is deliberately not a required status check. The bug pass is designed to abort on a PR it has already commented on, which would leave a later push re-running only the maintainability pass — unverified here, since the workflow's comments are authored by `github-actions[bot]` rather than `claude[bot]`, and that check is the plugin's own judgement call.
 
 ## Code Review
 

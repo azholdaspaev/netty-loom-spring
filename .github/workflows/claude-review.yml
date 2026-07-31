@@ -135,21 +135,32 @@ jobs:
           # `gh pr comment <N> --body-file <any path>`: any readable file published verbatim to a
           # public URL.
           #
-          # The cat/head/tail/grep/find/diff denials close that channel from the other side. Those
-          # are in Claude Code's built-in read-only Bash set, which "runs without a permission
-          # prompt in every mode" and "is not configurable; to require a prompt for one of these
-          # commands, add an ask or deny rule for it". Without them `cat /proc/self/environ`
-          # bypasses `Read(**)` entirely, and the inline-comment sink does not save us:
-          # sanitizer.ts redacts only ghp_/gho_/ghu_/ghs_/ghr_/github_pat_, so an sk-ant-oat01-
-          # credential passes through unredacted. Readers outside that built-in set already need
-          # an allowlist entry they do not have.
+          # The remaining denials raise the cost of reading the environment. They are a speed bump,
+          # NOT a boundary, and should not be read as one. Claude Code's built-in read-only Bash
+          # set "runs without a permission prompt in every mode" and "is not configurable" except
+          # by an ask or deny rule -- but the docs enumerate it with "These *include* ls, cat, ...",
+          # and name `sort` and `sed` as members further down without listing them. So the set is
+          # open-ended: an upstream addition silently reopens the hole with no signal here.
+          # Enumerating command names cannot fix a weakness that IS the enumeration.
+          #
+          # `Read(//proc/**)` is the more general lever: Read deny rules apply to the built-in file
+          # tools "and to file commands Claude Code recognizes in Bash, such as cat, head, tail,
+          # and sed", so one rule covers readers this list never names. `Bash(git:*)` is denied as
+          # a family rather than a name because `git diff --no-index -- /dev/null <path>` prints
+          # any file and does not match `Bash(diff:*)`; nothing here needs git.
+          #
+          # What none of this closes: a subprocess that opens files itself. The docs are explicit
+          # that Read deny rules "don't apply to arbitrary subprocesses" and point at OS-level
+          # `sandbox.filesystem` for real enforcement. Why it matters: sanitizer.ts redacts only
+          # ghp_/gho_/ghu_/ghs_/ghr_/github_pat_, so an sk-ant-oat01- credential reaching the
+          # inline-comment sink passes through unredacted.
           #
           # `Read(**)` rather than bare `Read`: a relative allow rule resolves against the working
           # directory, so the Read tool cannot reach outside the workspace.
           claude_args: >-
             --model claude-opus-5
             --allowedTools "Read(**),Grep,Glob,Task,Skill,Bash(gh pr view:*),Bash(gh pr diff:*),mcp__github_inline_comment__create_inline_comment"
-            --disallowedTools "WebSearch,WebFetch,Bash(gh pr comment:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(grep:*),Bash(find:*),Bash(diff:*)"
+            --disallowedTools "WebSearch,WebFetch,Read(//proc/**),Bash(gh pr comment:*),Bash(git:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(grep:*),Bash(find:*),Bash(diff:*),Bash(sort:*),Bash(sed:*)"
 
           # Pass 1 MUST run first and finish first, for the step-1 abort reason above. --comment is
           # mandatory — without it the plugin computes a full review and posts nothing (#1087), and
@@ -186,22 +197,32 @@ jobs:
       # `gh pr comment`, which would have required granting a prefix rule whose arguments are
       # unconstrained. Writing the summary to a file for this step to publish would not be a fix
       # either: it relocates the channel rather than closing it.
-      # `if: always()` because this step's whole purpose is to report -- skipping it exactly when
-      # the review fails or hits timeout-minutes would defeat that.
+      # `!cancelled()` rather than `always()`: this step should report on success, failure and the
+      # review's own timeout, but NOT on cancellation. `always()` runs "even when canceled", and
+      # `cancel-in-progress: true` above cancels a run on every push burst by design -- so
+      # `always()` would post "review step: cancelled. 0 new inline comment(s)" on a public PR,
+      # once per superseded push, carrying a count that means nothing. GitHub documents
+      # `!cancelled()` as the alternative for "regardless of its success or failure".
       #
-      # `set -o pipefail` is load-bearing, not hygiene: a plain `run:` is `bash -e {0}` with no
-      # pipefail, so a failing `gh api` feeds empty stdin to `jq -s 'add // 0'`, which yields 0,
-      # exits 0, and the arithmetic below posts a NEGATIVE count as if it were a real result.
-      # Partial pagination failure has the same shape. Fail loudly instead.
+      # `set -o pipefail`: a plain `run:` is `bash -e {0}` with no pipefail, so a failing `gh api`
+      # feeds empty stdin to `jq -s 'add // 0'`, which yields 0, exits 0, and the arithmetic below
+      # publishes a NEGATIVE count as if it were a result. Partial pagination failure is the same
+      # shape. Note the interaction: with pipefail a failed read now kills the step before it can
+      # post, so this step covers "the review failed" but not "an API read failed".
+      #
+      # The `|| echo 0` guard is what makes the previous line survivable. Under `bash -e` a failing
+      # command substitution aborts the step regardless of pipefail, so if checkout or the collect
+      # step failed, this file is absent and the step would die before posting -- the exact case
+      # the relaxed `if:` exists to cover.
       - name: Post review summary
-        if: always()
+        if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
           REVIEW_OUTCOME: ${{ steps.review.outcome }}
         run: |
           set -o pipefail
-          before=$(jq 'length' .claude-review-existing-comments.json)
+          before=$(jq 'length' .claude-review-existing-comments.json 2>/dev/null || echo 0)
           after=$(gh api --paginate "repos/${{ github.repository }}/pulls/${PR}/comments?per_page=100" \
             --jq '[.[] | select(.user.login == "github-actions[bot]")] | length' | jq -s 'add // 0')
           gh pr comment "$PR" \
