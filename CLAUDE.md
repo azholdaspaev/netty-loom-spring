@@ -57,13 +57,26 @@ Tests use JUnit 6 (`org.junit.jupiter.api`, via `org.junit.jupiter:junit-jupiter
 
 GitHub Actions (`.github/workflows/build.yml`): builds on push to main and PRs, uses Temurin JDK 25.
 
+`.github/workflows/claude-review.yml` runs both passes described under "Code Review" — the bug pass first, then the maintainability pass — on any pull request labelled `review/claude`. It is gated on that label, skips drafts and forks, posts findings as inline review comments, and is deliberately not a required status check. The bug pass will not re-review a PR it has already commented on, so a later push re-runs only the maintainability pass.
+
 ## Code Review
 
-The bug-focused review (`/code-review`) is tuned for correctness recall — it requires a concrete failure scenario per finding and ranks correctness above cleanup. That framing structurally under-weights *maintainability and consistency* issues, which have no crash and no quotable rule. After a bug-recall review, run a separate **maintainability/consistency pass** with an explicit lens for the following (read whole files and across the module, not hunk-by-hunk):
+The bug-focused review (`/code-review`) is tuned for correctness recall — it requires a concrete failure scenario per finding and ranks correctness above cleanup. Its default bar admits only failures that hold *regardless of inputs*, and it discards style, quality and "subjective" findings outright. That framing structurally under-weights two things: **state-dependent correctness bugs**, and *maintainability and consistency* issues, which have no crash and no quotable rule.
+
+The lenses below close both gaps and are the second pass's brief. They are phrased as rules so that a violation can be quoted, which is what the bug pass requires before it will flag anything. Read whole files and across the module, not hunk-by-hunk.
+
+**Correctness lenses.** These override the bug pass's "regardless of inputs" bar: a finding here is in scope precisely *because* it depends on timing, interleaving or accumulated state.
+
+- **Concurrency and lifecycle.** Shared mutable state reachable from more than one thread must name what guards it. Do not synchronize on an object that callers can also reach — lock on a private, dedicated monitor. Re-check a condition after taking the lock that protects it; a check made before the lock is already stale when acted on. Eviction, cleanup and shutdown paths must be safe to run twice and safe to run concurrently with what they are tearing down, and anything registered at startup must survive a stop/start cycle in the same JVM without duplicate registration or a listener left bound to a dead context.
+- **Time and counter arithmetic.** Durations, deadlines and timeouts must not overflow or turn negative when a configured value is large, zero or unset. Compare instants by elapsed difference, never by a sum that can wrap.
+
+**Maintainability and consistency lenses.**
 
 - **Naming consistency (convention-by-example).** New types should match the emergent naming of their siblings even when no written rule exists. Example: everything in `core.handler` is `Http`-prefixed (`HttpRequestHandler`, `HttpRequestDispatcher`, `HttpExceptionHandler`, `HttpConnectionMetadata`) — a new class there should carry the prefix.
 - **Magic constants.** Flag bare literals that encode a named concept; prefer a named constant or an existing enum/util. Example: HTTP scheme names and their default ports come from `io.netty.handler.codec.http.HttpScheme` (`HttpScheme.HTTPS.toString()` → `"https"`, `HttpScheme.HTTPS.port()` → `443`) rather than hardcoded `"http"/"https"` or `80/443`. Sentinel values (e.g. `""`/`0` for an unknown address) should be named constants documenting their contract.
-- **Cross-file duplication of the same fact.** Watch for one concept expressed twice in different places — the coupling a per-hunk scan misses. Example: a scheme→port default living as strings in one class and as `80/443` in another is the *same* fact; centralize it in one owner and have the other delegate.
+- **Duplication.** Two shapes, both in scope. *The same fact expressed twice* — one concept living in two places, the coupling a per-hunk scan misses; a scheme→port default living as strings in one class and as `80/443` in another is the *same* fact, so centralize it in one owner and have the other delegate. *The same logic expressed twice* — copy-pasted or near-identical blocks across classes or test fixtures, where a later fix to one will not reach the other.
+- **Simplicity and scope.** Judge against the rules in the "Guidelines" section of this file — (2) Simplicity First and (3) Surgical Changes. Speculative abstraction, configurability nobody asked for, error handling for impossible states, and changed lines that do not trace to the stated goal are findings here, not taste.
+- **Module boundaries.** Judge against the "Architecture" section of this file: the `starter → mvc → core` dependency flow, `core` carrying no Spring dependency, and `HttpRequestDispatcher` / `NettyPipelineConfigurer` as the seams. New coupling that crosses a layer or routes around a seam is a finding even when it compiles.
 
 ## Guidelines
 
