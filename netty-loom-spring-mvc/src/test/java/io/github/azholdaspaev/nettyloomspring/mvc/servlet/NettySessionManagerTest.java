@@ -3,15 +3,22 @@ package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpSessionBindingEvent;
 import jakarta.servlet.http.HttpSessionBindingListener;
+import jakarta.servlet.http.HttpSessionEvent;
+import jakarta.servlet.http.HttpSessionIdListener;
+import jakarta.servlet.http.HttpSessionListener;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -38,12 +45,14 @@ class NettySessionManagerTest {
     private static final int ONE_MINUTE = 60;
 
     private AtomicLong clock;
+    private DefaultNettyServletContext servletContext;
     private NettySessionManager manager;
 
     @BeforeEach
     void setUp() {
         clock = new AtomicLong(0L);
-        manager = new NettySessionManager(new DefaultNettyServletContext(), clock::get);
+        servletContext = new DefaultNettyServletContext();
+        manager = new NettySessionManager(servletContext, clock::get);
         manager.setDefaultMaxInactiveInterval(ONE_MINUTE);
     }
 
@@ -499,5 +508,163 @@ class NettySessionManagerTest {
 
         assertEquals(live.getId(),
             manager.readSessionId(cookies(SESSION_COOKIE, "", SESSION_COOKIE, live.getId())));
+    }
+
+    // --- Container-registered session listeners (issue #17) ---
+
+    /** Records the ids each callback was handed, so a missed or duplicated event is visible. */
+    private static final class RecordingSessionListener implements HttpSessionListener, HttpSessionIdListener {
+
+        private final List<String> created = Collections.synchronizedList(new ArrayList<>());
+        private final List<String> destroyed = Collections.synchronizedList(new ArrayList<>());
+        private final List<String> idChanged = Collections.synchronizedList(new ArrayList<>());
+
+        @Override
+        public void sessionCreated(HttpSessionEvent event) {
+            created.add(event.getSession().getId());
+        }
+
+        @Override
+        public void sessionDestroyed(HttpSessionEvent event) {
+            assertFalse(Thread.holdsLock(((NettyHttpSession) event.getSession()).lock()),
+                "application code must never run under the container's session monitor");
+            destroyed.add(event.getSession().getId());
+        }
+
+        @Override
+        public void sessionIdChanged(HttpSessionEvent event, String oldSessionId) {
+            assertFalse(Thread.holdsLock(((NettyHttpSession) event.getSession()).lock()),
+                "application code must never run under the container's session monitor");
+            idChanged.add(oldSessionId + "->" + event.getSession().getId());
+        }
+    }
+
+    private RecordingSessionListener recordSessions() {
+        var listener = new RecordingSessionListener();
+        servletContext.addListener(listener);
+        return listener;
+    }
+
+    @Test
+    void createFiresSessionCreated() {
+        var listener = recordSessions();
+
+        NettyHttpSession session = manager.create();
+
+        assertEquals(List.of(session.getId()), listener.created);
+    }
+
+    @Test
+    void aCreationRefusedAfterCloseFiresNothing() {
+        // create() refuses once the store is closed, and a session nothing can reach must not be
+        // announced -- a listener told about it would hold a reference no teardown will ever revisit.
+        var listener = recordSessions();
+        manager.close();
+
+        assertThrows(IllegalStateException.class, () -> manager.create());
+
+        assertTrue(listener.created.isEmpty());
+    }
+
+    @Test
+    void sessionDestroyedFiresWhenALookupFindsAnExpiredSession() {
+        var listener = recordSessions();
+        NettyHttpSession session = manager.create();
+        String id = session.getId();
+
+        clock.set(TimeUnit.SECONDS.toMillis(ONE_MINUTE));
+
+        assertNull(manager.find(id));
+        assertEquals(List.of(id), listener.destroyed);
+    }
+
+    @Test
+    void sessionDestroyedFiresForEverySessionTheSweepReclaims() {
+        var listener = recordSessions();
+        String first = manager.create().getId();
+        String second = manager.create().getId();
+
+        clock.set(TimeUnit.SECONDS.toMillis(ONE_MINUTE));
+        manager.sweep(clock.get());
+
+        assertEquals(Set.of(first, second), new HashSet<>(listener.destroyed));
+    }
+
+    @Test
+    void sessionDestroyedFiresForEverySessionShutdownDrains() {
+        // The shutdown drain is where a @SessionScope bean's destruction callback runs; a container
+        // listener auditing logouts has exactly the same claim on being told.
+        var listener = recordSessions();
+        String id = manager.create().getId();
+
+        manager.close();
+
+        assertEquals(List.of(id), listener.destroyed);
+    }
+
+    @Test
+    void sessionDestroyedFiresOnceWhenASweepRacesALookup() {
+        // Both paths funnel through the same markInvalidated() CAS, so only one of them may notify.
+        var listener = recordSessions();
+        NettyHttpSession session = manager.create();
+        String id = session.getId();
+
+        clock.set(TimeUnit.SECONDS.toMillis(ONE_MINUTE));
+        manager.sweep(clock.get());
+        assertNull(manager.find(id));
+        manager.sweep(clock.get());
+
+        assertEquals(List.of(id), listener.destroyed);
+    }
+
+    /** A container-registered listener whose {@code sessionCreated} always fails. */
+    private static HttpSessionListener throwingOnCreate() {
+        return new HttpSessionListener() {
+            @Override
+            public void sessionCreated(HttpSessionEvent event) {
+                throw new IllegalStateException("listener is down");
+            }
+        };
+    }
+
+    @Test
+    void aThrowingSessionCreatedListenerLeavesNoUnreachableSession() {
+        // sessionCreated runs after sessions.put, so letting it propagate would abandon an entry that is
+        // still valid and whose id no client ever received: nothing invalidates or unbinds it, and it
+        // holds the store for the full idle timeout. Tomcat's tellNew() catches per listener and logs.
+        servletContext.addListener(throwingOnCreate());
+
+        NettyHttpSession session = assertDoesNotThrow(() -> manager.create(),
+            "a bystander listener must not fail the request that asked for the session");
+
+        assertSame(session, manager.find(session.getId()), "the created session must be reachable by id");
+        assertEquals(1, manager.size());
+    }
+
+    @Test
+    void aThrowingSessionCreatedListenerDoesNotStopTheOnesAfterIt() {
+        var reached = new ArrayList<String>();
+        servletContext.addListener(throwingOnCreate());
+        servletContext.addListener(new HttpSessionListener() {
+            @Override
+            public void sessionCreated(HttpSessionEvent event) {
+                reached.add("second");
+            }
+        });
+
+        manager.create();
+
+        assertEquals(List.of("second"), reached);
+    }
+
+    @Test
+    void changeIdFiresSessionIdChangedWithTheOldId() {
+        var listener = recordSessions();
+        NettyHttpSession session = manager.create();
+        String oldId = session.getId();
+
+        String newId = manager.changeId(session);
+
+        assertEquals(List.of(oldId + "->" + newId), listener.idChanged);
     }
 }

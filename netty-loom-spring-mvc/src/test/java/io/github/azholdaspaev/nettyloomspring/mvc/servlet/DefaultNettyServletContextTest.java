@@ -4,6 +4,10 @@ import jakarta.servlet.DispatcherType;
 import jakarta.servlet.Filter;
 import jakarta.servlet.FilterRegistration;
 import jakarta.servlet.Servlet;
+import jakarta.servlet.ServletContextAttributeEvent;
+import jakarta.servlet.ServletContextAttributeListener;
+import jakarta.servlet.ServletContextEvent;
+import jakarta.servlet.ServletContextListener;
 import jakarta.servlet.ServletRegistration;
 import jakarta.servlet.SessionTrackingMode;
 
@@ -671,6 +675,252 @@ class DefaultNettyServletContextTest {
         assertEquals(0, context.getSessionManager().size());
     }
 
+    // --- Listeners (issue #17) ---
+
+    @Test
+    void shouldRegisterListenerByInstance() {
+        var listener = new CountingContextListener();
+
+        context.addListener(listener);
+        context.fireContextInitialized();
+
+        assertEquals(1, listener.initialized);
+    }
+
+    @Test
+    void shouldRegisterListenerByClass() {
+        StubContextListener.reset();
+
+        context.addListener(StubContextListener.class);
+        context.fireContextInitialized();
+
+        assertEquals(1, StubContextListener.initialized);
+    }
+
+    @Test
+    void shouldRegisterListenerByClassName() {
+        StubContextListener.reset();
+
+        context.addListener(StubContextListener.class.getName());
+        context.fireContextInitialized();
+
+        assertEquals(1, StubContextListener.initialized);
+    }
+
+    @Test
+    void shouldRejectAnUnknownListenerClassName() {
+        assertThrows(IllegalArgumentException.class, () -> context.addListener("com.example.NoSuchListener"));
+    }
+
+    @Test
+    void shouldRejectAClassNameThatIsNotAListener() {
+        assertThrows(IllegalArgumentException.class, () -> context.addListener(String.class.getName()));
+    }
+
+    @Test
+    void shouldRejectAListenerClassThatCannotBeInstantiated() {
+        // The overload that wraps createListener was untested: emptying its catch block left the suite
+        // green and turned addListener(Class) into a silent no-op, which is exactly the "application
+        // starts believing it is wired up" failure the registry throws to avoid.
+        var thrown = assertThrows(IllegalArgumentException.class,
+            () -> context.addListener(UninstantiableListener.class));
+
+        assertTrue(thrown.getMessage().contains(UninstantiableListener.class.getName()),
+            "the message must name the class that could not be built; got " + thrown.getMessage());
+    }
+
+    @Test
+    void shouldRejectCreatingAListenerOfNoSupportedType() {
+        var thrown = assertThrows(IllegalArgumentException.class,
+            () -> context.createListener(UnsupportedListener.class));
+
+        // The message, not just the type: it names the accepted interfaces, and it is the half a third
+        // call site could drop by throwing a bare IllegalArgumentException of its own.
+        assertTrue(thrown.getMessage().contains(ServletContextListener.class.getName()),
+            "the message must name the types that are accepted; got " + thrown.getMessage());
+    }
+
+    @Test
+    void shouldCreateListenerWithItsNoArgConstructor() throws Exception {
+        assertInstanceOf(StubContextListener.class, context.createListener(StubContextListener.class));
+    }
+
+    @Test
+    void shouldReportListenerInstantiationFailureAsServletException() {
+        // The Jakarta contract: createListener wraps the reflective failure, so a caller sees why the
+        // class could not be built rather than a bare InvocationTargetException.
+        var thrown = assertThrows(jakarta.servlet.ServletException.class,
+            () -> context.createListener(UninstantiableListener.class));
+
+        assertTrue(thrown.getMessage().contains(UninstantiableListener.class.getName()),
+            "The message should name the class that could not be instantiated; got " + thrown.getMessage());
+    }
+
+    @Test
+    void shouldFreezeEveryComponentFromOneCall() {
+        // "Startup is over" is one fact, so the context fans it out rather than each caller naming every
+        // freezable component -- the same shape NettySessionManager already uses to reach the cookie
+        // config. A fourth component then needs no new call site, and none can be silently missed.
+        context.markInitialized();
+
+        assertThrows(IllegalStateException.class, () -> context.addListener(new CountingContextListener()),
+            "listener registration must be frozen");
+        assertThrows(IllegalStateException.class, () -> context.setSessionTimeout(5),
+            "session configuration must be frozen");
+        assertThrows(IllegalStateException.class, () -> context.getSessionCookieConfig().setName("X"),
+            "the session cookie configuration must be frozen");
+    }
+
+    @Test
+    void shouldFireContextInitializedOnlyOnce() {
+        var listener = new CountingContextListener();
+        context.addListener(listener);
+
+        context.fireContextInitialized();
+        context.fireContextInitialized();
+
+        assertEquals(1, listener.initialized);
+    }
+
+    @Test
+    void shouldFireContextDestroyedOnClose() {
+        var listener = new CountingContextListener();
+        context.addListener(listener);
+        context.fireContextInitialized();
+
+        context.close();
+
+        assertEquals(1, listener.destroyed);
+    }
+
+    @Test
+    void shouldFireContextDestroyedOnlyOnceAcrossRepeatedCloses() {
+        // close() is an idempotent backstop -- SessionStoreLifecycle.stop() and the bean-destruction
+        // callback both reach it -- so the event must not be delivered twice.
+        var listener = new CountingContextListener();
+        context.addListener(listener);
+        context.fireContextInitialized();
+
+        context.close();
+        context.close();
+
+        assertEquals(1, listener.destroyed);
+    }
+
+    @Test
+    void shouldNotFireContextDestroyedWhenStartupNeverCompleted() {
+        // An initializer can fail before fireContextInitialized runs; close() still executes as the
+        // backstop, and destroying listeners that were never initialized would be worse than doing nothing.
+        var listener = new CountingContextListener();
+        context.addListener(listener);
+
+        context.close();
+
+        assertEquals(0, listener.destroyed);
+    }
+
+    @Test
+    void shouldFireContextDestroyedAfterTheSessionStoreIsDrained() {
+        // Tomcat stops the Manager before listenerStop, so a listener auditing live sessions on the way
+        // out sees the store already emptied rather than a half-drained one.
+        var sessionsAtDestroy = new int[]{-1};
+        context.addListener(new ServletContextListener() {
+            @Override
+            public void contextDestroyed(ServletContextEvent event) {
+                sessionsAtDestroy[0] = context.getSessionManager().size();
+            }
+        });
+        context.fireContextInitialized();
+        context.getSessionManager().create();
+
+        context.close();
+
+        assertEquals(0, sessionsAtDestroy[0]);
+    }
+
+    @Test
+    void shouldReinitializeListenersWhenTheContextIsRestarted() {
+        // ApplicationContext.start() after stop(), and CRaC restore, replay the stop phase. Leaving the
+        // listeners destroyed would mean an application serving normally with every listener torn down.
+        var listener = new CountingContextListener();
+        context.addListener(listener);
+        context.fireContextInitialized();
+
+        context.close();
+        context.open();
+
+        assertEquals(2, listener.initialized);
+        assertEquals(1, listener.destroyed);
+    }
+
+    @Test
+    void shouldNotFireContextInitializedOnOpenWithoutAPriorClose() {
+        // open() runs on every start, including the first -- where the factory has already fired the
+        // event. Firing again would double-initialize every listener on a normal boot.
+        var listener = new CountingContextListener();
+        context.addListener(listener);
+        context.fireContextInitialized();
+
+        context.open();
+
+        assertEquals(1, listener.initialized);
+    }
+
+    @Test
+    void shouldFireContextAttributeAddedThenReplaced() {
+        var events = new java.util.ArrayList<String>();
+        context.addListener(new ServletContextAttributeListener() {
+            @Override
+            public void attributeAdded(ServletContextAttributeEvent event) {
+                events.add("added:" + event.getName() + "=" + event.getValue());
+            }
+
+            @Override
+            public void attributeReplaced(ServletContextAttributeEvent event) {
+                events.add("replaced:" + event.getName() + "=" + event.getValue());
+            }
+        });
+
+        context.setAttribute("user", "alice");
+        context.setAttribute("user", "bob");
+
+        // The replacement reports the displaced value, not the new one.
+        assertEquals(List.of("added:user=alice", "replaced:user=alice"), events);
+    }
+
+    @Test
+    void shouldFireContextAttributeRemovedForBothRemovalForms() {
+        var removed = new java.util.ArrayList<String>();
+        context.addListener(new ServletContextAttributeListener() {
+            @Override
+            public void attributeRemoved(ServletContextAttributeEvent event) {
+                removed.add(event.getName() + "=" + event.getValue());
+            }
+        });
+
+        context.setAttribute("explicit", "a");
+        context.removeAttribute("explicit");
+        context.setAttribute("viaNull", "b");
+        context.setAttribute("viaNull", null);
+
+        assertEquals(List.of("explicit=a", "viaNull=b"), removed);
+    }
+
+    @Test
+    void shouldNotFireContextAttributeRemovedForAnAbsentName() {
+        var removed = new java.util.ArrayList<String>();
+        context.addListener(new ServletContextAttributeListener() {
+            @Override
+            public void attributeRemoved(ServletContextAttributeEvent event) {
+                removed.add(event.getName());
+            }
+        });
+
+        context.removeAttribute("never-set");
+
+        assertTrue(removed.isEmpty(), "removing an absent attribute changes nothing, so it notifies nothing");
+    }
+
     private static List<String> collectNames(Enumeration<String> enumeration) {
         var names = new java.util.ArrayList<String>();
         enumeration.asIterator().forEachRemaining(names::add);
@@ -690,5 +940,35 @@ class DefaultNettyServletContextTest {
     private static class StubFilter implements Filter {
         @Override public void doFilter(jakarta.servlet.ServletRequest request, jakarta.servlet.ServletResponse response,
                                        jakarta.servlet.FilterChain chain) {}
+    }
+
+    private static class CountingContextListener implements ServletContextListener {
+
+        private int initialized;
+        private int destroyed;
+
+        @Override public void contextInitialized(ServletContextEvent event) { initialized++; }
+        @Override public void contextDestroyed(ServletContextEvent event) { destroyed++; }
+    }
+
+    /** Registered by class and by name, so it counts statically -- the container builds its own instance. */
+    static class StubContextListener implements ServletContextListener {
+
+        private static int initialized;
+
+        static void reset() { initialized = 0; }
+
+        @Override public void contextInitialized(ServletContextEvent event) { initialized++; }
+    }
+
+    static class UninstantiableListener implements ServletContextListener {
+
+        UninstantiableListener() {
+            throw new IllegalStateException("cannot be built");
+        }
+    }
+
+    /** A legal EventListener, but none of the seven types addListener accepts. */
+    static class UnsupportedListener implements java.util.EventListener {
     }
 }

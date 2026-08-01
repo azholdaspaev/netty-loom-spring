@@ -32,12 +32,28 @@ public class NettyHttpSession implements HttpSession {
      *
      * <p>Deliberately <em>not</em> {@code this}. {@code WebUtils.getSessionMutex} hands the session
      * instance itself to application code as Spring's session mutex whenever no
-     * {@code HttpSessionMutexListener} has been registered -- which is always here, since
-     * {@code addListener} is unsupported until issue #17 -- and {@code SessionScope} holds that mutex
+     * {@code HttpSessionMutexListener} has been registered, and {@code SessionScope} holds that mutex
      * across arbitrary bean instantiation. Locking on the session would put the sweeper and the
      * per-request lookup behind application code, and open an ABBA deadlock against the singleton lock.
+     * An application may register that mutex listener to opt out, but few do, so this monitor is
+     * load-bearing rather than belt-and-braces.
      */
     private final Object lock = new Object();
+
+    /**
+     * Open only while {@link #unbindAll()} is notifying, which is what keeps a destroyed session
+     * readable for exactly as long as the listeners hearing about it need. Tomcat calls the same flag
+     * {@code expiring} and folds it into {@code isValidInternal()} for the same reason: Spring
+     * Security's {@code HttpSessionDestroyedEvent} walks {@code getAttributeNames()} to collect the
+     * {@code SecurityContext}s it is publishing the logout for, and {@code HttpSessionBindingListener}s
+     * commonly read siblings during {@code valueUnbound}.
+     *
+     * <p>Volatile, and visible to every thread rather than only the one tearing down -- also Tomcat's
+     * behaviour. A request that resolved this session a moment earlier can therefore still read it
+     * during the window instead of seeing {@code IllegalStateException}; it is a narrow widening of a
+     * race that already existed, and the alternative is listeners that cannot do their job.
+     */
+    private volatile boolean destroying;
 
     private volatile String id;
     private volatile long lastAccessedTime;
@@ -103,7 +119,7 @@ public class NettyHttpSession implements HttpSession {
     }
 
     private void checkValid() {
-        if (invalidated.get()) {
+        if (invalidated.get() && !destroying) {
             throw new IllegalStateException("Session " + id + " has been invalidated");
         }
     }
@@ -191,17 +207,28 @@ public class NettyHttpSession implements HttpSession {
             published[0] = !invalidated.get();
             return published[0] ? value : existing;
         });
-        // Re-binding the identical instance is not an unbind -- the value is still bound.
-        if (published[0] && previous[0] != value && previous[0] instanceof HttpSessionBindingListener listener) {
-            notifyUnbound(listener, name, previous[0]);
-        }
         if (!published[0]) {
             // The teardown claimed this key first, so it never saw this value. Anything *this* call bound
             // is therefore ours to release; a re-bind that fired no valueBound has nothing to pair with.
+            // Nothing was published, so the container announces nothing either.
             if (bound && value instanceof HttpSessionBindingListener listener) {
                 notifyUnbound(listener, name, value);
             }
             throw new IllegalStateException("Session " + id + " has been invalidated");
+        }
+        // Announced as soon as the map changed, and deliberately before either callback below: both run
+        // application code that may invalidate the session, and the claim-back that then follows notifies
+        // attributeRemoved. Firing later would let that removal be the first a listener hears of this
+        // value -- one maintaining an index would be told to remove something it was never told about.
+        // This is why the order differs from Tomcat's, which unbinds the displaced value first.
+        if (previous[0] == null) {
+            manager.listeners().fireSessionAttributeAdded(this, name, value);
+        } else {
+            manager.listeners().fireSessionAttributeReplaced(this, name, previous[0]);
+        }
+        // Re-binding the identical instance is not an unbind -- the value is still bound.
+        if (previous[0] != value && previous[0] instanceof HttpSessionBindingListener listener) {
+            notifyUnbound(listener, name, previous[0]);
         }
         if (invalidated.get()) {
             // Published, and only then invalidated. Claim the value back -- and if the teardown got there
@@ -215,8 +242,8 @@ public class NettyHttpSession implements HttpSession {
     public void removeAttribute(String name) {
         checkValid();
         Object removed = attributes.remove(name);
-        if (removed instanceof HttpSessionBindingListener listener) {
-            notifyUnbound(listener, name, removed);
+        if (removed != null) {
+            notifyRemoved(name, removed);
         }
     }
 
@@ -246,22 +273,42 @@ public class NettyHttpSession implements HttpSession {
      * whatever it was holding.
      */
     void unbindAll() {
-        // A value bound by a request that raced this teardown may land after the iteration passes its
-        // key; that request's own re-check in setAttribute removes and unbinds it, so nothing is left
-        // silently bound and a second pass here would be redundant.
-        attributes.forEach(this::removeIfStillBound);
-        // HttpSessionListener.sessionDestroyed would fire here once addListener is supported (issue #17).
+        // The window stays open across the whole teardown, not just the sessionDestroyed call: a
+        // valueUnbound implementation commonly reads a sibling attribute to release what it is holding.
+        destroying = true;
+        try {
+            // Before anything is unbound, as StandardSession.expire() does: a listener told the session
+            // is going away can then still read what was in it.
+            manager.listeners().fireSessionDestroyed(this);
+            // A value bound by a request that raced this teardown may land after the iteration passes its
+            // key; that request's own re-check in setAttribute removes and unbinds it, so nothing is left
+            // silently bound and a second pass here would be redundant.
+            attributes.forEach(this::removeIfStillBound);
+        } finally {
+            destroying = false;
+        }
     }
 
-    /** Removes {@code name} only if it still holds {@code value}, unbinding it if so. */
+    /** Removes {@code name} only if it still holds {@code value}, notifying if so. */
     private boolean removeIfStillBound(String name, Object value) {
         if (!attributes.remove(name, value)) {
             return false;
         }
+        notifyRemoved(name, value);
+        return true;
+    }
+
+    /**
+     * The two notifications an attribute leaving the session owes, in Tomcat's order: the value's own
+     * {@code valueUnbound} first, then the container listeners' {@code attributeRemoved}. Shared by the
+     * application's own {@code removeAttribute} and by teardown, so an audit listener sees the same event
+     * either way.
+     */
+    private void notifyRemoved(String name, Object value) {
         if (value instanceof HttpSessionBindingListener listener) {
             notifyUnbound(listener, name, value);
         }
-        return true;
+        manager.listeners().fireSessionAttributeRemoved(this, name, value);
     }
 
     /**

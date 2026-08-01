@@ -1,7 +1,11 @@
 package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
+import jakarta.servlet.http.HttpSession;
+import jakarta.servlet.http.HttpSessionAttributeListener;
 import jakarta.servlet.http.HttpSessionBindingEvent;
 import jakarta.servlet.http.HttpSessionBindingListener;
+import jakarta.servlet.http.HttpSessionEvent;
+import jakarta.servlet.http.HttpSessionListener;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -9,7 +13,9 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -23,11 +29,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Servlet-contract behaviour of a single session (issue #13).
  *
- * <p>{@link HttpSessionBindingListener} is covered here even though the container-registered listeners
- * ({@code HttpSessionListener} and friends) wait on issue #17: binding callbacks need no
- * {@code addListener} support, because the attribute value itself is the listener. Spring stores a
+ * <p>{@link HttpSessionBindingListener} is a different mechanism from the container-registered listeners
+ * ({@code HttpSessionListener} and friends, issue #17): binding callbacks need no {@code addListener}
+ * support, because the attribute value itself is the listener. Spring stores a
  * {@code DestructionCallbackBindingListener} as a session attribute, so without {@code valueUnbound}
- * no {@code @SessionScope} bean would ever run its destruction callback.
+ * no {@code @SessionScope} bean would ever run its destruction callback. Both are covered here, and the
+ * order between them is part of the contract: a value's own {@code valueUnbound} runs before the
+ * container listeners' {@code attributeRemoved}.
  */
 class NettyHttpSessionTest {
 
@@ -340,5 +348,272 @@ class NettyHttpSessionTest {
     @Test
     void getServletContextReturnsTheOwningContext() {
         assertSame(servletContext, manager.create().getServletContext());
+    }
+
+    // --- Container-registered session listeners (issue #17) ---
+
+    @Test
+    void sessionDestroyedFiresOnceOnInvalidate() {
+        var destroyed = new ArrayList<String>();
+        servletContext.addListener(new HttpSessionListener() {
+            @Override
+            public void sessionDestroyed(HttpSessionEvent event) {
+                destroyed.add(event.getSession().getId());
+            }
+        });
+        NettyHttpSession session = manager.create();
+        String id = session.getId();
+
+        session.invalidate();
+
+        assertEquals(List.of(id), destroyed);
+    }
+
+    @Test
+    void attributesAreStillReadableFromInsideSessionDestroyed() {
+        // The window Tomcat's StandardSession.expiring opens. Spring Security's HttpSessionDestroyedEvent
+        // walks getAttributeNames() to collect the SecurityContexts it is publishing the logout for, so a
+        // session that has already slammed shut makes the listener useless.
+        var seen = new ArrayList<String>();
+        servletContext.addListener(new HttpSessionListener() {
+            @Override
+            public void sessionDestroyed(HttpSessionEvent event) {
+                HttpSession session = event.getSession();
+                session.getAttributeNames().asIterator()
+                    .forEachRemaining(name -> seen.add(name + "=" + session.getAttribute(name)));
+            }
+        });
+        NettyHttpSession session = manager.create();
+        session.setAttribute("user", "alice");
+
+        session.invalidate();
+
+        assertEquals(List.of("user=alice"), seen);
+    }
+
+    @Test
+    void theDestroyWindowClosesOnceTeardownIsOver() {
+        // Strictly scoped to the notification: afterwards the session is as invalid as it has always been.
+        NettyHttpSession session = manager.create();
+        session.setAttribute("user", "alice");
+
+        session.invalidate();
+
+        assertThrows(IllegalStateException.class, () -> session.getAttribute("user"));
+    }
+
+    @Test
+    void attributeMutationsFireTheContainerAttributeListener() {
+        var events = new ArrayList<String>();
+        servletContext.addListener(new HttpSessionAttributeListener() {
+            @Override
+            public void attributeAdded(HttpSessionBindingEvent event) {
+                events.add("added:" + event.getName() + "=" + event.getValue());
+            }
+
+            @Override
+            public void attributeReplaced(HttpSessionBindingEvent event) {
+                events.add("replaced:" + event.getName() + "=" + event.getValue());
+            }
+
+            @Override
+            public void attributeRemoved(HttpSessionBindingEvent event) {
+                events.add("removed:" + event.getName() + "=" + event.getValue());
+            }
+        });
+        NettyHttpSession session = manager.create();
+
+        session.setAttribute("user", "alice");
+        session.setAttribute("user", "bob");
+        session.removeAttribute("user");
+
+        // Replacement reports the displaced value, matching the ServletContext side.
+        assertEquals(List.of("added:user=alice", "replaced:user=alice", "removed:user=bob"), events);
+    }
+
+    @Test
+    void tearingDownASessionRemovesItsAttributesThroughTheListener() {
+        // Tomcat's expire() removes each attribute with notification on, so an audit listener sees the
+        // same "attribute gone" event whether the application removed it or the container did.
+        var removed = new ArrayList<String>();
+        servletContext.addListener(new HttpSessionAttributeListener() {
+            @Override
+            public void attributeRemoved(HttpSessionBindingEvent event) {
+                removed.add(event.getName() + "=" + event.getValue());
+            }
+        });
+        NettyHttpSession session = manager.create();
+        session.setAttribute("user", "alice");
+
+        session.invalidate();
+
+        assertEquals(List.of("user=alice"), removed);
+    }
+
+    @Test
+    void anAttributeClaimedBackByInvalidationWasAnnouncedFirst() {
+        // The claim-back branch: compute publishes while the session is still valid, the session is
+        // invalidated a moment later, and setAttribute takes the value back -- notifying attributeRemoved.
+        // The add or replace it pairs with must already have been announced, or a listener maintaining an
+        // index (get(name).remove(value)) is told to remove something it was never told about.
+        //
+        // Deterministic rather than threaded: the displaced value's own valueUnbound is application code
+        // that setAttribute runs after compute has published, which is exactly the window a concurrent
+        // invalidate() occupies.
+        var events = new ArrayList<String>();
+        servletContext.addListener(new HttpSessionAttributeListener() {
+            @Override
+            public void attributeAdded(HttpSessionBindingEvent event) {
+                events.add("added:" + event.getName());
+            }
+
+            @Override
+            public void attributeReplaced(HttpSessionBindingEvent event) {
+                events.add("replaced:" + event.getName());
+            }
+
+            @Override
+            public void attributeRemoved(HttpSessionBindingEvent event) {
+                events.add("removed:" + event.getName());
+            }
+        });
+        NettyHttpSession session = manager.create();
+        session.setAttribute("cart", new HttpSessionBindingListener() {
+            @Override
+            public void valueUnbound(HttpSessionBindingEvent event) {
+                session.invalidate();
+            }
+        });
+
+        assertThrows(IllegalStateException.class, () -> session.setAttribute("cart", "second"));
+
+        assertEquals(List.of("added:cart", "replaced:cart", "removed:cart"), events,
+            "every attributeRemoved must follow the add or replace that announced the value it names");
+    }
+
+    @Test
+    void aRemovalUnbindsTheValueBeforeAnnouncingItGone() {
+        // notifyRemoved's javadoc calls this ordering Tomcat's, and this class's own javadoc calls the
+        // order part of the contract -- so it needs a test, or a refactor can reverse it silently. It
+        // matters for the sibling of the case setAttribute's early announcement fixed: a valueUnbound
+        // that reads the session would otherwise run after the container was told the value was gone.
+        var events = new ArrayList<String>();
+        servletContext.addListener(new HttpSessionAttributeListener() {
+            @Override
+            public void attributeRemoved(HttpSessionBindingEvent event) {
+                events.add("attributeRemoved:" + event.getName());
+            }
+        });
+        NettyHttpSession session = manager.create();
+        session.setAttribute("cart", new HttpSessionBindingListener() {
+            @Override
+            public void valueUnbound(HttpSessionBindingEvent event) {
+                events.add("valueUnbound:" + event.getName());
+            }
+        });
+
+        session.removeAttribute("cart");
+
+        assertEquals(List.of("valueUnbound:cart", "attributeRemoved:cart"), events,
+            "the value releases itself before the container listeners hear it is gone");
+    }
+
+    @Test
+    void removingAnAbsentSessionAttributeNotifiesNothing() {
+        // The identical rule is already asserted on both sibling paths --
+        // shouldNotFireContextAttributeRemovedForAnAbsentName and
+        // removingAnAbsentRequestAttributeNotifiesNothing -- so this was an omission, not a decision.
+        var events = new ArrayList<String>();
+        servletContext.addListener(new HttpSessionAttributeListener() {
+            @Override
+            public void attributeRemoved(HttpSessionBindingEvent event) {
+                events.add(event.getName() + "=" + event.getValue());
+            }
+        });
+        NettyHttpSession session = manager.create();
+
+        session.removeAttribute("never-set");
+
+        assertTrue(events.isEmpty(), "a removal that changes nothing notifies nothing; got " + events);
+    }
+
+    @Test
+    void aThrowingSessionDestroyedListenerDoesNotAbortTheTeardown() {
+        // fireSessionDestroyed runs at the top of unbindAll, before the attribute unbind loop. If it
+        // propagated, one bad listener would abort the rest of teardown -- no attribute unbound, so every
+        // @SessionScope destruction callback and every valueUnbound skipped -- and the failure would
+        // escape into invalidate(), the sweep and the shutdown drain.
+        var unbound = new ArrayList<String>();
+        servletContext.addListener(new HttpSessionListener() {
+            @Override
+            public void sessionDestroyed(HttpSessionEvent event) {
+                throw new IllegalStateException("session registry is down");
+            }
+        });
+        NettyHttpSession session = manager.create();
+        session.setAttribute("cart", new HttpSessionBindingListener() {
+            @Override
+            public void valueUnbound(HttpSessionBindingEvent event) {
+                unbound.add(event.getName());
+            }
+        });
+
+        assertDoesNotThrow(session::invalidate);
+
+        assertEquals(List.of("cart"), unbound, "teardown must finish unbinding despite the failure");
+        assertFalse(session.hasBoundAttributes());
+    }
+
+    @Test
+    void aThrowingAttributeRemovedListenerDoesNotAbortTheTeardown() {
+        // fireSessionAttributeRemoved sits inside the same unbind loop the sessionDestroyed test protects:
+        // unbindAll -> removeIfStillBound -> notifyRemoved. notifyUnbound one line above it is already
+        // guarded, so a propagating attributeRemoved would be the last uncaught throw in that loop -- one
+        // bad listener would abort the remaining unbinds and escape into invalidate(), the sweep and the
+        // shutdown drain.
+        var unbound = new ArrayList<String>();
+        servletContext.addListener(new HttpSessionAttributeListener() {
+            @Override
+            public void attributeRemoved(HttpSessionBindingEvent event) {
+                throw new IllegalStateException("audit index is down");
+            }
+        });
+        NettyHttpSession session = manager.create();
+        for (String name : List.of("first", "second", "third")) {
+            session.setAttribute(name, new HttpSessionBindingListener() {
+                @Override
+                public void valueUnbound(HttpSessionBindingEvent event) {
+                    unbound.add(event.getName());
+                }
+            });
+        }
+
+        assertDoesNotThrow(session::invalidate);
+
+        assertEquals(Set.of("first", "second", "third"), new HashSet<>(unbound),
+            "every attribute must still be unbound; got " + unbound);
+        assertFalse(session.hasBoundAttributes());
+    }
+
+    @Test
+    void setAttributeToNullFiresRemovedRatherThanAdded() {
+        var events = new ArrayList<String>();
+        servletContext.addListener(new HttpSessionAttributeListener() {
+            @Override
+            public void attributeAdded(HttpSessionBindingEvent event) {
+                events.add("added");
+            }
+
+            @Override
+            public void attributeRemoved(HttpSessionBindingEvent event) {
+                events.add("removed:" + event.getValue());
+            }
+        });
+        NettyHttpSession session = manager.create();
+        session.setAttribute("user", "alice");
+
+        session.setAttribute("user", null);
+
+        assertEquals(List.of("added", "removed:alice"), events);
     }
 }

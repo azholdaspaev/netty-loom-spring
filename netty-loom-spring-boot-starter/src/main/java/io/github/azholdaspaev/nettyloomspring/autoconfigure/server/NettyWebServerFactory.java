@@ -65,15 +65,14 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
         servletContext.setContextPath(getContextPath());
         configureSessions();
         initializeServletContext(initializers);
+        // Before filters and servlets; see fireContextInitialized's javadoc for why that order is fixed.
+        servletContext.fireContextInitialized();
         initializeFilters();
         initializeDispatcherServlet();
-        // Only now is initialization over, so the session configuration freezes: every
-        // SessionCookieConfig and ServletContext session setter is specified to throw from here on.
-        // Deliberately after filter and servlet init rather than after the initializers -- Tomcat is
-        // still in STARTING_PREP during those, so a Filter.init that configures the session cookie
-        // starts there and must start here. Boot's SessionConfiguringInitializer runs earlier either
-        // way, and any initializer failure aborts startup before the server is returned.
-        servletContext.getSessionManager().markContextInitialized();
+        // Only now is initialization over; markInitialized's javadoc says what freezes and why it waits
+        // for filter and servlet init. Boot's SessionConfiguringInitializer runs earlier either way, and
+        // any initializer failure aborts startup before the server is returned.
+        servletContext.markInitialized();
         NettyServerConfiguration configuration = new NettyServerConfiguration(
             getPort(), getAddress(), properties.bossThreads(), properties.workerThreads(),
             properties.tcpKeepAlive());

@@ -54,6 +54,46 @@ public interface NettyServletContext extends ServletContext, AutoCloseable {
     NettySessionManager getSessionManager();
 
     /**
+     * The container-registered listeners, as filled by {@code addListener} (issue #17). Not part of the
+     * Jakarta {@code ServletContext} contract, which only accepts listeners and never hands them back:
+     * the session store and the request dispatcher both have to fire into them.
+     */
+    NettyListenerRegistry getListenerRegistry();
+
+    /**
+     * Announces that startup has reached the point where {@code ServletContextListener.contextInitialized}
+     * is due -- after the {@code ServletContextInitializer}s have registered everything, and before
+     * filters and servlets are initialized, which is the order the servlet spec and Tomcat's
+     * {@code listenerStart -> filterStart -> loadOnStartup} both use.
+     *
+     * <p>Idempotent, and paired with {@link #close()}: together they keep the two context events balanced
+     * across a stop/start cycle. Not part of the Jakarta {@code ServletContext} contract -- the container
+     * owns this transition, so nothing in the servlet API names it.
+     *
+     * <p>Abstract rather than an empty default, unlike {@link #close()} and {@link #open()}. Those are
+     * genuinely optional -- a context holding nothing open needs no teardown -- whereas an
+     * implementation that silently skipped this would fire no {@code contextInitialized}, and then no
+     * {@code contextDestroyed} either, with nothing to signal either omission.
+     */
+    void fireContextInitialized();
+
+    /**
+     * Declares startup over, freezing every part of the context that may only be configured before the
+     * application serves traffic -- session settings, the session cookie, and listener registration.
+     *
+     * <p>One call rather than one per component, because "the {@code ServletContext} has finished
+     * initializing" is a single fact. This context constructs the freezable components, so it is the one
+     * place that already knows all of them; a caller enumerating them by hand would silently miss the
+     * next one added. {@code NettySessionManager} already fans the same fact out to
+     * {@code NettySessionCookieConfig} for this reason.
+     *
+     * <p>Called after filter and servlet initialization, not with {@link #fireContextInitialized()}:
+     * Tomcat is still in {@code STARTING_PREP} during those, so a {@code Filter.init} that configures
+     * the session cookie works there and must work here.
+     */
+    void markInitialized();
+
+    /**
      * Releases whatever the context holds open -- today the session sweeper thread. On the interface
      * rather than only the implementation because owning a background thread is part of this seam:
      * whoever holds a {@code NettyServletContext} is responsible for closing it.

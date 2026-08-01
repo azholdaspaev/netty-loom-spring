@@ -4,6 +4,7 @@ import jakarta.servlet.DispatcherType;
 import jakarta.servlet.Filter;
 import jakarta.servlet.FilterRegistration;
 import jakarta.servlet.Servlet;
+import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletRegistration;
 import jakarta.servlet.SessionCookieConfig;
 import jakarta.servlet.SessionTrackingMode;
@@ -18,6 +19,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Enumeration;
+import java.util.EventListener;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -26,6 +28,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class DefaultNettyServletContext implements NettyServletContext {
 
@@ -35,9 +38,11 @@ public class DefaultNettyServletContext implements NettyServletContext {
     // seconds, so the two session-timeout methods below convert. This names that factor.
     private static final int SECONDS_PER_MINUTE = 60;
 
-    // Constructed here rather than injected: the manager needs a ServletContext for
-    // HttpSession.getServletContext(), so a separate bean would mean a cycle or two-phase init.
+    // Constructed here rather than injected: both need a ServletContext -- the manager for
+    // HttpSession.getServletContext(), the registry to name the source of every event it fires -- so a
+    // separate bean would mean a cycle or two-phase init.
     private final NettySessionManager sessionManager = new NettySessionManager(this);
+    private final NettyListenerRegistry listeners = new NettyListenerRegistry(this);
 
     private final ConcurrentMap<String, Object> attributes = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, String> initParameters = new ConcurrentHashMap<>();
@@ -49,6 +54,18 @@ public class DefaultNettyServletContext implements NettyServletContext {
     // server start, so the volatile field is sufficient for safe publication.
     private volatile List<RegisteredFilter> registeredFiltersSnapshot;
     private volatile String contextPath = ROOT_CONTEXT_PATH;
+    // Atomic because the transition, not the value, is what must happen once: close() is reachable from
+    // both SessionStoreLifecycle.stop() and the bean-destruction backstop, and each event is owed exactly
+    // one delivery. Same idiom as NettyHttpSession.markInvalidated.
+    private final AtomicReference<ListenerState> listenerState = new AtomicReference<>(ListenerState.NEW);
+
+    /**
+     * Where the listener lifecycle stands. {@code NEW} until {@code contextInitialized} has fired,
+     * {@code STARTED} between the two events, {@code STOPPED} once {@code contextDestroyed} has -- and
+     * only {@code STOPPED} is a state {@link #open()} re-initializes from, so a first start (which the
+     * factory has already initialized) is left alone.
+     */
+    private enum ListenerState { NEW, STARTED, STOPPED }
 
     @Override
     public Object getAttribute(String name) {
@@ -64,14 +81,22 @@ public class DefaultNettyServletContext implements NettyServletContext {
     public void setAttribute(String name, Object object) {
         if (object == null) {
             removeAttribute(name);
+            return;
+        }
+        Object previous = attributes.put(name, object);
+        if (previous == null) {
+            listeners.fireContextAttributeAdded(name, object);
         } else {
-            attributes.put(name, object);
+            listeners.fireContextAttributeReplaced(name, previous);
         }
     }
 
     @Override
     public void removeAttribute(String name) {
-        attributes.remove(name);
+        Object removed = attributes.remove(name);
+        if (removed != null) {
+            listeners.fireContextAttributeRemoved(name, removed);
+        }
     }
 
     @Override
@@ -172,6 +197,61 @@ public class DefaultNettyServletContext implements NettyServletContext {
         return Collections.unmodifiableList(registered);
     }
 
+    // --- Listeners: the registry is the single owner, this is registration only (issue #17) ---
+
+    @Override
+    public NettyListenerRegistry getListenerRegistry() {
+        return listeners;
+    }
+
+    @Override
+    public void addListener(String className) {
+        addListener(loadListenerClass(className));
+    }
+
+    @Override
+    public <T extends EventListener> void addListener(T t) {
+        listeners.addListener(t);
+    }
+
+    @Override
+    public void addListener(Class<? extends EventListener> listenerClass) {
+        try {
+            listeners.addListener(createListener(listenerClass));
+        } catch (ServletException e) {
+            // This overload declares no checked exception, so the instantiation failure has to arrive as
+            // an unchecked one. IllegalArgumentException is what Tomcat raises here, and it is what
+            // ServletContext.addListener already documents for a class it cannot use.
+            throw new IllegalArgumentException("Listener class " + listenerClass.getName()
+                + " could not be instantiated", e);
+        }
+    }
+
+    @Override
+    public <T extends EventListener> T createListener(Class<T> clazz) throws ServletException {
+        // The spec puts the same wrong-type clause on createListener as on addListener, and Tomcat runs
+        // the checks before instantiating. Without it an application following the documented
+        // create-customize-then-addListener idiom gets no signal until the later addListener call.
+        listeners.requireSupportedType(clazz);
+        try {
+            return clazz.getDeclaredConstructor().newInstance();
+        } catch (ReflectiveOperationException e) {
+            // Covers every way this fails: no no-arg constructor (NoSuchMethodException), abstract or an
+            // interface (InstantiationException), inaccessible (IllegalAccessException), and a
+            // constructor that throws (InvocationTargetException).
+            throw new ServletException("Failed to instantiate listener " + clazz.getName(), e);
+        }
+    }
+
+    private Class<? extends EventListener> loadListenerClass(String className) {
+        try {
+            return getClassLoader().loadClass(className).asSubclass(EventListener.class);
+        } catch (ClassNotFoundException | ClassCastException e) {
+            throw new IllegalArgumentException("Listener class " + className
+                + " could not be loaded as a java.util.EventListener", e);
+        }
+    }
+
     @Override
     public URL getResource(String path) throws MalformedURLException {
         return null;
@@ -250,13 +330,39 @@ public class DefaultNettyServletContext implements NettyServletContext {
     }
 
     @Override
+    public void markInitialized() {
+        sessionManager.markContextInitialized();
+        listeners.markInitialized();
+    }
+
+    @Override
+    public void fireContextInitialized() {
+        if (listenerState.getAndSet(ListenerState.STARTED) != ListenerState.STARTED) {
+            listeners.fireContextInitialized();
+        }
+    }
+
+    @Override
     public void close() {
         sessionManager.close();
+        // After the store is drained, matching Tomcat: StandardContext.stopInternal() stops the Manager
+        // and only then runs listenerStop, so a listener auditing live sessions on the way out is not
+        // handed a half-drained store. Guarded by the transition, not by a flag read: close() is reached
+        // both from SessionStoreLifecycle.stop() and from the bean-destruction backstop, and a startup
+        // that failed before fireContextInitialized has nothing to destroy.
+        if (listenerState.compareAndSet(ListenerState.STARTED, ListenerState.STOPPED)) {
+            listeners.fireContextDestroyed();
+        }
     }
 
     @Override
     public void open() {
         sessionManager.open();
+        // Only from STOPPED. open() also runs on a first start, where the factory has already fired
+        // contextInitialized, and re-firing there would double-initialize every listener on a normal boot.
+        if (listenerState.get() == ListenerState.STOPPED) {
+            fireContextInitialized();
+        }
     }
 
     @Override
