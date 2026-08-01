@@ -206,6 +206,8 @@ public class NettySessionManager {
         }
         // Only once the session is reachable and the refusal window has passed: a listener told about a
         // session that is about to be dropped would hold a reference no teardown will ever revisit.
+        // Fired quietly, so the entry this line has already published can never be abandoned by a
+        // listener that throws -- see fireSessionCreated.
         listeners().fireSessionCreated(session);
         return session;
     }

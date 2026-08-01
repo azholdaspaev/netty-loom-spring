@@ -617,6 +617,46 @@ class NettySessionManagerTest {
         assertEquals(List.of(id), listener.destroyed);
     }
 
+    /** A container-registered listener whose {@code sessionCreated} always fails. */
+    private static HttpSessionListener throwingOnCreate() {
+        return new HttpSessionListener() {
+            @Override
+            public void sessionCreated(HttpSessionEvent event) {
+                throw new IllegalStateException("listener is down");
+            }
+        };
+    }
+
+    @Test
+    void aThrowingSessionCreatedListenerLeavesNoUnreachableSession() {
+        // sessionCreated runs after sessions.put, so letting it propagate would abandon an entry that is
+        // still valid and whose id no client ever received: nothing invalidates or unbinds it, and it
+        // holds the store for the full idle timeout. Tomcat's tellNew() catches per listener and logs.
+        servletContext.addListener(throwingOnCreate());
+
+        NettyHttpSession session = assertDoesNotThrow(() -> manager.create(),
+            "a bystander listener must not fail the request that asked for the session");
+
+        assertSame(session, manager.find(session.getId()), "the created session must be reachable by id");
+        assertEquals(1, manager.size());
+    }
+
+    @Test
+    void aThrowingSessionCreatedListenerDoesNotStopTheOnesAfterIt() {
+        var reached = new ArrayList<String>();
+        servletContext.addListener(throwingOnCreate());
+        servletContext.addListener(new HttpSessionListener() {
+            @Override
+            public void sessionCreated(HttpSessionEvent event) {
+                reached.add("second");
+            }
+        });
+
+        manager.create();
+
+        assertEquals(List.of("second"), reached);
+    }
+
     @Test
     void changeIdFiresSessionIdChangedWithTheOldId() {
         var listener = recordSessions();
