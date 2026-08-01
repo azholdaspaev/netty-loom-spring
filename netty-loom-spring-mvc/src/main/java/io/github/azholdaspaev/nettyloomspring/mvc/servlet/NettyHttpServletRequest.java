@@ -597,15 +597,23 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     @Override
     public void setAttribute(String name, Object o) {
         if (o == null) {
-            attributes.remove(name);
+            removeAttribute(name);
+            return;
+        }
+        Object previous = attributes.put(name, o);
+        if (previous == null) {
+            servletContext.getListenerRegistry().fireRequestAttributeAdded(this, name, o);
         } else {
-            attributes.put(name, o);
+            servletContext.getListenerRegistry().fireRequestAttributeReplaced(this, name, previous);
         }
     }
 
     @Override
     public void removeAttribute(String name) {
-        attributes.remove(name);
+        Object removed = attributes.remove(name);
+        if (removed != null) {
+            servletContext.getListenerRegistry().fireRequestAttributeRemoved(this, name, removed);
+        }
     }
 
     @Override

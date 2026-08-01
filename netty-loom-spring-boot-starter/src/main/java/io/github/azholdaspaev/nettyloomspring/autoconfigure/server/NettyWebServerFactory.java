@@ -65,6 +65,8 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
         servletContext.setContextPath(getContextPath());
         configureSessions();
         initializeServletContext(initializers);
+        // Before filters and servlets; see fireContextInitialized's javadoc for why that order is fixed.
+        servletContext.fireContextInitialized();
         initializeFilters();
         initializeDispatcherServlet();
         // Only now is initialization over, so the session configuration freezes: every
@@ -74,6 +76,8 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
         // starts there and must start here. Boot's SessionConfiguringInitializer runs earlier either
         // way, and any initializer failure aborts startup before the server is returned.
         servletContext.getSessionManager().markContextInitialized();
+        // Listener registration closes on the same beat, for the reason markInitialized's javadoc gives.
+        servletContext.getListenerRegistry().markInitialized();
         NettyServerConfiguration configuration = new NettyServerConfiguration(
             getPort(), getAddress(), properties.bossThreads(), properties.workerThreads(),
             properties.tcpKeepAlive());
