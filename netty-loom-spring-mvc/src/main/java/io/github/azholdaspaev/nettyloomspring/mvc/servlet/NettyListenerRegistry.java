@@ -37,9 +37,11 @@ import java.util.function.Consumer;
  * #markInitialized()} enforces that -- but the reads are per-request, and copy-on-write names its own
  * guard with no snapshot to invalidate and no chance of publishing a half-built list.
  *
- * <p>{@code HttpSessionActivationListener} and {@code AsyncListener} are deliberately absent: there is no
- * passivation (sessions are in-memory only) and no async support, so registering either would be
- * accepting a listener nothing could ever fire.
+ * <p>The seven types below are the complete set {@code ServletContext.addListener} accepts.
+ * {@code HttpSessionActivationListener} is registered by being bound as a session attribute and
+ * {@code AsyncListener} through {@code AsyncContext.addListener}, so neither belongs here in any
+ * container -- rejecting them is the spec's plain wrong-type rejection, not a consequence of anything
+ * this container has yet to build.
  */
 public class NettyListenerRegistry {
 
@@ -355,12 +357,21 @@ public class NettyListenerRegistry {
     /**
      * Runs every listener, logging and continuing when one fails.
      *
-     * <p>Used for teardown, where no caller is in a position to handle a failure, and for the attribute
-     * events, which are observation rather than participation. That is not in tension with
-     * {@code setAttribute} letting {@code valueBound} propagate: {@code HttpSessionBindingListener} is
-     * the stored value's own resource protocol -- a failed bind leaves something half-acquired --
-     * whereas an {@code *AttributeListener} is a bystander with nothing to unwind. Tomcat draws the same
-     * line. The events that must propagate instead call {@code forEach} directly.
+     * <p>This is the default. An event is fired quietly whenever the listener is a <em>bystander</em>:
+     * told about a change that has already committed, that it cannot refuse, and that no caller is in a
+     * position to undo. Every event here is one of those -- both teardown passes, the id rotation, the
+     * session creation, and all nine attribute events.
+     *
+     * <p>Only two events propagate, and both are reached before anything has committed:
+     * {@code contextInitialized}, where the application must not start half-configured, and
+     * {@code requestInitialized}, where the servlet must not run without its request scope. Each is
+     * written as its own loop rather than a call to this method, and each releases what it already
+     * notified before the failure leaves.
+     *
+     * <p>That split is not in tension with {@code setAttribute} letting {@code valueBound} propagate:
+     * {@code HttpSessionBindingListener} is the stored value's own resource protocol -- a failed bind
+     * leaves something half-acquired -- whereas a container-registered listener has nothing to unwind.
+     * Tomcat draws the same line.
      */
     private static <T> void fireQuietly(List<T> listeners, String description, Consumer<T> callback) {
         for (T listener : listeners) {

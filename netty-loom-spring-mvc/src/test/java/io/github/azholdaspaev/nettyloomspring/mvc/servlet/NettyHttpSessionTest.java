@@ -490,6 +490,33 @@ class NettyHttpSessionTest {
     }
 
     @Test
+    void aThrowingSessionDestroyedListenerDoesNotAbortTheTeardown() {
+        // fireSessionDestroyed runs at the top of unbindAll, before the attribute unbind loop. If it
+        // propagated, one bad listener would abort the rest of teardown -- no attribute unbound, so every
+        // @SessionScope destruction callback and every valueUnbound skipped -- and the failure would
+        // escape into invalidate(), the sweep and the shutdown drain.
+        var unbound = new ArrayList<String>();
+        servletContext.addListener(new HttpSessionListener() {
+            @Override
+            public void sessionDestroyed(HttpSessionEvent event) {
+                throw new IllegalStateException("session registry is down");
+            }
+        });
+        NettyHttpSession session = manager.create();
+        session.setAttribute("cart", new HttpSessionBindingListener() {
+            @Override
+            public void valueUnbound(HttpSessionBindingEvent event) {
+                unbound.add(event.getName());
+            }
+        });
+
+        assertDoesNotThrow(session::invalidate);
+
+        assertEquals(List.of("cart"), unbound, "teardown must finish unbinding despite the failure");
+        assertFalse(session.hasBoundAttributes());
+    }
+
+    @Test
     void setAttributeToNullFiresRemovedRatherThanAdded() {
         var events = new ArrayList<String>();
         servletContext.addListener(new HttpSessionAttributeListener() {
