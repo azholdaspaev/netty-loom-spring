@@ -20,12 +20,14 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.EventListener;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -387,6 +389,42 @@ class NettyListenerRegistryTest {
         assertDoesNotThrow(() -> registry.fireContextDestroyed());
 
         assertEquals(List.of("contextDestroyed:survivor"), events);
+    }
+
+    /** Delivers a checked exception where the compiler thinks none can occur, as Kotlin and Lombok do. */
+    @SuppressWarnings("unchecked")
+    private static <T extends Throwable> void sneakyThrow(Throwable failure) throws T {
+        throw (T) failure;
+    }
+
+    @Test
+    void aCheckedExceptionFromAListenerKeepsItsDiagnosis() {
+        // contextInitialized declares no checked exception, but that binds the Java compiler, not the
+        // runtime: a listener written in Kotlin -- which has no checked exceptions -- or one using
+        // Lombok's @SneakyThrows delivers an IOException here. The widened catch admits it, so the
+        // rethrow needs somewhere to put it; a bare cast to RuntimeException would throw
+        // ClassCastException and take the real failure and everything attached to it with it.
+        registry.addListener(new ServletContextListener() {
+            @Override
+            public void contextInitialized(ServletContextEvent event) {
+                sneakyThrow(new IOException("listener could not read its config"));
+            }
+        });
+        registry.addListener(new ServletContextListener() {
+            @Override
+            public void contextInitialized(ServletContextEvent event) {
+                throw new IllegalStateException("second failure");
+            }
+        });
+
+        RuntimeException thrown =
+            assertThrows(RuntimeException.class, () -> registry.fireContextInitialized());
+
+        Throwable cause = thrown.getCause();
+        assertInstanceOf(IOException.class, cause, "the checked failure must survive as the cause");
+        assertEquals("listener could not read its config", cause.getMessage());
+        assertEquals(1, cause.getSuppressed().length,
+            "the later failure must still be attached rather than destroyed with it");
     }
 
     @Test
