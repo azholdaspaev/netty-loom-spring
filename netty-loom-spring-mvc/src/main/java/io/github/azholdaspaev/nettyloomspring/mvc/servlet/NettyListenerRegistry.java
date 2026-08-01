@@ -192,6 +192,9 @@ public class NettyListenerRegistry {
             try {
                 listener.contextInitialized(event);
             } catch (Throwable thrown) {
+                // Straight out, without initializing what is left: there is no point continuing a
+                // startup pass on a JVM that has already failed.
+                rethrowIfFatal(thrown);
                 if (failure == null) {
                     failure = thrown;
                 } else {
@@ -428,12 +431,28 @@ public class NettyListenerRegistry {
         try {
             callback.accept(listener);
         } catch (Throwable failure) {
-            // Throwable, matching NettySessionManager.sweepQuietly: an application listener raising
-            // NoClassDefFoundError is enough, and on the teardown paths this runs on there is no caller
-            // in a position to handle it.
-            // Per listener, not per event: one bad listener aborting the loop would silently skip
-            // every listener registered after it, on every occurrence, for the life of the JVM.
+            // Per listener, not per event: one bad listener aborting the loop would silently skip every
+            // listener registered after it, on every occurrence, for the life of the JVM. Throwable
+            // rather than RuntimeException because an application listener raising NoClassDefFoundError
+            // is enough to do that -- but a VM error is not this method's to swallow.
+            rethrowIfFatal(failure);
             log.warn("{} failed on {}", description, listener.getClass().getName(), failure);
+        }
+    }
+
+    /**
+     * Lets a {@code VirtualMachineError} out of a pass that otherwise logs and continues.
+     *
+     * <p>The pairing Tomcat applies at every {@code catch (Throwable)} via
+     * {@code ExceptionUtils.handleThrowable}, and what makes the wide catch safe: swallowing
+     * {@code NoClassDefFoundError} keeps a broken listener from stranding the ones after it, whereas
+     * swallowing {@code OutOfMemoryError} keeps the container serving on a JVM that has already failed.
+     * {@code log.warn} allocates, so continuing past one would usually fail there anyway -- silently,
+     * and on the path where determinism matters most.
+     */
+    private static void rethrowIfFatal(Throwable failure) {
+        if (failure instanceof VirtualMachineError error) {
+            throw error;
         }
     }
 }

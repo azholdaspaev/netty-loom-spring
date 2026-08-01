@@ -452,6 +452,39 @@ class NettyListenerRegistryTest {
     }
 
     @Test
+    void aVirtualMachineErrorIsNotSwallowedByAQuietPass() {
+        // catch (Throwable) is right for NoClassDefFoundError and wrong for OutOfMemoryError: logging a
+        // VM error at WARN and carrying on leaves the container running on a JVM that has already
+        // failed, and log.warn allocates, so the next one escapes anyway. Tomcat pairs every
+        // catch (Throwable) with handleThrowable, which rethrows VirtualMachineError first.
+        registry.addListener(new RecordingListener("survivor"));
+        registry.addListener(new ServletContextListener() {
+            @Override
+            public void contextDestroyed(ServletContextEvent event) {
+                throw new OutOfMemoryError("Java heap space");
+            }
+        });
+
+        assertThrows(OutOfMemoryError.class, () -> registry.fireContextDestroyed());
+    }
+
+    @Test
+    void aLinkageErrorIsStillSwallowedByAQuietPass() {
+        // The case the widened catch exists for, and the line between the two.
+        registry.addListener(new RecordingListener("survivor"));
+        registry.addListener(new ServletContextListener() {
+            @Override
+            public void contextDestroyed(ServletContextEvent event) {
+                throw new NoClassDefFoundError("com/example/Missing");
+            }
+        });
+
+        assertDoesNotThrow(() -> registry.fireContextDestroyed());
+
+        assertEquals(List.of("contextDestroyed:survivor"), events);
+    }
+
+    @Test
     void aFailingAttributeListenerDoesNotBreakTheMutationThatTriggeredIt() {
         // Attribute listeners are observers, not participants: unlike HttpSessionBindingListener, which is
         // the value's own resource protocol, nothing is left half-bound when one of these fails.
