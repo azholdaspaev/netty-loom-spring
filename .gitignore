@@ -44,3 +44,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Per-change scratch from the /flow:* commands. The commands themselves are committed;
+# the findings they accumulate are not.
+.claude/.flow-findings.md
