@@ -195,14 +195,40 @@ public class NettyListenerRegistry {
     // application that registers no request listener allocates no event and no lambda at all. The
     // context and session events are startup- or per-session-scoped and need no such guard.
 
+    /**
+     * Notifies every request listener, or none: a failure releases the prefix that did initialize before
+     * it propagates.
+     *
+     * <p>The unwind is what makes {@code requestDestroyed} a release rather than a notification. The
+     * dispatcher fires this outside its {@code try}, so a failure here never reaches the {@code finally}
+     * -- without the unwind, a listener that ran before the failing one would keep whatever it acquired.
+     * {@code RequestContextListener} is the case that bites: its {@code requestInitialized} binds
+     * {@code ServletRequestAttributes}, and only its {@code requestDestroyed} runs the destruction
+     * callbacks of the {@code @RequestScope} beans that dispatch created.
+     */
     public void fireRequestInitialized(ServletRequest request) {
         if (requestListeners.isEmpty()) {
             return;
         }
         ServletRequestEvent event = new ServletRequestEvent(servletContext, request);
-        // Propagates, so the dispatcher's exception handling turns it into a status code: a listener that
-        // failed to set up request scope has left the servlet unable to run correctly.
-        requestListeners.forEach(listener -> listener.requestInitialized(event));
+        // Indexed so the unwind knows exactly how far it got; on failure `notified` is the failing index,
+        // so the listeners below it are the ones owed a release.
+        int notified = 0;
+        try {
+            for (; notified < requestListeners.size(); notified++) {
+                requestListeners.get(notified).requestInitialized(event);
+            }
+        } catch (RuntimeException failure) {
+            // Newest first, matching the destroy order everywhere else. Quietly, because this is already
+            // the failure path and `failure` is the one the caller needs to see.
+            for (int i = notified - 1; i >= 0; i--) {
+                notify(requestListeners.get(i), "ServletRequestListener.requestDestroyed",
+                    listener -> listener.requestDestroyed(event));
+            }
+            // Propagates, so the dispatcher's exception handling turns it into a status code: a listener
+            // that failed to set up request scope has left the servlet unable to run correctly.
+            throw failure;
+        }
     }
 
     public void fireRequestDestroyed(ServletRequest request) {

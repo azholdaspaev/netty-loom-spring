@@ -151,4 +151,63 @@ class SpringHttpRequestDispatcherTest {
 
         assertTrue(events.isEmpty(), "the servlet must not run once request setup has failed");
     }
+
+    @Test
+    void aListenerInitializedBeforeAFailingOneIsStillReleased() {
+        // requestDestroyed is a release, not a notification: RequestContextListener.requestDestroyed runs
+        // the destruction callbacks of every @RequestScope bean the dispatch created. fireRequestInitialized
+        // runs before the try, so a later listener throwing would skip the finally entirely and leave the
+        // earlier one's request scope bound with its @PreDestroy methods never run.
+        servletContext.addListener(new ServletRequestListener() {
+            @Override
+            public void requestInitialized(ServletRequestEvent event) {
+                events.add("first:initialized");
+            }
+
+            @Override
+            public void requestDestroyed(ServletRequestEvent event) {
+                events.add("first:destroyed");
+            }
+        });
+        servletContext.addListener(new ServletRequestListener() {
+            @Override
+            public void requestInitialized(ServletRequestEvent event) {
+                throw new IllegalStateException("boom");
+            }
+        });
+        var dispatcher = dispatcher((request, response) -> events.add("service"));
+
+        assertThrows(IllegalStateException.class, () -> dispatcher.handle(get("/api/ping"), CONNECTION));
+
+        assertEquals(List.of("first:initialized", "first:destroyed"), events,
+            "the prefix that did initialize must be released before the failure leaves");
+    }
+
+    @Test
+    void aListenerThatNeverInitializedIsNotDestroyed() {
+        // The other half of the same rule: releasing a listener that was never set up is what the
+        // symmetric contextInitialized fix exists to prevent, and it applies per request too.
+        servletContext.addListener(new ServletRequestListener() {
+            @Override
+            public void requestInitialized(ServletRequestEvent event) {
+                throw new IllegalStateException("boom");
+            }
+
+            @Override
+            public void requestDestroyed(ServletRequestEvent event) {
+                events.add("failing:destroyed");
+            }
+        });
+        servletContext.addListener(new ServletRequestListener() {
+            @Override
+            public void requestDestroyed(ServletRequestEvent event) {
+                events.add("later:destroyed");
+            }
+        });
+        var dispatcher = dispatcher((request, response) -> events.add("service"));
+
+        assertThrows(IllegalStateException.class, () -> dispatcher.handle(get("/api/ping"), CONNECTION));
+
+        assertTrue(events.isEmpty(), "nothing initialized, so nothing may be released; got " + events);
+    }
 }
