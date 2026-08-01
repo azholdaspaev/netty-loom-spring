@@ -13,7 +13,9 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -559,6 +561,37 @@ class NettyHttpSessionTest {
         assertDoesNotThrow(session::invalidate);
 
         assertEquals(List.of("cart"), unbound, "teardown must finish unbinding despite the failure");
+        assertFalse(session.hasBoundAttributes());
+    }
+
+    @Test
+    void aThrowingAttributeRemovedListenerDoesNotAbortTheTeardown() {
+        // fireSessionAttributeRemoved sits inside the same unbind loop the sessionDestroyed test protects:
+        // unbindAll -> removeIfStillBound -> notifyRemoved. notifyUnbound one line above it is already
+        // guarded, so a propagating attributeRemoved would be the last uncaught throw in that loop -- one
+        // bad listener would abort the remaining unbinds and escape into invalidate(), the sweep and the
+        // shutdown drain.
+        var unbound = new ArrayList<String>();
+        servletContext.addListener(new HttpSessionAttributeListener() {
+            @Override
+            public void attributeRemoved(HttpSessionBindingEvent event) {
+                throw new IllegalStateException("audit index is down");
+            }
+        });
+        NettyHttpSession session = manager.create();
+        for (String name : List.of("first", "second", "third")) {
+            session.setAttribute(name, new HttpSessionBindingListener() {
+                @Override
+                public void valueUnbound(HttpSessionBindingEvent event) {
+                    unbound.add(event.getName());
+                }
+            });
+        }
+
+        assertDoesNotThrow(session::invalidate);
+
+        assertEquals(Set.of("first", "second", "third"), new HashSet<>(unbound),
+            "every attribute must still be unbound; got " + unbound);
         assertFalse(session.hasBoundAttributes());
     }
 
