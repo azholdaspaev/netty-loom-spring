@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.EventListener;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -195,6 +196,35 @@ class NettyListenerRegistryTest {
 
         assertTrue(failure.getMessage().contains(ServletContextListener.class.getName()),
             "the message must name the types that are accepted; got " + failure.getMessage());
+    }
+
+    @Test
+    void aContextListenerCannotRegisterOnceTheInitPassHasStarted() {
+        // The two passes read the list differently: fireContextInitialized iterates a CopyOnWriteArrayList
+        // with an enhanced-for, whose iterator is a snapshot taken at loop entry, while fireQuietlyReversed
+        // indexes it live. A ServletContextListener added in between would therefore miss
+        // contextInitialized and still receive contextDestroyed -- the exact state the init pass exists to
+        // prevent. The spec closes this at registration, and Tomcat clears
+        // newServletContextListenerAllowed immediately before listenerStart fires.
+        registry.fireContextInitialized();
+
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+            () -> registry.addListener(new RecordingListener("late")));
+
+        assertTrue(failure.getMessage().contains(ServletContextListener.class.getSimpleName()),
+            "the message must name the type that is now refused; got " + failure.getMessage());
+    }
+
+    @Test
+    void theOtherSixTypesStillRegisterDuringFilterAndServletInit() {
+        // markInitialized is deliberately later than the init pass so a Filter.init can still configure
+        // the container. Only ServletContextListener closes early, because only it has already fired.
+        registry.fireContextInitialized();
+
+        assertDoesNotThrow(() -> registry.addListener((HttpSessionIdListener) (event, oldId) -> {
+        }), "a session id listener has nothing it has already missed");
+        assertDoesNotThrow(() -> registry.addListener(new ServletRequestListener() {
+        }), "no request has been served yet");
     }
 
     @Test
