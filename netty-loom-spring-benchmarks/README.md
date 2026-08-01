@@ -39,6 +39,13 @@ Endpoints:
 - `GET /work` → `Thread.sleep(50)` then small JSON — a **blocking** 50ms call simulating a database
   round-trip. This is the Loom scenario: a parked virtual thread is cheap; a parked platform thread
   pins an OS thread from a bounded pool (~200).
+- `GET /work-secured` → the same 50ms sleep, behind Spring Security's `formLogin()` chain. Both apps
+  scope `securityMatcher` to the secured paths, so `/ping` and `/work` stay outside the chain and
+  scenarios 1 and 2 stay broadly comparable to snapshots taken before Security was added. Not
+  *identical*, though: Boot registers `DelegatingFilterProxy` at `/*` regardless, so every request
+  still pays proxy dispatch and `StrictHttpFirewall` validation before falling through. That cost is
+  small but unmeasured, and it lands hardest on `/ping`, where per-request work is otherwise near
+  zero.
 
 ## Scenarios
 
@@ -47,9 +54,25 @@ Endpoints:
 2. **High-concurrency blocking I/O** (`k6/high-concurrency.js`) — N VUs (default 10,000) each looping
    `GET /work`. With keep-alive on, **1 VU ≈ 1 persistent connection ≈ 1 in-flight blocked request**,
    which is what makes the server-side memory-per-connection measurement meaningful.
+3. **High-concurrency behind Spring Security** (`k6/high-concurrency-secured.js`) — the same shape as
+   scenario 2 against `/work-secured`. Each VU logs in once through the generated form (CSRF token
+   scraped from the login page) and then replays its session cookie for the rest of the run, so the
+   steady state measures an authenticated request through the whole filter chain rather than the
+   login. The scenario-2 vs scenario-3 delta on the same target and run is what the chain costs.
 
-Both scenarios report **p50 / p95 / p99 latency** and **error rate**. Error rate is the only hard
+All three report **p50 / p95 / p99 latency** and **error rate**. Error rate is the only hard
 threshold; latency is measured, not gated (measuring it is the point).
+
+> **Reading scenario 3, and one trap it is built to avoid.** If the VUs are not actually
+> authenticated, every request becomes a cheap redirect to `/login` — *higher* throughput, *lower*
+> latency, and 0% transport errors, because k6 counts a 302 as a successful response. It reads
+> exactly like a win. Three things stop it being published: the work request sets `redirects: 0`, so
+> an unauthenticated request is recorded as the 302 it is rather than followed to the login page's
+> 200; the `checks` threshold gates the run on every steady-state response being a real 200; and
+> `summarize.py` refuses to publish numbers for any target whose checks failed or that issued no
+> steady-state requests, rendering the row as `invalid` instead. Note also that k6 clears its cookie
+> jar at the **start of every iteration** — the session id is therefore carried in a module-scoped
+> variable and sent as an explicit header, not left to the jar.
 
 ## What gets measured, and why these three metrics
 
@@ -106,14 +129,20 @@ ulimit -n 200000
 VUS=10000 DURATION=60s SETTLE=35 bash scripts/run-all.sh
 ```
 
-This starts each target with identical JVM flags, waits for health, samples idle memory, runs both
-scenarios while sampling memory under load, tears the target down, drains, and repeats. It then writes
-[`results/SNAPSHOT.md`](results/SNAPSHOT.md). Raw k6 exports and memory CSVs land in `results/` and are
-git-ignored; only the curated snapshot is committed.
+This starts each target with identical JVM flags, waits for health, samples idle memory, runs all
+three scenarios while sampling memory under load, tears the target down, drains, and repeats. It then
+writes [`results/SNAPSHOT.md`](results/SNAPSHOT.md). Raw k6 exports and memory CSVs land in
+`results/` and are git-ignored; only the curated snapshot is committed.
 
-Knobs (env vars): `VUS` (connections for scenario 2), `DURATION` (steady-state plateau), `RAMP`
-(warmup ramp, trimmed when interpreting steady state), `SETTLE` (inter-target drain seconds),
-`JAVA_FLAGS` (applied **identically** to all three for a fair memory comparison).
+Knobs (env vars): `VUS` (connections for scenarios 2 and 3), `DURATION` (steady-state plateau),
+`RAMP` (warmup ramp, trimmed when interpreting steady state), `SETTLE` (drain seconds, applied both
+between targets and between scenarios 2 and 3), `JAVA_FLAGS` (applied **identically** to all three
+for a fair memory comparison), `RESULTS_DIR` (where artifacts and the snapshot are written — point
+it at a versioned subdirectory to keep a release's numbers).
+
+`SETTLE` matters more now that each target runs two high-VU scenarios back to back: scenario 2 leaves
+roughly `VUS` client sockets in TIME_WAIT just as scenario 3 asks for `VUS` more. Under-settling shows
+up as connection failures in the secured run and reads like a Security problem.
 
 ### Run one target by hand
 
@@ -123,7 +152,11 @@ java -jar ../netty-loom-spring-example-tomcat/build/libs/*.jar --spring.profiles
 java -jar ../netty-loom-spring-example-tomcat/build/libs/*.jar --spring.profiles.active=virtual   # :18082
 
 k6 run --env BASE_URL=http://localhost:18080 --env VUS=10000 k6/high-concurrency.js
+k6 run --env BASE_URL=http://localhost:18080 --env VUS=10000 k6/high-concurrency-secured.js
 ```
+
+The secured scenario logs in as `bench`/`bench` (set in each example app's `application.properties`,
+overridable with `--env USERNAME=... --env PASSWORD=...`).
 
 ## Interpreting results — and how to keep yourself honest
 
