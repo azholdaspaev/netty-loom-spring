@@ -207,29 +207,34 @@ public class NettyHttpSession implements HttpSession {
             published[0] = !invalidated.get();
             return published[0] ? value : existing;
         });
-        // Re-binding the identical instance is not an unbind -- the value is still bound.
-        if (published[0] && previous[0] != value && previous[0] instanceof HttpSessionBindingListener listener) {
-            notifyUnbound(listener, name, previous[0]);
-        }
         if (!published[0]) {
             // The teardown claimed this key first, so it never saw this value. Anything *this* call bound
             // is therefore ours to release; a re-bind that fired no valueBound has nothing to pair with.
+            // Nothing was published, so the container announces nothing either.
             if (bound && value instanceof HttpSessionBindingListener listener) {
                 notifyUnbound(listener, name, value);
             }
             throw new IllegalStateException("Session " + id + " has been invalidated");
+        }
+        // Announced as soon as the map changed, and deliberately before either callback below: both run
+        // application code that may invalidate the session, and the claim-back that then follows notifies
+        // attributeRemoved. Firing later would let that removal be the first a listener hears of this
+        // value -- one maintaining an index would be told to remove something it was never told about.
+        // This is why the order differs from Tomcat's, which unbinds the displaced value first.
+        if (previous[0] == null) {
+            manager.listeners().fireSessionAttributeAdded(this, name, value);
+        } else {
+            manager.listeners().fireSessionAttributeReplaced(this, name, previous[0]);
+        }
+        // Re-binding the identical instance is not an unbind -- the value is still bound.
+        if (previous[0] != value && previous[0] instanceof HttpSessionBindingListener listener) {
+            notifyUnbound(listener, name, previous[0]);
         }
         if (invalidated.get()) {
             // Published, and only then invalidated. Claim the value back -- and if the teardown got there
             // first, remove(key, value) fails and it is that claim, not this one, that notified.
             removeIfStillBound(name, value);
             throw new IllegalStateException("Session " + id + " has been invalidated");
-        }
-        // Only on the success path: every failure above throws.
-        if (previous[0] == null) {
-            manager.listeners().fireSessionAttributeAdded(this, name, value);
-        } else {
-            manager.listeners().fireSessionAttributeReplaced(this, name, previous[0]);
         }
     }
 

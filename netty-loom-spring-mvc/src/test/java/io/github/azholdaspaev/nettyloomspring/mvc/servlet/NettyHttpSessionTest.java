@@ -449,6 +449,47 @@ class NettyHttpSessionTest {
     }
 
     @Test
+    void anAttributeClaimedBackByInvalidationWasAnnouncedFirst() {
+        // The claim-back branch: compute publishes while the session is still valid, the session is
+        // invalidated a moment later, and setAttribute takes the value back -- notifying attributeRemoved.
+        // The add or replace it pairs with must already have been announced, or a listener maintaining an
+        // index (get(name).remove(value)) is told to remove something it was never told about.
+        //
+        // Deterministic rather than threaded: the displaced value's own valueUnbound is application code
+        // that setAttribute runs after compute has published, which is exactly the window a concurrent
+        // invalidate() occupies.
+        var events = new ArrayList<String>();
+        servletContext.addListener(new HttpSessionAttributeListener() {
+            @Override
+            public void attributeAdded(HttpSessionBindingEvent event) {
+                events.add("added:" + event.getName());
+            }
+
+            @Override
+            public void attributeReplaced(HttpSessionBindingEvent event) {
+                events.add("replaced:" + event.getName());
+            }
+
+            @Override
+            public void attributeRemoved(HttpSessionBindingEvent event) {
+                events.add("removed:" + event.getName());
+            }
+        });
+        NettyHttpSession session = manager.create();
+        session.setAttribute("cart", new HttpSessionBindingListener() {
+            @Override
+            public void valueUnbound(HttpSessionBindingEvent event) {
+                session.invalidate();
+            }
+        });
+
+        assertThrows(IllegalStateException.class, () -> session.setAttribute("cart", "second"));
+
+        assertEquals(List.of("added:cart", "replaced:cart", "removed:cart"), events,
+            "every attributeRemoved must follow the add or replace that announced the value it names");
+    }
+
+    @Test
     void setAttributeToNullFiresRemovedRatherThanAdded() {
         var events = new ArrayList<String>();
         servletContext.addListener(new HttpSessionAttributeListener() {
