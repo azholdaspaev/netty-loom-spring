@@ -108,10 +108,21 @@ public class NettyListenerRegistry {
         supported |= fileUnder(listener, HttpSessionAttributeListener.class, sessionAttributeListeners);
         supported |= fileUnder(listener, HttpSessionIdListener.class, sessionIdListeners);
         if (!supported) {
-            throw new IllegalArgumentException(listener.getClass().getName() + " implements none of the "
-                + "listener interfaces netty-loom-spring fires: " + SUPPORTED_TYPES.stream()
-                .map(Class::getName).toList());
+            throw new IllegalArgumentException(unsupportedTypeMessage(listener.getClass()));
         }
+    }
+
+    /**
+     * Whether {@code type} implements any interface {@link #addListener} accepts. Package-private so
+     * {@code createListener} can apply the spec's identical clause without restating the list.
+     */
+    static boolean isSupportedType(Class<?> type) {
+        return SUPPORTED_TYPES.stream().anyMatch(supported -> supported.isAssignableFrom(type));
+    }
+
+    static String unsupportedTypeMessage(Class<?> type) {
+        return type.getName() + " implements none of the listener interfaces netty-loom-spring fires: "
+            + SUPPORTED_TYPES.stream().map(Class::getName).toList();
     }
 
     /**

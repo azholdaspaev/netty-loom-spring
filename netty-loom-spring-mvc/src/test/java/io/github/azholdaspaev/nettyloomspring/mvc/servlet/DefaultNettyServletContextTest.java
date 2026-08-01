@@ -718,6 +718,27 @@ class DefaultNettyServletContextTest {
     }
 
     @Test
+    void shouldRejectAListenerClassThatCannotBeInstantiated() {
+        // The overload that wraps createListener was untested: emptying its catch block left the suite
+        // green and turned addListener(Class) into a silent no-op, which is exactly the "application
+        // starts believing it is wired up" failure the registry throws to avoid.
+        var thrown = assertThrows(IllegalArgumentException.class,
+            () -> context.addListener(UninstantiableListener.class));
+
+        assertTrue(thrown.getMessage().contains(UninstantiableListener.class.getName()),
+            "the message must name the class that could not be built; got " + thrown.getMessage());
+    }
+
+    @Test
+    void shouldRejectCreatingAListenerOfNoSupportedType() {
+        // Spec clause on createListener: IllegalArgumentException if the class implements none of the
+        // seven types. Tomcat runs the same seven instanceof tests before returning. Without it, an
+        // application following the spec's create-customize-then-addListener idiom gets no signal at the
+        // point the spec puts one.
+        assertThrows(IllegalArgumentException.class, () -> context.createListener(UnsupportedListener.class));
+    }
+
+    @Test
     void shouldCreateListenerWithItsNoArgConstructor() throws Exception {
         assertInstanceOf(StubContextListener.class, context.createListener(StubContextListener.class));
     }
@@ -943,5 +964,9 @@ class DefaultNettyServletContextTest {
         UninstantiableListener() {
             throw new IllegalStateException("cannot be built");
         }
+    }
+
+    /** A legal EventListener, but none of the seven types addListener accepts. */
+    static class UnsupportedListener implements java.util.EventListener {
     }
 }
