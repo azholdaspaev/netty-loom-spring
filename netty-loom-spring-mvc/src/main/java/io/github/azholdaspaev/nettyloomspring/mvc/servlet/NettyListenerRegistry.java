@@ -48,9 +48,17 @@ public class NettyListenerRegistry {
     private static final Logger log = LoggerFactory.getLogger(NettyListenerRegistry.class);
 
     /**
-     * The interfaces {@link #addListener} accepts. Held as a list purely so the rejection message can
-     * name them -- the classification below tests each one directly, because a reflective dispatch would
-     * buy nothing and cost the compiler's check that every accepted type has a bucket.
+     * The interfaces {@link #addListener} accepts.
+     *
+     * <p>Two things read it: the rejection message, and {@link #requireSupportedType(Class)}, which is
+     * the only way to answer the question for a {@code Class} that has not been instantiated yet. The
+     * <em>filing</em> below does not -- it tests each interface directly, so the compiler still checks
+     * that every accepted type has a bucket of the matching element type, which a reflective dispatch
+     * over this list would give up.
+     *
+     * <p>So a new listener interface has to be added in both places. Adding it to the buckets and not
+     * here makes {@code createListener} refuse a type {@code addListener(EventListener)} accepts; adding
+     * it here and not to the buckets accepts a listener nothing will ever fire.
      */
     private static final List<Class<? extends EventListener>> SUPPORTED_TYPES = List.of(
         ServletContextListener.class, ServletContextAttributeListener.class,
@@ -113,14 +121,20 @@ public class NettyListenerRegistry {
     }
 
     /**
-     * Whether {@code type} implements any interface {@link #addListener} accepts. Package-private so
-     * {@code createListener} can apply the spec's identical clause without restating the list.
+     * Rejects a type implementing none of the interfaces {@link #addListener} accepts.
+     *
+     * <p>Package-private so {@code createListener} can apply the spec's identical clause without
+     * restating the list. Check and throw together, matching {@link #requireNotInitialized()}: a caller
+     * handed a bare predicate and a separate message builder has to pair them correctly, and one that
+     * forgets the throw still compiles.
      */
-    static boolean isSupportedType(Class<?> type) {
-        return SUPPORTED_TYPES.stream().anyMatch(supported -> supported.isAssignableFrom(type));
+    void requireSupportedType(Class<?> type) {
+        if (SUPPORTED_TYPES.stream().noneMatch(supported -> supported.isAssignableFrom(type))) {
+            throw new IllegalArgumentException(unsupportedTypeMessage(type));
+        }
     }
 
-    static String unsupportedTypeMessage(Class<?> type) {
+    private static String unsupportedTypeMessage(Class<?> type) {
         return type.getName() + " implements none of the listener interfaces netty-loom-spring fires: "
             + SUPPORTED_TYPES.stream().map(Class::getName).toList();
     }
