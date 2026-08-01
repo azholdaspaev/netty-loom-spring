@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Orchestrate the three-way benchmark: for each target, start it with identical JVM flags,
-# wait for health, sample idle memory, run the low- and high-concurrency k6 scenarios while
-# sampling memory under load, then tear it down before starting the next. Finally render a
-# committed Markdown snapshot.
+# wait for health, sample idle memory, run the low-, high- and secured high-concurrency k6
+# scenarios while sampling memory under load, then tear it down before starting the next. Finally
+# render a committed Markdown snapshot.
 #
 # Targets:
 #   netty-loom        :18080  (this library's starter)
@@ -10,10 +10,12 @@
 #   tomcat-virtual    :18082  (spring.threads.virtual.enabled=true)
 #
 # Knobs (env vars):
-#   VUS        concurrent connections for the high-concurrency run   (default 10000)
-#   DURATION   steady-state plateau                                   (default 60s)
-#   RAMP       warmup ramp to VUS                                     (default 15s)
-#   JAVA_FLAGS JVM flags applied IDENTICALLY to all three targets
+#   VUS         concurrent connections for the high-concurrency runs  (default 10000)
+#   DURATION    steady-state plateau                                   (default 60s)
+#   RAMP        warmup ramp to VUS                                     (default 15s)
+#   SETTLE      drain seconds between targets AND between scenarios 2 and 3 (default 10)
+#   JAVA_FLAGS  JVM flags applied IDENTICALLY to all three targets
+#   RESULTS_DIR where raw artifacts and SNAPSHOT.md are written       (default ./results)
 #
 # Usage:  ./run-all.sh
 set -euo pipefail
@@ -21,7 +23,8 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 BENCH_DIR=$(cd "$SCRIPT_DIR/.." && pwd)
 REPO_ROOT=$(cd "$BENCH_DIR/.." && pwd)
-RESULTS="$BENCH_DIR/results"
+# Overridable so a versioned sweep (results/v0.5) needs no second script.
+RESULTS="${RESULTS_DIR:-$BENCH_DIR/results}"
 K6_DIR="$BENCH_DIR/k6"
 mkdir -p "$RESULTS"
 
@@ -88,6 +91,22 @@ benchmark_target() {
     || echo "  (k6 reported a threshold breach in high-concurrency for $name — recorded, continuing)"
   kill "$SAMPLER_PID" 2>/dev/null || true
   SAMPLER_PID=""
+
+  # Settle before scenario 3 as well as between targets: scenario 2 leaves ~VUS client sockets in
+  # TIME_WAIT, and scenario 3 wants VUS more immediately. Without this the secured run fails on
+  # ephemeral-port exhaustion and reads as a Security-chain problem.
+  echo "  settling ${SETTLE}s before the secured scenario..."
+  sleep "$SETTLE"
+
+  # No memory sampler here, unlike scenario 2: the secured run holds one authenticated session per
+  # VU, so RSS growth would be measuring sessions rather than connections and the snapshot declines
+  # to publish it. Sampling anyway would mean a jcmd JVM launch every 2s against the process being
+  # measured, for a CSV nothing reads.
+  echo "  scenario 3: high-concurrency secured (VUS=$VUS, $DURATION)..."
+  k6 run --quiet --env BASE_URL="$base" --env VUS="$VUS" --env DURATION="$DURATION" --env RAMP="$RAMP" \
+    --summary-export "$RESULTS/${name}_secured.summary.json" \
+    "$K6_DIR/high-concurrency-secured.js" > "$RESULTS/${name}_secured.k6.log" 2>&1 \
+    || echo "  (k6 reported a failed threshold in high-concurrency-secured for $name — recorded; the snapshot marks a run whose checks failed as invalid rather than publishing it)"
 
   echo "  tearing down pid=$SERVER_PID..."
   kill "$SERVER_PID" 2>/dev/null || true
