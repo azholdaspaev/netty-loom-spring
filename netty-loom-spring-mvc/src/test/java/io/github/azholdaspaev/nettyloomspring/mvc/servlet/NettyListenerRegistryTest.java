@@ -353,6 +353,43 @@ class NettyListenerRegistryTest {
     }
 
     @Test
+    void anErrorFromOneListenerStillInitializesTheRest() {
+        // contextInitialized is where applications touch static initializers and lazily-loaded classes,
+        // so ExceptionInInitializerError and NoClassDefFoundError are the realistic failures -- and both
+        // are Error, not RuntimeException. An Error escaping the loop reaches exactly the asymmetry this
+        // loop exists to close, because the state is already STARTED and close() will still destroy
+        // everyone. NettySessionManager.sweepQuietly catches Throwable for the same reason.
+        registry.addListener(new RecordingListener("first"));
+        registry.addListener(new ServletContextListener() {
+            @Override
+            public void contextInitialized(ServletContextEvent event) {
+                throw new NoClassDefFoundError("com/example/Missing");
+            }
+        });
+        registry.addListener(new RecordingListener("third"));
+
+        assertThrows(NoClassDefFoundError.class, () -> registry.fireContextInitialized(),
+            "an Error must still abort startup");
+
+        assertEquals(List.of("contextInitialized:first", "contextInitialized:third"), events);
+    }
+
+    @Test
+    void anErrorFromATeardownListenerDoesNotStrandTheRest() {
+        registry.addListener(new RecordingListener("survivor"));
+        registry.addListener(new ServletContextListener() {
+            @Override
+            public void contextDestroyed(ServletContextEvent event) {
+                throw new NoClassDefFoundError("com/example/Missing");
+            }
+        });
+
+        assertDoesNotThrow(() -> registry.fireContextDestroyed());
+
+        assertEquals(List.of("contextDestroyed:survivor"), events);
+    }
+
+    @Test
     void theFirstInitializationFailureIsTheOneReported() {
         // Later failures are attached rather than dropped, so a log shows every listener that broke.
         registry.addListener(new ServletContextListener() {

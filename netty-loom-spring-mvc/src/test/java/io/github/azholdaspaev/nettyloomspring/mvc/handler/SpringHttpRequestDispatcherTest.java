@@ -210,4 +210,69 @@ class SpringHttpRequestDispatcherTest {
 
         assertTrue(events.isEmpty(), "nothing initialized, so nothing may be released; got " + events);
     }
+
+    @Test
+    void anErrorDuringRequestSetupStillReleasesThePrefix() {
+        // The unwind has to catch Error too. The dispatcher fires init outside its try, so an Error that
+        // skips the unwind is released by nothing at all -- the finally does not run either.
+        servletContext.addListener(new ServletRequestListener() {
+            @Override
+            public void requestInitialized(ServletRequestEvent event) {
+                events.add("first:initialized");
+            }
+
+            @Override
+            public void requestDestroyed(ServletRequestEvent event) {
+                events.add("first:destroyed");
+            }
+        });
+        servletContext.addListener(new ServletRequestListener() {
+            @Override
+            public void requestInitialized(ServletRequestEvent event) {
+                throw new NoClassDefFoundError("com/example/Missing");
+            }
+        });
+        var dispatcher = dispatcher((request, response) -> events.add("service"));
+
+        assertThrows(NoClassDefFoundError.class, () -> dispatcher.handle(get("/api/ping"), CONNECTION));
+
+        assertEquals(List.of("first:initialized", "first:destroyed"), events);
+    }
+
+    @Test
+    void anErrorFromAReleasedListenerDoesNotReplaceTheOriginalFailure() {
+        // The comment on the unwind calls `failure` "the one the caller needs to see". An Error escaping
+        // the release loop would replace it and skip the listeners below it.
+        servletContext.addListener(new ServletRequestListener() {
+            @Override
+            public void requestDestroyed(ServletRequestEvent event) {
+                events.add("outer:destroyed");
+            }
+        });
+        servletContext.addListener(new ServletRequestListener() {
+            @Override
+            public void requestInitialized(ServletRequestEvent event) {
+                events.add("middle:initialized");
+            }
+
+            @Override
+            public void requestDestroyed(ServletRequestEvent event) {
+                throw new NoClassDefFoundError("com/example/Missing");
+            }
+        });
+        servletContext.addListener(new ServletRequestListener() {
+            @Override
+            public void requestInitialized(ServletRequestEvent event) {
+                throw new IllegalStateException("the original failure");
+            }
+        });
+        var dispatcher = dispatcher((request, response) -> events.add("service"));
+
+        IllegalStateException thrown = assertThrows(IllegalStateException.class,
+            () -> dispatcher.handle(get("/api/ping"), CONNECTION));
+
+        assertEquals("the original failure", thrown.getMessage());
+        assertTrue(events.contains("outer:destroyed"),
+            "a listener below the one that failed to release must still be released; got " + events);
+    }
 }
