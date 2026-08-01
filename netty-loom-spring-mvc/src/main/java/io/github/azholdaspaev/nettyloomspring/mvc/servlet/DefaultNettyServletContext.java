@@ -326,6 +326,12 @@ public class DefaultNettyServletContext implements NettyServletContext {
     }
 
     @Override
+    public void markInitialized() {
+        sessionManager.markContextInitialized();
+        listeners.markInitialized();
+    }
+
+    @Override
     public void fireContextInitialized() {
         if (listenerState.getAndSet(ListenerState.STARTED) != ListenerState.STARTED) {
             listeners.fireContextInitialized();
