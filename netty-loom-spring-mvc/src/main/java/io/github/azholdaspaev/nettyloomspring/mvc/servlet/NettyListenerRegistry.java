@@ -183,12 +183,10 @@ public class NettyListenerRegistry {
         // destroy pass, which walks the whole list: the startup backstop calls close() once getWebServer
         // fails, so a listener that never received contextInitialized would receive contextDestroyed and
         // tear down state it never built. Tomcat's listenerStart() records failure per listener for the
-        // same reason. The exception leaves getWebServer uncaught and Boot reports it as an
-        // ApplicationContextException.
-        // Throwable, not RuntimeException: contextInitialized is where applications touch static
+        // same reason. Caught as Throwable because contextInitialized is where applications touch static
         // initializers and lazily-loaded classes, so ExceptionInInitializerError and NoClassDefFoundError
-        // are the realistic failures and both are Errors. One escaping here would skip the listeners
-        // after it and land in exactly the asymmetry this loop closes.
+        // are the realistic failures. The exception leaves getWebServer uncaught and Boot reports it as
+        // an ApplicationContextException.
         Throwable failure = null;
         for (ServletContextListener listener : contextListeners) {
             try {
@@ -202,12 +200,17 @@ public class NettyListenerRegistry {
                 }
             }
         }
-        // contextInitialized declares no checked exception, so these are the only two possibilities.
-        if (failure instanceof Error error) {
-            throw error;
-        }
-        if (failure != null) {
-            throw (RuntimeException) failure;
+        switch (failure) {
+            case null -> { }
+            case Error error -> throw error;
+            case RuntimeException runtime -> throw runtime;
+            // A third arm, not an assertion that this cannot happen: contextInitialized declaring no
+            // checked exception binds the Java compiler, not the runtime. A listener written in Kotlin,
+            // which has no checked exceptions, or one using Lombok's @SneakyThrows, delivers one here.
+            // Wrapped rather than cast, so the cause and everything addSuppressed attached to it survive
+            // instead of being replaced by a ClassCastException naming no listener at all.
+            default -> throw new IllegalStateException(
+                "ServletContextListener.contextInitialized failed", failure);
         }
     }
 
