@@ -15,11 +15,14 @@ import jakarta.servlet.http.HttpServletResponse;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.web.servlet.DispatcherServlet;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiConsumer;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -153,12 +156,25 @@ class SpringHttpRequestDispatcherTest {
         assertTrue(events.isEmpty(), "the servlet must not run once request setup has failed");
     }
 
-    @Test
-    void aListenerInitializedBeforeAFailingOneIsStillReleased() {
+    /** Delivers a checked or unchecked failure where the compiler expects none. */
+    @SuppressWarnings("unchecked")
+    private static <T extends Throwable> void sneakyThrow(Throwable failure) throws T {
+        throw (T) failure;
+    }
+
+    /** The ordinary failure, and the linkage error a listener touching a missing class actually raises. */
+    static Stream<Throwable> theTwoFailureShapes() {
+        return Stream.of(new IllegalStateException("boom"), new NoClassDefFoundError("com/example/Missing"));
+    }
+
+    @ParameterizedTest
+    @MethodSource("theTwoFailureShapes")
+    void aListenerInitializedBeforeAFailingOneIsStillReleased(Throwable failure) {
         // requestDestroyed is a release, not a notification: RequestContextListener.requestDestroyed runs
         // the destruction callbacks of every @RequestScope bean the dispatch created. fireRequestInitialized
         // runs before the try, so a later listener throwing would skip the finally entirely and leave the
-        // earlier one's request scope bound with its @PreDestroy methods never run.
+        // earlier one's request scope bound with its @PreDestroy methods never run. An Error has to reach
+        // the unwind for the same reason -- nothing else would release it.
         servletContext.addListener(new ServletRequestListener() {
             @Override
             public void requestInitialized(ServletRequestEvent event) {
@@ -173,12 +189,12 @@ class SpringHttpRequestDispatcherTest {
         servletContext.addListener(new ServletRequestListener() {
             @Override
             public void requestInitialized(ServletRequestEvent event) {
-                throw new IllegalStateException("boom");
+                sneakyThrow(failure);
             }
         });
         var dispatcher = dispatcher((request, response) -> events.add("service"));
 
-        assertThrows(IllegalStateException.class, () -> dispatcher.handle(get("/api/ping"), CONNECTION));
+        assertThrows(failure.getClass(), () -> dispatcher.handle(get("/api/ping"), CONNECTION));
 
         assertEquals(List.of("first:initialized", "first:destroyed"), events,
             "the prefix that did initialize must be released before the failure leaves");
@@ -255,34 +271,6 @@ class SpringHttpRequestDispatcherTest {
             assertDoesNotThrow(() -> dispatcher.handle(get("/api/ping"), CONNECTION));
 
         assertEquals(HttpServletResponse.SC_OK, response.status().code());
-    }
-
-    @Test
-    void anErrorDuringRequestSetupStillReleasesThePrefix() {
-        // The unwind has to catch Error too. The dispatcher fires init outside its try, so an Error that
-        // skips the unwind is released by nothing at all -- the finally does not run either.
-        servletContext.addListener(new ServletRequestListener() {
-            @Override
-            public void requestInitialized(ServletRequestEvent event) {
-                events.add("first:initialized");
-            }
-
-            @Override
-            public void requestDestroyed(ServletRequestEvent event) {
-                events.add("first:destroyed");
-            }
-        });
-        servletContext.addListener(new ServletRequestListener() {
-            @Override
-            public void requestInitialized(ServletRequestEvent event) {
-                throw new NoClassDefFoundError("com/example/Missing");
-            }
-        });
-        var dispatcher = dispatcher((request, response) -> events.add("service"));
-
-        assertThrows(NoClassDefFoundError.class, () -> dispatcher.handle(get("/api/ping"), CONNECTION));
-
-        assertEquals(List.of("first:initialized", "first:destroyed"), events);
     }
 
     @Test

@@ -324,19 +324,20 @@ class NettyListenerRegistryTest {
 
     // --- Failure isolation ---
 
-    @Test
-    void aFailingListenerDoesNotStrandTheRestOfATeardown() {
+    @ParameterizedTest
+    @MethodSource("theTwoFailureShapes")
+    void aFailingListenerDoesNotStrandTheRestOfATeardown(Throwable failure) {
         // Teardown has no caller in a position to handle the failure, so it is logged and the remaining
         // listeners still run -- the same rule NettyHttpSession applies to valueUnbound.
         registry.addListener(new RecordingListener("survivor"));
         registry.addListener(new ServletContextListener() {
             @Override
             public void contextDestroyed(ServletContextEvent event) {
-                throw new IllegalStateException("boom");
+                sneakyThrow(failure);
             }
         });
 
-        registry.fireContextDestroyed();
+        assertDoesNotThrow(() -> registry.fireContextDestroyed());
 
         assertEquals(List.of("contextDestroyed:survivor"), events);
     }
@@ -355,8 +356,18 @@ class NettyListenerRegistryTest {
         assertThrows(IllegalStateException.class, () -> registry.fireContextInitialized());
     }
 
-    @Test
-    void everyListenerIsInitializedEvenWhenAnEarlierOneFails() {
+    /**
+     * The two shapes a listener fails in. {@code RuntimeException} is the ordinary case;
+     * {@code NoClassDefFoundError} is the one {@code contextInitialized} actually sees, because that is
+     * where applications touch static initializers and lazily-loaded classes.
+     */
+    static Stream<Throwable> theTwoFailureShapes() {
+        return Stream.of(new IllegalStateException("boom"), new NoClassDefFoundError("com/example/Missing"));
+    }
+
+    @ParameterizedTest
+    @MethodSource("theTwoFailureShapes")
+    void everyListenerIsInitializedEvenWhenAnEarlierOneFails(Throwable failure) {
         // The destroy pass walks the whole list, so the init pass has to as well. Aborting on the first
         // throw would leave listeners registered after it never initialized, and the startup backstop
         // then calls close() -- which fires contextDestroyed at them anyway, tearing down what was never
@@ -365,52 +376,15 @@ class NettyListenerRegistryTest {
         registry.addListener(new ServletContextListener() {
             @Override
             public void contextInitialized(ServletContextEvent event) {
-                throw new IllegalStateException("boom");
+                sneakyThrow(failure);
             }
         });
         registry.addListener(new RecordingListener("third"));
 
-        assertThrows(IllegalStateException.class, () -> registry.fireContextInitialized(),
+        assertThrows(failure.getClass(), () -> registry.fireContextInitialized(),
             "the failure must still abort startup");
 
         assertEquals(List.of("contextInitialized:first", "contextInitialized:third"), events);
-    }
-
-    @Test
-    void anErrorFromOneListenerStillInitializesTheRest() {
-        // contextInitialized is where applications touch static initializers and lazily-loaded classes,
-        // so ExceptionInInitializerError and NoClassDefFoundError are the realistic failures -- and both
-        // are Error, not RuntimeException. An Error escaping the loop reaches exactly the asymmetry this
-        // loop exists to close, because the state is already STARTED and close() will still destroy
-        // everyone. NettySessionManager.sweepQuietly catches Throwable for the same reason.
-        registry.addListener(new RecordingListener("first"));
-        registry.addListener(new ServletContextListener() {
-            @Override
-            public void contextInitialized(ServletContextEvent event) {
-                throw new NoClassDefFoundError("com/example/Missing");
-            }
-        });
-        registry.addListener(new RecordingListener("third"));
-
-        assertThrows(NoClassDefFoundError.class, () -> registry.fireContextInitialized(),
-            "an Error must still abort startup");
-
-        assertEquals(List.of("contextInitialized:first", "contextInitialized:third"), events);
-    }
-
-    @Test
-    void anErrorFromATeardownListenerDoesNotStrandTheRest() {
-        registry.addListener(new RecordingListener("survivor"));
-        registry.addListener(new ServletContextListener() {
-            @Override
-            public void contextDestroyed(ServletContextEvent event) {
-                throw new NoClassDefFoundError("com/example/Missing");
-            }
-        });
-
-        assertDoesNotThrow(() -> registry.fireContextDestroyed());
-
-        assertEquals(List.of("contextDestroyed:survivor"), events);
     }
 
     /** Delivers a checked exception where the compiler thinks none can occur, as Kotlin and Lombok do. */
