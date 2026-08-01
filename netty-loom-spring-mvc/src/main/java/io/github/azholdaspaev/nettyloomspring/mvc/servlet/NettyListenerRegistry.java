@@ -158,11 +158,15 @@ public class NettyListenerRegistry {
         // tear down state it never built. Tomcat's listenerStart() records failure per listener for the
         // same reason. The exception leaves getWebServer uncaught and Boot reports it as an
         // ApplicationContextException.
-        RuntimeException failure = null;
+        // Throwable, not RuntimeException: contextInitialized is where applications touch static
+        // initializers and lazily-loaded classes, so ExceptionInInitializerError and NoClassDefFoundError
+        // are the realistic failures and both are Errors. One escaping here would skip the listeners
+        // after it and land in exactly the asymmetry this loop closes.
+        Throwable failure = null;
         for (ServletContextListener listener : contextListeners) {
             try {
                 listener.contextInitialized(event);
-            } catch (RuntimeException thrown) {
+            } catch (Throwable thrown) {
                 if (failure == null) {
                     failure = thrown;
                 } else {
@@ -171,8 +175,12 @@ public class NettyListenerRegistry {
                 }
             }
         }
+        // contextInitialized declares no checked exception, so these are the only two possibilities.
+        if (failure instanceof Error error) {
+            throw error;
+        }
         if (failure != null) {
-            throw failure;
+            throw (RuntimeException) failure;
         }
     }
 
@@ -238,15 +246,18 @@ public class NettyListenerRegistry {
             for (; notified < requestListeners.size(); notified++) {
                 requestListeners.get(notified).requestInitialized(event);
             }
-        } catch (RuntimeException failure) {
-            // Newest first, matching the destroy order everywhere else. Quietly, because this is already
-            // the failure path and `failure` is the one the caller needs to see.
+        } catch (Throwable failure) {
+            // Throwable, so an Error cannot skip the release: the dispatcher fires this outside its try,
+            // so nothing else would run it. Newest first, matching the destroy order everywhere else, and
+            // quietly -- notify() swallows an Error too, or a listener failing to release would replace
+            // `failure`, which is the one the caller needs to see, and skip the listeners below it.
             for (int i = notified - 1; i >= 0; i--) {
                 notify(requestListeners.get(i), "ServletRequestListener.requestDestroyed",
                     listener -> listener.requestDestroyed(event));
             }
             // Propagates, so the dispatcher's exception handling turns it into a status code: a listener
-            // that failed to set up request scope has left the servlet unable to run correctly.
+            // that failed to set up request scope has left the servlet unable to run correctly. Precise
+            // rethrow -- requestInitialized declares no checked exception, so this needs no throws clause.
             throw failure;
         }
     }
@@ -377,7 +388,10 @@ public class NettyListenerRegistry {
     private static <T> void notify(T listener, String description, Consumer<T> callback) {
         try {
             callback.accept(listener);
-        } catch (RuntimeException failure) {
+        } catch (Throwable failure) {
+            // Throwable, matching NettySessionManager.sweepQuietly: an application listener raising
+            // NoClassDefFoundError is enough, and on the teardown paths this runs on there is no caller
+            // in a position to handle it.
             // Per listener, not per event: one bad listener aborting the loop would silently skip
             // every listener registered after it, on every occurrence, for the life of the JVM.
             log.warn("{} failed on {}", description, listener.getClass().getName(), failure);
