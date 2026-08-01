@@ -228,9 +228,13 @@ public class NettyListenerRegistry {
 
     void fireSessionCreated(HttpSession session) {
         HttpSessionEvent event = new HttpSessionEvent(session);
-        // Propagates: this runs inside the request that asked for the session, which is the only caller
-        // in a position to handle the failure -- the same rule setAttribute applies to valueBound.
-        sessionListeners.forEach(listener -> listener.sessionCreated(event));
+        // Quietly, not propagating: by the time this runs the session is already published in the store,
+        // and an exception leaving here would abandon an entry that is still valid and whose id the
+        // client never received -- nothing would invalidate or unbind it for the whole idle timeout.
+        // A container-registered listener is also a bystander by this class's own test, unlike
+        // valueBound, which belongs to the value being stored. Tomcat's tellNew() catches per listener.
+        fireQuietly(sessionListeners, "HttpSessionListener.sessionCreated",
+            listener -> listener.sessionCreated(event));
     }
 
     void fireSessionDestroyed(HttpSession session) {
