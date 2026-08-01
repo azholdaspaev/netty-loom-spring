@@ -33,8 +33,9 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    # claude-code-action#1177 (--max-turns is never forwarded to the SDK) is open, so this is the
-    # only hard stop on a runaway review. Everything else is a soft instruction.
+    # claude-code-action#1177 (--max-turns is never forwarded to the SDK) is open, so a timeout is
+    # the only hard stop on a runaway review; everything else is a soft instruction. The stop that
+    # actually fires is the review step's own, below -- this is the outer bound behind it.
     timeout-minutes: 20
 
     permissions:
@@ -79,6 +80,10 @@ jobs:
       # GITHUB_TOKEN — so whoever can move the mutable `v1` tag would get it on the next run.
       - id: review
         uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b # v1
+        # Step-level, not job-level: a job-budget expiry is a CANCELLATION, which `!cancelled()` on
+        # the summary step skips. A step timeout is a FAILURE, so the summary still runs and reports
+        # it. Set below the job's 20 so this fires first and leaves the summary room to post.
+        timeout-minutes: 15
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
@@ -215,8 +220,7 @@ jobs:
       # step failed, this file is absent and the step would die before posting -- the exact case
       # the relaxed `if:` exists to cover.
       - name: Post review summary
-    # Step-level, not job-level: a job-budget expiry is a CANCELLATION, which `!cancelled()` on the
-    # summary step skips. A step timeout is a FAILURE, so the summary still runs and reports it.
+        if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
