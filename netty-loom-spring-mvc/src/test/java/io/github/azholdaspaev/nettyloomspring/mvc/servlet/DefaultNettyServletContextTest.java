@@ -731,11 +731,13 @@ class DefaultNettyServletContextTest {
 
     @Test
     void shouldRejectCreatingAListenerOfNoSupportedType() {
-        // Spec clause on createListener: IllegalArgumentException if the class implements none of the
-        // seven types. Tomcat runs the same seven instanceof tests before returning. Without it, an
-        // application following the spec's create-customize-then-addListener idiom gets no signal at the
-        // point the spec puts one.
-        assertThrows(IllegalArgumentException.class, () -> context.createListener(UnsupportedListener.class));
+        var thrown = assertThrows(IllegalArgumentException.class,
+            () -> context.createListener(UnsupportedListener.class));
+
+        // The message, not just the type: it names the accepted interfaces, and it is the half a third
+        // call site could drop by throwing a bare IllegalArgumentException of its own.
+        assertTrue(thrown.getMessage().contains(ServletContextListener.class.getName()),
+            "the message must name the types that are accepted; got " + thrown.getMessage());
     }
 
     @Test
