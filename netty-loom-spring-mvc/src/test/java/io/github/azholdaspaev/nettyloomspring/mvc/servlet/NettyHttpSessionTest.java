@@ -490,6 +490,52 @@ class NettyHttpSessionTest {
     }
 
     @Test
+    void aRemovalUnbindsTheValueBeforeAnnouncingItGone() {
+        // notifyRemoved's javadoc calls this ordering Tomcat's, and this class's own javadoc calls the
+        // order part of the contract -- so it needs a test, or a refactor can reverse it silently. It
+        // matters for the sibling of the case setAttribute's early announcement fixed: a valueUnbound
+        // that reads the session would otherwise run after the container was told the value was gone.
+        var events = new ArrayList<String>();
+        servletContext.addListener(new HttpSessionAttributeListener() {
+            @Override
+            public void attributeRemoved(HttpSessionBindingEvent event) {
+                events.add("attributeRemoved:" + event.getName());
+            }
+        });
+        NettyHttpSession session = manager.create();
+        session.setAttribute("cart", new HttpSessionBindingListener() {
+            @Override
+            public void valueUnbound(HttpSessionBindingEvent event) {
+                events.add("valueUnbound:" + event.getName());
+            }
+        });
+
+        session.removeAttribute("cart");
+
+        assertEquals(List.of("valueUnbound:cart", "attributeRemoved:cart"), events,
+            "the value releases itself before the container listeners hear it is gone");
+    }
+
+    @Test
+    void removingAnAbsentSessionAttributeNotifiesNothing() {
+        // The identical rule is already asserted on both sibling paths --
+        // shouldNotFireContextAttributeRemovedForAnAbsentName and
+        // removingAnAbsentRequestAttributeNotifiesNothing -- so this was an omission, not a decision.
+        var events = new ArrayList<String>();
+        servletContext.addListener(new HttpSessionAttributeListener() {
+            @Override
+            public void attributeRemoved(HttpSessionBindingEvent event) {
+                events.add(event.getName() + "=" + event.getValue());
+            }
+        });
+        NettyHttpSession session = manager.create();
+
+        session.removeAttribute("never-set");
+
+        assertTrue(events.isEmpty(), "a removal that changes nothing notifies nothing; got " + events);
+    }
+
+    @Test
     void aThrowingSessionDestroyedListenerDoesNotAbortTheTeardown() {
         // fireSessionDestroyed runs at the top of unbindAll, before the attribute unbind loop. If it
         // propagated, one bad listener would abort the rest of teardown -- no attribute unbound, so every
