@@ -734,6 +734,21 @@ class DefaultNettyServletContextTest {
     }
 
     @Test
+    void shouldFreezeEveryComponentFromOneCall() {
+        // "Startup is over" is one fact, so the context fans it out rather than each caller naming every
+        // freezable component -- the same shape NettySessionManager already uses to reach the cookie
+        // config. A fourth component then needs no new call site, and none can be silently missed.
+        context.markInitialized();
+
+        assertThrows(IllegalStateException.class, () -> context.addListener(new CountingContextListener()),
+            "listener registration must be frozen");
+        assertThrows(IllegalStateException.class, () -> context.setSessionTimeout(5),
+            "session configuration must be frozen");
+        assertThrows(IllegalStateException.class, () -> context.getSessionCookieConfig().setName("X"),
+            "the session cookie configuration must be frozen");
+    }
+
+    @Test
     void shouldFireContextInitializedOnlyOnce() {
         var listener = new CountingContextListener();
         context.addListener(listener);
