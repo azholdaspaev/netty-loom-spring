@@ -51,8 +51,21 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
             .filter(filter -> filter.matches(servletPath, servletRequest.getDispatcherType()))
             .toList();
 
-        NettyFilterChain chain = new NettyFilterChain(applicable, terminal);
-        chain.doFilter(servletRequest, servletResponse);
+        // Bracketing the chain, not the whole method: the out-of-context 404 above never enters this
+        // context, so announcing it would report a request the application never saw.
+        //
+        // requestDestroyed is in a finally because it is a release, not a notification.
+        // RequestContextListener.requestDestroyed calls ServletRequestAttributes.requestCompleted(),
+        // which runs the destruction callbacks of every @RequestScope bean the dispatch created. Skipping
+        // it on the throwing path means those @PreDestroy methods never run -- and unlike a stranded
+        // ThreadLocal, that is not swept up by the request's virtual thread ending.
+        servletContext.getListenerRegistry().fireRequestInitialized(servletRequest);
+        try {
+            NettyFilterChain chain = new NettyFilterChain(applicable, terminal);
+            chain.doFilter(servletRequest, servletResponse);
+        } finally {
+            servletContext.getListenerRegistry().fireRequestDestroyed(servletRequest);
+        }
 
         return servletResponse.toFullHttpResponse();
     }

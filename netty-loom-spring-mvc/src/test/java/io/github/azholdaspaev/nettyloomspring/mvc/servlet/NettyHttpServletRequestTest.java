@@ -7,6 +7,8 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
+import jakarta.servlet.ServletRequestAttributeEvent;
+import jakarta.servlet.ServletRequestAttributeListener;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -1000,5 +1002,86 @@ class NettyHttpServletRequestTest {
         exchange.request().isRequestedSessionIdValid();
 
         assertTrue(existing.isNew(), "a validity query must not clear isNew or touch the access time");
+    }
+
+    // --- Request attribute listeners (issue #17) ---
+
+    /** Registers a recorder on {@code context} and returns the log it appends to. */
+    private static List<String> recordRequestAttributes(DefaultNettyServletContext context) {
+        var events = new ArrayList<String>();
+        context.addListener(new ServletRequestAttributeListener() {
+            @Override
+            public void attributeAdded(ServletRequestAttributeEvent event) {
+                events.add("added:" + event.getName() + "=" + event.getValue());
+            }
+
+            @Override
+            public void attributeReplaced(ServletRequestAttributeEvent event) {
+                events.add("replaced:" + event.getName() + "=" + event.getValue());
+            }
+
+            @Override
+            public void attributeRemoved(ServletRequestAttributeEvent event) {
+                events.add("removed:" + event.getName() + "=" + event.getValue());
+            }
+        });
+        return events;
+    }
+
+    @Test
+    void requestAttributeMutationsFireTheContainerAttributeListener() {
+        var context = new DefaultNettyServletContext();
+        var events = recordRequestAttributes(context);
+        var request = request(new HttpConnectionMetadata("", 0, "", 0, false), context);
+
+        request.setAttribute("stage", "one");
+        request.setAttribute("stage", "two");
+        request.removeAttribute("stage");
+
+        // Replacement reports the displaced value, matching the session and context sides.
+        assertEquals(List.of("added:stage=one", "replaced:stage=one", "removed:stage=two"), events);
+    }
+
+    @Test
+    void settingARequestAttributeToNullFiresRemoved() {
+        var context = new DefaultNettyServletContext();
+        var events = recordRequestAttributes(context);
+        var request = request(new HttpConnectionMetadata("", 0, "", 0, false), context);
+        request.setAttribute("stage", "one");
+
+        request.setAttribute("stage", null);
+
+        assertEquals(List.of("added:stage=one", "removed:stage=one"), events);
+    }
+
+    @Test
+    void removingAnAbsentRequestAttributeNotifiesNothing() {
+        var context = new DefaultNettyServletContext();
+        var events = recordRequestAttributes(context);
+        var request = request(new HttpConnectionMetadata("", 0, "", 0, false), context);
+
+        request.removeAttribute("never-set");
+        request.setAttribute("never-set", null);
+
+        assertTrue(events.isEmpty(), "a mutation that changes nothing notifies nothing; got " + events);
+    }
+
+    @Test
+    void theRequestAttributeEventNamesTheRequestItHappenedOn() {
+        var context = new DefaultNettyServletContext();
+        var seen = new Object[2];
+        context.addListener(new ServletRequestAttributeListener() {
+            @Override
+            public void attributeAdded(ServletRequestAttributeEvent event) {
+                seen[0] = event.getServletRequest();
+                seen[1] = event.getServletContext();
+            }
+        });
+        var request = request(new HttpConnectionMetadata("", 0, "", 0, false), context);
+
+        request.setAttribute("stage", "one");
+
+        assertSame(request, seen[0]);
+        assertSame(context, seen[1]);
     }
 }

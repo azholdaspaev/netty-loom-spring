@@ -68,7 +68,9 @@ public class NettySessionManager {
 
     private final ConcurrentMap<String, NettyHttpSession> sessions = new ConcurrentHashMap<>();
     private final NettySessionCookieConfig cookieConfig = new NettySessionCookieConfig();
-    private final ServletContext servletContext;
+    // NettyServletContext, not ServletContext: the store fires HttpSessionListener events, and
+    // getListenerRegistry() is on this seam rather than the Jakarta interface.
+    private final NettyServletContext servletContext;
     private final LongSupplier clock;
 
     private volatile Set<SessionTrackingMode> trackingModes = SUPPORTED_TRACKING_MODES;
@@ -77,17 +79,21 @@ public class NettySessionManager {
     private volatile boolean contextInitialized;
     private volatile boolean closed;
 
-    public NettySessionManager(ServletContext servletContext) {
+    public NettySessionManager(NettyServletContext servletContext) {
         this(servletContext, System::currentTimeMillis);
     }
 
-    NettySessionManager(ServletContext servletContext, LongSupplier clock) {
+    NettySessionManager(NettyServletContext servletContext, LongSupplier clock) {
         this.servletContext = servletContext;
         this.clock = clock;
     }
 
     ServletContext getServletContext() {
         return servletContext;
+    }
+
+    NettyListenerRegistry listeners() {
+        return servletContext.getListenerRegistry();
     }
 
     /** The default idle timeout in <em>seconds</em>; zero or less means sessions never expire. */
@@ -198,6 +204,9 @@ public class NettySessionManager {
             throw new IllegalStateException(
                 "The servlet context has been closed; no new sessions can be created");
         }
+        // Only once the session is reachable and the refusal window has passed: a listener told about a
+        // session that is about to be dropped would hold a reference no teardown will ever revisit.
+        listeners().fireSessionCreated(session);
         return session;
     }
 
@@ -250,18 +259,23 @@ public class NettySessionManager {
      * is enough to reach that, since Spring Security rotates on every authentication.
      */
     public String changeId(NettyHttpSession session) {
+        String oldId;
+        String newId;
         synchronized (session.lock()) {
             if (session.isInvalidated()) {
                 throw new IllegalStateException("Session " + session.getId() + " has been invalidated");
             }
-            String oldId = session.getId();
-            String newId = newSessionId();
+            oldId = session.getId();
+            newId = newSessionId();
             // Bind before releasing, so a concurrent lookup never sees neither id.
             sessions.put(newId, session);
             session.setId(newId);
             sessions.remove(oldId, session);
-            return newId;
         }
+        // Outside the monitor, for the reason evict() gives: application code must never execute under a
+        // container lock, and Spring Security rotates here on every authentication.
+        listeners().fireSessionIdChanged(session, oldId);
+        return newId;
     }
 
     void remove(NettyHttpSession session) {

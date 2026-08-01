@@ -75,7 +75,7 @@ The lenses below close both gaps and are the second pass's brief. They are phras
 - **Naming consistency (convention-by-example).** New types should match the emergent naming of their siblings even when no written rule exists. Example: everything in `core.handler` is `Http`-prefixed (`HttpRequestHandler`, `HttpRequestDispatcher`, `HttpExceptionHandler`, `HttpConnectionMetadata`) — a new class there should carry the prefix.
 - **Magic constants.** Flag bare literals that encode a named concept; prefer a named constant or an existing enum/util. Example: HTTP scheme names and their default ports come from `io.netty.handler.codec.http.HttpScheme` (`HttpScheme.HTTPS.toString()` → `"https"`, `HttpScheme.HTTPS.port()` → `443`) rather than hardcoded `"http"/"https"` or `80/443`. Sentinel values (e.g. `""`/`0` for an unknown address) should be named constants documenting their contract.
 - **Duplication.** Two shapes, both in scope. *The same fact expressed twice* — one concept living in two places, the coupling a per-hunk scan misses; a scheme→port default living as strings in one class and as `80/443` in another is the *same* fact, so centralize it in one owner and have the other delegate. *The same logic expressed twice* — copy-pasted or near-identical blocks across classes or test fixtures, where a later fix to one will not reach the other.
-- **Simplicity and scope.** Judge against the rules in the "Guidelines" section of this file — (2) Simplicity First and (3) Surgical Changes. Speculative abstraction, configurability nobody asked for, error handling for impossible states, and changed lines that do not trace to the stated goal are findings here, not taste.
+- **Simplicity and scope.** Judge against the rules in the "Guidelines" section of this file — (2) Simplicity First, (3) Surgical Changes and (5) Comment With Restraint. Speculative abstraction, configurability nobody asked for, error handling for impossible states, comment volume that outruns the decision being recorded, and changed lines that do not trace to the stated goal are findings here, not taste.
 - **Module boundaries.** Judge against the "Architecture" section of this file: the `starter → mvc → core` dependency flow, `core` carrying no Spring dependency, and `HttpRequestDispatcher` / `NettyPipelineConfigurer` as the seams. New coupling that crosses a layer or routes around a seam is a finding even when it compiles.
 
 ## Guidelines
@@ -132,4 +132,13 @@ For multi-step tasks, state a brief plan:
 2. [Step] → verify: [check]
 3. [Step] → verify: [check]
    Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+5. Comment With Restraint
+   A moderate number of comments, each earning its place.
+
+Comment the decision, not the code. If the line below it says the same thing, delete the comment.
+State a fact once, in the class that owns it. The Duplication lens applies to comments too.
+When a change makes an existing comment stale or incomplete, rewrite that comment. Do not append a new paragraph beside it - comments that accrete paragraphs stop being read.
+Reserve multi-paragraph javadoc for the few places where an external contract - a spec clause, another container's behaviour - is the only thing that explains the code's shape.
+Match the surrounding file, but treat its densest examples as a ceiling, not a target. This is the one place rule (3) "Match existing style" is bounded: the repository's heaviest files are not the bar to reach.
 
