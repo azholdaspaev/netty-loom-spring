@@ -302,6 +302,51 @@ class NettyListenerRegistryTest {
     }
 
     @Test
+    void everyListenerIsInitializedEvenWhenAnEarlierOneFails() {
+        // The destroy pass walks the whole list, so the init pass has to as well. Aborting on the first
+        // throw would leave listeners registered after it never initialized, and the startup backstop
+        // then calls close() -- which fires contextDestroyed at them anyway, tearing down what was never
+        // set up. Tomcat's listenerStart() catches per listener and records failure instead of returning.
+        registry.addListener(new RecordingListener("first"));
+        registry.addListener(new ServletContextListener() {
+            @Override
+            public void contextInitialized(ServletContextEvent event) {
+                throw new IllegalStateException("boom");
+            }
+        });
+        registry.addListener(new RecordingListener("third"));
+
+        assertThrows(IllegalStateException.class, () -> registry.fireContextInitialized(),
+            "the failure must still abort startup");
+
+        assertEquals(List.of("contextInitialized:first", "contextInitialized:third"), events);
+    }
+
+    @Test
+    void theFirstInitializationFailureIsTheOneReported() {
+        // Later failures are attached rather than dropped, so a log shows every listener that broke.
+        registry.addListener(new ServletContextListener() {
+            @Override
+            public void contextInitialized(ServletContextEvent event) {
+                throw new IllegalStateException("first failure");
+            }
+        });
+        registry.addListener(new ServletContextListener() {
+            @Override
+            public void contextInitialized(ServletContextEvent event) {
+                throw new IllegalStateException("second failure");
+            }
+        });
+
+        RuntimeException thrown =
+            assertThrows(RuntimeException.class, () -> registry.fireContextInitialized());
+
+        assertEquals("first failure", thrown.getMessage());
+        assertEquals(1, thrown.getSuppressed().length, "the later failure must not be dropped");
+        assertEquals("second failure", thrown.getSuppressed()[0].getMessage());
+    }
+
+    @Test
     void aFailingAttributeListenerDoesNotBreakTheMutationThatTriggeredIt() {
         // Attribute listeners are observers, not participants: unlike HttpSessionBindingListener, which is
         // the value's own resource protocol, nothing is left half-bound when one of these fails.

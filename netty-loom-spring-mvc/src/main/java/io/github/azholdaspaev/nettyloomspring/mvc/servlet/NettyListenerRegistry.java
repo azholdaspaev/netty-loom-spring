@@ -131,10 +131,29 @@ public class NettyListenerRegistry {
 
     void fireContextInitialized() {
         ServletContextEvent event = new ServletContextEvent(servletContext);
-        // Propagates: a listener that cannot initialize must abort startup rather than leave the
-        // application serving traffic half-configured. NettyWebServerFactory turns this into a
-        // WebServerException, exactly as it does for a filter whose init() fails.
-        contextListeners.forEach(listener -> listener.contextInitialized(event));
+        // Every listener is initialized, and only then is the first failure rethrown, so a listener that
+        // cannot initialize still aborts startup. Aborting the loop instead would be asymmetric with the
+        // destroy pass, which walks the whole list: the startup backstop calls close() once getWebServer
+        // fails, so a listener that never received contextInitialized would receive contextDestroyed and
+        // tear down state it never built. Tomcat's listenerStart() records failure per listener for the
+        // same reason. The exception leaves getWebServer uncaught and Boot reports it as an
+        // ApplicationContextException.
+        RuntimeException failure = null;
+        for (ServletContextListener listener : contextListeners) {
+            try {
+                listener.contextInitialized(event);
+            } catch (RuntimeException thrown) {
+                if (failure == null) {
+                    failure = thrown;
+                } else {
+                    // Attached rather than dropped, so one log names every listener that broke.
+                    failure.addSuppressed(thrown);
+                }
+            }
+        }
+        if (failure != null) {
+            throw failure;
+        }
     }
 
     void fireContextDestroyed() {
