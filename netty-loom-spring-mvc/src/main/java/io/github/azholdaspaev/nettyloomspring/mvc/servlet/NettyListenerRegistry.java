@@ -390,14 +390,18 @@ public class NettyListenerRegistry {
      *
      * <p>This is the default. An event is fired quietly whenever the listener is a <em>bystander</em>:
      * told about a change that has already committed, that it cannot refuse, and that no caller is in a
-     * position to undo. Every event here is one of those -- both teardown passes, the id rotation, the
-     * session creation, and all nine attribute events.
+     * position to undo. That is twelve of the fourteen events -- the three teardown passes
+     * ({@code contextDestroyed}, {@code requestDestroyed}, {@code sessionDestroyed}), the id rotation,
+     * the session creation, and all nine attribute events.
      *
-     * <p>Only two events propagate, and both are reached before anything has committed:
+     * <p>The other two propagate, and both are reached before anything has committed:
      * {@code contextInitialized}, where the application must not start half-configured, and
      * {@code requestInitialized}, where the servlet must not run without its request scope. Each is
-     * written as its own loop rather than a call to this method, and each releases what it already
-     * notified before the failure leaves.
+     * written as its own loop rather than a call to this method, and they release differently:
+     * {@code requestInitialized} unwinds the prefix it notified, because the dispatcher fires it outside
+     * its {@code try} and nothing else would; {@code contextInitialized} deliberately does not, because
+     * every listener must still be initialized and the startup backstop's {@code close()} then destroys
+     * them all together.
      *
      * <p>That split is not in tension with {@code setAttribute} letting {@code valueBound} propagate:
      * {@code HttpSessionBindingListener} is the stored value's own resource protocol -- a failed bind
