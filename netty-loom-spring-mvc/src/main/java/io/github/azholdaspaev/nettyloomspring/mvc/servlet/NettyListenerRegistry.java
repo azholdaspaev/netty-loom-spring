@@ -66,6 +66,12 @@ public class NettyListenerRegistry {
     private final ServletContext servletContext;
 
     private volatile boolean initialized;
+    /**
+     * Set when the init pass begins, which is earlier than {@link #initialized}: the other six types are
+     * still legitimately registrable during filter and servlet init, which is why {@code markInitialized}
+     * is deliberately late, but {@code ServletContextListener} has already had its event.
+     */
+    private volatile boolean contextListenersStarted;
 
     NettyListenerRegistry(ServletContext servletContext) {
         this.servletContext = servletContext;
@@ -81,6 +87,16 @@ public class NettyListenerRegistry {
      */
     public void addListener(EventListener listener) {
         requireNotInitialized();
+        // ServletContextListener closes earlier than the rest, at the init pass rather than at
+        // markInitialized. contextInitialized has already been delivered by then, so a listener accepted
+        // now would never receive it and would still receive contextDestroyed at shutdown -- the state
+        // fireContextInitialized exists to prevent. The spec puts the same clause on all three addListener
+        // overloads, and Tomcat clears newServletContextListenerAllowed just before listenerStart fires.
+        if (contextListenersStarted && listener instanceof ServletContextListener) {
+            throw new IllegalArgumentException("A ServletContextListener cannot be registered once "
+                + "contextInitialized has been fired; " + listener.getClass().getName()
+                + " would never receive it. Register it from a ServletContextInitializer instead.");
+        }
         // Non-short-circuiting |=, so a listener implementing several interfaces reaches every bucket.
         boolean supported = fileUnder(listener, ServletContextListener.class, contextListeners);
         supported |= fileUnder(listener, ServletContextAttributeListener.class, contextAttributeListeners);
@@ -130,6 +146,10 @@ public class NettyListenerRegistry {
     // --- ServletContextListener ---
 
     void fireContextInitialized() {
+        // Before the loop, matching Tomcat: a listener registering another ServletContextListener from
+        // inside its own contextInitialized is refused there too, because the new one has already missed
+        // the pass that is running.
+        contextListenersStarted = true;
         ServletContextEvent event = new ServletContextEvent(servletContext);
         // Every listener is initialized, and only then is the first failure rethrown, so a listener that
         // cannot initialize still aborts startup. Aborting the loop instead would be asymmetric with the
