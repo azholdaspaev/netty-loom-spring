@@ -616,7 +616,9 @@ class NettyHttpServletRequestTest {
 
     @Test
     void duplicateSessionCookiesThatAreAllStaleReportTheLastAsTheRequestedId() {
-        var exchange = exchange(new DefaultNettyServletContext(), INSECURE, "JSESSIONID=DEAD1; JSESSIONID=DEAD2");
+        var exchange = exchange(new DefaultNettyServletContext(), INSECURE,
+            NettySessionCookieConfig.DEFAULT_NAME + "=DEAD1; "
+                + NettySessionCookieConfig.DEFAULT_NAME + "=DEAD2");
 
         // The same triple SessionManagementFilter keys on as the single-cookie case: an id was presented
         // and it is not valid, which is an expired session -- not a request that carried none.

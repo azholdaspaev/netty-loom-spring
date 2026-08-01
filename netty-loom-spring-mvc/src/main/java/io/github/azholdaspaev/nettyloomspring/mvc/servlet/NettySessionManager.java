@@ -289,8 +289,23 @@ public class NettySessionManager {
      * stands, so {@code getRequestedSessionId()} still reports what the client sent and
      * {@code isRequestedSessionIdValid()} can call it expired -- the pair Spring Security's
      * {@code SessionManagementFilter} keys on to tell an expired session from a request that carried
-     * none. Both halves match Tomcat's {@code CoyoteAdapter.parseSessionCookiesId}, which replaces its
-     * candidate for as long as {@code isRequestedSessionIdValid()} is false.
+     * none. Both halves of that selection rule match Tomcat's
+     * {@code CoyoteAdapter.parseSessionCookiesId}, which replaces its candidate for as long as
+     * {@code isRequestedSessionIdValid()} is false -- though only the rule matches, not the side
+     * effects: Tomcat's predicate reaches {@code StandardSession.isValid()}, which expires a
+     * past-deadline session as it scans, where {@link #isValidId} deliberately evicts nothing.
+     *
+     * <p>This is not strictly better, and the one row that regresses is worth knowing. When the
+     * client's own cookie leads but is dead, it used to self-heal: the id resolved to nothing, a
+     * {@code getSession(true)} minted a fresh session, and that {@code Set-Cookie} replaced the stale
+     * cookie because it carried the same name, domain and path. Now a live candidate behind it is
+     * adopted instead, and adopting an existing session writes no {@code Set-Cookie} at all, so the
+     * dead lead cookie is never displaced and the choice repeats on every request. That is harmless
+     * when the trailing cookie is the user's own, which is the case issue #91 is about; it is not
+     * when an attacker who can write a {@code Domain}-scoped cookie for a sibling host has planted a
+     * live session there, since the victim then shares it pre-authentication. Post-authentication
+     * fixation is still defeated -- Spring Security rotates via {@code changeSessionId()} -- and this
+     * is Tomcat's behaviour too, but the stale cookie is only inert while it names nothing live.
      *
      * @param cookies the request's already-parsed cookies, in wire order, or {@code null} if it sent none
      */
