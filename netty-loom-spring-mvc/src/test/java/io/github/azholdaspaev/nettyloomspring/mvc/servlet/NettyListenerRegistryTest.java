@@ -19,11 +19,14 @@ import jakarta.servlet.http.HttpSessionListener;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.EventListener;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -184,6 +187,25 @@ class NettyListenerRegistryTest {
         assertEquals(List.of("contextInitialized:all", "contextAttributeAdded:all", "requestInitialized:all",
             "requestAttributeAdded:all", "sessionCreated:all", "sessionAttributeAdded:all",
             "sessionIdChanged:old:all"), events);
+    }
+
+    /**
+     * The seven interfaces {@code ServletContext.addListener} defines, restated here on purpose: this is
+     * the independent copy that makes a drift in {@code SUPPORTED_TYPES} a test failure. Without it,
+     * dropping an entry from that list leaves the suite green while {@code addListener(Class)} starts
+     * refusing a type {@code addListener(instance)} still accepts.
+     */
+    static Stream<Class<? extends EventListener>> theSevenAcceptedTypes() {
+        return Stream.of(ServletContextListener.class, ServletContextAttributeListener.class,
+            ServletRequestListener.class, ServletRequestAttributeListener.class,
+            HttpSessionListener.class, HttpSessionAttributeListener.class, HttpSessionIdListener.class);
+    }
+
+    @ParameterizedTest
+    @MethodSource("theSevenAcceptedTypes")
+    void everyAcceptedTypePassesTheClassLevelCheck(Class<? extends EventListener> type) {
+        assertDoesNotThrow(() -> registry.requireSupportedType(type),
+            type.getSimpleName() + " is filed by addListener, so the Class-level gate must accept it too");
     }
 
     @Test
