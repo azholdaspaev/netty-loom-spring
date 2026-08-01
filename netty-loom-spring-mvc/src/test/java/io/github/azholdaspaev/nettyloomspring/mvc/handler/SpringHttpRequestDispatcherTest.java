@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiConsumer;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -209,6 +210,51 @@ class SpringHttpRequestDispatcherTest {
         assertThrows(IllegalStateException.class, () -> dispatcher.handle(get("/api/ping"), CONNECTION));
 
         assertTrue(events.isEmpty(), "nothing initialized, so nothing may be released; got " + events);
+    }
+
+    @Test
+    void aThrowingRequestDestroyedListenerDoesNotReplaceTheHandlersFailure() {
+        // fireRequestDestroyed runs in the dispatcher's finally, so propagating there would replace any
+        // in-flight exception -- losing the handler's failure on every request while the listener stayed
+        // broken -- and would skip the listeners below it.
+        servletContext.addListener(new ServletRequestListener() {
+            @Override
+            public void requestDestroyed(ServletRequestEvent event) {
+                events.add("outer:destroyed");
+            }
+        });
+        servletContext.addListener(new ServletRequestListener() {
+            @Override
+            public void requestDestroyed(ServletRequestEvent event) {
+                throw new IllegalStateException("audit sink is down");
+            }
+        });
+        var dispatcher = dispatcher((request, response) -> {
+            throw new UnsupportedOperationException("the handler's own failure");
+        });
+
+        UnsupportedOperationException thrown = assertThrows(UnsupportedOperationException.class,
+            () -> dispatcher.handle(get("/api/ping"), CONNECTION));
+
+        assertEquals("the handler's own failure", thrown.getMessage());
+        assertTrue(events.contains("outer:destroyed"),
+            "a listener below the failing one must still be released; got " + events);
+    }
+
+    @Test
+    void aThrowingRequestDestroyedListenerDoesNotBreakASuccessfulResponse() {
+        servletContext.addListener(new ServletRequestListener() {
+            @Override
+            public void requestDestroyed(ServletRequestEvent event) {
+                throw new IllegalStateException("audit sink is down");
+            }
+        });
+        var dispatcher = dispatcher((request, response) -> response.setStatus(HttpServletResponse.SC_OK));
+
+        FullHttpResponse response =
+            assertDoesNotThrow(() -> dispatcher.handle(get("/api/ping"), CONNECTION));
+
+        assertEquals(HttpServletResponse.SC_OK, response.status().code());
     }
 
     @Test
