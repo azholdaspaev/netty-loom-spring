@@ -10,6 +10,7 @@ import io.netty.handler.codec.http.HttpVersion;
 import jakarta.servlet.ServletRequestAttributeEvent;
 import jakarta.servlet.ServletRequestAttributeListener;
 import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpSessionIdListener;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -858,6 +859,28 @@ class NettyHttpServletRequestTest {
         assertSame(session, context.getSessionManager().find(newId));
         assertNull(context.getSessionManager().find(oldId));
         assertTrue(exchange.setCookies().getLast().startsWith(NettySessionCookieConfig.DEFAULT_NAME + "=" + newId));
+    }
+
+    @Test
+    void aThrowingSessionIdListenerStillLeavesTheClientHoldingTheNewId() {
+        // sessionIdChanged fires after the rotation has committed and before writeSessionCookie runs, so
+        // a listener that throws would unwind past the Set-Cookie: the store knows only the new id while
+        // the browser still holds the old one, so every later request mints a fresh session and the user
+        // is silently logged out. Tomcat's tellChangedSessionId wraps each listener and logs.
+        var context = new DefaultNettyServletContext();
+        var exchange = exchange(context);
+        var session = exchange.request().getSession(true);
+        String oldId = session.getId();
+        context.addListener((HttpSessionIdListener) (event, previousId) -> {
+            throw new IllegalStateException("session registry is down");
+        });
+
+        String newId = assertDoesNotThrow(() -> exchange.request().changeSessionId(),
+            "a bystander listener must not abort a rotation that has already committed");
+
+        assertNotEquals(oldId, newId);
+        assertTrue(exchange.setCookies().getLast().startsWith(NettySessionCookieConfig.DEFAULT_NAME + "=" + newId),
+            "the client must be handed the id the store now holds; Actual: " + exchange.setCookies());
     }
 
     @Test

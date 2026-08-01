@@ -264,7 +264,13 @@ public class NettyListenerRegistry {
 
     void fireSessionIdChanged(HttpSession session, String oldSessionId) {
         HttpSessionEvent event = new HttpSessionEvent(session);
-        sessionIdListeners.forEach(listener -> listener.sessionIdChanged(event, oldSessionId));
+        // Quietly: the rotation has already committed and the caller has yet to write the Set-Cookie, so
+        // an exception leaving here strands the client on an id the store no longer knows -- a silent
+        // logout that repeats for as long as the listener keeps failing. The listener is told about an
+        // irreversible change it cannot refuse, which is this class's definition of a bystander.
+        // Tomcat's StandardSession.tellChangedSessionId wraps each listener for the same reason.
+        fireQuietly(sessionIdListeners, "HttpSessionIdListener.sessionIdChanged",
+            listener -> listener.sessionIdChanged(event, oldSessionId));
     }
 
     // --- HttpSessionAttributeListener ---
