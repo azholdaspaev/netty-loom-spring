@@ -7,6 +7,7 @@ import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestHandler;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.DefaultNettyPipelineConfigurer;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NamedChannelHandler;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineConfigurer;
+import io.github.azholdaspaev.nettyloomspring.core.support.SpinWait;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.group.ChannelGroup;
 import io.netty.channel.group.DefaultChannelGroup;
@@ -206,16 +207,13 @@ class NettyServerDrainTest {
     }
 
     /**
-     * Spins until the server has processed the client's FIN. Asserting the close actually happened,
+     * Waits for the server to process the client's FIN. Asserting the close actually happened,
      * rather than sleeping long enough to assume it, is what makes a pass prove the dispatch is the
      * only thing left holding shutdown open.
      */
     private void awaitConnectionClosed() {
-        long limit = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (!connections.isEmpty()) {
-            assertTrue(System.nanoTime() < limit, "the server never observed the client's close");
-            Thread.onSpinWait();
-        }
+        SpinWait.until(connections::isEmpty, Duration.ofSeconds(5),
+            "the server never observed the client's close");
     }
 
     private NettyServer newServer() {

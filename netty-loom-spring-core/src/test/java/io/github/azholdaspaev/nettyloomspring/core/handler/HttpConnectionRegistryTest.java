@@ -1,10 +1,12 @@
 package io.github.azholdaspaev.nettyloomspring.core.handler;
 
+import io.github.azholdaspaev.nettyloomspring.core.support.SpinWait;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -137,7 +139,8 @@ class HttpConnectionRegistryTest {
         Thread drain = Thread.currentThread();
         long startNanos = System.nanoTime();
         Thread.ofPlatform().start(() -> {
-            awaitParked(drain);
+            SpinWait.until(() -> drain.getState() == Thread.State.TIMED_WAITING,
+                Duration.ofSeconds(10), "the drain never parked");
             registry.dispatchFinished();
         });
 
@@ -145,15 +148,6 @@ class HttpConnectionRegistryTest {
 
         assertTrue(System.nanoTime() - startNanos < TimeUnit.SECONDS.toNanos(2),
             "the drain must be woken by the dispatch, not released by its own timeout");
-    }
-
-    /** Spins until {@code thread} is parked in the timed wait, so the signal is the thing under test. */
-    private static void awaitParked(Thread thread) {
-        long limit = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-        while (thread.getState() != Thread.State.TIMED_WAITING) {
-            assertTrue(System.nanoTime() < limit, "the drain never parked");
-            Thread.onSpinWait();
-        }
     }
 
     private static HttpConnectionRegistry newRegistry() {
