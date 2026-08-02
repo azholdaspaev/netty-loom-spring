@@ -19,11 +19,13 @@ import io.netty.util.concurrent.GlobalEventExecutor;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -174,6 +176,42 @@ class HttpRequestHandlerTest {
         FullHttpResponse out = channel.readOutbound();
         out.release();
         channel.finish();
+    }
+
+    /**
+     * {@code HttpRequestDispatcher} is public SPI and documents no reference-count contract, so an
+     * implementation that releases the request it was handed makes the {@code finally}'s own
+     * {@code release()} throw. The count must already have been taken by then: it is global and
+     * {@link HttpConnectionRegistry#reset()} does not clear it, so a leak here would make every
+     * later shutdown burn its whole grace period.
+     */
+    @Test
+    void shouldNotLeaveADispatchCountedWhenReleasingTheRequestThrows() throws Exception {
+        CountDownLatch pipelineDroppedItsReference = new CountDownLatch(1);
+        AtomicReference<Thread> worker = new AtomicReference<>();
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            (request, _) -> {
+                pipelineDroppedItsReference.await();
+                request.release(request.refCnt());
+                return emptyOkResponse();
+            },
+            task -> worker.set(startQuietly(task)), connectionRegistry));
+
+        channel.writeInbound(new DefaultFullHttpRequest(
+            HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
+        pipelineDroppedItsReference.countDown();
+        worker.get().join();
+
+        assertTrue(connectionRegistry.awaitDispatchesFinished(0),
+            "a dispatch whose release() threw must still have been counted out");
+    }
+
+    /** The dispatch runs off the calling thread, as the production virtual-thread executor does. */
+    private static Thread startQuietly(Runnable task) {
+        Thread worker = Thread.ofPlatform().unstarted(task);
+        worker.setUncaughtExceptionHandler((_, _) -> { });
+        worker.start();
+        return worker;
     }
 
     @Test
