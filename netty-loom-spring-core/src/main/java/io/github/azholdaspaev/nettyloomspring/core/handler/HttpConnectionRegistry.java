@@ -33,9 +33,11 @@ import java.util.concurrent.locks.ReentrantLock;
  * thread still inside the handler (issue #108). The dispatch count is global because a connection
  * lost before the drain began leaves no channel to hang it on.
  *
- * <p>Both counters ignore a decrement that would take them below zero. A negative count makes
- * something busy look idle — a connection closed mid-request, or a whole server reporting drained
- * with a dispatch still running — so the floor stays. It is not licence to leave counts unbalanced.
+ * <p>The dispatch count is trusted to balance rather than clamped: {@link HttpRequestHandler}
+ * increments once before submitting and decrements once on whichever of its two paths runs. The
+ * per-connection count does clamp, but that check-then-act is only safe because it is confined to
+ * the event loop; decrements here arrive on arbitrary virtual threads, where the same shape would
+ * look like protection without being any.
  */
 public class HttpConnectionRegistry {
 
@@ -92,6 +94,10 @@ public class HttpConnectionRegistry {
      * Called on the event loop once a response has been written. Every path audited today balances,
      * including a malformed request line: the decoder emits an invalid {@code HttpRequest}, which is
      * counted, and its 400 balances it.
+     *
+     * <p>The clamp is a safety net for a future unmatched response, which would otherwise make a
+     * busy connection look idle to {@link #beginDrain()} and get it closed mid-request. Reading it
+     * before decrementing is only sound because both run on this connection's event loop.
      */
     public void exchangeFinished(Channel connection) {
         AtomicInteger inFlight = counter(connection);
@@ -110,9 +116,6 @@ public class HttpConnectionRegistry {
 
     /** Called from the dispatch task's {@code finally}, whether it answered or threw. */
     public void dispatchFinished() {
-        if (dispatchesInFlight.get() <= 0) {
-            return;
-        }
         // Only signal while draining: outside a shutdown nobody is waiting, and at low load every
         // request returns the count to zero, so this would take the lock on each one.
         if (dispatchesInFlight.decrementAndGet() <= 0 && draining) {
