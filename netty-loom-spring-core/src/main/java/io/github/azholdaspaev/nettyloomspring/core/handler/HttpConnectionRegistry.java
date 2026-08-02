@@ -34,10 +34,11 @@ import java.util.concurrent.locks.ReentrantLock;
  * lost before the drain began leaves no channel to hang it on.
  *
  * <p>The dispatch count is trusted to balance rather than clamped: {@link HttpRequestHandler}
- * increments once before submitting and decrements once on whichever of its two paths runs. The
- * per-connection count does clamp, but that check-then-act is only safe because it is confined to
- * the event loop; decrements here arrive on arbitrary virtual threads, where the same shape would
- * look like protection without being any.
+ * increments once before submitting and decrements once on whichever of its two paths runs, which
+ * holds as long as its executor honours the contract documented on its constructor. The
+ * per-connection count does clamp, for the reason given on {@link #exchangeFinished}; decrements
+ * here arrive on arbitrary virtual threads, where the same shape would look like protection without
+ * being any.
  */
 public class HttpConnectionRegistry {
 

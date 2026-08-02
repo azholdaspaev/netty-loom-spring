@@ -15,6 +15,13 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
     private final Executor dispatchExecutor;
     private final HttpConnectionRegistry connectionRegistry;
 
+    /**
+     * @param dispatchExecutor must run every accepted task exactly once. One that silently discards
+     *                         a task it accepted — {@code ThreadPoolExecutor} with
+     *                         {@code DiscardPolicy}, say — leaks the request and leaves the dispatch
+     *                         counted, which holds every later graceful shutdown open for its whole
+     *                         grace period. Rejecting by throwing is fine; that path is handled.
+     */
     public HttpRequestHandler(HttpRequestDispatcher requestDispatcher,
                               Executor dispatchExecutor,
                               HttpConnectionRegistry connectionRegistry) {
@@ -45,7 +52,13 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
                     // handed: the count is global and reset() does not clear it, so it must not
                     // depend on a call that can fail.
                     connectionRegistry.dispatchFinished();
-                    request.release();
+                    try {
+                        request.release();
+                    } catch (Throwable ignored) {
+                        // Nothing may escape the task. The catch below compensates for a submission
+                        // that never ran; on an Executor that runs tasks inline it would otherwise
+                        // also see one that did, and count the same dispatch out twice.
+                    }
                 }
             });
         } catch (Throwable cause) {
