@@ -135,6 +135,19 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
+    void pathInfoIsNullWhenTheRequestCarriesNoExtraPathInformation() {
+        var inContext = requestWithContext("/app/hello", "/app");
+        assertNull(inContext.getPathInfo());
+        assertNull(inContext.getPathTranslated());
+        assertEquals("/hello", inContext.getServletPath());
+
+        var noContext = requestWithContext("/hello", "");
+        assertNull(noContext.getPathInfo());
+        assertNull(noContext.getPathTranslated());
+        assertEquals("/hello", noContext.getServletPath());
+    }
+
+    @Test
     void networkGettersFromConnection() {
         var context = new DefaultNettyServletContext();
         var request = request(new HttpConnectionMetadata("203.0.113.7", 54321, "198.51.100.2", 8080, false), context);
