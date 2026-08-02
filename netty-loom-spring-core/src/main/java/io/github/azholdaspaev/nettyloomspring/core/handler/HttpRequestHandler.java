@@ -41,13 +41,14 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
                 } catch (Throwable cause) {
                     ctx.fireExceptionCaught(cause);
                 } finally {
-                    request.release();
+                    // Ahead of release(), which throws if the dispatcher released the request it was
+                    // handed: the count is global and reset() does not clear it, so it must not
+                    // depend on a call that can fail.
                     connectionRegistry.dispatchFinished();
+                    request.release();
                 }
             });
         } catch (Throwable cause) {
-            // Ahead of fireExceptionCaught, which can throw in its own right once the event loop is
-            // gone (issue #109) and would otherwise leave the dispatch counted forever.
             connectionRegistry.dispatchFinished();
             request.release();
             ctx.fireExceptionCaught(cause);
