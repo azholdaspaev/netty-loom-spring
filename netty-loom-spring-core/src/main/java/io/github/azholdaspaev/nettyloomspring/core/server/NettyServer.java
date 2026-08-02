@@ -173,14 +173,14 @@ public class NettyServer {
     }
 
     /**
-     * Waits for in-flight requests, not for open sockets: {@link HttpConnectionRegistry#beginDrain()}
+     * Waits for in-flight requests, not for open sockets: {@link HttpConnectionRegistry#awaitDrained(long)}
      * closes the connections that are idle and marks the rest to close once they have replied, so
-     * this completes as soon as the last exchange is answered rather than when a pooling client
-     * happens to hang up (issue #67).
+     * this completes as soon as the last request is done rather than when a pooling client happens
+     * to hang up (issue #67). Returning early is what let the event loops — and the session store
+     * torn down above them — go while threads were still serving (issue #108).
      */
     private boolean drainOrForceClose(Deadline deadline) throws InterruptedException {
-        boolean drained = connectionRegistry.beginDrain()
-            .await(deadline.remainingMillis(), TimeUnit.MILLISECONDS);
+        boolean drained = connectionRegistry.awaitDrained(deadline.remainingMillis());
         if (!drained) {
             connectionRegistry.closeAll().sync();
         }

@@ -124,7 +124,7 @@ class NettyServerPipeliningTest {
             new NamedChannelHandler("aggregator", () -> new HttpObjectAggregator(MAX_HTTP_REQUEST_BODY_BYTES)),
             new NamedChannelHandler("pipelining", HttpPipeliningHandler::new),
             new NamedChannelHandler("dispatcher",
-                () -> new HttpRequestHandler(overtakingDispatcher(), dispatchExecutor))));
+                () -> new HttpRequestHandler(overtakingDispatcher(), dispatchExecutor, connectionRegistry))));
         NettyServerConfiguration configuration = new NettyServerConfiguration(
             0, InetAddress.getLoopbackAddress(), 0, 0, false);
         return new NettyServer(configuration,

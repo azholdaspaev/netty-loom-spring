@@ -4,6 +4,7 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.embedded.EmbeddedChannel;
+import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -14,6 +15,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpServerKeepAliveHandler;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.util.concurrent.GlobalEventExecutor;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.CompletableFuture;
@@ -35,6 +37,9 @@ class HttpRequestHandlerTest {
 
     private static final Executor DIRECT = Runnable::run;
 
+    private final HttpConnectionRegistry connectionRegistry =
+        new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE));
+
     @Test
     void shouldWriteDispatcherResponseToChannel() {
         FullHttpResponse canned = new DefaultFullHttpResponse(
@@ -42,7 +47,7 @@ class HttpRequestHandlerTest {
             HttpResponseStatus.OK,
             Unpooled.EMPTY_BUFFER);
         EmbeddedChannel channel = new EmbeddedChannel(
-            new HttpRequestHandler((_, _) -> canned, DIRECT));
+            new HttpRequestHandler((_, _) -> canned, DIRECT, connectionRegistry));
 
         channel.writeInbound(new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
@@ -57,7 +62,7 @@ class HttpRequestHandlerTest {
     @Test
     void shouldPassThroughTheIncomingRequestToDispatcher() {
         CapturingDispatcher dispatcher = new CapturingDispatcher();
-        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT));
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry));
         FullHttpRequest request = new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.POST, "/submit");
 
@@ -75,7 +80,7 @@ class HttpRequestHandlerTest {
     @Test
     void passesHttpConnectionMetadataToDispatcher() {
         CapturingDispatcher dispatcher = new CapturingDispatcher();
-        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT));
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry));
 
         channel.writeInbound(new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
@@ -92,7 +97,7 @@ class HttpRequestHandlerTest {
     @Test
     void shouldInvokeDispatcherOncePerRequest() {
         CapturingDispatcher dispatcher = new CapturingDispatcher();
-        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT));
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry));
 
         channel.writeInbound(new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.GET, "/a"));
@@ -117,7 +122,7 @@ class HttpRequestHandlerTest {
         RuntimeException boom = new RuntimeException("boom");
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         EmbeddedChannel channel = new EmbeddedChannel(
-            new HttpRequestHandler((_, _) -> { throw boom; }, DIRECT),
+            new HttpRequestHandler((_, _) -> { throw boom; }, DIRECT, connectionRegistry),
             capture);
 
         channel.writeInbound(new DefaultFullHttpRequest(
@@ -134,7 +139,7 @@ class HttpRequestHandlerTest {
     @Test
     void shouldReleaseRequestAfterDispatch() {
         CapturingDispatcher dispatcher = new CapturingDispatcher();
-        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT));
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry));
         FullHttpRequest request = new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.GET, "/");
 
@@ -151,12 +156,33 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldReleaseRequestAndPropagateWhenExecutorRejects() {
+    void shouldCountADispatchThatIsSubmittedButNotYetRunning() throws InterruptedException {
+        CompletableFuture<Runnable> submitted = new CompletableFuture<>();
+        EmbeddedChannel channel = new EmbeddedChannel(
+            new HttpRequestHandler((_, _) -> emptyOkResponse(), submitted::complete, connectionRegistry));
+
+        channel.writeInbound(new DefaultFullHttpRequest(
+            HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
+
+        assertFalse(connectionRegistry.awaitDispatchesFinished(0),
+            "a dispatch queued but not yet started must still hold the drain open");
+
+        submitted.join().run();
+
+        assertTrue(connectionRegistry.awaitDispatchesFinished(0),
+            "the drain must be released once the queued dispatch has run");
+        FullHttpResponse out = channel.readOutbound();
+        out.release();
+        channel.finish();
+    }
+
+    @Test
+    void shouldReleaseRequestAndPropagateWhenExecutorRejects() throws InterruptedException {
         RejectedExecutionException rejection = new RejectedExecutionException("shutting down");
         Executor rejecting = _ -> { throw rejection; };
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         EmbeddedChannel channel = new EmbeddedChannel(
-            new HttpRequestHandler((_, _) -> { throw new AssertionError("dispatcher must not run"); }, rejecting),
+            new HttpRequestHandler((_, _) -> { throw new AssertionError("dispatcher must not run"); }, rejecting, connectionRegistry),
             capture);
         FullHttpRequest request = new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.GET, "/");
@@ -168,6 +194,8 @@ class HttpRequestHandlerTest {
         assertSame(rejection, capture.captured,
             "rejection must propagate via exceptionCaught so the pipeline can respond");
         assertNull(channel.readOutbound());
+        assertTrue(connectionRegistry.awaitDispatchesFinished(0),
+            "a dispatch counted before a submission that never ran must not hold the drain open");
         channel.finish();
     }
 
@@ -273,10 +301,10 @@ class HttpRequestHandlerTest {
         channel.finish();
     }
 
-    private static EmbeddedChannel keepAliveChannel(HttpRequestDispatcher dispatcher) {
+    private EmbeddedChannel keepAliveChannel(HttpRequestDispatcher dispatcher) {
         return new EmbeddedChannel(
             new HttpServerKeepAliveHandler(),
-            new HttpRequestHandler(dispatcher, DIRECT));
+            new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry));
     }
 
     private static FullHttpResponse emptyOkResponse() {
