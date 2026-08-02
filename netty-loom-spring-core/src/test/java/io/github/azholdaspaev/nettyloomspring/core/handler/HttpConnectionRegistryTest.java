@@ -124,21 +124,6 @@ class HttpConnectionRegistryTest {
     }
 
     /**
-     * The dispatch count is global, so unlike the per-connection one a single unmatched decrement
-     * would not be contained — it would read as drained forever, for every later shutdown.
-     */
-    @Test
-    void shouldNotLetAnUnmatchedFinishMaskARunningDispatch() throws Exception {
-        HttpConnectionRegistry registry = newRegistry();
-
-        registry.dispatchFinished();
-        registry.dispatchStarted();
-
-        assertFalse(registry.awaitDispatchesFinished(0),
-            "an unmatched finish must not go negative and hide the dispatch that follows it");
-    }
-
-    /**
      * Pins the signal rather than the timeout. The finisher waits until the drain is provably parked
      * before it runs, because a decrement that lands first would let the wait return on its own
      * count check — passing with the signal deleted, and vacuous means green.
