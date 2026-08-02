@@ -6,10 +6,15 @@ import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 
 public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
+
+    private static final Logger log = LoggerFactory.getLogger(HttpRequestHandler.class);
 
     private final HttpRequestDispatcher requestDispatcher;
     private final Executor dispatchExecutor;
@@ -46,7 +51,7 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
                     echoHttp10KeepAlive(request, response);
                     ctx.writeAndFlush(response);
                 } catch (Throwable cause) {
-                    ctx.fireExceptionCaught(cause);
+                    reportDispatchFailure(ctx, request, cause);
                 } finally {
                     // Ahead of release(), which throws if the dispatcher released the request it was
                     // handed: the count is global and reset() does not clear it, so it must not
@@ -65,6 +70,23 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
             connectionRegistry.dispatchFinished();
             request.release();
             ctx.fireExceptionCaught(cause);
+        }
+    }
+
+    /**
+     * Makes the hop onto the event loop that {@code ctx.fireExceptionCaught} would make anyway, so a
+     * loop that terminated under a dispatch rejects it here rather than inside Netty — which answers
+     * its own rejection with two stack traces, neither naming the request (issue #109). Same shape as
+     * {@link HttpPipeliningHandler}'s deferred re-open, for the same reason. Only the dispatch task
+     * needs it: the outer {@code catch} already runs on the loop, so it has nothing to reject.
+     */
+    private static void reportDispatchFailure(ChannelHandlerContext ctx, FullHttpRequest request, Throwable cause) {
+        try {
+            ctx.executor().execute(() -> ctx.fireExceptionCaught(cause));
+        } catch (RejectedExecutionException terminated) {
+            String dispatch = request.method() + " " + request.uri();
+            log.warn("Abandoned {} after the event loop terminated: {}", dispatch, cause.toString());
+            log.debug("Abandoned {}", dispatch, cause);
         }
     }
 

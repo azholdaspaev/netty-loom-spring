@@ -3,8 +3,11 @@ package io.github.azholdaspaev.nettyloomspring.core.handler;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.MultiThreadIoEventLoopGroup;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.channel.group.DefaultChannelGroup;
+import io.netty.channel.local.LocalChannel;
+import io.netty.channel.local.LocalIoHandler;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -18,7 +21,11 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.util.IllegalReferenceCountException;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
@@ -260,6 +267,58 @@ class HttpRequestHandlerTest {
         assertTrue(connectionRegistry.awaitDispatchesFinished(0),
             "a dispatch counted before a submission that never ran must not hold the drain open");
         channel.finish();
+    }
+
+    /**
+     * {@link EmbeddedChannel} cannot reach this path — {@code EmbeddedEventLoop.inEventLoop()} is
+     * unconditionally {@code true}, so the off-loop branch is never taken, and its shutdown methods
+     * throw {@link UnsupportedOperationException}. Hence a real loop, terminated rather than merely
+     * shutting down: {@code SingleThreadEventExecutor} only rejects once it reaches {@code ST_SHUTDOWN}.
+     * The log is the only observable — nothing escapes either way, and a terminated loop runs no
+     * handler that could see the difference — so this reads the stream slf4j-simple writes to.
+     */
+    @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    void shouldReportAnAbandonedDispatchItselfWhenTheEventLoopHasTerminated() throws Exception {
+        MultiThreadIoEventLoopGroup group = new MultiThreadIoEventLoopGroup(1, LocalIoHandler.newFactory());
+        try {
+            LocalChannel connection = new LocalChannel();
+            group.register(connection).sync();
+
+            CountDownLatch eventLoopTerminated = new CountDownLatch(1);
+            CompletableFuture<Thread> dispatch = new CompletableFuture<>();
+            connection.pipeline().addLast(new HttpRequestHandler(
+                (_, _) -> {
+                    eventLoopTerminated.await();
+                    throw new IllegalStateException("The servlet context has been closed");
+                },
+                task -> dispatch.complete(startQuietly(task)), connectionRegistry));
+
+            connection.pipeline().fireChannelRead(new DefaultFullHttpRequest(
+                HttpVersion.HTTP_1_1, HttpMethod.GET, "/work"));
+            Thread worker = dispatch.join();
+            group.shutdownGracefully(0, 0, TimeUnit.NANOSECONDS).sync();
+
+            ByteArrayOutputStream captured = new ByteArrayOutputStream();
+            PrintStream standardError = System.err;
+            System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
+            try {
+                eventLoopTerminated.countDown();
+                worker.join();
+            } finally {
+                System.setErr(standardError);
+            }
+            String logged = captured.toString(StandardCharsets.UTF_8);
+
+            assertEquals(1L, logged.lines()
+                    .filter(line -> line.contains("Abandoned GET /work after the event loop terminated"))
+                    .count(),
+                "the handler must report the abandoned request itself, exactly once; log was: " + logged);
+            assertFalse(logged.contains("Failed to submit an exceptionCaught() event."),
+                "the report must not be left to Netty, which writes two stack traces for it");
+        } finally {
+            group.shutdownGracefully(0, 0, TimeUnit.NANOSECONDS);
+        }
     }
 
     @Test
