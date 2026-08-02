@@ -15,6 +15,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpServerKeepAliveHandler;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.util.IllegalReferenceCountException;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import org.junit.jupiter.api.Test;
 
@@ -33,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HttpRequestHandlerTest {
@@ -204,6 +206,29 @@ class HttpRequestHandlerTest {
 
         assertTrue(connectionRegistry.awaitDispatchesFinished(0),
             "a dispatch whose release() threw must still have been counted out");
+    }
+
+    /**
+     * An {@link Executor} that runs tasks inline puts the task's own cleanup and the {@code catch}
+     * around the submission on one stack, so a throw from the former reaches the latter. The outer
+     * path compensates for a submission that never ran; letting it also see one that did would
+     * count the same dispatch out twice, and the count is global.
+     */
+    @Test
+    void shouldNotCountADispatchOutTwiceWhenItsCleanupThrowsOnAnInlineExecutor() throws Exception {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            (request, _) -> {
+                request.release(request.refCnt());
+                return emptyOkResponse();
+            },
+            DIRECT, connectionRegistry));
+
+        assertThrows(IllegalReferenceCountException.class, () -> channel.writeInbound(
+            new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/")));
+        connectionRegistry.dispatchStarted();
+
+        assertFalse(connectionRegistry.awaitDispatchesFinished(0),
+            "a live dispatch must still hold the drain open after an earlier task threw");
     }
 
     /** The dispatch runs off the calling thread, as the production virtual-thread executor does. */
