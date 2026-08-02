@@ -37,8 +37,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * increments once before submitting and decrements once on whichever of its two paths runs, which
  * holds as long as its executor honours the contract documented on its constructor. The
  * per-connection count does clamp, for the reason given on {@link #exchangeFinished}; decrements
- * here arrive on arbitrary virtual threads, where the same shape would look like protection without
- * being any.
+ * here arrive on arbitrary virtual threads, where the same shape would carry none of that reason.
  */
 public class HttpConnectionRegistry {
 
