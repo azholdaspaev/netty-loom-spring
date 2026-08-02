@@ -238,6 +238,38 @@ class HttpRequestHandlerTest {
             "a live dispatch must still hold the drain open after an earlier task threw");
     }
 
+    /**
+     * The containment above is total on purpose, so narrowing it — to {@code IllegalReferenceCountException},
+     * or by pairing it with the {@code rethrowIfFatal} that {@code NettyListenerRegistry}'s wide catches
+     * use — reopens the double count. Its sibling above cannot see that: the over-release it provokes is
+     * the one type a narrowed catch would still hold.
+     */
+    @Test
+    void shouldContainACleanupFailureThatIsNotAnOverRelease() throws Exception {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            (_, _) -> emptyOkResponse(), DIRECT, connectionRegistry));
+
+        assertThrows(IllegalStateException.class,
+            () -> channel.writeInbound(new CleanupFailingRequest()));
+        connectionRegistry.dispatchStarted();
+
+        assertFalse(connectionRegistry.awaitDispatchesFinished(0),
+            "a live dispatch must still hold the drain open after an earlier cleanup threw");
+    }
+
+    /** Fails its own release with something the reference count cannot explain. */
+    private static final class CleanupFailingRequest extends DefaultFullHttpRequest {
+
+        CleanupFailingRequest() {
+            super(HttpVersion.HTTP_1_1, HttpMethod.GET, "/");
+        }
+
+        @Override
+        public boolean release() {
+            throw new IllegalStateException("deallocator failed");
+        }
+    }
+
     /** The dispatch runs off the calling thread, as the production virtual-thread executor does. */
     private static Thread startQuietly(Runnable task) {
         Thread worker = Thread.ofPlatform().unstarted(task);

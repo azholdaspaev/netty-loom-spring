@@ -60,9 +60,12 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
                     try {
                         request.release();
                     } catch (Throwable ignored) {
-                        // Nothing may escape the task. The catch below compensates for a submission
-                        // that never ran; on an Executor that runs tasks inline it would otherwise
-                        // also see one that did, and count the same dispatch out twice.
+                        // Nothing may escape the task, fatal errors included. The catch below
+                        // compensates for a submission that never ran; on an Executor that runs tasks
+                        // inline it would otherwise also see one that did, and count the same dispatch
+                        // out twice. That is why this is the one wide catch here that does not pair
+                        // with a rethrowIfFatal, as NettyListenerRegistry's do: rethrowing would put
+                        // the throwable back on the path to that catch and restore the double count.
                     }
                 }
             });
