@@ -5,6 +5,8 @@ import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.TimeUnit;
+
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -99,6 +101,74 @@ class HttpConnectionRegistryTest {
 
         assertFalse(registry.isDraining(),
             "a server restarted after a shutdown must serve keep-alive connections again");
+    }
+
+    @Test
+    void shouldReportDispatchesFinishedWhenNoneAreRunning() throws Exception {
+        assertTrue(newRegistry().awaitDispatchesFinished(0),
+            "a drain with nothing dispatching must not spend any of the grace period");
+    }
+
+    @Test
+    void shouldWaitOutTheTimeoutWhileADispatchIsStillRunning() throws Exception {
+        HttpConnectionRegistry registry = newRegistry();
+        registry.dispatchStarted();
+
+        assertFalse(registry.awaitDispatchesFinished(50),
+            "a running dispatch must hold the drain open until the deadline");
+
+        registry.dispatchFinished();
+
+        assertTrue(registry.awaitDispatchesFinished(0),
+            "the drain must be satisfied as soon as the dispatch unwinds");
+    }
+
+    /**
+     * The dispatch count is global, so unlike the per-connection one a single unmatched decrement
+     * would not be contained — it would read as drained forever, for every later shutdown.
+     */
+    @Test
+    void shouldNotLetAnUnmatchedFinishMaskARunningDispatch() throws Exception {
+        HttpConnectionRegistry registry = newRegistry();
+
+        registry.dispatchFinished();
+        registry.dispatchStarted();
+
+        assertFalse(registry.awaitDispatchesFinished(0),
+            "an unmatched finish must not go negative and hide the dispatch that follows it");
+    }
+
+    /**
+     * Pins the signal rather than the timeout. The finisher waits until the drain is provably parked
+     * before it runs, because a decrement that lands first would let the wait return on its own
+     * count check — passing with the signal deleted, and vacuous means green.
+     */
+    @Test
+    void shouldWakeTheDrainAsSoonAsTheLastDispatchFinishes() throws Exception {
+        HttpConnectionRegistry registry = newRegistry();
+        registry.dispatchStarted();
+        registry.beginDrain();
+
+        Thread drain = Thread.currentThread();
+        long startNanos = System.nanoTime();
+        Thread.ofPlatform().start(() -> {
+            awaitParked(drain);
+            registry.dispatchFinished();
+        });
+
+        registry.awaitDispatchesFinished(5_000);
+
+        assertTrue(System.nanoTime() - startNanos < TimeUnit.SECONDS.toNanos(2),
+            "the drain must be woken by the dispatch, not released by its own timeout");
+    }
+
+    /** Spins until {@code thread} is parked in the timed wait, so the signal is the thing under test. */
+    private static void awaitParked(Thread thread) {
+        long limit = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (thread.getState() != Thread.State.TIMED_WAITING) {
+            assertTrue(System.nanoTime() < limit, "the drain never parked");
+            Thread.onSpinWait();
+        }
     }
 
     private static HttpConnectionRegistry newRegistry() {

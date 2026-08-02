@@ -111,7 +111,7 @@ public class NettyLoomAutoConfiguration {
             // written from that handler's own context, towards the head -- never reaches it; above the
             // dispatcher so requests are gated before dispatch while responses still pass back through.
             new NamedChannelHandler("pipelining", HttpPipeliningHandler::new),
-            new NamedChannelHandler("dispatcher", () -> new HttpRequestHandler(httpRequestDispatcher, nettyLoomDispatchExecutor)),
+            new NamedChannelHandler("dispatcher", () -> new HttpRequestHandler(httpRequestDispatcher, nettyLoomDispatchExecutor, httpConnectionRegistry)),
             NamedChannelHandler.shared("exceptionHandler", new HttpExceptionHandler())
         ));
     }

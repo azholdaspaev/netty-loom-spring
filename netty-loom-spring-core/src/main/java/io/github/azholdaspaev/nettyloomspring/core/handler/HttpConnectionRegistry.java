@@ -6,10 +6,14 @@ import io.netty.channel.group.ChannelGroupFuture;
 import io.netty.util.Attribute;
 import io.netty.util.AttributeKey;
 
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Tracks open connections and, per connection, how many HTTP exchanges are still in flight.
+ * Tracks what graceful shutdown must wait for: open connections, how many HTTP exchanges each is
+ * still serving, and how many dispatches are running off the event loop.
  *
  * <p>Graceful shutdown has to wait for in-flight <em>requests</em>, not for open <em>sockets</em>.
  * Those are only the same thing if the server closes the connection after every response, which
@@ -20,9 +24,18 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <p>{@link #beginDrain()} closes the connections that are idle at that moment and flips
  * {@link #isDraining()}, which makes {@link HttpDrainHandler} stamp {@code Connection: close} on
  * the response still owed; Netty's {@code HttpServerKeepAliveHandler} then closes those
- * connections once they have replied. The returned future consequently completes as soon as the
- * last in-flight exchange finishes, and a well-behaved client stops reusing the connection instead
+ * connections once they have replied, so a well-behaved client stops reusing the connection instead
  * of racing the close.
+ *
+ * <p>Connections closing is not on its own a request signal, which is why {@link #awaitDrained(long)}
+ * waits for dispatches too: a channel closes when the <em>server</em> finishes a response, but also
+ * when a client simply hangs up — and that takes the per-connection count with it, leaving a virtual
+ * thread still inside the handler (issue #108). The dispatch count is global because a connection
+ * lost before the drain began leaves no channel to hang it on.
+ *
+ * <p>Both counters ignore a decrement that would take them below zero. A negative count makes
+ * something busy look idle — a connection closed mid-request, or a whole server reporting drained
+ * with a dispatch still running — so the floor stays. It is not licence to leave counts unbalanced.
  */
 public class HttpConnectionRegistry {
 
@@ -30,6 +43,12 @@ public class HttpConnectionRegistry {
         AttributeKey.valueOf(HttpConnectionRegistry.class, "inFlight");
 
     private final ChannelGroup connections;
+
+    private final AtomicInteger dispatchesInFlight = new AtomicInteger();
+
+    private final ReentrantLock dispatchLock = new ReentrantLock();
+
+    private final Condition dispatchesIdle = dispatchLock.newCondition();
 
     private volatile boolean draining;
 
@@ -70,14 +89,9 @@ public class HttpConnectionRegistry {
     }
 
     /**
-     * Called on the event loop once a response has been written.
-     *
-     * <p>Ignores a connection with nothing outstanding rather than going negative. This is a safety
-     * net, not a case the pipeline is known to produce: every path audited today balances, including
-     * a malformed request line (the decoder emits an invalid {@code HttpRequest}, which is counted,
-     * and its 400 balances it). Should some future response ever go out unmatched, a negative count
-     * would make a genuinely busy connection look idle to {@link #beginDrain()} and get it closed
-     * mid-request — so the floor stays. It must not be read as licence to leave counts unbalanced.
+     * Called on the event loop once a response has been written. Every path audited today balances,
+     * including a malformed request line: the decoder emits an invalid {@code HttpRequest}, which is
+     * counted, and its 400 balances it.
      */
     public void exchangeFinished(Channel connection) {
         AtomicInteger inFlight = counter(connection);
@@ -89,18 +103,71 @@ public class HttpConnectionRegistry {
         }
     }
 
+    /** Counted before the dispatch is submitted, so a queued task is never invisible to a drain. */
+    public void dispatchStarted() {
+        dispatchesInFlight.incrementAndGet();
+    }
+
+    /** Called from the dispatch task's {@code finally}, whether it answered or threw. */
+    public void dispatchFinished() {
+        if (dispatchesInFlight.get() <= 0) {
+            return;
+        }
+        // Only signal while draining: outside a shutdown nobody is waiting, and at low load every
+        // request returns the count to zero, so this would take the lock on each one.
+        if (dispatchesInFlight.decrementAndGet() <= 0 && draining) {
+            dispatchLock.lock();
+            try {
+                dispatchesIdle.signalAll();
+            } finally {
+                dispatchLock.unlock();
+            }
+        }
+    }
+
+    /**
+     * Starts draining and waits up to {@code timeoutMillis} for the server to fall quiet, reporting
+     * whether it did.
+     *
+     * <p>Connections first, then dispatches — the order is why this is one method and not two calls.
+     * Once the connections are gone nothing can start another dispatch, so from there the count only
+     * descends; awaiting dispatches alone would read a count that can rise again.
+     */
+    public boolean awaitDrained(long timeoutMillis) throws InterruptedException {
+        beginDrain();
+        long startNanos = System.nanoTime();
+        if (!connections.newCloseFuture().await(timeoutMillis, TimeUnit.MILLISECONDS)) {
+            return false;
+        }
+        long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
+        return awaitDispatchesFinished(Math.max(0L, timeoutMillis - elapsedMillis));
+    }
+
+    boolean awaitDispatchesFinished(long timeoutMillis) throws InterruptedException {
+        long remainingNanos = TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
+        dispatchLock.lock();
+        try {
+            while (dispatchesInFlight.get() > 0) {
+                if (remainingNanos <= 0) {
+                    return false;
+                }
+                remainingNanos = dispatchesIdle.awaitNanos(remainingNanos);
+            }
+            return true;
+        } finally {
+            dispatchLock.unlock();
+        }
+    }
+
     /**
      * Starts draining: no connection may be reused from here on, and every connection that is idle
-     * right now is closed. Returns a future completing once every connection open at this instant
-     * has closed — which, since only busy ones are left, means once the last in-flight exchange has
-     * been answered.
+     * right now is closed. {@link #awaitDrained(long)} is how a shutdown waits for the result.
      */
-    public ChannelGroupFuture beginDrain() {
+    public void beginDrain() {
         draining = true;
         for (Channel connection : connections) {
             closeIfIdle(connection);
         }
-        return connections.newCloseFuture();
     }
 
     /** Force-closes every connection, abandoning whatever is still in flight. */
@@ -108,7 +175,11 @@ public class HttpConnectionRegistry {
         return connections.close();
     }
 
-    /** Clears the drain flag so a restarted server serves keep-alive connections again. */
+    /**
+     * Clears the drain flag so a restarted server serves keep-alive connections again. A dispatch
+     * abandoned by a shutdown that ran out of grace is still running, so the count is not cleared —
+     * the restarted server starts non-zero and settles when that thread's {@code finally} runs.
+     */
     public void reset() {
         draining = false;
     }

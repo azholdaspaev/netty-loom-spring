@@ -13,10 +13,14 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
 
     private final HttpRequestDispatcher requestDispatcher;
     private final Executor dispatchExecutor;
+    private final HttpConnectionRegistry connectionRegistry;
 
-    public HttpRequestHandler(HttpRequestDispatcher requestDispatcher, Executor dispatchExecutor) {
+    public HttpRequestHandler(HttpRequestDispatcher requestDispatcher,
+                              Executor dispatchExecutor,
+                              HttpConnectionRegistry connectionRegistry) {
         this.requestDispatcher = requestDispatcher;
         this.dispatchExecutor = dispatchExecutor;
+        this.connectionRegistry = connectionRegistry;
     }
 
     @Override
@@ -27,6 +31,7 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
     }
 
     private void dispatch(ChannelHandlerContext ctx, FullHttpRequest request, HttpConnectionMetadata connection) {
+        connectionRegistry.dispatchStarted();
         try {
             dispatchExecutor.execute(() -> {
                 try {
@@ -37,9 +42,13 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
                     ctx.fireExceptionCaught(cause);
                 } finally {
                     request.release();
+                    connectionRegistry.dispatchFinished();
                 }
             });
         } catch (Throwable cause) {
+            // Ahead of fireExceptionCaught, which can throw in its own right once the event loop is
+            // gone (issue #109) and would otherwise leave the dispatch counted forever.
+            connectionRegistry.dispatchFinished();
             request.release();
             ctx.fireExceptionCaught(cause);
         }

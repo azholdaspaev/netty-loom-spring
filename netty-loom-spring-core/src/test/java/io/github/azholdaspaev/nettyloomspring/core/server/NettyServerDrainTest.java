@@ -8,6 +8,7 @@ import io.github.azholdaspaev.nettyloomspring.core.pipeline.DefaultNettyPipeline
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NamedChannelHandler;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineConfigurer;
 import io.netty.buffer.Unpooled;
+import io.netty.channel.group.ChannelGroup;
 import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -62,6 +63,7 @@ class NettyServerDrainTest {
     private final CountDownLatch releaseDispatcher = new CountDownLatch(1);
 
     private NettyServer nettyServer;
+    private ChannelGroup connections;
     private ExecutorService dispatchExecutor;
     private ExecutorService shutdownExecutor;
 
@@ -89,10 +91,8 @@ class NettyServerDrainTest {
             send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
             assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
 
-            Future<NettyShutdownResult> shutdown = shutdownExecutor.submit(
-                () -> nettyServer.shutdown(Duration.ofSeconds(10)));
-            assertThrows(TimeoutException.class, () -> shutdown.get(300, TimeUnit.MILLISECONDS),
-                "shutdown must keep waiting while a request is still being served");
+            Future<NettyShutdownResult> shutdown = shutdownInBackground();
+            assertStillDraining(shutdown, "shutdown must keep waiting while a request is still being served");
 
             releaseDispatcher.countDown();
 
@@ -163,6 +163,27 @@ class NettyServerDrainTest {
         }
     }
 
+    /** A request outlives its socket: the drain has nothing left to close and must still wait. */
+    @Test
+    void shouldWaitForADispatchWhoseClientHasAlreadyDisconnected() throws Exception {
+        try (Socket client = connect()) {
+            send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
+            assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
+
+            client.close();
+            awaitConnectionClosed();
+
+            Future<NettyShutdownResult> shutdown = shutdownInBackground();
+            assertStillDraining(shutdown,
+                "a dispatch whose client has gone is still running and must still be waited for");
+
+            releaseDispatcher.countDown();
+
+            assertEquals(NettyShutdownResult.IDLE, shutdown.get(5, TimeUnit.SECONDS),
+                "shutdown completes once the abandoned dispatch has unwound");
+        }
+    }
+
     @Test
     void shouldReportRequestsActiveWhenARequestOutlastsTheGracePeriod() throws Exception {
         try (Socket client = connect()) {
@@ -176,16 +197,37 @@ class NettyServerDrainTest {
         }
     }
 
+    private Future<NettyShutdownResult> shutdownInBackground() {
+        return shutdownExecutor.submit(() -> nettyServer.shutdown(Duration.ofSeconds(10)));
+    }
+
+    private static void assertStillDraining(Future<?> shutdown, String why) {
+        assertThrows(TimeoutException.class, () -> shutdown.get(300, TimeUnit.MILLISECONDS), why);
+    }
+
+    /**
+     * Spins until the server has processed the client's FIN. Asserting the close actually happened,
+     * rather than sleeping long enough to assume it, is what makes a pass prove the dispatch is the
+     * only thing left holding shutdown open.
+     */
+    private void awaitConnectionClosed() {
+        long limit = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!connections.isEmpty()) {
+            assertTrue(System.nanoTime() < limit, "the server never observed the client's close");
+            Thread.onSpinWait();
+        }
+    }
+
     private NettyServer newServer() {
-        HttpConnectionRegistry connectionRegistry = new HttpConnectionRegistry(
-            new DefaultChannelGroup(GlobalEventExecutor.INSTANCE));
+        connections = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
+        HttpConnectionRegistry connectionRegistry = new HttpConnectionRegistry(connections);
         NettyPipelineConfigurer pipelineConfigurer = new DefaultNettyPipelineConfigurer(List.of(
             new NamedChannelHandler("httpCodec", HttpServerCodec::new),
             new NamedChannelHandler("httpKeepAlive", HttpServerKeepAliveHandler::new),
             new NamedChannelHandler("drain", () -> new HttpDrainHandler(connectionRegistry)),
             new NamedChannelHandler("aggregator", () -> new HttpObjectAggregator(MAX_HTTP_REQUEST_BODY_BYTES)),
             new NamedChannelHandler("dispatcher",
-                () -> new HttpRequestHandler(blockingDispatcher(), dispatchExecutor))));
+                () -> new HttpRequestHandler(blockingDispatcher(), dispatchExecutor, connectionRegistry))));
         NettyServerConfiguration configuration = new NettyServerConfiguration(
             0, InetAddress.getLoopbackAddress(), 0, 0, false);
         return new NettyServer(configuration,
