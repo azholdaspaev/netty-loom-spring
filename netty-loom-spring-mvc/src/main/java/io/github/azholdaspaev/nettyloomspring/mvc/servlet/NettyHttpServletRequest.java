@@ -246,12 +246,12 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public String getPathInfo() {
-        return "";
+        return null;
     }
 
     @Override
     public String getPathTranslated() {
-        return "";
+        return null;
     }
 
     @Override
