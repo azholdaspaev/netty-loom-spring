@@ -84,6 +84,7 @@ def table_row(markdown, heading_prefix, target):
 class SummarizeTest(unittest.TestCase):
     """Each test renders a whole sweep, healthy except for the runs it names."""
 
+    HEADLINE = "Headline"
     SCENARIO_1 = "Scenario 1"
     SCENARIO_2 = "Scenario 2"
     SCENARIO_3 = "Scenario 3"
@@ -165,6 +166,22 @@ class SummarizeTest(unittest.TestCase):
         self.assertNotIn("invalid", row)
         self.assertIn("3610", row)
         self.assertNotIn("invalid", table_row(md, self.MEMORY, "tomcat-platform"))
+        self.assertNotIn("Not answerable", "\n".join(section(md, self.HEADLINE)))
+
+    def test_headline_states_its_refusal_instead_of_vanishing(self):
+        """The most-read section of the snapshot is not exempt from saying it was refused.
+
+        `nl`/`tp`/`tv` now come from the gated `high_stats()`, a state scenario 2 could not reach
+        before the completion gate, so the guard that skipped a headline for want of data became a
+        guard that deletes the headline, both verdicts and the single-box caveat without a word.
+        """
+        md = self.render({("netty-loom", "high"):
+                          {"exit": K6_SCRIPT_ABORTED, "count": 96, "rate": 3.0}})
+        headline = "\n".join(section(md, self.HEADLINE))
+        self.assertIn("Not answerable", headline)
+        self.assertIn(LABELS["netty-loom"], headline)
+        # Only the target actually refused is named as the reason.
+        self.assertNotIn(LABELS["tomcat-virtual"], headline)
 
     def test_verdict_refuses_rather_than_comparing_the_survivors(self):
         """A comparative claim needs the whole field, not whichever targets happened to finish.

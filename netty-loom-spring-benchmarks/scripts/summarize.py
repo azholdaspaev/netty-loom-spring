@@ -283,6 +283,19 @@ if all(v["thr"] is not None and v["p99"] is not None for v in (nl, tp, tv)):
                "efficiency table is the discriminator for what survives off-box. See "
                "[README](../README.md) caveats.")
     out.append("")
+else:
+    # Skipping this block silently would delete the headline, both verdicts and the caveat -- the
+    # most-read section of the snapshot -- for the same reason the verdicts below refuse out loud.
+    # Named by what is missing rather than by why: a row can also lack numbers for want of an
+    # export beside a clean exit code.
+    unavailable = [label for name, label in TARGETS
+                   if high[name]["thr"] is None or high[name]["p99"] is None]
+    out.append("## Headline")
+    out.append("")
+    out.append("**Not answerable** — scenario 2 has no publishable numbers for "
+               f"{', '.join(unavailable)}, so there is no like-for-like headline to state. The "
+               "scenario-2 table below says which runs were refused and why the rest are unaffected.")
+    out.append("")
 
 def scenario_table(scenario, heading, selector=""):
     out.append(f"## {heading}")
