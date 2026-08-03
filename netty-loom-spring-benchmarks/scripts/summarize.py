@@ -212,7 +212,10 @@ def scenario_stats(name, scenario, selector=""):
     """Throughput and tail latency for one target's run of one scenario, or nothing when the run is
     not publishable.
 
-    Two gates, deliberately different in scope. *Every* scenario is gated on k6 having run to the
+    Two gates, deliberately different in scope, over an export that has to carry this scenario's
+    request metric at all -- an exit code is evidence about a run, not a substitute for its
+    measurements, and a `0` beside a missing or contentless export would otherwise carry the whole
+    decision. *Every* scenario is gated on k6 having run to the
     end, because a run killed mid-flight divides a few hundred surviving requests by the full wall
     clock and takes its percentiles mid-ramp. The secured scenario is gated a second time, on its
     correctness checks and a non-zero steady-state request count: an unauthenticated run answers
@@ -224,13 +227,16 @@ def scenario_stats(name, scenario, selector=""):
     """
     s = load_summary(name, scenario)
     reqs = metric(s, "http_reqs", selector)
-    valid = completed(name, scenario) and (
+    err = pick(metric(s, "http_req_failed", selector), "value", "rate")
+    valid = bool(reqs) and completed(name, scenario) and (
         scenario != SECURED_SCENARIO or (
             not metric(s, "checks").get("fails") and pick(reqs, "count") != 0))
     return {
         "thr": pick(reqs, "rate") if valid else None,
         "p99": pick(metric(s, "http_req_duration", selector), "p(99)") if valid else None,
-        "err": (pick(metric(s, "http_req_failed", selector), "value", "rate") or 0) * 100,
+        # No `or 0`: an absent error rate is absent, not a measured zero. It was the one cell a
+        # run with no export could still fill, and it filled it with the best number available.
+        "err": (err * 100) if (valid and err is not None) else None,
         "valid": valid,
     }
 
@@ -247,7 +253,15 @@ def high_stats(name):
 
 high = {name: high_stats(name) for name, _ in TARGETS}
 nl, tp, tv = (high[name] for name, _ in TARGETS)
-if all(v["thr"] is not None and v["p99"] is not None for v in (nl, tp, tv)):
+
+
+def headline_ready(stats):
+    """Every number the headline states, present. One helper so the guard below and the `else`
+    that names what is missing cannot drift apart."""
+    return all(stats[k] is not None for k in ("thr", "p99", "err"))
+
+
+if all(headline_ready(v) for v in (nl, tp, tv)):
     out.append("## Headline")
     out.append("")
     out.append(f"At **{VUS:,} concurrent blocking connections**:")
@@ -299,8 +313,7 @@ else:
     # most-read section of the snapshot -- for the same reason the verdicts below refuse out loud.
     # Named by what is missing rather than by why: a row can also lack numbers for want of an
     # export beside a clean exit code.
-    unavailable = [label for name, label in TARGETS
-                   if high[name]["thr"] is None or high[name]["p99"] is None]
+    unavailable = [label for name, label in TARGETS if not headline_ready(high[name])]
     out.append("## Headline")
     out.append("")
     out.append("**Not answerable** — scenario 2 has no publishable numbers for "
