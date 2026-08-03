@@ -61,11 +61,9 @@ SAMPLER_PID=""
 cleanup() { kill "$SAMPLER_PID" "$SERVER_PID" 2>/dev/null || true; }
 trap cleanup EXIT
 
-# Run one k6 scenario, recording its exit code beside the summary export. k6 exits 99 when a
-# threshold is crossed -- a saturated target is the finding this harness publishes -- and some other
-# non-zero code when the run did not finish at all (108 for exec.test.abort(), 107 for a script
-# exception). A truncated run still writes a complete-looking summary export, so the exit code is
-# the only signal summarize.py has that the numbers in it cover a whole run.
+# Run one k6 scenario, recording its exit code beside the summary export. Worth recording because
+# nothing inside the export says whether it covers a whole run; which codes are publishable is the
+# reader's call, and summarize.py's K6_THRESHOLDS_CROSSED is where that lives.
 run_scenario() {
   local name="$1" base="$2" scenario="$3" script="$4"; shift 4
   local rc=0
