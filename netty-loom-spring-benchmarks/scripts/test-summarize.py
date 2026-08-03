@@ -357,6 +357,20 @@ class SummarizeTest(unittest.TestCase):
         self.assertIn("Not answerable", security)
         self.assertNotIn("did not complete", security)
 
+    def test_a_measured_zero_baseline_is_not_called_unpublishable(self):
+        """`not theirs` guards the division, but it shared the refusal branch's words.
+
+        A target that starts and serves nothing crosses the error-rate threshold, exits 99, and is
+        published as `0` req/s — scenario 2 has no request-count gate, that clause is secured-only.
+        The verdict then called a run unpublishable while the tables above published it.
+        """
+        md = self.render({("tomcat-virtual", "high"): {"exit": K6_THRESHOLDS_CROSSED, "rate": 0.0}})
+        security = "\n".join(section(md, self.SECURITY))
+        # The row is published, so the refusal wording must not be attached to it.
+        self.assertNotIn("invalid", table_row(md, self.SCENARIO_2, "tomcat-virtual"))
+        self.assertNotIn("is not publishable", security)
+        self.assertIn("0 req/s", security)
+
     def test_an_empty_export_counts_as_an_attempt(self):
         """A written-but-empty export is a run that happened, so `is not None`, not truthiness.
 

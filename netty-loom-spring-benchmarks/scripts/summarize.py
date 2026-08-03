@@ -404,9 +404,17 @@ if any(attempted(name, SECURED_SCENARIO) for name, _ in TARGETS):
         nobody asked, which is how an unpublishable run turns into a claim by omission. It says
         unpublishable rather than unfinished: the secured checks gate refuses runs that exited
         cleanly, so naming a cause here would send the reader after the wrong one."""
-        if ours is None or theirs is None or not theirs:
+        if ours is None or theirs is None:
             out.append(f"**{question}** **Not answerable** — a run in this comparison is not "
                        "publishable, so there is nothing to compare.")
+            out.append("")
+            return
+        if not theirs:
+            # A measured zero, not a refusal: the tables above publish it, so saying the run is
+            # unpublishable would contradict them. There is simply no ratio to take against it.
+            out.append(f"**{question}** **Not answerable** — the comparison baseline measured "
+                       f"{theirs:,.0f} req/s, so there is no percentage gap to state. Read the "
+                       "tables above, where that zero is the finding.")
             out.append("")
             return
         if abs(ours - theirs) / theirs * 100 < NOISE_FLOOR_PCT:
