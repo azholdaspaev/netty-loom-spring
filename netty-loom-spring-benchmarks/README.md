@@ -85,7 +85,9 @@ threshold; latency is measured, not gated (measuring it is the point).
 > never sees it. Three things stop it being published: the work request sets `redirects: 0`, so an
 > unauthenticated request is recorded as the 302 it is rather than followed to the login page's 200;
 > the `checks` threshold gates the run on every steady-state response being a real 200; and
-> `summarize.py` refuses any target whose checks failed. Scenarios 1 and 2 are deliberately left out
+> `summarize.py` refuses any target whose checks failed by more than the 1% that threshold itself
+> allows — the fake win fails ~100% of its checks, so the tolerance costs nothing that matters and
+> keeps a saturated target's stray check from silencing the comparison. Scenarios 1 and 2 are left out
 > of this second gate — there a failed check means the server returned non-200 under load, which is
 > the finding the error-rate column exists to report.
 >

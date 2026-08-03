@@ -34,6 +34,12 @@ TARGETS = [
 # ramp, stay out of the reading. k6 only exports a tagged sub-metric when a threshold names it.
 SECURED_SCENARIO = "secured"
 SECURED_SELECTOR = "{phase:work}"
+# The same tolerance high-concurrency-secured.js declares (`checks: ['rate>0.99']`). Refusing on a
+# single failed check would be stricter than the scenario's own gate, and -- because the flagship
+# verdict needs both Tomcat targets -- would silence the comparison whenever the target designed to
+# collapse under load dropped a handful of checks out of a hundred thousand. The unauthenticated
+# run this clause exists to catch fails ~100% of its checks, nowhere near this line.
+SECURED_MAX_CHECK_FAILURE_RATE = 0.01
 
 # k6's exit code, recorded by run-all.sh beside each summary export. 99 means a threshold was
 # crossed, which on this harness is a finding to publish (a saturated platform-thread target) and
@@ -63,6 +69,14 @@ def load_summary(name, scenario):
                     result = None
         _summary_cache[key] = result
     return _summary_cache[key]
+
+
+def checks_held(summary):
+    """Whether the steady-state correctness checks held, to the tolerance the scenario declares."""
+    checks = metric(summary, "checks")
+    fails = checks.get("fails") or 0
+    total = fails + (checks.get("passes") or 0)
+    return not fails or fails / total <= SECURED_MAX_CHECK_FAILURE_RATE
 
 
 def exit_path(name, scenario):
@@ -229,8 +243,7 @@ def scenario_stats(name, scenario, selector=""):
     reqs = metric(s, "http_reqs", selector)
     err = pick(metric(s, "http_req_failed", selector), "value", "rate")
     valid = bool(reqs) and completed(name, scenario) and (
-        scenario != SECURED_SCENARIO or (
-            not metric(s, "checks").get("fails") and pick(reqs, "count") != 0))
+        scenario != SECURED_SCENARIO or (checks_held(s) and pick(reqs, "count") != 0))
     return {
         "thr": pick(reqs, "rate") if valid else None,
         "p99": pick(metric(s, "http_req_duration", selector), "p(99)") if valid else None,
