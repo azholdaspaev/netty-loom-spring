@@ -241,6 +241,22 @@ class SummarizeTest(unittest.TestCase):
         self.assertEqual(row.count("invalid"), 5, row)
         self.assertNotIn("99999", md)
 
+    def test_a_handful_of_failed_checks_does_not_refuse_the_secured_run(self):
+        """Refuse to the tolerance the scenario itself declares, not to zero.
+
+        `high-concurrency-secured.js` gates on `checks: ['rate>0.99']`, so refusing on a single
+        failed check was stricter than the scenario's own threshold — and because the flagship
+        verdict needs *both* Tomcat targets, three bad checks on the target designed to collapse
+        under load silenced the comparison for both at once. The fake win this clause exists for
+        fails ~100% of its checks, nowhere near this line.
+        """
+        md = self.render({("tomcat-platform", "secured"):
+                          {"exit": K6_OK, "check_fails": 3, "rate": 2602.0}})
+        row = table_row(md, self.SCENARIO_3, "tomcat-platform")
+        self.assertNotIn("invalid", row)
+        self.assertIn("2602", row)
+        self.assertNotIn("Not answerable", "\n".join(section(md, self.SECURITY)))
+
     def test_a_cleanly_exited_secured_run_with_no_steady_state_requests_is_refused(self):
         """Zero tagged work requests: every VU stalled in the login ramp, threshold crossed, exit 99.
 
