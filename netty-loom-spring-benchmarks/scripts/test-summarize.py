@@ -158,6 +158,30 @@ class SummarizeTest(unittest.TestCase):
         md = self.render({("netty-loom", "secured"): {"exit": None}})
         self.assertEqual(table_row(md, self.SCENARIO_3, "netty-loom").count("invalid"), 5)
 
+    # ---- the older clause beside it: secured-only, and orthogonal to the exit code ----
+
+    def test_a_cleanly_exited_secured_run_with_failed_checks_is_refused(self):
+        """The unauthenticated-302 fake win, which the exit-code gate cannot see.
+
+        Every request becomes a cheap redirect to /login, which k6 counts as a *successful*
+        response — higher throughput, lower latency, 0% transport errors — and the run exits 0.
+        """
+        md = self.render({("tomcat-virtual", "secured"):
+                          {"exit": K6_OK, "check_fails": 5000, "rate": 99999.0}})
+        row = table_row(md, self.SCENARIO_3, "tomcat-virtual")
+        self.assertEqual(row.count("invalid"), 5, row)
+        self.assertNotIn("99999", md)
+
+    def test_a_cleanly_exited_secured_run_with_no_steady_state_requests_is_refused(self):
+        """Zero tagged work requests: every VU stalled in the login ramp, threshold crossed, exit 99.
+
+        The exit-code gate publishes 99 by design, so this row survives it and only the request
+        count refuses it.
+        """
+        md = self.render({("netty-loom", "secured"):
+                          {"exit": K6_THRESHOLDS_CROSSED, "count": 0, "rate": 0.0}})
+        self.assertEqual(table_row(md, self.SCENARIO_3, "netty-loom").count("invalid"), 5)
+
     def test_a_crossed_threshold_still_publishes(self):
         """The over-gating guard: exit 99 is the saturated-target finding this harness exists for.
 
