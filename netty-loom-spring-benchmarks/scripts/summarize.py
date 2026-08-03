@@ -387,10 +387,12 @@ if any(attempted(name, SECURED_SCENARIO) for name, _ in TARGETS):
     def verdict(question, ours, theirs, won, lost):
         """One scripted paragraph per claim. A gap inside the noise floor is reported as neither,
         and a missing input as unanswerable rather than skipped -- an absent question reads as one
-        nobody asked, which is how an unpublishable run turns into a claim by omission."""
+        nobody asked, which is how an unpublishable run turns into a claim by omission. It says
+        unpublishable rather than unfinished: the secured checks gate refuses runs that exited
+        cleanly, so naming a cause here would send the reader after the wrong one."""
         if ours is None or theirs is None or not theirs:
-            out.append(f"**{question}** **Not answerable** — a run in this comparison did not "
-                       "complete, so there is nothing to compare.")
+            out.append(f"**{question}** **Not answerable** — a run in this comparison is not "
+                       "publishable, so there is nothing to compare.")
             out.append("")
             return
         if abs(ours - theirs) / theirs * 100 < NOISE_FLOOR_PCT:
