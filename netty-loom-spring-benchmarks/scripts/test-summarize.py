@@ -239,6 +239,19 @@ class SummarizeTest(unittest.TestCase):
         self.assertNotIn("## Security overhead", md)
         self.assertIn("## Scenario 2", md)
 
+    def test_the_refusal_does_not_diagnose_a_cause_it_cannot_know(self):
+        """`thr is None` has two causes, and only one of them is an unfinished run.
+
+        The secured checks gate fires on runs that exited *cleanly* — the unauthenticated-302 case
+        it exists for is an exit 0. Telling that reader the run "did not complete" sends them
+        looking for a truncated run and finding a clean exit, which is the same wrong-diagnosis
+        cost this branch is closing, pointed the other way.
+        """
+        md = self.render({("tomcat-platform", "secured"): {"exit": K6_OK, "check_fails": 5000}})
+        security = "\n".join(section(md, self.SECURITY))
+        self.assertIn("Not answerable", security)
+        self.assertNotIn("did not complete", security)
+
     def test_an_empty_export_counts_as_an_attempt(self):
         """A written-but-empty export is a run that happened, so `is not None`, not truthiness.
 
