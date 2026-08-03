@@ -4,6 +4,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.crypto.password.NoOpPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 
 /**
@@ -15,12 +17,14 @@ import org.springframework.security.web.SecurityFilterChain;
  * would secure {@code anyRequest()} instead — this narrow matcher is a measurement device, not a
  * configuration to copy.
  *
- * <p>Two omissions are load-bearing for the benchmark, not oversights:
+ * <p>Two choices are load-bearing for the benchmark, not oversights:
  * <ul>
- *   <li>No {@code PasswordEncoder} bean, so Boot prefixes {@code spring.security.user.password}
- *       with {@code {noop}} and login is a string compare. A {@code BCryptPasswordEncoder} would
- *       turn the k6 ramp into one hash per virtual user and make the ramp, not the server, the
- *       bottleneck being measured.</li>
+ *   <li>A no-op {@code PasswordEncoder}, so login is a string compare. Leaving the bean out is not
+ *       equivalent: Boot then stores {@code {noop}bench}, but {@code DelegatingPasswordEncoder}
+ *       reports every {@code {noop}} credential as out of date, so the first successful login has
+ *       {@code InMemoryUserDetailsManager} re-encode the user with bcrypt and every login after it
+ *       pays a full key derivation — one hash per virtual user, which makes the k6 ramp rather than
+ *       the server the bottleneck being measured (issue #111).</li>
  *   <li>No {@code HttpSessionEventPublisher} (and so no {@code maximumSessions}), because the Netty
  *       bridge does not yet support {@code ServletContext.addListener} and would fail startup —
  *       and because both targets must run the same configuration for the comparison to mean
@@ -32,6 +36,12 @@ import org.springframework.security.web.SecurityFilterChain;
  */
 @Configuration
 class BenchmarkSecurityConfig {
+
+    @SuppressWarnings("deprecation") // the deprecation is the point: never do this outside a benchmark
+    @Bean
+    PasswordEncoder benchmarkPasswordEncoder() {
+        return NoOpPasswordEncoder.getInstance();
+    }
 
     @Bean
     SecurityFilterChain benchmarkSecurityFilterChain(HttpSecurity http) throws Exception {
