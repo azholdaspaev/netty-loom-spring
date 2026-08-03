@@ -144,14 +144,29 @@ class SummarizeTest(unittest.TestCase):
         self.assertNotIn("55", row)
         self.assertNotIn("18468", md)
 
-    def test_aborted_run_is_refused_outside_the_secured_scenario(self):
-        """The gate covers every scenario, not only the one that happened to have a gate."""
+    def test_aborted_high_run_is_refused_along_with_its_derived_tables(self):
+        """Scenario 2 had no gate at all before this branch, and two tables read its numbers."""
         md = self.render({("netty-loom", "high"):
                           {"exit": K6_SCRIPT_ABORTED, "count": 96, "rate": 3.0}})
         self.assertEqual(table_row(md, self.SCENARIO_2, "netty-loom").count("invalid"), 5)
         # CPU and memory are per-plateau figures; without a plateau they are arithmetic, not data.
         self.assertIn("invalid", table_row(md, self.CPU, "netty-loom"))
         self.assertIn("invalid", table_row(md, self.MEMORY, "netty-loom"))
+
+    def test_aborted_low_run_is_refused(self):
+        """Scenario 1 too — "every scenario" is the title's claim, so each one is exercised.
+
+        Only `low` reaches the gate through a code path no other test takes: it is the one
+        scenario with neither a secured clause nor a derived table to fail alongside it.
+        """
+        md = self.render({("tomcat-virtual", "low"):
+                          {"exit": K6_SCRIPT_ABORTED, "count": 42, "rate": 7.0}})
+        row = table_row(md, self.SCENARIO_1, "tomcat-virtual")
+        self.assertEqual(row.count("invalid"), 5, row)
+        self.assertNotIn("11500", md)
+        # Scenario 1 is nobody else's input: the other two targets and scenarios are untouched.
+        self.assertNotIn("invalid", table_row(md, self.SCENARIO_2, "tomcat-virtual"))
+        self.assertNotIn("invalid", table_row(md, self.SCENARIO_1, "netty-loom"))
 
     def test_missing_exit_file_is_refused(self):
         """No record that the run finished is not a record that it did — fail closed."""
