@@ -63,16 +63,36 @@ Endpoints:
 All three report **p50 / p95 / p99 latency** and **error rate**. Error rate is the only hard
 threshold; latency is measured, not gated (measuring it is the point).
 
-> **Reading scenario 3, and one trap it is built to avoid.** If the VUs are not actually
-> authenticated, every request becomes a cheap redirect to `/login` — *higher* throughput, *lower*
-> latency, and 0% transport errors, because k6 counts a 302 as a successful response. It reads
-> exactly like a win. Three things stop it being published: the work request sets `redirects: 0`, so
-> an unauthenticated request is recorded as the 302 it is rather than followed to the login page's
-> 200; the `checks` threshold gates the run on every steady-state response being a real 200; and
-> `summarize.py` refuses to publish numbers for any target whose checks failed or that issued no
-> steady-state requests, rendering the row as `invalid` instead. Note also that k6 clears its cookie
-> jar at the **start of every iteration** — the session id is therefore carried in a module-scoped
-> variable and sent as an explicit header, not left to the jar.
+> **What the snapshot refuses to publish.** A row renders as `invalid` rather than as numbers when
+> the run behind it cannot support them, and a comparative verdict built on such a row is replaced
+> by *"Not answerable"*. Two gates, with different scopes.
+>
+> *Every scenario* is gated on k6 having run to the end. `run-all.sh` records k6's exit code beside
+> each summary export (`<target>_<scenario>.exit`) and `summarize.py` publishes only `0` and `99`,
+> the latter being a crossed threshold — a saturated platform-thread target is the finding this
+> harness exists to report. Any other code means the run died mid-flight, most often
+> `exec.test.abort()` (108). This gate is not optional decoration: k6 writes a complete-looking
+> summary export for an aborted run, and a truncated run's check rate is *perfect by construction*,
+> because checks are only ever evaluated on requests that were actually issued. Nothing inside the
+> export reveals that it covers ten seconds of a sixty-second plateau. A missing `.exit` file counts
+> as not-completed, so a results directory produced before this gate existed renders as `invalid`
+> until it is re-run.
+>
+> *Scenario 3 alone* is gated a second time, on its correctness checks and a non-zero steady-state
+> request count. If the VUs are not actually authenticated, every request becomes a cheap redirect
+> to `/login` — *higher* throughput, *lower* latency, and 0% transport errors, because k6 counts a
+> 302 as a successful response. It reads exactly like a win, and it exits cleanly, so the first gate
+> never sees it. Three things stop it being published: the work request sets `redirects: 0`, so an
+> unauthenticated request is recorded as the 302 it is rather than followed to the login page's 200;
+> the `checks` threshold gates the run on every steady-state response being a real 200; and
+> `summarize.py` refuses any target whose checks failed. Scenarios 1 and 2 are deliberately left out
+> of this second gate — there a failed check means the server returned non-200 under load, which is
+> the finding the error-rate column exists to report.
+>
+> Note also that k6 clears its cookie jar at the **start of every iteration** — the session id is
+> therefore carried in a module-scoped variable and sent as an explicit header, not left to the jar.
+
+`scripts/test-summarize.py` covers both gates (`python3 scripts/test-summarize.py`, stdlib only).
 
 ## What gets measured, and why these three metrics
 
