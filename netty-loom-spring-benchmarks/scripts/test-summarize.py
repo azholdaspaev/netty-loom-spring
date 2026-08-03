@@ -263,6 +263,19 @@ class SummarizeTest(unittest.TestCase):
         self.assertNotIn("invalid", table_row(md, self.MEMORY, "tomcat-platform"))
         self.assertNotIn("Not answerable", "\n".join(section(md, self.HEADLINE)))
 
+    def test_a_failed_check_outside_the_secured_scenario_still_publishes(self):
+        """The scoping guard: the checks clause is secured-only, and that is a decision.
+
+        In scenarios 1 and 2 a failed check means the server returned non-200 under load, which is
+        the finding the error-rate column exists to report. Without this, deleting
+        `scenario != SECURED_SCENARIO` — so the clause refuses everywhere — went unnoticed.
+        """
+        md = self.render({("tomcat-platform", "high"):
+                          {"exit": K6_OK, "check_fails": 5000, "rate": 3610.0}})
+        row = table_row(md, self.SCENARIO_2, "tomcat-platform")
+        self.assertNotIn("invalid", row)
+        self.assertIn("3610", row)
+
     def test_headline_states_its_refusal_instead_of_vanishing(self):
         """The most-read section of the snapshot is not exempt from saying it was refused.
 
