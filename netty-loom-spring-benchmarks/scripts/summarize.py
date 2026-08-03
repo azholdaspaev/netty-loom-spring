@@ -316,9 +316,10 @@ else:
     unavailable = [label for name, label in TARGETS if not headline_ready(high[name])]
     out.append("## Headline")
     out.append("")
+    # Semicolons, not commas: two of the three labels contain commas of their own.
     out.append("**Not answerable** — scenario 2 has no publishable numbers for "
-               f"{', '.join(unavailable)}, so there is no like-for-like headline to state. The "
-               "scenario-2 table below says which runs were refused and why the rest are unaffected.")
+               f"{'; '.join(unavailable)}, so there is no like-for-like headline to state. The "
+               "scenario-2 table below shows which runs have no numbers.")
     out.append("")
 
 def scenario_table(scenario, heading, selector=""):

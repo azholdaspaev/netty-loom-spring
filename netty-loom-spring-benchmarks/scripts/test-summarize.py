@@ -278,6 +278,20 @@ class SummarizeTest(unittest.TestCase):
         # Only the target actually refused is named as the reason.
         self.assertNotIn(LABELS["tomcat-virtual"], headline)
 
+    def test_the_headline_refusal_lists_several_targets_readably(self):
+        """Two of the three labels contain commas, so `, `.join renders three targets as five.
+
+        Only ever refusing one target is what let that through, and an all-refused sweep is not
+        exotic — it is what the README describes for a results directory predating the gate.
+        """
+        md = self.render({(t, "high"): {"exit": K6_SCRIPT_ABORTED} for t in LABELS})
+        headline = "\n".join(section(md, self.HEADLINE))
+        self.assertIn("; ".join(LABELS[t] for t, _ in (("netty-loom", 0), ("tomcat-platform", 0),
+                                                       ("tomcat-virtual", 0))), headline)
+        # No claim about a "rest" that does not exist, and none about a "why" the table never states.
+        self.assertNotIn("the rest", headline)
+        self.assertNotIn("why", headline)
+
     def test_verdict_refuses_rather_than_comparing_the_survivors(self):
         """A comparative claim needs the whole field, not whichever targets happened to finish.
 
