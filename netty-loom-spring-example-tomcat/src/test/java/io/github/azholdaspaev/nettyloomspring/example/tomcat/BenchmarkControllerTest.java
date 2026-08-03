@@ -8,6 +8,7 @@ import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTe
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.test.web.servlet.client.RestTestClient;
 
 import java.net.HttpCookie;
@@ -16,6 +17,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -39,6 +41,9 @@ class BenchmarkControllerTest {
 
     @Autowired
     private RestTestClient restTestClient;
+
+    @Autowired
+    private UserDetailsService userDetailsService;
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
@@ -75,6 +80,38 @@ class BenchmarkControllerTest {
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
     void workSecuredReturnsJsonAfterFormLoginOnTheRotatedSessionCookie() {
+        String postLoginSessionId = logIn();
+
+        // Twice on the same cookie, not once. The load scenario authenticates a virtual user once and
+        // then rides that session for the whole plateau, so a session that authenticates a single
+        // request and then lapses would leave every later request redirecting to /login — cheap,
+        // fast, and indistinguishable from a win in the aggregate numbers.
+        expectWorkSecuredOk(postLoginSessionId);
+        expectWorkSecuredOk(postLoginSessionId);
+    }
+
+    /**
+     * Guards the premise {@link BenchmarkSecurityConfig} rests on: login stays a string compare.
+     * Spring Security rewrites a stored credential whenever the configured encoder reports it is out
+     * of date, and {@code DelegatingPasswordEncoder} reports that of every {@code {noop}} password —
+     * so without a {@code PasswordEncoder} bean the first successful login silently re-encodes the
+     * in-memory user with bcrypt, and every login after it pays a full key derivation. That is one
+     * hash per virtual user during the k6 ramp, which is the cost the benchmark exists to keep out of
+     * the measurement (issue #111).
+     */
+    @Test
+    @Timeout(value = 20, unit = TimeUnit.SECONDS)
+    void loginLeavesTheStoredCredentialAlone() {
+        String before = userDetailsService.loadUserByUsername("bench").getPassword();
+
+        logIn();
+
+        assertEquals(before, userDetailsService.loadUserByUsername("bench").getPassword(),
+            "a successful login must not re-encode the stored credential");
+    }
+
+    /** The three exchanges the load script's per-VU login performs; returns the rotated session id. */
+    private String logIn() {
         var loginPage = restTestClient.get().uri("/login")
             .exchange()
             .expectStatus().isOk()
@@ -101,13 +138,7 @@ class BenchmarkControllerTest {
         // rotated cookie would send every subsequent request back to /login.
         assertNotEquals(preLoginSessionId, postLoginSessionId,
             "login must rotate the session id");
-
-        // Twice on the same cookie, not once. The load scenario authenticates a virtual user once and
-        // then rides that session for the whole plateau, so a session that authenticates a single
-        // request and then lapses would leave every later request redirecting to /login — cheap,
-        // fast, and indistinguishable from a win in the aggregate numbers.
-        expectWorkSecuredOk(postLoginSessionId);
-        expectWorkSecuredOk(postLoginSessionId);
+        return postLoginSessionId;
     }
 
     private void expectWorkSecuredOk(String sessionId) {
