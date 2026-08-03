@@ -6,10 +6,9 @@ Run:  python3 scripts/test-summarize.py
 Stdlib only, and summarize.py is driven as the script it is (argv in, Markdown out) rather than
 imported: it reads sys.argv at module scope, and the rendered snapshot is the thing under test.
 
-The fixtures matter more than usual here. A k6 run that aborts mid-flight still writes a complete-
-looking --summary-export, and its check rate is perfect by construction, because checks are only
-evaluated on requests that were actually issued. The truncated summaries below are therefore built
-to be indistinguishable from healthy ones — that is the defect these tests pin.
+The fixtures matter more than usual here: the truncated runs below are built to be indistinguishable
+from healthy ones, which is the defect these tests pin. See summarize.py's K6_THRESHOLDS_CROSSED for
+why nothing inside an export gives the truncation away.
 """
 import json
 import os
