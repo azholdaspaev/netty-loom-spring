@@ -65,9 +65,20 @@ def load_summary(name, scenario):
     return _summary_cache[key]
 
 
+def exit_path(name, scenario):
+    return os.path.join(RESULTS_DIR, f"{name}_{scenario}.exit")
+
+
+def attempted(name, scenario):
+    """Whether this scenario was run at all. Either artifact alone is enough and neither is
+    sufficient on its own: a run that dies before k6 can write an export still leaves an .exit,
+    and a results directory predating the gate has exports but no .exit files."""
+    return load_summary(name, scenario) is not None or os.path.exists(exit_path(name, scenario))
+
+
 def completed(name, scenario):
     """Whether k6 ran this scenario to the end. A missing .exit file is not proof that it did."""
-    path = os.path.join(RESULTS_DIR, f"{name}_{scenario}.exit")
+    path = exit_path(name, scenario)
     if not os.path.exists(path):
         return False
     with open(path) as f:
@@ -348,7 +359,7 @@ def delta_cell(plain, secured, key):
 # Gated on the secured scenario having been *attempted*, not on it having produced numbers. A
 # section that disappears when every run is refused is indistinguishable from a question nobody
 # asked -- which is the same silent omission the verdicts below were fixed for.
-if any(load_summary(name, SECURED_SCENARIO) for name, _ in TARGETS):
+if any(attempted(name, SECURED_SCENARIO) for name, _ in TARGETS):
     out.append("## Security overhead (scenario 2 → scenario 3, same target and run)")
     out.append("")
     out.append(row(["Target", "`/work` (req/s)", "`/work-secured` (req/s)",
