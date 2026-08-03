@@ -161,11 +161,13 @@ class SummarizeTest(unittest.TestCase):
         Only `low` reaches the gate through a code path no other test takes: it is the one
         scenario with neither a secured clause nor a derived table to fail alongside it.
         """
+        # A rate distinctive enough to assert on: the healthy baseline is never written for this
+        # pair, so asserting its absence would pass under a fully-bypassed gate.
         md = self.render({("tomcat-virtual", "low"):
-                          {"exit": K6_SCRIPT_ABORTED, "count": 42, "rate": 7.0}})
+                          {"exit": K6_SCRIPT_ABORTED, "count": 42, "rate": 61803.0}})
         row = table_row(md, self.SCENARIO_1, "tomcat-virtual")
         self.assertEqual(row.count("invalid"), 5, row)
-        self.assertNotIn("11500", md)
+        self.assertNotIn("61803", md)
         # Scenario 1 is nobody else's input: the other two targets and scenarios are untouched.
         self.assertNotIn("invalid", table_row(md, self.SCENARIO_2, "tomcat-virtual"))
         self.assertNotIn("invalid", table_row(md, self.SCENARIO_1, "netty-loom"))
