@@ -46,18 +46,23 @@ LABELS = {
 }
 
 
-def k6_summary(count, rate, p99, check_fails=0):
-    """A --summary-export in the shape k6 v1.4.2 writes, tagged and untagged sub-metrics alike."""
+def k6_summary(count, rate, p99, check_fails=0, login_crossed=False):
+    """A --summary-export in the shape k6 v1.4.2 writes, tagged and untagged sub-metrics alike.
+
+    Note k6 records a threshold's verdict inverted: `true` means it was *crossed*, not that it held.
+    """
     trend = {"avg": p99 / 2, "min": 1.0, "med": p99 / 3, "p(50)": p99 / 3,
              "p(90)": p99 * 0.9, "p(95)": p99 * 0.95, "p(99)": p99, "max": p99}
     reqs = {"count": count, "rate": rate}
     failed = {"passes": 0, "fails": count, "value": 0.0}
     checks = {"passes": count - check_fails, "fails": check_fails, "value": 1}
+    login = {"passes": 0, "fails": VUS, "value": 0.05 if login_crossed else 0.0,
+             "thresholds": {"rate<0.01": login_crossed}}
     return {"metrics": {
         "http_reqs": dict(reqs), "http_reqs{phase:work}": dict(reqs),
         "http_req_duration": dict(trend), "http_req_duration{phase:work}": dict(trend),
         "http_req_failed": dict(failed), "http_req_failed{phase:work}": dict(failed),
-        "checks": checks,
+        "checks": checks, "login_failed": login,
     }}
 
 
@@ -105,7 +110,8 @@ class SummarizeTest(unittest.TestCase):
                     rate = spec.get("rate", HEALTHY[(target, scenario)])
                     count = spec.get("count", 100000)
                     summary = k6_summary(count, rate, spec.get("p99", 100.0),
-                                         spec.get("check_fails", 0))
+                                         spec.get("check_fails", 0),
+                                         spec.get("login_crossed", False))
                     for name in spec.get("drop_metrics", ()):
                         summary["metrics"].pop(name, None)
                     if not spec.get("no_export"):
@@ -256,6 +262,38 @@ class SummarizeTest(unittest.TestCase):
         self.assertNotIn("invalid", row)
         self.assertIn("2602", row)
         self.assertNotIn("Not answerable", "\n".join(section(md, self.SECURITY)))
+
+    def test_a_secured_run_that_lost_too_many_logins_is_refused(self):
+        """The plateau was served by fewer connections than the row claims, and nothing else shows it.
+
+        A VU that cannot authenticate issues no steady-state requests at all, so every check still
+        passes and the request count is still large: both the exit-code gate and the check gate see
+        a healthy run. `high-concurrency-secured.js` declares the tolerance as `login_failed`, and a
+        crossed threshold is the only trace left (#111).
+        """
+        md = self.render({("netty-loom", "secured"):
+                          {"exit": K6_THRESHOLDS_CROSSED, "login_crossed": True, "rate": 44444.0}})
+        row = table_row(md, self.SCENARIO_3, "netty-loom")
+        self.assertEqual(row.count("invalid"), 5, row)
+        self.assertNotIn("44444", md)
+
+    def test_losing_a_login_within_the_tolerance_still_publishes(self):
+        """One dead socket among thousands of VUs is weather, and the scenario says so by not
+        crossing its own threshold. Refusing here would put the harness back where #111 found it."""
+        md = self.render({("netty-loom", "secured"):
+                          {"exit": K6_OK, "login_crossed": False, "rate": 23296.0}})
+        row = table_row(md, self.SCENARIO_3, "netty-loom")
+        self.assertNotIn("invalid", row)
+        self.assertIn("23296", row)
+
+    def test_an_export_predating_the_login_metric_still_publishes(self):
+        """No login_failed metric means no threshold to inspect, not a refusal: results captured
+        before the scenario declared one must still render."""
+        md = self.render({("netty-loom", "secured"):
+                          {"exit": K6_OK, "drop_metrics": ("login_failed",), "rate": 23296.0}})
+        row = table_row(md, self.SCENARIO_3, "netty-loom")
+        self.assertNotIn("invalid", row)
+        self.assertIn("23296", row)
 
     def test_a_cleanly_exited_secured_run_with_no_steady_state_requests_is_refused(self):
         """Zero tagged work requests: every VU stalled in the login ramp, threshold crossed, exit 99.

@@ -13,7 +13,8 @@
 // Run:  k6 run --env BASE_URL=http://localhost:18080 --env VUS=10000 high-concurrency-secured.js
 import http from 'k6/http';
 import exec from 'k6/execution';
-import { check } from 'k6';
+import { check, sleep } from 'k6';
+import { Rate } from 'k6/metrics';
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:18080';
 const VUS = parseInt(__ENV.VUS || '10000', 10);
@@ -30,6 +31,16 @@ const PASSWORD = __ENV.PASSWORD || 'bench';
 const CSRF_PATTERN = /name="_csrf"[^>]*value="([^"]+)"/;
 
 const WORK_URL = `${BASE_URL}/work-secured`;
+// How long a VU that could not authenticate waits before trying again. Its purpose is to stop a VU
+// whose login fails instantly from re-attempting in a hot loop; the plateau it is missing is the
+// reason it retries at all rather than idling out the run.
+const LOGIN_RETRY_BACKOFF_SECONDS = 1;
+
+// One sample per VU, so the rate reads as the fraction of virtual users that could not authenticate
+// and its denominator is VUS. Per attempt it would mean something else entirely: a single VU
+// retrying through the plateau would count dozens of times against a tolerance meant to describe the
+// population.
+const loginFailed = new Rate('login_failed');
 
 // Module scope is per-VU in k6 (one JS runtime per VU), so this holds the authenticated session for
 // the VU's whole lifetime rather than one iteration. The session id is replayed as an explicit
@@ -41,6 +52,9 @@ const WORK_URL = `${BASE_URL}/work-secured`;
 // rebuilding the header, tag and params objects every request would charge scenario 3 client-side
 // allocations that scenario 2 never pays — landing in the published Δ as Security's cost.
 let workParams = null;
+// Latched the first time this VU finishes an authentication attempt, so login_failed takes the one
+// sample per VU its tolerance assumes however many times the VU retries afterwards.
+let loginOutcomeRecorded = false;
 
 export const options = {
   discardResponseBodies: true, // keep the client lean at high VU counts; the login GET opts back in
@@ -70,19 +84,44 @@ export const options = {
     // because the work request sets redirects: 0; with k6's default redirect following, the check
     // would see the login page's own 200 and pass at 100% while measuring nothing.
     checks: ['rate>0.99'],
+    // Every VU's two session-creating login requests land inside the ramp, so at high VU counts a
+    // few can come back as status 0 — a socket that died, not a benchmark that cannot log in.
+    // Aborting the run on the first one discarded the other 9,999 VUs' plateau (#111); the line
+    // belongs at a failure *rate*. Deliberately not abortOnFail: that would stop the run early and
+    // still exit 99, which summarize.py reads as "ran to the end" and would publish. Crossing this
+    // fails the run at its end instead, and summarize.py refuses the row (see logins_held there).
+    login_failed: ['rate<0.01'],
+    // Login latency is measured, not gated — the ramp is the coldest the server ever is, and these
+    // are the numbers that say whether a login storm is the thing under strain. They are declared as
+    // thresholds because that is the only way to make k6 export a tagged sub-metric at all; without
+    // them a run that struggled to authenticate leaves no trace of it in the summary.
+    'http_req_duration{phase:login}': ['p(99)<30000'],
+    'http_req_failed{phase:login}': ['rate<1'],
+    'http_reqs{phase:login}': ['count>0'],
   },
   summaryTrendStats: ['avg', 'min', 'med', 'p(50)', 'p(90)', 'p(95)', 'p(99)', 'max'],
 };
 
-function login() {
+/**
+ * Sets workParams and returns null once this VU holds a session, or the reason it does not.
+ *
+ * Only a request that died at the transport level is returned — k6 reports status 0, and a null
+ * body, for a socket that timed out or was reset. A login the server actually answered and rejected
+ * still aborts the run where it is detected: that is misconfiguration rather than weather, the first
+ * one proves the benchmark is broken, and the abort message is the only diagnostic there is, since
+ * nothing reads the k6 logs. run-all.sh tolerates the non-zero exit and summarize.py renders the
+ * missing export as n/a.
+ */
+function attemptLogin() {
   const page = http.get(`${BASE_URL}/login`,
     { responseType: 'text', tags: { phase: 'login' }, timeout: '30s' });
+  // page.body is null on a status-0 response, and exec() coerces that to the string "null", so a
+  // login page that never arrived lands here rather than throwing.
   const token = CSRF_PATTERN.exec(page.body);
   if (!token) {
-    // Abort the run rather than fail the iteration: a VU that cannot authenticate would otherwise
-    // retry the login on every iteration for the whole plateau, and a benchmark that cannot log in
-    // has nothing to report. run-all.sh tolerates the non-zero exit and summarize.py renders the
-    // missing export as n/a.
+    if (page.status === 0) {
+      return `login page did not complete (${page.error})`;
+    }
     exec.test.abort(`no CSRF token on ${BASE_URL}/login (status ${page.status})`);
   }
   // An object body is form-encoded by k6, which is what exercises the servlet parameter path.
@@ -90,6 +129,10 @@ function login() {
   const res = http.post(`${BASE_URL}/login`,
     { username: USERNAME, password: PASSWORD, _csrf: token[1] },
     { redirects: 0, tags: { phase: 'login' }, timeout: '30s' });
+  // Checked before the status test below, which reads a dropped POST (status 0) as a rejected login.
+  if (res.status === 0) {
+    return `login POST did not complete (${res.error})`;
+  }
   // A failed login also answers 302 (to /login?error), so the status alone proves nothing. The
   // Location header is what distinguishes the two.
   if (res.status !== 302 || String(res.headers['Location']).includes('error')) {
@@ -108,11 +151,33 @@ function login() {
     tags: { phase: 'work' },
     timeout: '30s',
   };
+  return null;
+}
+
+function login() {
+  const failure = attemptLogin();
+  if (!loginOutcomeRecorded) {
+    loginOutcomeRecorded = true;
+    loginFailed.add(failure !== null);
+    if (failure !== null) {
+      // Carries what the abort used to carry, into the same log. One line per VU that failed to
+      // authenticate first time, and the tolerance caps how many of those a run can have.
+      console.warn(`VU could not authenticate: ${failure}`);
+    }
+  }
 }
 
 export default function () {
   if (workParams === null) {
     login();
+  }
+  if (workParams === null) {
+    // Do not fall through to /work-secured. An unauthenticated request is a 302 answered in
+    // microseconds, so one such VU issues thousands a second against an authenticated VU's handful
+    // and would swamp the check rate on its own (see the `checks` threshold). Back off and try
+    // again instead, so a VU that lost a socket to the login ramp rejoins the plateau.
+    sleep(LOGIN_RETRY_BACKOFF_SECONDS);
+    return;
   }
   const res = http.get(WORK_URL, workParams);
   check(res, { 'status is 200': (r) => r.status === 200 });
