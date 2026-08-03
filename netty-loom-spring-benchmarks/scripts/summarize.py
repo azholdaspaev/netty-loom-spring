@@ -5,6 +5,7 @@ Reads, per target:
   <name>_low.summary.json      k6 --summary-export of the low-concurrency scenario
   <name>_high.summary.json     k6 --summary-export of the high-concurrency scenario
   <name>_secured.summary.json  k6 --summary-export of the secured high-concurrency scenario
+  <name>_<scenario>.exit       k6's exit code for that run, recorded by run-all.sh
   <name>_idle.csv              RSS samples taken before load
   <name>_high_load.csv         RSS samples taken during the high-concurrency run
 
@@ -34,6 +35,14 @@ TARGETS = [
 SECURED_SCENARIO = "secured"
 SECURED_SELECTOR = "{phase:work}"
 
+# k6's exit code, recorded by run-all.sh beside each summary export. 99 means a threshold was
+# crossed, which on this harness is a finding to publish (a saturated platform-thread target) and
+# not a broken run; every other non-zero code means the run did not reach the end. That distinction
+# has to come from outside the summary, because a run killed mid-flight still writes a complete-
+# looking export whose check rate is perfect by construction -- checks are only ever evaluated on
+# requests that were actually issued.
+K6_THRESHOLDS_CROSSED = 99
+
 # Observed run-to-run spread on this single-box harness. Used to stop the scripted verdicts below
 # from calling a winner on a gap that is indistinguishable from noise.
 NOISE_FLOOR_PCT = 11
@@ -54,6 +63,18 @@ def load_summary(name, scenario):
                     result = None
         _summary_cache[key] = result
     return _summary_cache[key]
+
+
+def completed(name, scenario):
+    """Whether k6 ran this scenario to the end. A missing .exit file is not proof that it did."""
+    path = os.path.join(RESULTS_DIR, f"{name}_{scenario}.exit")
+    if not os.path.exists(path):
+        return False
+    with open(path) as f:
+        try:
+            return int(f.read().strip()) in (0, K6_THRESHOLDS_CROSSED)
+        except ValueError:
+            return False
 
 
 def metric(summary, mname, selector=""):
@@ -177,20 +198,24 @@ out.append("")
 
 # ---- Headline (derived from scenario 2 data) ----
 def scenario_stats(name, scenario, selector=""):
-    """Throughput and tail latency for one target's run of one scenario.
+    """Throughput and tail latency for one target's run of one scenario, or nothing when the run is
+    not publishable.
 
-    The secured scenario -- and only it -- reports nothing when its correctness checks failed. An
-    unauthenticated run answers every request with a cheap 302, which k6 counts as a *successful*
-    response, so error rate reads 0.00% while throughput and p99 are pure fiction. Same for a run
-    that aborted before issuing a steady-state request: k6 still writes a summary export, with
-    zeroed counters. Scenarios 1 and 2 are deliberately NOT gated this way -- there a failed check
-    means the server returned non-200 under load, which is the finding the error-rate column exists
-    to report, not a reason to suppress the row.
+    Two gates, deliberately different in scope. *Every* scenario is gated on k6 having run to the
+    end, because a run killed mid-flight divides a few hundred surviving requests by the full wall
+    clock and takes its percentiles mid-ramp. The secured scenario is gated a second time, on its
+    correctness checks and a non-zero steady-state request count: an unauthenticated run answers
+    every request with a cheap 302, which k6 counts as a *successful* response, so error rate reads
+    0.00% while throughput and p99 are pure fiction -- and it exits cleanly, so the first gate never
+    sees it. That second gate stays secured-only: in scenarios 1 and 2 a failed check means the
+    server returned non-200 under load, which is the finding the error-rate column exists to report,
+    not a reason to suppress the row.
     """
     s = load_summary(name, scenario)
     reqs = metric(s, "http_reqs", selector)
-    valid = scenario != SECURED_SCENARIO or (
-        not metric(s, "checks").get("fails") and pick(reqs, "count") != 0)
+    valid = completed(name, scenario) and (
+        scenario != SECURED_SCENARIO or (
+            not metric(s, "checks").get("fails") and pick(reqs, "count") != 0))
     return {
         "thr": pick(reqs, "rate") if valid else None,
         "p99": pick(metric(s, "http_req_duration", selector), "p(99)") if valid else None,
@@ -209,9 +234,8 @@ def high_stats(name):
     }
 
 
-nl = high_stats("netty-loom")
-tp = high_stats("tomcat-platform")
-tv = high_stats("tomcat-virtual")
+high = {name: high_stats(name) for name, _ in TARGETS}
+nl, tp, tv = (high[name] for name, _ in TARGETS)
 if all(v["thr"] is not None and v["p99"] is not None for v in (nl, tp, tv)):
     out.append("## Headline")
     out.append("")
@@ -299,7 +323,19 @@ nl_sec = scenario_stats("netty-loom", SECURED_SCENARIO, SECURED_SELECTOR)
 tp_sec = scenario_stats("tomcat-platform", SECURED_SCENARIO, SECURED_SELECTOR)
 tv_sec = scenario_stats("tomcat-virtual", SECURED_SCENARIO, SECURED_SELECTOR)
 
-if any(v["thr"] is not None for v in (nl_sec, tp_sec, tv_sec)):
+def cell(stats, key, nd=1):
+    """`invalid` when the run was refused, so the table speaks the same word as the ones above it."""
+    return "invalid" if not stats["valid"] else f(stats[key], nd)
+
+
+def delta_cell(plain, secured, key):
+    return "invalid" if not (plain["valid"] and secured["valid"]) else delta(plain[key], secured[key])
+
+
+# Gated on the secured scenario having been *attempted*, not on it having produced numbers. A
+# section that disappears when every run is refused is indistinguishable from a question nobody
+# asked -- which is the same silent omission the verdicts below were fixed for.
+if any(load_summary(name, SECURED_SCENARIO) for name, _ in TARGETS):
     out.append("## Security overhead (scenario 2 → scenario 3, same target and run)")
     out.append("")
     out.append(row(["Target", "`/work` (req/s)", "`/work-secured` (req/s)",
@@ -309,8 +345,8 @@ if any(v["thr"] is not None for v in (nl_sec, tp_sec, tv_sec)):
     for (_, label), plain, secured in zip(TARGETS, (nl, tp, tv), (nl_sec, tp_sec, tv_sec)):
         out.append(row([
             label,
-            f(plain["thr"], 0), f(secured["thr"], 0), delta(plain["thr"], secured["thr"]),
-            f(plain["p99"]), f(secured["p99"]), delta(plain["p99"], secured["p99"]),
+            cell(plain, "thr", 0), cell(secured, "thr", 0), delta_cell(plain, secured, "thr"),
+            cell(plain, "p99"), cell(secured, "p99"), delta_cell(plain, secured, "p99"),
         ]))
     out.append("")
     out.append("Δ is scenario 3 against scenario 2 on the *same* target, jar and run, so it isolates "
@@ -325,8 +361,13 @@ if any(v["thr"] is not None for v in (nl_sec, tp_sec, tv_sec)):
     out.append("")
 
     def verdict(question, ours, theirs, won, lost):
-        """One scripted paragraph per claim. A gap inside the noise floor is reported as neither."""
+        """One scripted paragraph per claim. A gap inside the noise floor is reported as neither,
+        and a missing input as unanswerable rather than skipped -- an absent question reads as one
+        nobody asked, which is how an unpublishable run turns into a claim by omission."""
         if ours is None or theirs is None or not theirs:
+            out.append(f"**{question}** **Not answerable** — a run in this comparison did not "
+                       "complete, so there is nothing to compare.")
+            out.append("")
             return
         if abs(ours - theirs) / theirs * 100 < NOISE_FLOOR_PCT:
             answer, body = "Too close to call", (
@@ -339,8 +380,10 @@ if any(v["thr"] is not None for v in (nl_sec, tp_sec, tv_sec)):
         out.append(f"**{question}** **{answer}** — {body}")
         out.append("")
 
-    tomcat_secured = [v for v in (tv_sec["thr"], tp_sec["thr"]) if v is not None]
-    best_tomcat_secured = max(tomcat_secured) if tomcat_secured else None
+    # All of Tomcat or none of it: "beats Tomcat" measured against whichever Tomcat target happened
+    # to finish is a weaker claim wearing the stronger one's words.
+    tomcat_secured = (tv_sec["thr"], tp_sec["thr"])
+    best_tomcat_secured = max(tomcat_secured) if all(v is not None for v in tomcat_secured) else None
     verdict(
         "Do Security-protected endpoints still beat Tomcat?",
         nl_sec["thr"], best_tomcat_secured,
@@ -360,17 +403,19 @@ out.append(row(["Target", "Throughput (req/s)", "CPU (avg cores)", f"CPU util % 
                 "Throughput / core (req/s)"]))
 out.append(row(["---", "---:", "---:", "---:", "---:"]))
 for name, label in TARGETS:
-    s = load_summary(name, "high")
-    thr = pick(metric(s, "http_reqs"), "rate")
-    cores = cpu_avg_cores(f"{name}_high_load.csv")
+    stats = high[name]
+    if not stats["valid"]:
+        # Cores burned outside a plateau are not "CPU during the load plateau": see scenario_stats.
+        out.append(row([label] + ["invalid"] * 4))
+        continue
+    cores = stats["cores"]
     util = (cores / NCORES * 100) if cores is not None else None
-    per_core = (thr / cores) if (thr is not None and cores) else None
     out.append(row([
         label,
-        f(thr, 0),
+        f(stats["thr"], 0),
         f(cores, 2),
         f(util, 1, "%"),
-        f(per_core, 0),
+        f(stats["per_core"], 0),
     ]))
 out.append("")
 out.append("Server-process CPU only (the k6 client is a separate process). **CPU (avg cores)** = "
@@ -390,6 +435,11 @@ out.append(row(["Target", "Idle RSS (MB)", "Loaded RSS median (MB)", "Loaded RSS
                 "Δ RSS median (MB)", "Memory / connection (KB)"]))
 out.append(row(["---", "---:", "---:", "---:", "---:", "---:"]))
 for name, label in TARGETS:
+    if not high[name]["valid"]:
+        # Dividing RSS growth by connections needs the connections to have been held: see
+        # scenario_stats.
+        out.append(row([label] + ["invalid"] * 5))
+        continue
     idle = rss_kb(f"{name}_idle.csv")
     load = rss_kb(f"{name}_high_load.csv")
     idle_med = statistics.median(idle) if idle else None

@@ -61,9 +61,25 @@ SAMPLER_PID=""
 cleanup() { kill "$SAMPLER_PID" "$SERVER_PID" 2>/dev/null || true; }
 trap cleanup EXIT
 
+# Run one k6 scenario, recording its exit code beside the summary export. k6 exits 99 when a
+# threshold is crossed -- a saturated target is the finding this harness publishes -- and some other
+# non-zero code when the run did not finish at all (108 for exec.test.abort(), 107 for a script
+# exception). A truncated run still writes a complete-looking summary export, so the exit code is
+# the only signal summarize.py has that the numbers in it cover a whole run.
+run_scenario() {
+  local name="$1" base="$2" scenario="$3" script="$4"; shift 4
+  local rc=0
+  k6 run --quiet --env BASE_URL="$base" "$@" \
+    --summary-export "$RESULTS/${name}_${scenario}.summary.json" \
+    "$K6_DIR/$script" > "$RESULTS/${name}_${scenario}.k6.log" 2>&1 || rc=$?
+  printf '%s\n' "$rc" > "$RESULTS/${name}_${scenario}.exit"
+  [ "$rc" -eq 0 ] || echo "  (k6 exited $rc for ${name}/${scenario} — recorded, continuing)"
+}
+
 benchmark_target() {
   local name="$1" port="$2"; shift 2
   local base="http://localhost:${port}"
+  local -a load_env=(--env VUS="$VUS" --env DURATION="$DURATION" --env RAMP="$RAMP")
   echo "================ $name ($base) ================"
 
   # shellcheck disable=SC2086
@@ -77,18 +93,12 @@ benchmark_target() {
   "$SCRIPT_DIR/sample-memory.sh" "$SERVER_PID" "$RESULTS/${name}_idle.csv" 1 6
 
   echo "  scenario 1: low-concurrency..."
-  k6 run --quiet --env BASE_URL="$base" \
-    --summary-export "$RESULTS/${name}_low.summary.json" \
-    "$K6_DIR/low-concurrency.js" > "$RESULTS/${name}_low.k6.log" 2>&1 \
-    || echo "  (k6 reported a threshold breach in low-concurrency for $name — recorded, continuing)"
+  run_scenario "$name" "$base" low low-concurrency.js
 
   echo "  scenario 2: high-concurrency (VUS=$VUS, $DURATION)..."
   "$SCRIPT_DIR/sample-memory.sh" "$SERVER_PID" "$RESULTS/${name}_high_load.csv" 2 100000 &
   SAMPLER_PID=$!
-  k6 run --quiet --env BASE_URL="$base" --env VUS="$VUS" --env DURATION="$DURATION" --env RAMP="$RAMP" \
-    --summary-export "$RESULTS/${name}_high.summary.json" \
-    "$K6_DIR/high-concurrency.js" > "$RESULTS/${name}_high.k6.log" 2>&1 \
-    || echo "  (k6 reported a threshold breach in high-concurrency for $name — recorded, continuing)"
+  run_scenario "$name" "$base" high high-concurrency.js "${load_env[@]}"
   kill "$SAMPLER_PID" 2>/dev/null || true
   SAMPLER_PID=""
 
@@ -103,10 +113,7 @@ benchmark_target() {
   # to publish it. Sampling anyway would mean a jcmd JVM launch every 2s against the process being
   # measured, for a CSV nothing reads.
   echo "  scenario 3: high-concurrency secured (VUS=$VUS, $DURATION)..."
-  k6 run --quiet --env BASE_URL="$base" --env VUS="$VUS" --env DURATION="$DURATION" --env RAMP="$RAMP" \
-    --summary-export "$RESULTS/${name}_secured.summary.json" \
-    "$K6_DIR/high-concurrency-secured.js" > "$RESULTS/${name}_secured.k6.log" 2>&1 \
-    || echo "  (k6 reported a failed threshold in high-concurrency-secured for $name — recorded; the snapshot marks a run whose checks failed as invalid rather than publishing it)"
+  run_scenario "$name" "$base" secured high-concurrency-secured.js "${load_env[@]}"
 
   echo "  tearing down pid=$SERVER_PID..."
   kill "$SERVER_PID" 2>/dev/null || true
