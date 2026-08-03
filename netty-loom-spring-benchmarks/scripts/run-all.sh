@@ -61,10 +61,36 @@ SAMPLER_PID=""
 cleanup() { kill "$SAMPLER_PID" "$SERVER_PID" 2>/dev/null || true; }
 trap cleanup EXIT
 
+# Run one k6 scenario, recording its exit code beside the summary export. Worth recording because
+# nothing inside the export says whether it covers a whole run; which codes are publishable is the
+# reader's call, and summarize.py's K6_THRESHOLDS_CROSSED is where that lives.
+run_scenario() {
+  local name="$1" base="$2" scenario="$3" script="$4"; shift 4
+  local rc=0
+  k6 run --quiet --env BASE_URL="$base" "$@" \
+    --summary-export "$RESULTS/${name}_${scenario}.summary.json" \
+    "$K6_DIR/$script" > "$RESULTS/${name}_${scenario}.k6.log" 2>&1 || rc=$?
+  printf '%s\n' "$rc" > "$RESULTS/${name}_${scenario}.exit"
+  [ "$rc" -eq 0 ] || echo "  (k6 exited $rc for ${name}/${scenario} — recorded, continuing)"
+}
+
 benchmark_target() {
   local name="$1" port="$2"; shift 2
   local base="http://localhost:${port}"
+  local -a load_env=(--env VUS="$VUS" --env DURATION="$DURATION" --env RAMP="$RAMP")
   echo "================ $name ($base) ================"
+
+  # Drop every artifact this target is about to produce, before it produces any of them.
+  # RESULTS_DIR defaults to the same ./results on every sweep, and each artifact is written only
+  # when the step that owns it reaches it: the exit code after k6 returns, a CSV when the sampler
+  # starts. Interrupt a sweep -- the normal response to a 10k-VU run going visibly wrong, cf. #111
+  # -- and a hand render would otherwise mix sweeps, either across rows (this target refused, the
+  # untouched ones publishing) or inside one (a fresh idle CSV against last sweep's loaded CSV,
+  # yielding a memory-per-connection figure neither sweep measured). Clearing per target rather
+  # than per scenario covers the window before the first k6 call: the JVM launch and up to 90s of
+  # health-waiting. Absence fails closed everywhere; a stale record does not.
+  rm -f "$RESULTS/${name}"_{low,high,secured}.{summary.json,exit} \
+        "$RESULTS/${name}_idle.csv" "$RESULTS/${name}_high_load.csv"
 
   # shellcheck disable=SC2086
   java $JAVA_FLAGS "$@" > "$RESULTS/${name}.server.log" 2>&1 &
@@ -77,18 +103,12 @@ benchmark_target() {
   "$SCRIPT_DIR/sample-memory.sh" "$SERVER_PID" "$RESULTS/${name}_idle.csv" 1 6
 
   echo "  scenario 1: low-concurrency..."
-  k6 run --quiet --env BASE_URL="$base" \
-    --summary-export "$RESULTS/${name}_low.summary.json" \
-    "$K6_DIR/low-concurrency.js" > "$RESULTS/${name}_low.k6.log" 2>&1 \
-    || echo "  (k6 reported a threshold breach in low-concurrency for $name — recorded, continuing)"
+  run_scenario "$name" "$base" low low-concurrency.js
 
   echo "  scenario 2: high-concurrency (VUS=$VUS, $DURATION)..."
   "$SCRIPT_DIR/sample-memory.sh" "$SERVER_PID" "$RESULTS/${name}_high_load.csv" 2 100000 &
   SAMPLER_PID=$!
-  k6 run --quiet --env BASE_URL="$base" --env VUS="$VUS" --env DURATION="$DURATION" --env RAMP="$RAMP" \
-    --summary-export "$RESULTS/${name}_high.summary.json" \
-    "$K6_DIR/high-concurrency.js" > "$RESULTS/${name}_high.k6.log" 2>&1 \
-    || echo "  (k6 reported a threshold breach in high-concurrency for $name — recorded, continuing)"
+  run_scenario "$name" "$base" high high-concurrency.js "${load_env[@]}"
   kill "$SAMPLER_PID" 2>/dev/null || true
   SAMPLER_PID=""
 
@@ -103,10 +123,7 @@ benchmark_target() {
   # to publish it. Sampling anyway would mean a jcmd JVM launch every 2s against the process being
   # measured, for a CSV nothing reads.
   echo "  scenario 3: high-concurrency secured (VUS=$VUS, $DURATION)..."
-  k6 run --quiet --env BASE_URL="$base" --env VUS="$VUS" --env DURATION="$DURATION" --env RAMP="$RAMP" \
-    --summary-export "$RESULTS/${name}_secured.summary.json" \
-    "$K6_DIR/high-concurrency-secured.js" > "$RESULTS/${name}_secured.k6.log" 2>&1 \
-    || echo "  (k6 reported a failed threshold in high-concurrency-secured for $name — recorded; the snapshot marks a run whose checks failed as invalid rather than publishing it)"
+  run_scenario "$name" "$base" secured high-concurrency-secured.js "${load_env[@]}"
 
   echo "  tearing down pid=$SERVER_PID..."
   kill "$SERVER_PID" 2>/dev/null || true
