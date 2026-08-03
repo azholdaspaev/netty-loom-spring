@@ -79,6 +79,18 @@ def checks_held(summary):
     return not fails or fails / total <= SECURED_MAX_CHECK_FAILURE_RATE
 
 
+def logins_held(summary):
+    """Whether enough VUs authenticated for the plateau to be the connection count claimed.
+
+    A VU that cannot log in does not issue steady-state requests at all, so it leaves the check rate
+    untouched and `checks_held` never sees it -- the row would report a full-strength plateau that
+    was really served by however many VUs got through. The scenario declares the tolerance as a
+    `login_failed` threshold; this only reads whether it was crossed. An export that predates the
+    metric has no thresholds to inspect and so holds, which is what keeps older results renderable.
+    """
+    return not any(metric(summary, "login_failed").get("thresholds", {}).values())
+
+
 def exit_path(name, scenario):
     return os.path.join(RESULTS_DIR, f"{name}_{scenario}.exit")
 
@@ -237,13 +249,16 @@ def scenario_stats(name, scenario, selector=""):
     0.00% while throughput and p99 are pure fiction -- and it exits cleanly, so the first gate never
     sees it. That second gate stays secured-only: in scenarios 1 and 2 a failed check means the
     server returned non-200 under load, which is the finding the error-rate column exists to report,
-    not a reason to suppress the row.
+    not a reason to suppress the row. It also covers how many VUs authenticated at all, which the
+    check rate cannot: a VU that never logs in issues no steady-state requests, so it leaves every
+    check passing while quietly shrinking the plateau below the connection count the row claims.
     """
     s = load_summary(name, scenario)
     reqs = metric(s, "http_reqs", selector)
     err = pick(metric(s, "http_req_failed", selector), "value", "rate")
     valid = bool(reqs) and completed(name, scenario) and (
-        scenario != SECURED_SCENARIO or (checks_held(s) and pick(reqs, "count") != 0))
+        scenario != SECURED_SCENARIO
+        or (checks_held(s) and logins_held(s) and pick(reqs, "count") != 0))
     return {
         "thr": pick(reqs, "rate") if valid else None,
         "p99": pick(metric(s, "http_req_duration", selector), "p(99)") if valid else None,

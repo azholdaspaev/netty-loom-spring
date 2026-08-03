@@ -59,6 +59,9 @@ Endpoints:
    scraped from the login page) and then replays its session cookie for the rest of the run, so the
    steady state measures an authenticated request through the whole filter chain rather than the
    login. The scenario-2 vs scenario-3 delta on the same target and run is what the chain costs.
+   Every VU's login lands inside the ramp, so the run tolerates up to 1% of them failing at the
+   transport level before `login_failed` fails it: one dead socket is weather, one VU in a hundred
+   unable to authenticate is a plateau measured at the wrong connection count.
 
 All three report **p50 / p95 / p99 latency** and **error rate**. Error rate is the only hard
 threshold; latency is measured, not gated (measuring it is the point).
@@ -90,6 +93,11 @@ threshold; latency is measured, not gated (measuring it is the point).
 > keeps a saturated target's stray check from silencing the comparison. Scenarios 1 and 2 are left out
 > of this second gate — there a failed check means the server returned non-200 under load, which is
 > the finding the error-rate column exists to report.
+>
+> The same gate covers *how many VUs authenticated*, which the check rate cannot see: a VU that never
+> logs in issues no steady-state requests, so it leaves every check passing while quietly shrinking
+> the plateau below the connection count the row claims. The scenario declares that tolerance as a
+> `login_failed` threshold and `summarize.py` refuses a row whose threshold was crossed.
 >
 > Note also that k6 clears its cookie jar at the **start of every iteration** — the session id is
 > therefore carried in a module-scoped variable and sent as an explicit header, not left to the jar.
