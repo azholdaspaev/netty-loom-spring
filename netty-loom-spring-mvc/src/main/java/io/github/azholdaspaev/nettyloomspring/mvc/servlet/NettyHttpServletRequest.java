@@ -192,7 +192,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public String getAuthType() {
-        return "";
+        return null;
     }
 
     @Override
@@ -266,7 +266,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public String getRemoteUser() {
-        return "";
+        return null;
     }
 
     @Override

@@ -148,6 +148,15 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
+    void authenticationAccessorsAreNullOnAnUnauthenticatedRequest() {
+        var request = request(INSECURE, new DefaultNettyServletContext());
+
+        assertNull(request.getAuthType());
+        assertNull(request.getRemoteUser());
+        assertNull(request.getUserPrincipal());
+    }
+
+    @Test
     void networkGettersFromConnection() {
         var context = new DefaultNettyServletContext();
         var request = request(new HttpConnectionMetadata("203.0.113.7", 54321, "198.51.100.2", 8080, false), context);
