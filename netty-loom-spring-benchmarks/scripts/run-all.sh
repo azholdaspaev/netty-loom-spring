@@ -69,6 +69,11 @@ trap cleanup EXIT
 run_scenario() {
   local name="$1" base="$2" scenario="$3" script="$4"; shift 4
   local rc=0
+  # Clear the previous sweep's pair first: RESULTS_DIR defaults to the same ./results every time,
+  # and the exit code is written only after k6 returns. Interrupt a run -- the normal response to a
+  # 10k-VU sweep going visibly wrong -- and the operator's hand render would otherwise read the
+  # last sweep's `0` as this one's finished run. Absence fails closed; a stale record does not.
+  rm -f "$RESULTS/${name}_${scenario}.summary.json" "$RESULTS/${name}_${scenario}.exit"
   k6 run --quiet --env BASE_URL="$base" "$@" \
     --summary-export "$RESULTS/${name}_${scenario}.summary.json" \
     "$K6_DIR/$script" > "$RESULTS/${name}_${scenario}.k6.log" 2>&1 || rc=$?
