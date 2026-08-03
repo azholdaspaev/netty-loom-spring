@@ -93,9 +93,10 @@ class SummarizeTest(unittest.TestCase):
 
     def render(self, runs=None):
         """Render a snapshot. `runs` overrides individual (target, scenario) pairs with a dict of
-        `exit` / `count` / `rate` / `check_fails`; `exit=None` writes no .exit file at all, and
-        `no_export=True` writes no summary export -- the shape of a run that died before k6
-        could write one."""
+        `exit` / `count` / `rate` / `check_fails`; `exit=None` writes no .exit file at all,
+        `no_export=True` writes no summary export -- the shape of a run that died before k6 could
+        write one -- `empty_export=True` writes `{}`, and `drop_metrics` omits named metrics, the
+        shape of a tagged sub-metric no threshold asked k6 to emit."""
         runs = runs or {}
         with tempfile.TemporaryDirectory() as results:
             for target in LABELS:
@@ -105,6 +106,8 @@ class SummarizeTest(unittest.TestCase):
                     count = spec.get("count", 100000)
                     summary = k6_summary(count, rate, spec.get("p99", 100.0),
                                          spec.get("check_fails", 0))
+                    for name in spec.get("drop_metrics", ()):
+                        summary["metrics"].pop(name, None)
                     if not spec.get("no_export"):
                         with open(os.path.join(results,
                                                f"{target}_{scenario}.summary.json"), "w") as f:
@@ -166,6 +169,56 @@ class SummarizeTest(unittest.TestCase):
         # Scenario 1 is nobody else's input: the other two targets and scenarios are untouched.
         self.assertNotIn("invalid", table_row(md, self.SCENARIO_2, "tomcat-virtual"))
         self.assertNotIn("invalid", table_row(md, self.SCENARIO_1, "netty-loom"))
+
+    def test_a_clean_exit_beside_no_export_is_refused(self):
+        """An exit code is evidence about a run, not a substitute for its measurements.
+
+        This is what a fresh clone looked like once the .exit files were committable: nine files
+        saying `0`, no exports, no CSVs. Every cell had nothing behind it, yet `err` was computed
+        outside the gate and `or 0` turned *absent* into *measured zero*, so the most flattering
+        number in the table was the one published.
+        """
+        md = self.render({(t, s): {"exit": K6_OK, "no_export": True}
+                          for t in LABELS for s in ("low", "high", "secured")})
+        for heading in (self.SCENARIO_1, self.SCENARIO_2, self.SCENARIO_3):
+            row = table_row(md, heading, "netty-loom")
+            self.assertEqual(row.count("invalid"), 5, row)
+            self.assertNotIn("0.00%", row)
+        self.assertIn("invalid", table_row(md, self.MEMORY, "netty-loom"))
+
+    def test_a_missing_export_does_not_reach_the_derived_tables(self):
+        """One target's scenario-2 export gone, its .exit clean — the memory row published
+        250.00 KB/connection for a run with no k6 data at all."""
+        md = self.render({("netty-loom", "high"): {"exit": K6_OK, "no_export": True}})
+        self.assertEqual(table_row(md, self.SCENARIO_2, "netty-loom").count("invalid"), 5)
+        self.assertIn("invalid", table_row(md, self.MEMORY, "netty-loom"))
+        self.assertIn("invalid", table_row(md, self.CPU, "netty-loom"))
+
+    def test_an_export_carrying_no_request_metric_is_refused(self):
+        """An export that parsed but recorded nothing for this scenario is not a measurement.
+
+        Reachable with a clean exit: every VU dies in setup, k6 writes an export, and none of the
+        http_req_* metrics exist. `pick(reqs, "count")` is then `None`, and `None != 0` is true.
+        """
+        md = self.render({("netty-loom", "secured"): {"exit": K6_OK, "empty_export": True}})
+        self.assertEqual(table_row(md, self.SCENARIO_3, "netty-loom").count("invalid"), 5)
+
+    def test_an_absent_error_rate_is_not_reported_as_zero(self):
+        """`or 0` made *absent* into *measured zero* — the most flattering number available.
+
+        The tagged sub-metrics exist only because a threshold names them (see the `thresholds`
+        block in high-concurrency-secured.js), so dropping one is a live shape, not a contrivance.
+        """
+        md = self.render({("netty-loom", "secured"):
+                          {"drop_metrics": ["http_req_failed{phase:work}"]}})
+        row = table_row(md, self.SCENARIO_3, "netty-loom")
+        self.assertNotIn("0.00%", row)
+        self.assertIn("n/a", row)
+
+    def test_the_headline_needs_the_error_rate_it_quotes(self):
+        """It states throughput, p99 *and* error rate, so all three gate it."""
+        md = self.render({(t, "high"): {"drop_metrics": ["http_req_failed"]} for t in LABELS})
+        self.assertIn("Not answerable", "\n".join(section(md, self.HEADLINE)))
 
     def test_missing_exit_file_is_refused(self):
         """No record that the run finished is not a record that it did — fail closed."""
