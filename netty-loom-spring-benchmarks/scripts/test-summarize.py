@@ -94,7 +94,9 @@ class SummarizeTest(unittest.TestCase):
 
     def render(self, runs=None):
         """Render a snapshot. `runs` overrides individual (target, scenario) pairs with a dict of
-        `exit` / `count` / `rate` / `check_fails`; `exit=None` writes no .exit file at all."""
+        `exit` / `count` / `rate` / `check_fails`; `exit=None` writes no .exit file at all, and
+        `no_export=True` writes no summary export -- the shape of a run that died before k6
+        could write one."""
         runs = runs or {}
         with tempfile.TemporaryDirectory() as results:
             for target in LABELS:
@@ -104,8 +106,10 @@ class SummarizeTest(unittest.TestCase):
                     count = spec.get("count", 100000)
                     summary = k6_summary(count, rate, spec.get("p99", 100.0),
                                          spec.get("check_fails", 0))
-                    with open(os.path.join(results, f"{target}_{scenario}.summary.json"), "w") as f:
-                        json.dump(summary, f)
+                    if not spec.get("no_export"):
+                        with open(os.path.join(results,
+                                               f"{target}_{scenario}.summary.json"), "w") as f:
+                            json.dump({} if spec.get("empty_export") else summary, f)
                     code = spec.get("exit", K6_OK)
                     if code is not None:
                         with open(os.path.join(results, f"{target}_{scenario}.exit"), "w") as f:
@@ -215,6 +219,35 @@ class SummarizeTest(unittest.TestCase):
             # scenario-3 table uses, rather than `n/a` -- which would read as merely absent.
             self.assertEqual(row.count("invalid"), 4, row)
             self.assertNotIn("n/a", row)
+
+    def test_a_secured_run_that_wrote_no_export_still_reports_the_attempt(self):
+        """An attempt is recorded by the .exit file, which run-all.sh writes unconditionally.
+
+        A run that dies early enough -- a script exception (107), or k6 missing from PATH (127) --
+        never writes a summary export at all. Deciding "was this attempted?" from the export alone
+        drops the whole section, so the snapshot never mentions the comparison was tried.
+        """
+        md = self.render({(t, "secured"): {"exit": 107, "no_export": True} for t in LABELS})
+        security = "\n".join(section(md, self.SECURITY))
+        self.assertEqual(security.count("Not answerable"), 2, security)
+        for target in LABELS:
+            self.assertEqual(table_row(md, self.SECURITY, target).count("invalid"), 4)
+
+    def test_a_sweep_that_never_ran_the_secured_scenario_omits_the_section(self):
+        """The other half of the same decision: nothing attempted, nothing to refuse."""
+        md = self.render({(t, "secured"): {"exit": None, "no_export": True} for t in LABELS})
+        self.assertNotIn("## Security overhead", md)
+        self.assertIn("## Scenario 2", md)
+
+    def test_an_empty_export_counts_as_an_attempt(self):
+        """A written-but-empty export is a run that happened, so `is not None`, not truthiness.
+
+        Pairs with a pre-gate results directory, which is the case that keeps the export in the
+        disjunction at all: exports present, no .exit files, and it must still render as refused.
+        """
+        md = self.render({(t, "secured"): {"exit": None, "empty_export": True} for t in LABELS})
+        self.assertIn("## Security overhead", md)
+        self.assertEqual("\n".join(section(md, self.SECURITY)).count("Not answerable"), 2)
 
 
 if __name__ == "__main__":
