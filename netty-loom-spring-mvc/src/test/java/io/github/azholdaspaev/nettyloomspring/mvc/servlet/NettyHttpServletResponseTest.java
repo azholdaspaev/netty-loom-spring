@@ -192,6 +192,37 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
+    void addCookieAppliesTheResolverWhenTheCookieDeclaresNoSameSite() throws Exception {
+        var response = new NettyHttpServletResponse(cookie -> "Strict");
+        response.addCookie(new Cookie("XSRF-TOKEN", "t"));
+
+        FullHttpResponse httpResponse = response.toFullHttpResponse();
+        assertTrue(httpResponse.headers().get(HttpHeaderNames.SET_COOKIE).contains("SameSite=Strict"));
+    }
+
+    @Test
+    void addCookiePrefersAnExplicitSameSiteOverTheResolver() throws Exception {
+        var response = new NettyHttpServletResponse(cookie -> "None");
+        Cookie cookie = new Cookie("XSRF-TOKEN", "t");
+        cookie.setAttribute("SameSite", "Lax");
+        response.addCookie(cookie);
+
+        FullHttpResponse httpResponse = response.toFullHttpResponse();
+        String setCookie = httpResponse.headers().get(HttpHeaderNames.SET_COOKIE);
+        assertTrue(setCookie.contains("SameSite=Lax"), "Actual: " + setCookie);
+        assertFalse(setCookie.contains("SameSite=None"), "Actual: " + setCookie);
+    }
+
+    @Test
+    void addCookieOmitsSameSiteWhenTheResolverDeclines() throws Exception {
+        var response = new NettyHttpServletResponse(cookie -> null);
+        response.addCookie(new Cookie("XSRF-TOKEN", "t"));
+
+        FullHttpResponse httpResponse = response.toFullHttpResponse();
+        assertFalse(httpResponse.headers().get(HttpHeaderNames.SET_COOKIE).contains("SameSite"));
+    }
+
+    @Test
     void addCookieMapsPartitionedAttribute() throws Exception {
         var response = new NettyHttpServletResponse();
         Cookie cookie = new Cookie("sid", "xyz");

@@ -32,7 +32,8 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
         // The response is built first because the request holds on to it: a session created mid-dispatch
         // has to write its Set-Cookie straight away, since addCookie is ignored once the response is
         // committed by sendRedirect or sendError.
-        NettyHttpServletResponse servletResponse = new NettyHttpServletResponse();
+        NettyHttpServletResponse servletResponse =
+            new NettyHttpServletResponse(servletContext.getCookieSameSiteResolver());
         NettyHttpServletRequest servletRequest =
             new NettyHttpServletRequest(request, connection, servletContext, servletResponse);
 

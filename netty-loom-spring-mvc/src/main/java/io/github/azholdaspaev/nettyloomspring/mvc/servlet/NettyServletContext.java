@@ -47,6 +47,15 @@ public interface NettyServletContext extends ServletContext, AutoCloseable {
     void setContextPath(String contextPath);
 
     /**
+     * Sets the container-wide {@code SameSite} policy for cookies the application writes (issue #85).
+     * Not part of the Jakarta {@link ServletContext} contract: it is the route Boot's
+     * {@code CookieSameSiteSupplier} beans take to the request path, since no servlet API carries them.
+     */
+    void setCookieSameSiteResolver(CookieSameSiteResolver resolver);
+
+    CookieSameSiteResolver getCookieSameSiteResolver();
+
+    /**
      * The store backing {@code HttpServletRequest.getSession(...)}. Not part of the Jakarta
      * {@code ServletContext} contract: the servlet API exposes only configuration of sessions, never
      * the store itself, but the request needs it to resolve and create them.

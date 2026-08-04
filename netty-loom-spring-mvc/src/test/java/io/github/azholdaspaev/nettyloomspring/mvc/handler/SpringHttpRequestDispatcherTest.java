@@ -5,11 +5,13 @@ import io.github.azholdaspaev.nettyloomspring.mvc.servlet.DefaultNettyServletCon
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletRequestEvent;
 import jakarta.servlet.ServletRequestListener;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -122,6 +124,20 @@ class SpringHttpRequestDispatcherTest {
         assertNotNull(dispatched[0]);
         assertSame(dispatched[0], seen[0], "the listener must see the request the servlet is handed");
         assertSame(servletContext, seen[1]);
+    }
+
+    @Test
+    void theContextsCookieSameSiteResolverReachesTheResponse() throws Exception {
+        var dispatcher = dispatcher((request, response) -> response.addCookie(new Cookie("tracker", "t")));
+        // Set after the dispatcher exists: the factory installs the resolver during getWebServer(), long
+        // after this bean is constructed, so a resolver captured at construction would always be the
+        // default. Reading it per request is what makes the bean order irrelevant.
+        servletContext.setCookieSameSiteResolver(cookie -> "Strict");
+
+        FullHttpResponse response = dispatcher.handle(get("/api/ping"), CONNECTION);
+
+        String setCookie = response.headers().get(HttpHeaderNames.SET_COOKIE);
+        assertTrue(setCookie.contains("SameSite=Strict"), "Actual: " + setCookie);
     }
 
     @Test
