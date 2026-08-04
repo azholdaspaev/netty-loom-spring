@@ -49,6 +49,19 @@ public class NettyHttpServletResponse implements HttpServletResponse {
     // already-errored 404, advertising methods no handler serves.
     private boolean committed;
 
+    private final CookieSameSiteResolver sameSiteResolver;
+
+    // Package-private: the container always builds a response with its policy, so a caller outside
+    // this package that forgets one should not compile. Dropping the SameSite silently is the very
+    // defect this constructor's public twin would reintroduce (issue #85).
+    NettyHttpServletResponse() {
+        this(CookieSameSiteResolver.NONE);
+    }
+
+    public NettyHttpServletResponse(CookieSameSiteResolver sameSiteResolver) {
+        this.sameSiteResolver = sameSiteResolver;
+    }
+
     @Override
     public void addCookie(Cookie cookie) {
         if (committed) {
@@ -67,7 +80,15 @@ public class NettyHttpServletResponse implements HttpServletResponse {
         }
         nettyCookie.setSecure(cookie.getSecure());
         nettyCookie.setHttpOnly(cookie.isHttpOnly());
-        CookieHeaderNames.SameSite sameSite = parseSameSite(cookie.getAttribute(CookieHeaderNames.SAMESITE));
+        // The container-wide policy applies only where the cookie declares nothing, matching Tomcat's
+        // Rfc6265CookieProcessor. The test is on the raw attribute, not on the parsed value: a malformed
+        // one (which parseSameSite drops) is still an expressed intent, and must not silently fall
+        // through to a policy the caller did not ask for.
+        String sameSiteValue = cookie.getAttribute(CookieHeaderNames.SAMESITE);
+        if (sameSiteValue == null) {
+            sameSiteValue = sameSiteResolver.resolve(cookie);
+        }
+        CookieHeaderNames.SameSite sameSite = parseSameSite(sameSiteValue);
         if (sameSite != null) {
             nettyCookie.setSameSite(sameSite);
         }

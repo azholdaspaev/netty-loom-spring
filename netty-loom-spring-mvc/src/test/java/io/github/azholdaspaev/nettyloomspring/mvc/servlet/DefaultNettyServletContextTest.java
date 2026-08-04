@@ -675,6 +675,22 @@ class DefaultNettyServletContextTest {
         assertEquals(0, context.getSessionManager().size());
     }
 
+    // --- Cookie SameSite policy (issue #85) ---
+
+    @Test
+    void shouldDefaultToNoCookieSameSiteResolver() {
+        assertSame(CookieSameSiteResolver.NONE, context.getCookieSameSiteResolver());
+    }
+
+    @Test
+    void shouldReadBackTheConfiguredCookieSameSiteResolver() {
+        CookieSameSiteResolver resolver = cookie -> "Strict";
+
+        context.setCookieSameSiteResolver(resolver);
+
+        assertSame(resolver, context.getCookieSameSiteResolver());
+    }
+
     // --- Listeners (issue #17) ---
 
     @Test

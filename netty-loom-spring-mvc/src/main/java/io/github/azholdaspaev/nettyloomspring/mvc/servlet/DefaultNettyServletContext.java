@@ -54,6 +54,7 @@ public class DefaultNettyServletContext implements NettyServletContext {
     // server start, so the volatile field is sufficient for safe publication.
     private volatile List<RegisteredFilter> registeredFiltersSnapshot;
     private volatile String contextPath = ROOT_CONTEXT_PATH;
+    private volatile CookieSameSiteResolver cookieSameSiteResolver = CookieSameSiteResolver.NONE;
     // Atomic because the transition, not the value, is what must happen once: close() is reachable from
     // both SessionStoreLifecycle.stop() and the bean-destruction backstop, and each event is owed exactly
     // one delivery. Same idiom as NettyHttpSession.markInvalidated.
@@ -280,6 +281,16 @@ public class DefaultNettyServletContext implements NettyServletContext {
     @Override
     public String getContextPath() {
         return contextPath;
+    }
+
+    @Override
+    public void setCookieSameSiteResolver(CookieSameSiteResolver resolver) {
+        this.cookieSameSiteResolver = resolver;
+    }
+
+    @Override
+    public CookieSameSiteResolver getCookieSameSiteResolver() {
+        return cookieSameSiteResolver;
     }
 
     // --- Sessions: the manager is the single owner, this is pure delegation (issue #13) ---
