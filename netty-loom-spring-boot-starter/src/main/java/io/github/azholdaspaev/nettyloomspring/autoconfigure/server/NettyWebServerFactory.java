@@ -18,12 +18,15 @@ import org.springframework.boot.web.server.Ssl;
 import org.springframework.boot.web.server.WebServer;
 import org.springframework.boot.web.server.WebServerException;
 import org.springframework.boot.web.server.servlet.ConfigurableServletWebServerFactory;
+import org.springframework.boot.web.server.servlet.CookieSameSiteSupplier;
 import org.springframework.boot.web.server.servlet.ServletContextInitializers;
 import org.springframework.boot.web.server.servlet.ServletWebServerSettings;
 import org.springframework.boot.web.server.servlet.Session;
 import org.springframework.boot.web.servlet.ServletContextInitializer;
 import org.springframework.boot.webmvc.autoconfigure.DispatcherServletAutoConfiguration;
 import org.springframework.web.servlet.DispatcherServlet;
+
+import java.util.List;
 
 public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
     implements ConfigurableServletWebServerFactory {
@@ -64,6 +67,7 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
         // as the Jakarta contract requires (rather than the default "").
         servletContext.setContextPath(getContextPath());
         configureSessions();
+        configureCookieSameSite();
         initializeServletContext(initializers);
         // Before filters and servlets; see fireContextInitialized's javadoc for why that order is fixed.
         servletContext.fireContextInitialized();
@@ -108,6 +112,23 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
         if (sameSite != null && sameSite.attributeValue() != null) {
             servletContext.getSessionCookieConfig()
                 .setAttribute(CookieHeaderNames.SAMESITE, sameSite.attributeValue());
+        }
+    }
+
+    /**
+     * Applies the application's {@code CookieSameSiteSupplier} beans, which Boot binds onto every
+     * servlet factory (issue #85). Tomcat additionally prepends a rule for the session cookie; none is
+     * needed here, because {@link #configureSessions()} has already written {@code same-site} as an
+     * attribute on it and {@code addCookie} prefers an attribute the cookie declares. That also avoids
+     * capturing the session cookie name before Boot's initializer has had a chance to change it.
+     *
+     * <p>One case diverges: {@code same-site=omitted} writes no attribute, so a supplier matching the
+     * session cookie applies to it where Tomcat suppresses that supplier instead.
+     */
+    private void configureCookieSameSite() {
+        List<? extends CookieSameSiteSupplier> suppliers = getSettings().getCookieSameSiteSuppliers();
+        if (!suppliers.isEmpty()) {
+            servletContext.setCookieSameSiteResolver(new SuppliedCookieSameSiteResolver(suppliers));
         }
     }
 
