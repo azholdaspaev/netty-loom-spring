@@ -1,6 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.server;
 
-import io.github.azholdaspaev.nettyloomspring.mvc.servlet.CookieSameSiteResolver;
+import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyCookieSameSiteResolver;
 import jakarta.servlet.http.Cookie;
 import org.springframework.boot.web.server.Cookie.SameSite;
 import org.springframework.boot.web.server.servlet.CookieSameSiteSupplier;
@@ -15,7 +15,7 @@ import java.util.List;
  * <p>The first supplier with an opinion wins, and {@link SameSite#OMITTED} is an opinion — "emit no
  * SameSite" — that ends the search rather than deferring to the next supplier.
  */
-class SuppliedCookieSameSiteResolver implements CookieSameSiteResolver {
+class SuppliedCookieSameSiteResolver implements NettyCookieSameSiteResolver {
 
     private final List<? extends CookieSameSiteSupplier> suppliers;
 
