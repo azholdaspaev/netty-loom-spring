@@ -49,16 +49,16 @@ public class NettyHttpServletResponse implements HttpServletResponse {
     // already-errored 404, advertising methods no handler serves.
     private boolean committed;
 
-    private final CookieSameSiteResolver sameSiteResolver;
+    private final NettyCookieSameSiteResolver sameSiteResolver;
 
     // Package-private: the container always builds a response with its policy, so a caller outside
     // this package that forgets one should not compile. Dropping the SameSite silently is the very
     // defect this constructor's public twin would reintroduce (issue #85).
     NettyHttpServletResponse() {
-        this(CookieSameSiteResolver.NONE);
+        this(NettyCookieSameSiteResolver.NONE);
     }
 
-    public NettyHttpServletResponse(CookieSameSiteResolver sameSiteResolver) {
+    public NettyHttpServletResponse(NettyCookieSameSiteResolver sameSiteResolver) {
         this.sameSiteResolver = sameSiteResolver;
     }
 

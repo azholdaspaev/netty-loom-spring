@@ -679,12 +679,12 @@ class DefaultNettyServletContextTest {
 
     @Test
     void shouldDefaultToNoCookieSameSiteResolver() {
-        assertSame(CookieSameSiteResolver.NONE, context.getCookieSameSiteResolver());
+        assertSame(NettyCookieSameSiteResolver.NONE, context.getCookieSameSiteResolver());
     }
 
     @Test
     void shouldReadBackTheConfiguredCookieSameSiteResolver() {
-        CookieSameSiteResolver resolver = cookie -> "Strict";
+        NettyCookieSameSiteResolver resolver = cookie -> "Strict";
 
         context.setCookieSameSiteResolver(resolver);
 

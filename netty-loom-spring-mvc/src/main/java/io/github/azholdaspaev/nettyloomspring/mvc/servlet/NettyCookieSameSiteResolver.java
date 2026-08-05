@@ -9,9 +9,9 @@ import jakarta.servlet.http.Cookie;
  * module carries no Spring Boot dependency; the starter adapts the supplier beans to it.
  */
 @FunctionalInterface
-public interface CookieSameSiteResolver {
+public interface NettyCookieSameSiteResolver {
 
-    CookieSameSiteResolver NONE = cookie -> null;
+    NettyCookieSameSiteResolver NONE = cookie -> null;
 
     /** The {@code SameSite} attribute value for {@code cookie}, or {@code null} for no opinion. */
     String resolve(Cookie cookie);
