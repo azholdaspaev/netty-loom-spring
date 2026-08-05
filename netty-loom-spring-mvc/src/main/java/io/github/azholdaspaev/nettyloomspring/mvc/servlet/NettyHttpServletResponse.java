@@ -55,7 +55,7 @@ public class NettyHttpServletResponse implements HttpServletResponse {
     // this package that forgets one should not compile. Dropping the SameSite silently is the very
     // defect this constructor's public twin would reintroduce (issue #85).
     NettyHttpServletResponse() {
-        this(NettyCookieSameSiteResolver.NONE);
+        this(NettyCookieSameSiteResolver.NO_OPINION);
     }
 
     public NettyHttpServletResponse(NettyCookieSameSiteResolver sameSiteResolver) {

@@ -54,7 +54,7 @@ public class DefaultNettyServletContext implements NettyServletContext {
     // server start, so the volatile field is sufficient for safe publication.
     private volatile List<RegisteredFilter> registeredFiltersSnapshot;
     private volatile String contextPath = ROOT_CONTEXT_PATH;
-    private volatile NettyCookieSameSiteResolver cookieSameSiteResolver = NettyCookieSameSiteResolver.NONE;
+    private volatile NettyCookieSameSiteResolver cookieSameSiteResolver = NettyCookieSameSiteResolver.NO_OPINION;
     // Atomic because the transition, not the value, is what must happen once: close() is reachable from
     // both SessionStoreLifecycle.stop() and the bean-destruction backstop, and each event is owed exactly
     // one delivery. Same idiom as NettyHttpSession.markInvalidated.
