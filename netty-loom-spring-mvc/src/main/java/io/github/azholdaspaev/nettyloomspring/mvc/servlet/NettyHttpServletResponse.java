@@ -391,8 +391,9 @@ public class NettyHttpServletResponse implements HttpServletResponse {
         headers.clear();
         status = HttpServletResponse.SC_OK;
         characterEncoding = StandardCharsets.ISO_8859_1;
-        // Unlike a streaming container, a commit here has sent nothing yet, so a full reset genuinely
-        // takes it back rather than lying about bytes already on the wire.
+        // Reachable only while nothing has shipped: resetBuffer above refuses once the head is on the
+        // wire, so this un-commits a sendError or sendRedirect -- which commit without sending -- and
+        // never a response the client has already begun reading.
         committed = false;
     }
 
