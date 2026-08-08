@@ -17,7 +17,9 @@ public final class SpinWait {
     private SpinWait() {
     }
 
-    /** Spins until {@code condition} holds, failing the test with {@code message} if {@code limit} passes. */
+    /**
+     * Spins until {@code condition} holds, failing the test with {@code message} if {@code limit} passes.
+     */
     public static void until(BooleanSupplier condition, Duration limit, String message) {
         long deadlineNanos = System.nanoTime() + limit.toNanos();
         while (!condition.getAsBoolean()) {

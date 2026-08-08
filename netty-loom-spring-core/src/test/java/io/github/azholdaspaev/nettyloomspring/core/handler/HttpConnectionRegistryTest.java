@@ -77,11 +77,6 @@ class HttpConnectionRegistryTest {
         connection.finish();
     }
 
-    /**
-     * The accept path defers registration to the worker loop, so a connection can land after
-     * {@link HttpConnectionRegistry#beginDrain()} has already walked the group. Left open it would
-     * either escape the close-future snapshot or hold it for the whole grace period.
-     */
     @Test
     void shouldCloseAConnectionThatArrivesAfterTheDrainHasBegun() {
         HttpConnectionRegistry registry = newRegistry();
@@ -125,11 +120,6 @@ class HttpConnectionRegistryTest {
             "the drain must be satisfied as soon as the dispatch unwinds");
     }
 
-    /**
-     * Pins the signal rather than the timeout. The finisher waits until the drain is provably parked
-     * before it runs, because a decrement that lands first would let the wait return on its own
-     * count check — passing with the signal deleted, and vacuous means green.
-     */
     @Test
     void shouldWakeTheDrainAsSoonAsTheLastDispatchFinishes() throws Exception {
         HttpConnectionRegistry registry = newRegistry();

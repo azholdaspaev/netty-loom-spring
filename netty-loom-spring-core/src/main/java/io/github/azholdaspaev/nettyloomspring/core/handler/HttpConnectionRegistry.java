@@ -13,31 +13,13 @@ import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Tracks what graceful shutdown must wait for: open connections, how many HTTP exchanges each is
- * still serving, and how many dispatches are running off the event loop.
- *
- * <p>Graceful shutdown has to wait for in-flight <em>requests</em>, not for open <em>sockets</em>.
- * Those are only the same thing if the server closes the connection after every response, which
- * HTTP/1.1 does not: persistence is the protocol default, so a pooled connection sitting idle stays
- * open until the client decides otherwise. Waiting on socket liveness therefore burned the whole
- * grace period on every shutdown (issue #67).
- *
- * <p>{@link #beginDrain()} closes the connections that are idle at that moment and flips
- * {@link #isDraining()}, which makes {@link HttpDrainHandler} stamp {@code Connection: close} on
- * the response still owed; Netty's {@code HttpServerKeepAliveHandler} then closes those
- * connections once they have replied, so a well-behaved client stops reusing the connection instead
- * of racing the close.
- *
- * <p>Connections closing is not on its own a request signal, which is why {@link #awaitDrained(long)}
- * waits for dispatches too: a channel closes when the <em>server</em> finishes a response, but also
- * when a client simply hangs up — and that takes the per-connection count with it, leaving a virtual
- * thread still inside the handler (issue #108). The dispatch count is global because a connection
- * lost before the drain began leaves no channel to hang it on.
- *
- * <p>The dispatch count is trusted to balance rather than clamped: {@link HttpRequestHandler}
- * increments once before submitting and decrements once on whichever of its two paths runs, which
- * holds as long as its executor honours the contract documented on its constructor. The
- * per-connection count does clamp, for the reason given on {@link #exchangeFinished}; decrements
- * here arrive on arbitrary virtual threads, where the same shape would carry none of that reason.
+ * still serving, and how many dispatches are running off the event loop. Shutdown has to wait for
+ * in-flight requests, not open sockets — HTTP/1.1 makes persistence the default, so waiting on
+ * socket liveness burned the whole grace period on every shutdown (issue #67). {@link #beginDrain()}
+ * closes what is idle and flips {@link #isDraining()}, which makes {@link HttpDrainHandler} stamp
+ * {@code Connection: close} on the response still owed. Dispatches are counted separately and
+ * globally, because a client hanging up takes the per-connection count with it while a virtual
+ * thread is still inside the handler (issue #108).
  */
 public class HttpConnectionRegistry {
 
@@ -59,15 +41,10 @@ public class HttpConnectionRegistry {
     }
 
     /**
-     * Adds an accepted connection. Called before the pipeline is configured, so a channel is always
-     * tracked before it can carry a request.
-     *
-     * <p>A connection that arrives once the drain has begun is closed straight away. The accept path
-     * runs on the boss loop but defers {@code initChannel} — and therefore this call — to the worker
-     * loop, so a connection can land after {@link #beginDrain()} has already walked the group and
-     * would otherwise never be told to go: either it misses the close-future snapshot and lets the
-     * drain finish early, or it joins the snapshot and holds it open for the whole grace period.
-     * Nothing can be in flight on it yet, so closing is always right.
+     * Adds an accepted connection, before the pipeline is configured, so a channel is always tracked
+     * before it can carry a request. The accept path defers {@code initChannel} to the worker loop,
+     * so a connection can land after {@link #beginDrain()} has already walked the group; closing it
+     * straight away is always right, since nothing can be in flight on it yet.
      */
     public void register(Channel connection) {
         connections.add(connection);
@@ -80,24 +57,22 @@ public class HttpConnectionRegistry {
         return draining;
     }
 
-    /** Exchanges this connection has begun but not yet answered. */
     public int inFlight(Channel connection) {
         return counter(connection).get();
     }
 
-    /** Called on the event loop as the head of a request comes off the wire. */
+    /**
+     * Called on the event loop as the head of a request comes off the wire.
+     */
     public void exchangeStarted(Channel connection) {
         counter(connection).incrementAndGet();
     }
 
     /**
-     * Called on the event loop once a response has been written. Every path audited today balances,
-     * including a malformed request line: the decoder emits an invalid {@code HttpRequest}, which is
-     * counted, and its 400 balances it.
-     *
-     * <p>The clamp is a safety net for a future unmatched response, which would otherwise make a
-     * busy connection look idle to {@link #beginDrain()} and get it closed mid-request. Reading it
-     * before decrementing is only sound because both run on this connection's event loop.
+     * Called on the event loop once a response has been written. The clamp is a safety net for an
+     * unmatched response, which would otherwise make a busy connection look idle to
+     * {@link #beginDrain()} and get it closed mid-request; reading before decrementing is sound only
+     * because both run on this connection's event loop.
      */
     public void exchangeFinished(Channel connection) {
         AtomicInteger inFlight = counter(connection);
@@ -109,12 +84,13 @@ public class HttpConnectionRegistry {
         }
     }
 
-    /** Counted before the dispatch is submitted, so a queued task is never invisible to a drain. */
+    /**
+     * Counted before the dispatch is submitted, so a queued task is never invisible to a drain.
+     */
     public void dispatchStarted() {
         dispatchesInFlight.incrementAndGet();
     }
 
-    /** Called from the dispatch task's {@code finally}, whether it answered or threw. */
     public void dispatchFinished() {
         // Only signal while draining: outside a shutdown nobody is waiting, and at low load every
         // request returns the count to zero, so this would take the lock on each one.
@@ -130,11 +106,9 @@ public class HttpConnectionRegistry {
 
     /**
      * Starts draining and waits up to {@code timeoutMillis} for the server to fall quiet, reporting
-     * whether it did.
-     *
-     * <p>Connections first, then dispatches — the order is why this is one method and not two calls.
-     * Once the connections are gone nothing can start another dispatch, so from there the count only
-     * descends; awaiting dispatches alone would read a count that can rise again.
+     * whether it did. Connections first, then dispatches: once the connections are gone nothing can
+     * start another dispatch, so from there the count only descends. Awaiting dispatches alone would
+     * read a count that can rise again, which is why this is one method and not two calls.
      */
     public boolean awaitDrained(long timeoutMillis) throws InterruptedException {
         beginDrain();
@@ -173,7 +147,6 @@ public class HttpConnectionRegistry {
         }
     }
 
-    /** Force-closes every connection, abandoning whatever is still in flight. */
     public ChannelGroupFuture closeAll() {
         return connections.close();
     }

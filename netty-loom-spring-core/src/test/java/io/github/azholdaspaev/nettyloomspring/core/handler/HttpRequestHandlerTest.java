@@ -187,13 +187,6 @@ class HttpRequestHandlerTest {
         channel.finish();
     }
 
-    /**
-     * {@code HttpRequestDispatcher} is public SPI and documents no reference-count contract, so an
-     * implementation that releases the request it was handed makes the {@code finally}'s own
-     * {@code release()} throw. The count must already have been taken by then: it is global and
-     * {@link HttpConnectionRegistry#reset()} does not clear it, so a leak here would make every
-     * later shutdown burn its whole grace period.
-     */
     @Test
     void shouldNotLeaveADispatchCountedWhenReleasingTheRequestThrows() throws Exception {
         CountDownLatch pipelineDroppedItsReference = new CountDownLatch(1);
@@ -215,12 +208,6 @@ class HttpRequestHandlerTest {
             "a dispatch whose release() threw must still have been counted out");
     }
 
-    /**
-     * An {@link Executor} that runs tasks inline puts the task's own cleanup and the {@code catch}
-     * around the submission on one stack, so a throw from the former reaches the latter. The outer
-     * path compensates for a submission that never ran; letting it also see one that did would
-     * count the same dispatch out twice, and the count is global.
-     */
     @Test
     void shouldNotCountADispatchOutTwiceWhenItsCleanupThrowsOnAnInlineExecutor() throws Exception {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
@@ -238,12 +225,6 @@ class HttpRequestHandlerTest {
             "a live dispatch must still hold the drain open after an earlier task threw");
     }
 
-    /**
-     * The containment above is total on purpose, so narrowing it — to {@code IllegalReferenceCountException},
-     * or by pairing it with the {@code rethrowIfFatal} that {@code NettyListenerRegistry}'s wide catches
-     * use — reopens the double count. Its sibling above cannot see that: the over-release it provokes is
-     * the one type a narrowed catch would still hold.
-     */
     @Test
     void shouldContainACleanupFailureThatIsNotAnOverRelease() throws Exception {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
@@ -257,7 +238,9 @@ class HttpRequestHandlerTest {
             "a live dispatch must still hold the drain open after an earlier cleanup threw");
     }
 
-    /** Fails its own release with something the reference count cannot explain. */
+    /**
+     * Fails its own release with something the reference count cannot explain.
+     */
     private static final class CleanupFailingRequest extends DefaultFullHttpRequest {
 
         CleanupFailingRequest() {
@@ -270,7 +253,9 @@ class HttpRequestHandlerTest {
         }
     }
 
-    /** The dispatch runs off the calling thread, as the production virtual-thread executor does. */
+    /**
+     * The dispatch runs off the calling thread, as the production virtual-thread executor does.
+     */
     private static Thread startQuietly(Runnable task) {
         Thread worker = Thread.ofPlatform().unstarted(task);
         worker.setUncaughtExceptionHandler((_, _) -> { });
@@ -301,14 +286,6 @@ class HttpRequestHandlerTest {
         channel.finish();
     }
 
-    /**
-     * {@link EmbeddedChannel} cannot reach this path — {@code EmbeddedEventLoop.inEventLoop()} is
-     * unconditionally {@code true}, so the off-loop branch is never taken, and its shutdown methods
-     * throw {@link UnsupportedOperationException}. Hence a real loop, terminated rather than merely
-     * shutting down: {@code SingleThreadEventExecutor} only rejects once it reaches {@code ST_SHUTDOWN}.
-     * The log is the only observable — nothing escapes either way, and a terminated loop runs no
-     * handler that could see the difference — so this reads the stream slf4j-simple writes to.
-     */
     @Test
     @Timeout(value = 30, unit = TimeUnit.SECONDS)
     void shouldReportAnAbandonedDispatchItselfWhenTheEventLoopHasTerminated() throws Exception {
