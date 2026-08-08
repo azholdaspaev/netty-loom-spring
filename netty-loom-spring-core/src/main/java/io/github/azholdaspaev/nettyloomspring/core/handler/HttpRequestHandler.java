@@ -6,6 +6,8 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpResponse;
+import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.HttpStatusClass;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
@@ -193,12 +195,28 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
                 || HttpUtil.isTransferEncodingChunked(response)) {
                 return;
             }
+            // Netty repairs most of this set and not 304: sanitizeHeadersBeforeEncode skips it while
+            // isContentAlwaysEmpty still drops its body and terminator. Declared empty rather than left
+            // bare because isSelfDefinedMessageLength covers 1xx and 204 but not 304 or 205, so a bare
+            // head has HttpServerKeepAliveHandler close after every conditional GET.
+            if (carriesNoBody(response.status())) {
+                HttpUtil.setContentLength(response, 0);
+                return;
+            }
             // An HTTP/1.0 client reads chunk-size lines as body content, so its response is left for
             // the close to delimit; HttpServerKeepAliveHandler then stamps Connection: close itself.
             if (HttpVersion.HTTP_1_0.equals(request.protocolVersion())) {
                 return;
             }
             HttpUtil.setTransferEncodingChunked(response, true);
+        }
+
+        /** Tomcat suppresses framing for this same set in {@code Http11Processor.prepareResponse}. */
+        private static boolean carriesNoBody(HttpResponseStatus status) {
+            return status.codeClass() == HttpStatusClass.INFORMATIONAL
+                || status.code() == HttpResponseStatus.NO_CONTENT.code()
+                || status.code() == HttpResponseStatus.RESET_CONTENT.code()
+                || status.code() == HttpResponseStatus.NOT_MODIFIED.code();
         }
     }
 }

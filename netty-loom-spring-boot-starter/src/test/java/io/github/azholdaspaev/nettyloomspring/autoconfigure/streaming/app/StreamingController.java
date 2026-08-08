@@ -2,6 +2,7 @@ package io.github.azholdaspaev.nettyloomspring.autoconfigure.streaming.app;
 
 import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -69,6 +70,15 @@ public class StreamingController {
     @GetMapping("/streaming/entity")
     public ResponseEntity<Message> entity() {
         return ResponseEntity.ok(new Message("returned as an entity"));
+    }
+
+    /**
+     * An explicit 304 carrying a body. Spring's own not-modified shortcut is gated on status 200, so
+     * this reaches the converter, and a 304 can never carry a body on the wire.
+     */
+    @GetMapping("/streaming/not-modified")
+    public ResponseEntity<Message> notModified() {
+        return ResponseEntity.status(HttpStatus.NOT_MODIFIED).body(new Message("never sent"));
     }
 
     public record Message(String text) {
