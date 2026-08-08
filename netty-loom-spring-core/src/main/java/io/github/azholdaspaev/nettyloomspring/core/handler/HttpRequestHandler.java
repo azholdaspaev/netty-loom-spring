@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.nio.channels.ClosedChannelException;
 import java.time.Duration;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
@@ -108,9 +109,16 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
     private static void reportDispatchFailure(ChannelHandlerContext ctx, FullHttpRequest request,
                                               HttpChannelResponseWriter writer, Throwable cause) {
         if (writer.state != ResponseState.NOT_STARTED) {
-            log.warn("Closing {} {} after a failure mid-response: {}",
-                request.method(), request.uri(), cause.toString());
-            log.debug("Failure mid-response", cause);
+            // A client that hung up mid-download ends the stream the ordinary way, so only a fault the
+            // server owns is worth a warning. Both are still closes -- there is no response left to
+            // send either way -- so the log is the whole of the difference.
+            if (cause instanceof ClosedChannelException) {
+                log.debug("Client left during {} {}", request.method(), request.uri());
+            } else {
+                log.warn("Closing {} {} after a failure mid-response: {}",
+                    request.method(), request.uri(), cause.toString());
+                log.debug("Failure mid-response", cause);
+            }
             ctx.close();
             return;
         }
@@ -152,12 +160,12 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
 
         @Override
         public void write(HttpObject part) throws IOException {
-            // A handler streaming into a dead channel would otherwise produce for ever. isActive() is
-            // enough on its own, since Netty closes the channel itself on a write error while autoClose
-            // is on, and the part is released here because the writer still owns it.
+            // A handler streaming into a dead channel would otherwise produce for ever, and the part is
+            // released here because the writer still owns it. ClosedChannelException, not a plain
+            // IOException: the type is what HttpExceptionHandler classifies a departed client by.
             if (!ctx.channel().isActive()) {
                 ReferenceCountUtil.release(part);
-                throw new IOException("Connection closed before the response was written");
+                throw new ClosedChannelException();
             }
             if (part instanceof HttpResponse response) {
                 frameStreamedBody(response);

@@ -42,6 +42,7 @@ import org.junit.jupiter.api.Timeout;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.channels.ClosedChannelException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
@@ -197,9 +198,12 @@ class HttpRequestHandlerTest {
     /**
      * The servlet contract is that a write to a departed client fails, and a streaming handler only
      * learns of the departure by being told. The part it handed over is the writer's to free.
+     *
+     * <p>The type is load-bearing: {@link HttpExceptionHandler} classifies a departed client by it, so
+     * anything else there is reported as a server fault the application never committed.
      */
     @Test
-    void shouldThrowIOExceptionAndReleaseTheChunkWhenTheConnectionIsGone() throws Exception {
+    void shouldReportAGoneClientAsADisconnectAndReleaseTheChunk() throws Exception {
         ByteBuf orphan = Unpooled.copiedBuffer("gone", StandardCharsets.UTF_8);
         CountDownLatch connectionClosed = new CountDownLatch(1);
         AtomicReference<Thread> worker = new AtomicReference<>();
@@ -224,8 +228,8 @@ class HttpRequestHandlerTest {
         connectionClosed.countDown();
         worker.get().join();
 
-        assertInstanceOf(IOException.class, failure.get(),
-            "a write to a gone client must be reported to the handler producing it");
+        assertInstanceOf(ClosedChannelException.class, failure.get(),
+            "a write to a gone client must be reported as a disconnect the tail handler recognises");
         assertEquals(0, orphan.refCnt(), "the writer owns the part it could not send");
         assertNull(capture.captured,
             "a client that left is why the response stopped, not a dispatcher that broke its contract");
@@ -410,6 +414,44 @@ class HttpRequestHandlerTest {
             listener.close();
             group.shutdownGracefully(0, 0, TimeUnit.NANOSECONDS);
         }
+    }
+
+    /**
+     * A client that hangs up mid-download is the ordinary end of a stream, not a fault. Asserted on the
+     * log because that is the whole of the difference: the connection is closed either way.
+     */
+    @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    void shouldNotRecordAClientDisconnectMidResponseAsAFailure() throws Exception {
+        CountDownLatch connectionClosed = new CountDownLatch(1);
+        AtomicReference<Thread> worker = new AtomicReference<>();
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            (_, _, writer) -> {
+                writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
+                connectionClosed.await();
+                writer.write(new DefaultHttpContent(Unpooled.copiedBuffer("more", StandardCharsets.UTF_8)));
+            },
+            task -> worker.set(startQuietly(task)), connectionRegistry));
+
+        channel.writeInbound(new DefaultFullHttpRequest(
+            HttpVersion.HTTP_1_1, HttpMethod.GET, "/download"));
+        SpinWait.until(() -> channel.readOutbound() != null, PARK_LIMIT,
+            "the head must reach the wire before the client leaves");
+        channel.close();
+
+        ByteArrayOutputStream captured = new ByteArrayOutputStream();
+        PrintStream standardError = System.err;
+        System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
+        try {
+            connectionClosed.countDown();
+            worker.get().join();
+        } finally {
+            System.setErr(standardError);
+        }
+
+        String logged = captured.toString(StandardCharsets.UTF_8);
+        assertFalse(logged.contains("WARN"),
+            "a client that hung up mid-stream is not a failure; log was: " + logged);
     }
 
     private static String readChunk(EmbeddedChannel channel) {
