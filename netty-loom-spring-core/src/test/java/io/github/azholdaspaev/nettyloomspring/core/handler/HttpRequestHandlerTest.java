@@ -38,6 +38,8 @@ import io.netty.util.ReferenceCountUtil;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -452,6 +454,35 @@ class HttpRequestHandlerTest {
         String logged = captured.toString(StandardCharsets.UTF_8);
         assertFalse(logged.contains("WARN"),
             "a client that hung up mid-stream is not a failure; log was: " + logged);
+    }
+
+    /**
+     * A status that can never carry a body must carry no framing either. Netty sanitizes some of them
+     * for us — {@code HttpResponseEncoder.sanitizeHeadersBeforeEncode} strips {@code Transfer-Encoding}
+     * for 1xx and 204 and rewrites 205 — but not 304, while {@code isContentAlwaysEmpty} does swallow
+     * 304's body and terminator. So a chunked 304 would go out framed for a body that can never follow.
+     * Tomcat suppresses framing for exactly this set in {@code Http11Processor.prepareResponse}.
+     */
+    @ParameterizedTest
+    @ValueSource(ints = {100, 204, 205, 304})
+    void shouldLeaveAStatusThatCanNeverCarryABodyUnframed(int status) {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            (_, _, writer) -> {
+                writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(status)));
+                writer.write(LastHttpContent.EMPTY_LAST_CONTENT);
+            },
+            DIRECT, connectionRegistry));
+
+        channel.writeInbound(new DefaultFullHttpRequest(
+            HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
+        channel.runPendingTasks();
+
+        HttpResponse head = channel.readOutbound();
+        assertFalse(HttpUtil.isTransferEncodingChunked(head),
+            status + " can never carry a body, so it must not be framed for one");
+        assertEquals(0, HttpUtil.getContentLength(head, -1L),
+            "declared empty so the keep-alive handler can still tell where the message ends");
+        channel.finish();
     }
 
     private static String readChunk(EmbeddedChannel channel) {

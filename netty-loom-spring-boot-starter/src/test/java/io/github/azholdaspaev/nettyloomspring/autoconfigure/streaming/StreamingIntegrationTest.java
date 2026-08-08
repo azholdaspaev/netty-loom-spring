@@ -132,6 +132,28 @@ class StreamingIntegrationTest {
         }
     }
 
+    /**
+     * A 304 can never carry a body, so it must not be framed for one. Netty strips the header for 1xx
+     * and 204 but not for 304, while still swallowing its body and terminator — so a framed 304 would
+     * promise a chunked body that never arrives. The reused connection is the proof it did not.
+     */
+    @Test
+    @Timeout(value = 20, unit = TimeUnit.SECONDS)
+    void shouldNotFrameANotModifiedResponse() throws Exception {
+        try (Socket socket = connect()) {
+            RawHttpClient.send(socket, "GET /streaming/not-modified HTTP/1.1", "Host: localhost");
+            RawHttpResponse response = RawHttpResponse.read(socket.getInputStream());
+
+            assertEquals(304, response.status());
+            assertNull(response.header(HttpHeaderNames.TRANSFER_ENCODING),
+                "a body that can never follow must not be announced as chunked");
+
+            RawHttpClient.send(socket, "GET /streaming/sized HTTP/1.1", "Host: localhost");
+            assertEquals(200, RawHttpResponse.read(socket.getInputStream()).status(),
+                "the connection must not be left waiting for a chunked body that never comes");
+        }
+    }
+
     private Socket connect() throws IOException {
         return RawHttpClient.connect(port, Duration.ofSeconds(10));
     }
