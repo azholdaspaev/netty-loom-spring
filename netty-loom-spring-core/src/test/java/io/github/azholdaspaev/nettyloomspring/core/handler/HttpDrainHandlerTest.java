@@ -22,10 +22,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HttpDrainHandlerTest {
 
-    /**
-     * The regression this handler exists for: counting only fully aggregated requests left a
-     * connection mid-upload looking idle, so the drain reset it.
-     */
     @Test
     void shouldNotTreatAConnectionWithAPartlyReceivedRequestAsIdle() {
         HttpConnectionRegistry registry = newRegistry();
@@ -59,10 +55,6 @@ class HttpDrainHandlerTest {
         out.release();
     }
 
-    /**
-     * {@code HttpServerKeepAliveHandler} closes on the first non-keep-alive response it sees, so
-     * stamping every owed response would strand the ones still queued behind it.
-     */
     @Test
     void shouldDeliverEveryPipelinedResponseBeforeClosing() {
         HttpConnectionRegistry registry = newRegistry();
@@ -103,11 +95,6 @@ class HttpDrainHandlerTest {
         out.release();
     }
 
-    /**
-     * A floor, not a case the pipeline is known to produce — every audited path balances today. It
-     * exists because a count driven below zero would make a genuinely busy connection look idle to
-     * {@code beginDrain()} and get it closed mid-request.
-     */
     @Test
     void shouldNotCountAResponseForARequestItNeverSaw() {
         HttpConnectionRegistry registry = newRegistry();

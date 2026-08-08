@@ -59,11 +59,6 @@ class HttpReadTimeoutHandlerTest {
         assertTrue(channel.isOpen(), "the timeout has not elapsed yet");
     }
 
-    /**
-     * Issue #76 regression gate. The timeout measures how long we wait on the client, so the time we
-     * spend computing an answer must not count against it — a handler slower than the timeout used to
-     * have its connection closed mid-request, and the client got a bare close instead of a response.
-     */
     @Test
     void shouldNotCloseWhileARequestIsStillBeingServed() {
         EmbeddedChannel channel = newChannel();
@@ -109,10 +104,6 @@ class HttpReadTimeoutHandlerTest {
         assertFalse(channel.isOpen(), "it closes once it stops being used");
     }
 
-    /**
-     * The handler sits above the pipelining gate, so a burst arrives as several outstanding requests at
-     * once. A boolean would be re-armed by the first response while the rest were still owed.
-     */
     @Test
     void shouldStayOpenUntilEveryPipelinedResponseHasBeenWritten() {
         EmbeddedChannel channel = newChannel();
@@ -128,10 +119,6 @@ class HttpReadTimeoutHandlerTest {
         assertFalse(channel.isOpen());
     }
 
-    /**
-     * Netty's own exception is reused so {@code HttpExceptionHandler} keeps mapping it to a close with
-     * no response written.
-     */
     @Test
     void shouldFireReadTimeoutExceptionSoTheExceptionHandlerCanMapIt() {
         EmbeddedChannel channel = newChannel();
@@ -141,10 +128,6 @@ class HttpReadTimeoutHandlerTest {
         assertThrows(ReadTimeoutException.class, channel::checkException);
     }
 
-    /**
-     * A response that never saw a request must not drive the count below zero, or the next genuine
-     * dispatch would look like an idle connection and be closed out from under itself.
-     */
     @Test
     void shouldNotCountAResponseForARequestItNeverSaw() {
         EmbeddedChannel channel = newChannel();
@@ -156,13 +139,6 @@ class HttpReadTimeoutHandlerTest {
         assertTrue(channel.isOpen(), "the request in flight must still suspend the timeout");
     }
 
-    /**
-     * A response counts the exchange out when it is handed to the socket, not when the bytes are accepted.
-     * Keying on write completion would let a peer whose receive window stays at zero hold the connection
-     * and its buffered response for ever — the stock head-mounted handler reclaimed that case, so losing
-     * it would be a regression rather than a documented gap. (The dispatch thread is already gone by
-     * then: {@code HttpRequestHandler} does not await the write future.)
-     */
     @Test
     void shouldCloseWhenThePeerNeverAcceptsTheResponseBytes() {
         EmbeddedChannel channel = new EmbeddedChannel(
@@ -177,11 +153,6 @@ class HttpReadTimeoutHandlerTest {
         assertFalse(channel.isOpen(), "a response the peer never drains must not suspend the timeout for ever");
     }
 
-    /**
-     * Only complete requests suspend the timeout. Counting anything inbound would let a raw {@code ByteBuf}
-     * — after a protocol upgrade, or if this handler were ever moved above the aggregator — pin the count
-     * above zero and silently disable the guard.
-     */
     @Test
     void shouldNotCountInboundMessagesThatAreNotRequests() {
         EmbeddedChannel channel = newChannel();
@@ -194,10 +165,6 @@ class HttpReadTimeoutHandlerTest {
         assertFalse(channel.isOpen(), "a message that is not a request must not suspend the timeout");
     }
 
-    /**
-     * The clock restarts at the end of a response, not at its head. Keying on {@code HttpResponse} instead
-     * would cut a streamed response off mid-body one interval after its headers went out.
-     */
     @Test
     void shouldNotEndTheExchangeOnANonFinalPartOfTheResponse() {
         EmbeddedChannel channel = newChannel();
@@ -215,12 +182,6 @@ class HttpReadTimeoutHandlerTest {
         assertFalse(channel.isOpen(), "the exchange ends with the last of the response");
     }
 
-    /**
-     * What a non-positive timeout meant to the stock handler, and has to keep meaning here. Negative is
-     * covered as well as zero because both are now a documented contract: were a negative value to arm
-     * the timer instead, it would fire on the next loop turn and hang up on every connection before a
-     * byte could arrive.
-     */
     @ParameterizedTest
     @ValueSource(longs = {0, -1})
     void shouldDisableItselfWhenTheTimeoutIsNotPositive(long timeoutMillis) {
@@ -231,12 +192,6 @@ class HttpReadTimeoutHandlerTest {
         assertTrue(channel.isOpen(), "a non-positive timeout turns the guard off rather than closing at once");
     }
 
-    /**
-     * The events matter more than the data here: {@link HttpPipeliningHandler} sits directly below in the
-     * auto-configured pipeline, and its {@code channelInactive} is the only thing that releases requests
-     * still queued behind an unanswered exchange. Swallowing the event would leak a pooled buffer per
-     * connection, silently.
-     */
     @Test
     void shouldPassLifecycleEventsOnDownThePipeline() {
         RecordingEvents downstream = new RecordingEvents();
@@ -249,12 +204,6 @@ class HttpReadTimeoutHandlerTest {
         assertTrue(downstream.inactive, "channelInactive must reach handlers below");
     }
 
-    /**
-     * A gate below this handler that re-opened only on write <em>completion</em> would never release the
-     * next pipelined request against a peer that stops reading, leaving the exchange permanently
-     * unanswered — and this handler would then suspend its clock for ever. This handler's close is the
-     * only thing that reclaims such a connection, so the pairing is asserted rather than assumed.
-     */
     @Test
     void shouldCloseAPipelinedBurstWhosePeerNeverAcceptsTheResponseBytes() {
         EmbeddedChannel channel = new EmbeddedChannel(
@@ -271,10 +220,6 @@ class HttpReadTimeoutHandlerTest {
         assertFalse(channel.isOpen(), "a latched gate must not make the connection immortal");
     }
 
-    /**
-     * Removal rather than close, because closing an {@link EmbeddedChannel} empties the event loop's
-     * scheduled queue by itself and would hide a timer that was never cancelled.
-     */
     @Test
     void shouldNotLeaveATimerArmedAfterItIsRemovedFromThePipeline() {
         EmbeddedChannel channel = newChannel();
@@ -296,7 +241,9 @@ class HttpReadTimeoutHandlerTest {
         return channel;
     }
 
-    /** Moves the clock on and lets any task that has come due run. */
+    /**
+     * Moves the clock on and lets any task that has come due run.
+     */
     private static void elapse(EmbeddedChannel channel, long millis) {
         channel.advanceTimeBy(millis, TimeUnit.MILLISECONDS);
         channel.runScheduledPendingTasks();
@@ -321,7 +268,9 @@ class HttpReadTimeoutHandlerTest {
         return response;
     }
 
-    /** Swallows the write and never completes its promise, as a peer with a zero receive window does. */
+    /**
+     * Swallows the write and never completes its promise, as a peer with a zero receive window does.
+     */
     private static final class NeverCompletingWrite extends ChannelOutboundHandlerAdapter {
 
         @Override
@@ -330,7 +279,9 @@ class HttpReadTimeoutHandlerTest {
         }
     }
 
-    /** Stands in for the dispatcher, answering on the event loop instead of a virtual thread. */
+    /**
+     * Stands in for the dispatcher, answering on the event loop instead of a virtual thread.
+     */
     private static final class RespondToEveryRequest extends SimpleChannelInboundHandler<FullHttpRequest> {
 
         @Override

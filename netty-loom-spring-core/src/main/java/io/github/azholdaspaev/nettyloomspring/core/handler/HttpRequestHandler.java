@@ -22,10 +22,9 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
 
     /**
      * @param dispatchExecutor must run every accepted task exactly once. One that silently discards
-     *                         a task it accepted — {@code ThreadPoolExecutor} with
-     *                         {@code DiscardPolicy}, say — leaks the request and leaves the dispatch
-     *                         counted, which holds every later graceful shutdown open for its whole
-     *                         grace period. Rejecting by throwing is fine; that path is handled.
+     *                         an accepted task leaks the request and leaves the dispatch counted,
+     *                         holding every later shutdown open for its whole grace period.
+     *                         Rejecting by throwing is fine; that path is handled.
      */
     public HttpRequestHandler(HttpRequestDispatcher requestDispatcher,
                               Executor dispatchExecutor,
@@ -60,12 +59,10 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
                     try {
                         request.release();
                     } catch (Throwable ignored) {
-                        // Nothing may escape the task, fatal errors included. The catch below
-                        // compensates for a submission that never ran; on an Executor that runs tasks
-                        // inline it would otherwise also see one that did, and count the same dispatch
-                        // out twice. That is why this is the one wide catch here that does not pair
-                        // with a rethrowIfFatal, as NettyListenerRegistry's do: rethrowing would put
-                        // the throwable back on the path to that catch and restore the double count.
+                        // Nothing may escape the task, fatal errors included. Deliberately not paired
+                        // with a rethrowIfFatal: on an Executor that runs tasks inline, rethrowing
+                        // would reach the catch below -- which exists for a submission that never ran
+                        // -- and count the same dispatch out twice.
                     }
                 }
             });
@@ -77,11 +74,8 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
     }
 
     /**
-     * Makes the hop onto the event loop that {@code ctx.fireExceptionCaught} would make anyway, so a
-     * loop that terminated under a dispatch rejects it here rather than inside Netty — which answers
-     * its own rejection with two stack traces, neither naming the request (issue #109). Same shape as
-     * {@link HttpPipeliningHandler}'s deferred re-open, for the same reason. Only the dispatch task
-     * needs it: the outer {@code catch} already runs on the loop, so it has nothing to reject.
+     * Hops onto the loop itself, so a terminated one rejects here rather than inside Netty, which
+     * answers its own rejection with two stack traces naming no request (issue #109).
      */
     private static void reportDispatchFailure(ChannelHandlerContext ctx, FullHttpRequest request, Throwable cause) {
         try {
@@ -94,11 +88,8 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
     }
 
     /**
-     * An HTTP/1.0 client closes the connection unless the server spells out {@code Connection: keep-alive}.
-     * {@link io.netty.handler.codec.http.HttpServerKeepAliveHandler} only ever writes {@code Connection: close},
-     * so the affirmative header has to be added here — but never over a close the dispatcher asked for.
-     * The response itself is always HTTP/1.1, hence the explicit version passed to
-     * {@link HttpUtil#setKeepAlive(io.netty.handler.codec.http.HttpHeaders, HttpVersion, boolean)}.
+     * An HTTP/1.0 client closes unless told {@code Connection: keep-alive}, and Netty's
+     * {@code HttpServerKeepAliveHandler} only ever writes {@code Connection: close}.
      */
     private static void echoHttp10KeepAlive(FullHttpRequest request, FullHttpResponse response) {
         if (HttpVersion.HTTP_1_0.equals(request.protocolVersion())

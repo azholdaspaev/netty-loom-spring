@@ -107,11 +107,6 @@ class NettyServerDrainTest {
         }
     }
 
-    /**
-     * A request is in flight from the moment its first bytes land, not from the moment the aggregator
-     * finishes assembling it. Any body split across TCP segments — an upload, a slow client, a
-     * 100-continue flow — leaves the connection mid-request with nothing yet dispatched.
-     */
     @Test
     void shouldAnswerARequestWhoseBodyArrivesAfterTheDrainBegins() throws Exception {
         releaseDispatcher.countDown();
@@ -131,12 +126,6 @@ class NettyServerDrainTest {
         }
     }
 
-    /**
-     * The aggregator answers {@code Expect: 100-continue} itself, and its {@code 100 Continue} is a
-     * {@code FullHttpResponse} — so it is both an {@code HttpResponse} and a {@code LastHttpContent}
-     * on the way out through the drain handler. Treating that interim answer as the end of the
-     * exchange closes the connection before the client has sent a single body byte.
-     */
     @Test
     void shouldHonourExpectContinueWhileDraining() throws Exception {
         releaseDispatcher.countDown();
@@ -164,7 +153,6 @@ class NettyServerDrainTest {
         }
     }
 
-    /** A request outlives its socket: the drain has nothing left to close and must still wait. */
     @Test
     void shouldWaitForADispatchWhoseClientHasAlreadyDisconnected() throws Exception {
         try (Socket client = connect()) {
@@ -207,9 +195,8 @@ class NettyServerDrainTest {
     }
 
     /**
-     * Waits for the server to process the client's FIN. Asserting the close actually happened,
-     * rather than sleeping long enough to assume it, is what makes a pass prove the dispatch is the
-     * only thing left holding shutdown open.
+     * Waits for the server to process the client's FIN. Asserted rather than slept for, or a pass
+     * would not prove the dispatch is what still holds shutdown open.
      */
     private void awaitConnectionClosed() {
         SpinWait.until(connections::isEmpty, Duration.ofSeconds(5),
@@ -234,7 +221,9 @@ class NettyServerDrainTest {
             connectionRegistry);
     }
 
-    /** Holds the request open until the test releases it, so shutdown is guaranteed to race it. */
+    /**
+     * Holds the request open until the test releases it, so shutdown is guaranteed to race it.
+     */
     private HttpRequestDispatcher blockingDispatcher() {
         return (_, _) -> {
             dispatcherEntered.countDown();
@@ -260,12 +249,13 @@ class NettyServerDrainTest {
         client.getOutputStream().flush();
     }
 
-    /** One reader per socket: a fresh one would discard whatever the previous had already buffered. */
+    /**
+     * One reader per socket: a fresh one would discard whatever the previous had already buffered.
+     */
     private static BufferedReader reader(Socket client) throws IOException {
         return new BufferedReader(new InputStreamReader(client.getInputStream(), StandardCharsets.US_ASCII));
     }
 
-    /** Status line plus headers, up to the blank line that ends the block. */
     private static List<String> readHeaderBlock(BufferedReader reader) throws IOException {
         List<String> lines = new ArrayList<>();
         String line;

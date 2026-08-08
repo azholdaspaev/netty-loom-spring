@@ -11,18 +11,12 @@ import io.netty.handler.codec.http.LastHttpContent;
 
 /**
  * Marks a connection busy while it is serving an HTTP exchange, so graceful shutdown can tell a
- * connection that owes a response from one merely being held open (issue #67).
- *
- * <p>Belongs <em>above</em> the aggregator. A connection is busy from the head of a request, not
- * from the moment the aggregator has assembled it — a body arriving in a later TCP segment (any
- * sizeable upload, a slow client, a 100-continue flow) would otherwise leave the connection looking
- * idle, and a drain starting in that window would reset the request it is supposed to protect.
- *
- * <p>While draining, the response carries {@code Connection: close} so a well-behaved client stops
- * pooling the connection and {@code HttpServerKeepAliveHandler} closes it once the response is
- * written. Only the <em>last</em> response owed: that handler closes on the first non-keep-alive
- * response it sees, which on a pipelined connection would strand every response still queued behind
- * it.
+ * connection that owes a response from one merely being held open (issue #67). Sits above the
+ * aggregator, so a connection counts as busy from the head of a request: a body arriving in a later
+ * TCP segment would otherwise leave it looking idle, and a drain starting in that window would reset
+ * the request it is meant to protect. While draining, only the last response owed carries
+ * {@code Connection: close} — {@code HttpServerKeepAliveHandler} closes on the first non-keep-alive
+ * response it sees, which on a pipelined connection would strand everything queued behind it.
  */
 public class HttpDrainHandler extends ChannelDuplexHandler {
 
@@ -42,11 +36,10 @@ public class HttpDrainHandler extends ChannelDuplexHandler {
 
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
-        // A 1xx is an interim answer, not the end of an exchange. The aggregator replies to
+        // A 1xx is an interim answer, not the end of an exchange. The aggregator answers
         // Expect: 100-continue with a FullHttpResponse -- both an HttpResponse and a LastHttpContent
-        // -- so without this it would end the exchange before the body has even been sent, and stamp
-        // Connection: close on the very invitation to send it. Netty's own keep-alive handler
-        // exempts informational responses for the same reason.
+        // -- so without this the exchange would end before the body was sent, stamping
+        // Connection: close on the very invitation to send it.
         if (isInformational(msg)) {
             ctx.write(msg, promise);
             return;
@@ -54,14 +47,10 @@ public class HttpDrainHandler extends ChannelDuplexHandler {
         if (msg instanceof HttpResponse response && isLastResponseOwedWhileDraining(ctx)) {
             HttpUtil.setKeepAlive(response.headers(), response.protocolVersion(), false);
         }
-        // The exchange ends when the response is actually on the wire, not when it is queued -- graceful
-        // shutdown is meant to wait for bytes to reach the client, so this handler wants completion where
-        // HttpPipeliningHandler and HttpReadTimeoutHandler deliberately want invocation. That latch cannot
-        // strand the connection the way theirs would: a close fails every outstanding write promise
-        // (AbstractUnsafe.close calls outboundBuffer.failFlushed, and remove0 safeFails unconditionally),
-        // so this listener always runs and inFlight always settles. Do not "align" it with the other two
-        // for consistency -- keying on invocation here would let shutdown abandon responses still
-        // unflushed, which is the one thing the grace period exists to prevent.
+        // Completion, not invocation: shutdown waits for bytes to reach the client, so keying this on
+        // invocation would let it abandon responses still unflushed. Safe here because a close fails
+        // every outstanding write promise (AbstractUnsafe.close calls outboundBuffer.failFlushed), so
+        // the listener always runs and inFlight always settles.
         //
         // unvoid() because addListener on a void promise throws, and the write must then carry the
         // unvoided promise or the listener would never be notified.

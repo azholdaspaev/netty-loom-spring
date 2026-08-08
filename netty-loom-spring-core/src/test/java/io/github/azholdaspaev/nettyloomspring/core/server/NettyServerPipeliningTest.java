@@ -44,21 +44,16 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * HTTP/1.1 identifies a response only by its position: the first response on the wire is the answer to
- * the first request sent. Two requests pipelined into one TCP segment are decoded in a single
- * event-loop turn, so both reach the dispatcher before either response exists, and nothing about
- * virtual thread scheduling says the first finishes first — so the client silently reads the second
- * response as the answer to the first request (issue #63, RFC 9112 §9.3.2).
- *
- * <p>Real socket on purpose: what is under test is the byte order on the wire, which only exists
- * there. The pipeline mirrors the auto-configured one minus the read timeout, which the hand-built
- * pipelines in this package leave out.
+ * Response ordering on a pipelined connection (issue #63). Real socket on purpose: what is under
+ * test is the byte order on the wire, which only exists there.
  */
 @Timeout(value = 30, unit = TimeUnit.SECONDS)
 class NettyServerPipeliningTest {
 
     private static final int MAX_HTTP_REQUEST_BODY_BYTES = 64 * 1024;
-    /** How long the first request yields to the second before giving up on being overtaken. */
+    /**
+     * How long the first request yields to the second before giving up on being overtaken.
+     */
     private static final Duration OVERTAKE_WINDOW = Duration.ofSeconds(1);
 
     private final CountDownLatch secondResponded = new CountDownLatch(1);
@@ -98,10 +93,8 @@ class NettyServerPipeliningTest {
     }
 
     /**
-     * The first request yields the finish line to the second: with nothing sequencing the writes the
-     * second response wins deterministically, rather than by a sleep race. Bounded, because a server
-     * that serves the two in turn never runs the second handler while the first waits — it then simply
-     * waits out the window and answers in order.
+     * The first request yields to the second, so with nothing sequencing the writes the second
+     * response wins deterministically rather than by a sleep race.
      */
     private HttpRequestDispatcher overtakingDispatcher() {
         return (request, _) -> {
@@ -154,12 +147,16 @@ class NettyServerPipeliningTest {
         client.getOutputStream().flush();
     }
 
-    /** One reader per socket: a fresh one would discard whatever the previous had already buffered. */
+    /**
+     * One reader per socket: a fresh one would discard whatever the previous had already buffered.
+     */
     private static BufferedReader reader(Socket client) throws IOException {
         return new BufferedReader(new InputStreamReader(client.getInputStream(), StandardCharsets.US_ASCII));
     }
 
-    /** Header block, then exactly Content-Length bytes — US-ASCII, so one char is one byte. */
+    /**
+     * Header block, then exactly Content-Length bytes — US-ASCII, so one char is one byte.
+     */
     private static String readResponseBody(BufferedReader reader) throws IOException {
         int contentLength = contentLength(readHeaderBlock(reader));
         char[] body = new char[contentLength];
@@ -174,7 +171,6 @@ class NettyServerPipeliningTest {
         return new String(body);
     }
 
-    /** Status line plus headers, up to the blank line that ends the block. */
     private static List<String> readHeaderBlock(BufferedReader reader) throws IOException {
         List<String> lines = new ArrayList<>();
         String line;

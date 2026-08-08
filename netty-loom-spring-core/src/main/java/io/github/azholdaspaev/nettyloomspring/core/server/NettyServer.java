@@ -40,10 +40,9 @@ public class NettyServer {
 
     /**
      * Binds the server socket, starting the event loops. A bind failure is reported as
-     * {@link NettyServerException} caused by a {@link BindException} on every transport, carrying the
-     * operating system's message unchanged. That type tells a bind failure from any other startup
-     * failure — it does not tell a taken port from a denied permission or an unassignable address,
-     * since the OS reports all three alike; only the message separates them (issue #74).
+     * {@link NettyServerException} caused by a {@link BindException} on every transport, carrying
+     * the operating system's message unchanged — the type separates a bind failure from any other
+     * startup failure, and only the message separates the errnos within it (issue #74).
      */
     public void start() {
         synchronized (lock) {
@@ -91,12 +90,10 @@ public class NettyServer {
     }
 
     /**
-     * Closes the server socket so new connections are refused while keeping running state,
-     * allowing in-flight requests to drain. Finish the shutdown by calling
-     * {@link #shutdown(Duration)}. While in this drain window {@link #isRunning()} stays true.
-     *
-     * <p>Idle connections are closed here rather than waited on: with keep-alive they would
-     * otherwise sit open for the whole grace period with no request on them.
+     * Closes the server socket so new connections are refused while keeping running state, allowing
+     * in-flight requests to drain; finish by calling {@link #shutdown(Duration)}, and note that
+     * {@link #isRunning()} stays true in this window. Idle connections are closed rather than waited
+     * on: with keep-alive they would otherwise sit open for the whole grace period.
      */
     public void stopAcceptingConnections() {
         synchronized (lock) {
@@ -147,21 +144,8 @@ public class NettyServer {
     }
 
     /**
-     * Normalizes the bind error, which is otherwise transport-specific: NIO surfaces the JDK's
-     * {@link BindException} while epoll and kqueue surface {@code Errors.NativeIoException}, which
-     * extends {@link IOException} directly. Since the transport is chosen at runtime, a caller keying
-     * off the failure type would work on one platform and not another (issue #68).
-     *
-     * <p>Every I/O error reachable here comes from creating, binding, or listening on the server
-     * socket, so mapping the lot to {@link BindException} matches what the JDK already does for the
-     * NIO transport — it reports address-in-use, permission-denied and unassignable-address alike as
-     * a bind failure. Non-I/O failures are left alone; they did not come from the socket.
-     *
-     * <p>The original message is carried over verbatim rather than replaced with a tidier one: the
-     * type alone cannot tell those three cases apart, so the {@code strerror} text is the only thing
-     * that can, and callers classify by it. Rewording it would drop that discrimination with nothing
-     * at this layer to show for it, which is why the test asserts the text still identifies the
-     * errno, not just the type (issue #74).
+     * NIO surfaces {@link BindException} where the native transports surface a plain
+     * {@link IOException} (#68). The message is carried verbatim: it is what separates errnos (#74).
      */
     private static Throwable asBindFailure(Throwable cause) {
         if (cause instanceof IOException && !(cause instanceof BindException)) {
@@ -173,11 +157,8 @@ public class NettyServer {
     }
 
     /**
-     * Waits for in-flight requests, not for open sockets: {@link HttpConnectionRegistry#awaitDrained(long)}
-     * closes the connections that are idle and marks the rest to close once they have replied, so
-     * this completes as soon as the last request is done rather than when a pooling client happens
-     * to hang up (issue #67). Returning early is what let the event loops — and the session store
-     * torn down above them — go while threads were still serving (issue #108).
+     * Waits for in-flight requests, not open sockets, so this completes when the last request is
+     * done rather than when a pooling client hangs up (issues #67, #108).
      */
     private boolean drainOrForceClose(Deadline deadline) throws InterruptedException {
         boolean drained = connectionRegistry.awaitDrained(deadline.remainingMillis());

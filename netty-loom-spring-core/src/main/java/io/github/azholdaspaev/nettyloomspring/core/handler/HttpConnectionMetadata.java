@@ -12,9 +12,14 @@ public record HttpConnectionMetadata(
         String localAddr, int localPort,
         boolean secure) {
 
-    /** Servlet contract for an unknown remote/local address (getRemoteAddr/getLocalAddr). */
+    /**
+     * Servlet contract for an unknown remote/local address (getRemoteAddr/getLocalAddr).
+     */
     private static final String UNKNOWN_HOST = "";
-    /** Servlet contract for an unknown remote/local port (getRemotePort/getLocalPort). */
+
+    /**
+     * Servlet contract for an unknown remote/local port (getRemotePort/getLocalPort).
+     */
     private static final int UNKNOWN_PORT = 0;
 
     public static HttpConnectionMetadata from(ChannelHandlerContext ctx) {
@@ -28,7 +33,6 @@ public record HttpConnectionMetadata(
         return httpScheme().toString();
     }
 
-    /** Default port for this connection's scheme (80 for http, 443 for https). */
     public int defaultPort() {
         return httpScheme().port();
     }

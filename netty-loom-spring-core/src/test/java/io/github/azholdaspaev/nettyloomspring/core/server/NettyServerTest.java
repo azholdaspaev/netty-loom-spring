@@ -47,9 +47,8 @@ class NettyServerTest {
     }
 
     /**
-     * @param accepted counted down once the server has accepted a connection, so a test can act on a
-     *                 connection the server definitely knows about rather than racing the accept.
-     * @param port     0 to let the OS choose; a specific port to bind exactly there.
+     * @param accepted counted down on accept, so a test acts on a connection the server knows about
+     * @param port     0 to let the OS choose; a specific port to bind exactly there
      */
     private static NettyServer newServer(InetAddress address, CountDownLatch accepted, int port) {
         NettyServerConfiguration configuration = new NettyServerConfiguration(port, address, 0, 0, false);
@@ -124,10 +123,6 @@ class NettyServerTest {
         assertTrue(nettyServer.getPort() > 0);
     }
 
-    /**
-     * Runs on whichever transport this machine selects, which is the point: the guarantee has to hold
-     * on all of them. See {@code NettyServer#asBindFailure} for why they would otherwise differ.
-     */
     @Test
     void shouldReportBindFailureAsBindExceptionOnEveryTransport() throws Exception {
         // Held open for the whole attempt so the bind is guaranteed to collide.
@@ -193,10 +188,6 @@ class NettyServerTest {
         }
     }
 
-    /**
-     * The registry outlives any one server run — it is a container-scoped singleton — so a drain flag
-     * left set would make the restarted server hang up on every connection it accepts.
-     */
     @Test
     void shouldAcceptConnectionsAgainAfterRestart() throws Exception {
         nettyServer.start();

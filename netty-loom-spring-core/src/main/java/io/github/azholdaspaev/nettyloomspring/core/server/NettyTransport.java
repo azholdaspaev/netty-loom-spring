@@ -13,11 +13,8 @@ import java.util.Locale;
 
 /**
  * The resolved Netty I/O transports. Each constant pairs the {@link IoHandlerFactory} for the event
- * loop group with the matching {@link ServerChannel} type for the server bootstrap — the two must come
- * from the same family or {@code bind()} fails.
- *
- * <p>{@code auto} (and the other configurable preferences) are inputs to {@link #resolve}; the enum
- * itself only models the concrete transports that can actually run.
+ * loop group with the matching {@link ServerChannel} type for the server bootstrap — the two must
+ * come from the same family or {@code bind()} fails.
  */
 enum NettyTransport {
     NIO {
@@ -55,23 +52,15 @@ enum NettyTransport {
     };
 
     /**
-     * A fresh {@link IoHandlerFactory} for this transport. Called once per event loop group (boss and
-     * worker each get their own), so it intentionally returns a new factory on every call.
+     * A fresh factory on every call, deliberately: boss and worker each need their own.
      */
     abstract IoHandlerFactory newIoHandlerFactory();
 
     abstract Class<? extends ServerChannel> serverChannelClass();
 
     /**
-     * Resolves the configured transport preference to a concrete transport.
-     *
-     * <ul>
-     *   <li>{@code auto} — epoll if available, else kqueue if available, else NIO.</li>
-     *   <li>{@code nio} — always NIO.</li>
-     *   <li>{@code epoll} / {@code kqueue} — that transport, or {@link IllegalStateException} if the
-     *       native library is not available on this platform (explicit requests fail fast rather than
-     *       silently degrading).</li>
-     * </ul>
+     * Resolves the configured transport preference to a concrete transport. An explicitly requested
+     * native transport fails fast when unavailable rather than silently degrading to NIO.
      *
      * @throws IllegalArgumentException if {@code requested} is null or not one of the known values
      */
