@@ -177,21 +177,18 @@ public class NettyHttpSession implements HttpSession {
             removeAttribute(name);
             return;
         }
-        // Bound fires before the put, and its failure propagates: this runs inside a request, where the
-        // application can still see and handle the error. Guarded on the value actually changing, and so
-        // symmetric with the unbind below -- a listener that acquires in valueBound and releases in
-        // valueUnbound would otherwise acquire once per re-bind and release once in total. Tomcat reads
-        // the old value first for the same reason (notifyBindingListenerOnUnchangedValue is false).
-        boolean bound = attributes.get(name) != value;
-        if (bound && value instanceof HttpSessionBindingListener listener) {
-            listener.valueBound(new HttpSessionBindingEvent(this, name, value));
-        }
-        // Published only if the session is still valid, and that decision is made *inside* compute so it
-        // is atomic with the write. A plain put cannot be made to balance whatever the loser does next:
-        // removing loudly afterwards double-unbinds a value the teardown already claimed, and removing
-        // silently steals one it had not reached yet, so the original valueBound is never released.
+        // What was already here, and the publish, are one step: compute records the displaced value while
+        // it holds the bin lock, so a concurrent setAttribute or removeAttribute on this key cannot make
+        // the answer stale. Reading the map beforehand instead let two requests binding one instance each
+        // announce the single binding that resulted, and let a quiet re-bind resurrect a value another
+        // thread had just released -- a bind short of a release, and a release short of a bind.
         //
-        // What makes this airtight is that compute holds the bin lock while it reads the flag, and
+        // Published only if the session is still valid, and that decision is made here for the same
+        // reason. A plain put cannot be made to balance whatever the loser does next: removing loudly
+        // afterwards double-unbinds a value the teardown already claimed, and removing silently steals one
+        // it had not reached yet, so the original valueBound is never released.
+        //
+        // What makes that airtight is that compute holds the bin lock while it reads the flag, and
         // unbindAll's remove(key, value) takes that same lock -- while unbindAll strictly follows the CAS
         // that sets it. So if the teardown has already claimed this key, the flag is necessarily set by
         // the time compute looks, and the value cannot be resurrected into a session nothing will tear
@@ -199,7 +196,7 @@ public class NettyHttpSession implements HttpSession {
         // null here would drop a binding the teardown still owes a valueUnbound for.
         //
         // No listener runs inside the mapping function -- that would execute application code while
-        // holding a bin lock.
+        // holding a bin lock -- so every notification below is driven by what compute recorded.
         var previous = new Object[1];
         var published = new boolean[1];
         attributes.compute(name, (key, existing) -> {
@@ -208,15 +205,11 @@ public class NettyHttpSession implements HttpSession {
             return published[0] ? value : existing;
         });
         if (!published[0]) {
-            // The teardown claimed this key first, so it never saw this value. Anything *this* call bound
-            // is therefore ours to release; a re-bind that fired no valueBound has nothing to pair with.
-            // Nothing was published, so the container announces nothing either.
-            if (bound && value instanceof HttpSessionBindingListener listener) {
-                notifyUnbound(listener, name, value);
-            }
+            // The teardown claimed this key first and the map was left as found, so nothing was bound,
+            // nothing displaced, and the container announces nothing either.
             throw new IllegalStateException("Session " + id + " has been invalidated");
         }
-        // Announced as soon as the map changed, and deliberately before either callback below: both run
+        // Announced as soon as the map changed, and deliberately before every callback below: each runs
         // application code that may invalidate the session, and the claim-back that then follows notifies
         // attributeRemoved. Firing later would let that removal be the first a listener hears of this
         // value -- one maintaining an index would be told to remove something it was never told about.
@@ -226,14 +219,34 @@ public class NettyHttpSession implements HttpSession {
         } else {
             manager.listeners().fireSessionAttributeReplaced(this, name, previous[0]);
         }
-        // Re-binding the identical instance is not an unbind -- the value is still bound.
-        if (previous[0] != value && previous[0] instanceof HttpSessionBindingListener listener) {
-            notifyUnbound(listener, name, previous[0]);
-        }
-        if (invalidated.get()) {
+        // Re-binding the identical instance is neither a bind nor an unbind -- the value is still bound.
+        // One comparison guarding both sides is what keeps a listener that acquires in valueBound and
+        // releases in valueUnbound balanced; Tomcat guards both too
+        // (notifyBindingListenerOnUnchangedValue is false).
+        boolean bound = previous[0] != value;
+        boolean invalid;
+        try {
+            // Unlike valueUnbound this propagates -- it runs inside a request, where the application can
+            // still handle the failure -- but it can no longer veto the binding as Tomcat's does, since
+            // the value is published by the time compute has told us a bind is owed. Hence the finally:
+            // a thrown failure must not strand the displaced value, which nothing else can reach now.
+            if (bound && value instanceof HttpSessionBindingListener listener) {
+                listener.valueBound(new HttpSessionBindingEvent(this, name, value));
+            }
+        } finally {
+            if (bound && previous[0] instanceof HttpSessionBindingListener listener) {
+                notifyUnbound(listener, name, previous[0]);
+            }
             // Published, and only then invalidated. Claim the value back -- and if the teardown got there
-            // first, remove(key, value) fails and it is that claim, not this one, that notified.
-            removeIfStillBound(name, value);
+            // first, remove(key, value) fails and it is that claim, not this one, that notified. Read
+            // once: deciding the claim-back and the throw on separate reads lets a flip between them
+            // throw without taking the value back.
+            invalid = invalidated.get();
+            if (invalid) {
+                removeIfStillBound(name, value);
+            }
+        }
+        if (invalid) {
             throw new IllegalStateException("Session " + id + " has been invalidated");
         }
     }

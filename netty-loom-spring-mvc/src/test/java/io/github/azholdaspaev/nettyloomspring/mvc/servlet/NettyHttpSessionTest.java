@@ -158,6 +158,40 @@ class NettyHttpSessionTest {
     }
 
     @Test
+    void bindingAnInstanceTwiceBeforeEitherPublishesReleasesItOncePerBind() {
+        // Two requests binding the same instance can both observe it absent before either publishes, so
+        // both fire valueBound while only one of them is a real transition -- the second finds the value
+        // already there and stays quiet, leaving a bind nothing releases.
+        //
+        // Deterministic rather than threaded: valueBound is application code that runs inside exactly
+        // that window, so re-entering setAttribute from it occupies the window the second request would.
+        NettyHttpSession session = manager.create();
+        var events = new ArrayList<String>();
+        var reentered = new boolean[1];
+        var value = new HttpSessionBindingListener() {
+            @Override
+            public void valueBound(HttpSessionBindingEvent event) {
+                events.add("bound");
+                if (!reentered[0]) {
+                    reentered[0] = true;
+                    session.setAttribute("cart", event.getValue());
+                }
+            }
+
+            @Override
+            public void valueUnbound(HttpSessionBindingEvent event) {
+                events.add("unbound");
+            }
+        };
+
+        session.setAttribute("cart", value);
+        session.invalidate();
+
+        assertEquals(List.of("bound", "unbound"), events,
+            "a value bound once must be released once, whatever raced the bind");
+    }
+
+    @Test
     void bindingEventsCarryTheValue() {
         // The canonical HttpSessionBindingListener is a resource holder that reads event.getValue() to
         // know what to release; the two-argument HttpSessionBindingEvent leaves it null.
@@ -221,6 +255,29 @@ class NettyHttpSessionTest {
 
         assertEquals(List.of("bound:good", "unbound:good"), survivor.events(),
             "One misbehaving listener must not stop the sweeper or strand the remaining values");
+    }
+
+    @Test
+    void aThrowingValueBoundStillReleasesTheValueItDisplaced() {
+        // valueBound runs after the publish -- it has to, since only the publish knows what it displaced
+        // -- so by the time it fails the previous value is already out of the map and nothing else can
+        // reach it. Its release is owed regardless, or a failed bind strands whatever it was holding.
+        NettyHttpSession session = manager.create();
+        RecordingValue displaced = new RecordingValue();
+        session.setAttribute("cart", displaced);
+        var failing = new HttpSessionBindingListener() {
+            @Override
+            public void valueBound(HttpSessionBindingEvent event) {
+                throw new IllegalStateException("listener blew up");
+            }
+        };
+
+        assertThrows(IllegalStateException.class, () -> session.setAttribute("cart", failing));
+
+        assertEquals(List.of("bound:cart", "unbound:cart"), displaced.events());
+        assertSame(failing, session.getAttribute("cart"),
+            "the value is published before valueBound runs, so its failure cannot veto the binding the "
+                + "way Tomcat's does");
     }
 
     // --- Invalidation ---
@@ -488,6 +545,37 @@ class NettyHttpSessionTest {
         assertThrows(IllegalStateException.class, () -> session.setAttribute("cart", "second"));
 
         assertEquals(List.of("added:cart", "replaced:cart", "removed:cart"), events,
+            "every attributeRemoved must follow the add or replace that announced the value it names");
+    }
+
+    @Test
+    void aValueInvalidatingTheSessionFromValueBoundWasAnnouncedFirst() {
+        // The sibling of the case above, for the bound side: valueBound runs after compute has published,
+        // so it too can invalidate and provoke the claim-back. Its add must already be announced, or the
+        // index listener is again told to remove something it was never told about.
+        var events = new ArrayList<String>();
+        servletContext.addListener(new HttpSessionAttributeListener() {
+            @Override
+            public void attributeAdded(HttpSessionBindingEvent event) {
+                events.add("added:" + event.getName());
+            }
+
+            @Override
+            public void attributeRemoved(HttpSessionBindingEvent event) {
+                events.add("removed:" + event.getName());
+            }
+        });
+        NettyHttpSession session = manager.create();
+
+        assertThrows(IllegalStateException.class, () -> session.setAttribute("cart",
+            new HttpSessionBindingListener() {
+                @Override
+                public void valueBound(HttpSessionBindingEvent event) {
+                    session.invalidate();
+                }
+            }));
+
+        assertEquals(List.of("added:cart", "removed:cart"), events,
             "every attributeRemoved must follow the add or replace that announced the value it names");
     }
 
