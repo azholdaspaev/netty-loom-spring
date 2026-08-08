@@ -96,6 +96,23 @@ prefix (`NettyLoomProperties`). See [ADR 0001](docs/adr/0001-server-properties-n
 
 Fixed HTTP frame limits (not yet configurable): max initial line, header, and chunk size = **10 KB** each; max aggregated body = **1 MB**.
 
+### Response framing
+
+Framing follows Tomcat, which means most handlers are chunked rather than length-declared, and that is
+worth knowing before you measure it:
+
+| Handler returns | Framing | Why |
+|---|---|---|
+| `ResponseEntity<Pojo>` | `Transfer-Encoding: chunked` | Spring flushes the response after writing an entity, and Jackson cannot report a length without serialising first |
+| `ResponseEntity<String>` | `Content-Length` | same flush, but `StringHttpMessageConverter` does report a length |
+| `@ResponseBody` (any type) | `Content-Length` | never flushed, so it commits once, whole |
+| body over 8 KB, or an explicit `flushBuffer()` | `Transfer-Encoding: chunked` | committed before the body is complete |
+| `204`, `205`, `304`, `1xx` | `Content-Length: 0` | no body can follow, so nothing is framed for one |
+
+The `ResponseEntity` rows are Spring's doing, not this server's: `HttpEntityMethodProcessor` calls
+`flush()` after writing an entity, and a flush commits. Tomcat behaves identically — verified by
+running the same endpoints on `netty-loom-spring-example-tomcat`.
+
 ## Architecture
 
 Three library modules, dependency flow **`starter → mvc → core`** (core has no Spring dependency):
@@ -223,7 +240,7 @@ Labelling a pull request `review/claude` additionally runs an automated two-pass
 **Early / `0.1.0-SNAPSHOT`** — API may change, and the artifact is not yet published to Maven Central. The servlet bridge is deliberately minimal:
 
 - **Requests are buffered whole** — a request body is accumulated in memory before the handler sees it (issue #51); fine for virtual threads, unsuitable for very large uploads. Responses stream: see below.
-- **Responses stream** — writing to `HttpServletResponse.getOutputStream()` flushes incrementally as `Transfer-Encoding: chunked` once the body outgrows the response buffer (8 KB, `setBufferSize`) or the handler calls `flushBuffer()`, and a handler producing faster than the client reads is made to wait. Bodies that fit the buffer are still sent as a single `Content-Length` response.
+- **Responses stream** — writing to `HttpServletResponse.getOutputStream()` flushes incrementally as `Transfer-Encoding: chunked` once the body outgrows the response buffer (8 KB, `setBufferSize`) or the handler calls `flushBuffer()`, and a handler producing faster than the client reads is made to wait. A handler that never flushes and stays inside the buffer is sent as a single `Content-Length` response — but note Spring flushes for you on every `ResponseEntity`, so most handlers are chunked; see [response framing](#response-framing) above.
 - **Synchronous only** — `startAsync()` returns `null`, `isAsyncSupported()` is `false`, `setReadListener` throws; servlet async is not supported. `SseEmitter`, `DeferredResult` and `StreamingResponseBody` all route through `startAsync()`, so they remain unavailable even though the response path beneath them now streams (issue #18).
 - **Sessions are in-memory and cookie-tracked** — no URL rewriting (`encodeURL` is the identity), no persistence across restarts (`server.servlet.session.persistent=true` fails startup rather than silently losing sessions), and no distributed store; use Spring Session for that.
 - **Session attributes never see activation events** — a bound value implementing `HttpSessionActivationListener` is never notified, because sessions are never passivated or activated. `HttpSessionBindingListener` is fired on both the bind and unbind paths, so the gap is only the activation half, and it is silent: an application relying on `sessionDidActivate` to re-establish transient state gets no signal here.
