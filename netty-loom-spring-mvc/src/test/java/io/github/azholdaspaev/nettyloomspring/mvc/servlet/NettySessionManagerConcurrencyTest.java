@@ -30,6 +30,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class NettySessionManagerConcurrencyTest {
 
     private static final int ROUNDS = 2_000;
+    /**
+     * For the two same-key attribute races. Their window holds no application code -- a quiet re-bind
+     * fires no callback -- so it is a handful of bytecodes wide, and how often it is hit swings with the
+     * machine: issue #90 reported single-digit hits per 20,000 rounds where a run here fails inside 200.
+     * Budgeted for the slow end, because a race test that stays green on the reporter's hardware is worse
+     * than no test at all.
+     */
+    private static final int ATTRIBUTE_ROUNDS = 20_000;
     private static final int ONE_MINUTE = 60;
 
     private AtomicLong clock;
@@ -83,6 +91,30 @@ class NettySessionManagerConcurrencyTest {
         assertTrue(done.await(30, TimeUnit.SECONDS), "threads did not finish");
     }
 
+    /**
+     * Counts its own notifications, which is what every attribute race here asserts on: a value must be
+     * released exactly once per bind, whatever interleaving produced the binds.
+     */
+    private static final class CountingValue implements HttpSessionBindingListener {
+
+        private final AtomicInteger bound = new AtomicInteger();
+        private final AtomicInteger unbound = new AtomicInteger();
+
+        @Override
+        public void valueBound(HttpSessionBindingEvent event) {
+            bound.incrementAndGet();
+        }
+
+        @Override
+        public void valueUnbound(HttpSessionBindingEvent event) {
+            unbound.incrementAndGet();
+        }
+
+        private String counts() {
+            return bound.get() + " bound / " + unbound.get() + " unbound";
+        }
+    }
+
     @Test
     void concurrentRotationsLeaveExactlyOneReachableEntry() throws InterruptedException {
         // Two tabs submitting the same login form both reach ChangeSessionIdAuthenticationStrategy.
@@ -120,25 +152,20 @@ class NettySessionManagerConcurrencyTest {
     @Test
     void aValueBoundWhileTheSessionIsTornDownIsStillUnbound() throws InterruptedException {
         // The re-check in setAttribute exists for exactly this: checkValid() can pass and invalidation
-        // land during the put, leaving a value in a session nothing will ever tear down. The <= 1 half
-        // is what holds the remove(key, value) claim honest against a double release.
+        // land during the put, leaving a value in a session nothing will ever tear down. Pairing rather
+        // than a ceiling on the releases: counting only those leaves an unpaired *bind* invisible, and
+        // it is the pairing that holds the remove(key, value) claim honest against a double release.
         for (int round = 0; round < ROUNDS; round++) {
             NettyHttpSession session = manager.create();
-            var unbound = new AtomicInteger();
-            var value = new HttpSessionBindingListener() {
-                @Override
-                public void valueUnbound(HttpSessionBindingEvent event) {
-                    unbound.incrementAndGet();
-                }
-            };
+            var value = new CountingValue();
 
             race(() -> session.setAttribute("k", value), session::invalidate);
 
             assertTrue(session.isInvalidated(), "round " + round + ": invalidate must win eventually");
             assertFalse(session.hasBoundAttributes(),
                 "round " + round + ": teardown must leave no attribute bound");
-            assertTrue(unbound.get() <= 1,
-                "round " + round + ": a value must be unbound at most once, got " + unbound.get());
+            assertEquals(value.bound.get(), value.unbound.get(),
+                "round " + round + ": every bind must be released exactly once, got " + value.counts());
         }
     }
 
@@ -151,19 +178,7 @@ class NettySessionManagerConcurrencyTest {
         // double-releases; a @SessionScope bean runs @PreDestroy twice.
         for (int round = 0; round < ROUNDS; round++) {
             NettyHttpSession session = manager.create();
-            var bound = new AtomicInteger();
-            var unbound = new AtomicInteger();
-            var value = new HttpSessionBindingListener() {
-                @Override
-                public void valueBound(HttpSessionBindingEvent event) {
-                    bound.incrementAndGet();
-                }
-
-                @Override
-                public void valueUnbound(HttpSessionBindingEvent event) {
-                    unbound.incrementAndGet();
-                }
-            };
+            var value = new CountingValue();
             // Already bound, so the re-bind below is the no-valueBound path -- what
             // DefaultSessionAttributeStore.storeAttribute does on every request for @SessionAttributes.
             session.setAttribute("k", value);
@@ -176,14 +191,48 @@ class NettySessionManagerConcurrencyTest {
                 }
             }, session::invalidate);
 
-            // Pairing, not a fixed count: the teardown can remove the value between checkValid() and the
-            // re-bind's own read, and a setAttribute that then legitimately finds nothing bound fires
-            // valueBound and pairs it on the way out. Two balanced notifications are correct there; what
-            // must never happen is a bind released twice. (That a *quiet* re-bind stays quiet is pinned
-            // single-threaded by NettyHttpSessionTest#rebindingTheSameInstanceNotifiesNeitherSide.)
-            assertEquals(bound.get(), unbound.get(),
-                "round " + round + ": every bind must be released exactly once, got "
-                    + bound.get() + " bound / " + unbound.get() + " unbound");
+            assertEquals(1, value.bound.get(),
+                "round " + round + ": a quiet re-bind must stay quiet, got " + value.counts());
+            assertEquals(value.bound.get(), value.unbound.get(),
+                "round " + round + ": every bind must be released exactly once, got " + value.counts());
+        }
+    }
+
+    @Test
+    void aReBindRacingARemovalReleasesTheValueOncePerBind() throws InterruptedException {
+        // The @SessionAttributes write-through path with nothing exotic around it: one request re-stores
+        // an instance that is already bound while another removes the key. Deciding "is it already
+        // bound?" from a read taken before the publish lets the removal land in between -- it unbinds,
+        // the re-bind then resurrects the value with no valueBound of its own, and the teardown releases
+        // it a second time. A @SessionScope bean would run its @PreDestroy twice.
+        for (int round = 0; round < ATTRIBUTE_ROUNDS; round++) {
+            NettyHttpSession session = manager.create();
+            var value = new CountingValue();
+            session.setAttribute("k", value);
+
+            race(() -> session.setAttribute("k", value), () -> session.removeAttribute("k"));
+
+            // Drains whatever the race left bound, so the counts can be compared at rest.
+            session.invalidate();
+            assertEquals(value.bound.get(), value.unbound.get(),
+                "round " + round + ": every bind must be released exactly once, got " + value.counts());
+        }
+    }
+
+    @Test
+    void aReBindRacingAnotherValueReleasesTheValueOncePerBind() throws InterruptedException {
+        // The same shape with a replacement rather than a removal: the racing request's own publish
+        // claims the bound value and unbinds it, and the re-bind puts it back unannounced.
+        for (int round = 0; round < ATTRIBUTE_ROUNDS; round++) {
+            NettyHttpSession session = manager.create();
+            var value = new CountingValue();
+            session.setAttribute("k", value);
+
+            race(() -> session.setAttribute("k", value), () -> session.setAttribute("k", "replacement"));
+
+            session.invalidate();
+            assertEquals(value.bound.get(), value.unbound.get(),
+                "round " + round + ": every bind must be released exactly once, got " + value.counts());
         }
     }
 
