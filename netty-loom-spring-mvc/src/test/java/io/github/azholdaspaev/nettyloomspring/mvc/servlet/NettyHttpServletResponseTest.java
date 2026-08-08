@@ -1,17 +1,25 @@
 package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpResponseWriter;
 import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpObject;
+import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.HttpUtil;
+import io.netty.handler.codec.http.LastHttpContent;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -324,5 +332,197 @@ class NettyHttpServletResponseTest {
         List<String> headers = setCookieHeaders(response);
         assertEquals(1, headers.size(), "Actual: " + headers);
         assertTrue(headers.getFirst().startsWith("sid=first"), "Actual: " + headers.getFirst());
+    }
+
+    // --- streaming: the buffer, the commit, and what the wire sees (issue #37) ---
+
+    @Test
+    void completeWritesASingleFullResponseWhenNothingWasFlushed() throws Exception {
+        var wire = new RecordingWriter();
+        var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, wire);
+        response.getOutputStream().write("hi".getBytes(StandardCharsets.UTF_8));
+
+        response.complete();
+
+        FullHttpResponse only = assertInstanceOf(FullHttpResponse.class, wire.single());
+        assertEquals("hi", only.content().toString(StandardCharsets.UTF_8));
+        assertEquals(2, HttpUtil.getContentLength(only, -1L),
+            "a response that fits the buffer keeps its declared length rather than becoming chunked");
+    }
+
+    @Test
+    void outputStreamFlushesToTheWireOnceTheBufferIsFull() throws Exception {
+        var wire = new RecordingWriter();
+        var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, wire);
+        response.setBufferSize(8);
+
+        response.getOutputStream().write("0123456789".getBytes(StandardCharsets.UTF_8));
+
+        assertInstanceOf(HttpResponse.class, wire.parts.get(0));
+        assertFalse(wire.parts.get(0) instanceof FullHttpResponse,
+            "an overflowing body is not complete, so it cannot go out as one full response");
+        assertEquals("0123456789", contentOf(wire.parts.get(1)));
+    }
+
+    /**
+     * The other half of {@link #outputStreamFlushesToTheWireOnceTheBufferIsFull}: most handlers write
+     * text, and a writer that wrote past the container's buffer straight into it would keep the whole
+     * body in heap however large it grew.
+     */
+    @Test
+    void writerFlushesToTheWireOnceTheBufferIsFull() throws Exception {
+        var wire = new RecordingWriter();
+        var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, wire);
+        response.setBufferSize(8);
+
+        response.getWriter().write("0123456789");
+        response.getWriter().flush();
+
+        assertInstanceOf(HttpResponse.class, wire.parts.get(0));
+        assertEquals("0123456789", contentOf(wire.parts.get(1)));
+    }
+
+    @Test
+    void getBufferSizeReportsTheConfiguredSize() {
+        var response = new NettyHttpServletResponse();
+        response.setBufferSize(4096);
+
+        assertEquals(4096, response.getBufferSize());
+    }
+
+    @Test
+    void setBufferSizeThrowsOnceContentHasBeenWritten() throws Exception {
+        var response = new NettyHttpServletResponse();
+        response.getOutputStream().write('x');
+
+        assertThrows(IllegalStateException.class, () -> response.setBufferSize(4096));
+    }
+
+    /**
+     * The writer holds its own encoder buffer, so flushing it after the wire flush rather than before
+     * would commit an empty chunk and leave the text behind — the whole of incremental delivery for
+     * anything written through {@code getWriter()}.
+     */
+    @Test
+    void flushBufferFlushesTheCachedWriterBeforeCommitting() throws Exception {
+        var wire = new RecordingWriter();
+        var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, wire);
+        response.getWriter().print("event one");
+
+        response.flushBuffer();
+
+        assertInstanceOf(HttpResponse.class, wire.parts.get(0));
+        assertEquals("event one", contentOf(wire.parts.get(1)));
+    }
+
+    @Test
+    void isCommittedReportsTrueOnceTheHeadIsOnTheWire() throws Exception {
+        var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, new RecordingWriter());
+        assertFalse(response.isCommitted());
+
+        response.flushBuffer();
+
+        assertTrue(response.isCommitted());
+    }
+
+    @Test
+    void setHeaderIsIgnoredOnceTheHeadIsOnTheWire() throws Exception {
+        var wire = new RecordingWriter();
+        var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, wire);
+        response.flushBuffer();
+
+        response.setHeader("X-Late", "too late");
+
+        assertFalse(((HttpResponse) wire.parts.get(0)).headers().contains("X-Late"));
+    }
+
+    @Test
+    void resetBufferThrowsOnceTheHeadIsOnTheWire() throws Exception {
+        var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, new RecordingWriter());
+        response.flushBuffer();
+
+        assertThrows(IllegalStateException.class, response::resetBuffer);
+    }
+
+    @Test
+    void sendErrorThrowsOnceTheHeadIsOnTheWire() throws Exception {
+        var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, new RecordingWriter());
+        response.flushBuffer();
+
+        assertThrows(IllegalStateException.class,
+            () -> response.sendError(HttpResponseStatus.INTERNAL_SERVER_ERROR.code()));
+    }
+
+    @Test
+    void sendRedirectThrowsOnceTheHeadIsOnTheWire() throws Exception {
+        var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, new RecordingWriter());
+        response.flushBuffer();
+
+        assertThrows(IllegalStateException.class,
+            () -> response.sendRedirect("/elsewhere", HttpResponseStatus.FOUND.code(), true));
+    }
+
+    /**
+     * The guard is on bytes actually sent, not on the spec-level commit {@code sendError} sets: nothing
+     * has left, so taking the response back is honest here and must stay allowed.
+     */
+    @Test
+    void sendErrorThenResetStillWorksWhenNothingWasFlushed() throws Exception {
+        var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, new RecordingWriter());
+        response.sendError(HttpResponseStatus.FORBIDDEN.code());
+
+        assertDoesNotThrow(response::reset);
+        assertEquals(HttpResponseStatus.OK.code(), response.getStatus());
+    }
+
+    /** Pins the no-aliasing rule that {@code takeBufferedBody()} rests on. */
+    @Test
+    void consecutiveChunksDoNotShareABuffer() throws Exception {
+        var wire = new RecordingWriter();
+        var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, wire);
+        response.getOutputStream().write("first".getBytes(StandardCharsets.UTF_8));
+        response.flushBuffer();
+
+        response.getOutputStream().write("second".getBytes(StandardCharsets.UTF_8));
+        response.flushBuffer();
+
+        assertEquals("first", contentOf(wire.parts.get(1)));
+        assertEquals("second", contentOf(wire.parts.get(2)));
+    }
+
+    @Test
+    void completeFlushesTheRemainderAndTerminatesTheStream() throws Exception {
+        var wire = new RecordingWriter();
+        var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, wire);
+        response.getOutputStream().write("head".getBytes(StandardCharsets.UTF_8));
+        response.flushBuffer();
+        response.getOutputStream().write("tail".getBytes(StandardCharsets.UTF_8));
+
+        response.complete();
+
+        assertEquals(3, wire.parts.size(), "the remainder rides on the terminator; got " + wire.parts);
+        assertInstanceOf(LastHttpContent.class, wire.parts.get(2),
+            "a streamed response must be terminated so the exchange can be counted out");
+        assertEquals("tail", contentOf(wire.parts.get(2)));
+    }
+
+    private static String contentOf(HttpObject part) {
+        return ((HttpContent) part).content().toString(StandardCharsets.UTF_8);
+    }
+
+    /** Stands in for the connection, so the parts a response emits can be asserted on directly. */
+    private static final class RecordingWriter implements HttpResponseWriter {
+
+        private final List<HttpObject> parts = new ArrayList<>();
+
+        @Override
+        public void write(HttpObject part) {
+            parts.add(part);
+        }
+
+        HttpObject single() {
+            assertEquals(1, parts.size(), "expected exactly one part, got " + parts);
+            return parts.get(0);
+        }
     }
 }

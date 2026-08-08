@@ -16,7 +16,8 @@ import io.netty.handler.codec.http.LastHttpContent;
  * TCP segment would otherwise leave it looking idle, and a drain starting in that window would reset
  * the request it is meant to protect. While draining, only the last response owed carries
  * {@code Connection: close} — {@code HttpServerKeepAliveHandler} closes on the first non-keep-alive
- * response it sees, which on a pipelined connection would strand everything queued behind it.
+ * response it sees, which on a pipelined connection would strand everything queued behind it. One
+ * whose head already left carries none; the close at zero in-flight is the mechanism either way.
  */
 public class HttpDrainHandler extends ChannelDuplexHandler {
 

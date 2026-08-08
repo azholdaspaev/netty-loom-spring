@@ -7,7 +7,9 @@ import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.codec.http.LastHttpContent;
 import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletRequestEvent;
 import jakarta.servlet.ServletRequestListener;
@@ -21,6 +23,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.web.servlet.DispatcherServlet;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiConsumer;
@@ -28,6 +33,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -78,6 +84,18 @@ class SpringHttpRequestDispatcherTest {
         });
     }
 
+    /**
+     * Runs a dispatch against a connection that records what it is given, and returns the one buffered
+     * response a completed dispatch writes.
+     */
+    private static FullHttpResponse dispatch(SpringHttpRequestDispatcher dispatcher, FullHttpRequest request)
+        throws Exception {
+        List<HttpObject> written = new ArrayList<>();
+        dispatcher.handle(request, CONNECTION, written::add);
+        assertEquals(1, written.size(), "a response that fits the buffer is one part; got " + written);
+        return (FullHttpResponse) written.get(0);
+    }
+
     private static FullHttpRequest get(String uri) {
         return new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
     }
@@ -87,7 +105,7 @@ class SpringHttpRequestDispatcherTest {
         recordRequests();
         var dispatcher = dispatcher((request, response) -> events.add("service"));
 
-        dispatcher.handle(get("/api/ping"), CONNECTION);
+        dispatch(dispatcher, get("/api/ping"));
 
         assertEquals(List.of("initialized", "service", "destroyed"), events);
     }
@@ -101,7 +119,7 @@ class SpringHttpRequestDispatcherTest {
             throw new IllegalStateException("boom");
         });
 
-        assertThrows(IllegalStateException.class, () -> dispatcher.handle(get("/api/ping"), CONNECTION));
+        assertThrows(IllegalStateException.class, () -> dispatch(dispatcher, get("/api/ping")));
 
         assertEquals(List.of("initialized", "destroyed"), events);
     }
@@ -119,7 +137,7 @@ class SpringHttpRequestDispatcherTest {
         var dispatched = new ServletRequest[1];
         var dispatcher = dispatcher((request, response) -> dispatched[0] = request);
 
-        dispatcher.handle(get("/api/ping"), CONNECTION);
+        dispatch(dispatcher, get("/api/ping"));
 
         assertNotNull(dispatched[0]);
         assertSame(dispatched[0], seen[0], "the listener must see the request the servlet is handed");
@@ -134,7 +152,7 @@ class SpringHttpRequestDispatcherTest {
         // default. Reading it per request is what makes the bean order irrelevant.
         servletContext.setCookieSameSiteResolver(cookie -> "Strict");
 
-        FullHttpResponse response = dispatcher.handle(get("/api/ping"), CONNECTION);
+        FullHttpResponse response = dispatch(dispatcher, get("/api/ping"));
 
         String setCookie = response.headers().get(HttpHeaderNames.SET_COOKIE);
         assertTrue(setCookie.contains("SameSite=Strict"), "Actual: " + setCookie);
@@ -148,7 +166,7 @@ class SpringHttpRequestDispatcherTest {
         recordRequests();
         var dispatcher = dispatcher((request, response) -> events.add("service"));
 
-        FullHttpResponse response = dispatcher.handle(get("/elsewhere"), CONNECTION);
+        FullHttpResponse response = dispatch(dispatcher, get("/elsewhere"));
 
         assertEquals(HttpServletResponse.SC_NOT_FOUND, response.status().code());
         assertTrue(events.isEmpty(), "an out-of-context request fires no request listener; got " + events);
@@ -167,7 +185,7 @@ class SpringHttpRequestDispatcherTest {
         });
         var dispatcher = dispatcher((request, response) -> events.add("service"));
 
-        assertThrows(IllegalStateException.class, () -> dispatcher.handle(get("/api/ping"), CONNECTION));
+        assertThrows(IllegalStateException.class, () -> dispatch(dispatcher, get("/api/ping")));
 
         assertTrue(events.isEmpty(), "the servlet must not run once request setup has failed");
     }
@@ -214,7 +232,7 @@ class SpringHttpRequestDispatcherTest {
         });
         var dispatcher = dispatcher((request, response) -> events.add("service"));
 
-        assertThrows(failure.getClass(), () -> dispatcher.handle(get("/api/ping"), CONNECTION));
+        assertThrows(failure.getClass(), () -> dispatch(dispatcher, get("/api/ping")));
 
         assertEquals(List.of("first:initialized", "first:destroyed"), events,
             "the prefix that did initialize must be released before the failure leaves");
@@ -243,7 +261,7 @@ class SpringHttpRequestDispatcherTest {
         });
         var dispatcher = dispatcher((request, response) -> events.add("service"));
 
-        assertThrows(IllegalStateException.class, () -> dispatcher.handle(get("/api/ping"), CONNECTION));
+        assertThrows(IllegalStateException.class, () -> dispatch(dispatcher, get("/api/ping")));
 
         assertTrue(events.isEmpty(), "nothing initialized, so nothing may be released; got " + events);
     }
@@ -270,7 +288,7 @@ class SpringHttpRequestDispatcherTest {
         });
 
         UnsupportedOperationException thrown = assertThrows(UnsupportedOperationException.class,
-            () -> dispatcher.handle(get("/api/ping"), CONNECTION));
+            () -> dispatch(dispatcher, get("/api/ping")));
 
         assertEquals("the handler's own failure", thrown.getMessage());
         assertTrue(events.contains("outer:destroyed"),
@@ -288,7 +306,7 @@ class SpringHttpRequestDispatcherTest {
         var dispatcher = dispatcher((request, response) -> response.setStatus(HttpServletResponse.SC_OK));
 
         FullHttpResponse response =
-            assertDoesNotThrow(() -> dispatcher.handle(get("/api/ping"), CONNECTION));
+            assertDoesNotThrow(() -> dispatch(dispatcher, get("/api/ping")));
 
         assertEquals(HttpServletResponse.SC_OK, response.status().code());
     }
@@ -323,10 +341,29 @@ class SpringHttpRequestDispatcherTest {
         var dispatcher = dispatcher((request, response) -> events.add("service"));
 
         IllegalStateException thrown = assertThrows(IllegalStateException.class,
-            () -> dispatcher.handle(get("/api/ping"), CONNECTION));
+            () -> dispatch(dispatcher, get("/api/ping")));
 
         assertEquals("the original failure", thrown.getMessage());
         assertTrue(events.contains("outer:destroyed"),
             "a listener below the one that failed to release must still be released; got " + events);
+    }
+
+    @Test
+    void aHandlerThatFlushesMidDispatchStreamsThroughTheConnection() throws Exception {
+        var dispatcher = dispatcher((request, response) -> {
+            // The stubbed servlet cannot throw, so the failure is surfaced unchecked.
+            try {
+                response.getOutputStream().write("event one".getBytes(StandardCharsets.UTF_8));
+                response.flushBuffer();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+        List<HttpObject> written = new ArrayList<>();
+
+        dispatcher.handle(get("/api/stream"), CONNECTION, written::add);
+
+        assertEquals(3, written.size(), "head, body and terminator each reach the connection; got " + written);
+        assertInstanceOf(LastHttpContent.class, written.get(2));
     }
 }

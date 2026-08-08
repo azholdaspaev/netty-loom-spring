@@ -97,13 +97,13 @@ class NettyServerPipeliningTest {
      * response wins deterministically rather than by a sleep race.
      */
     private HttpRequestDispatcher overtakingDispatcher() {
-        return (request, _) -> {
+        return (request, _, writer) -> {
             if ("/first".equals(request.uri())) {
                 secondResponded.await(OVERTAKE_WINDOW.toMillis(), TimeUnit.MILLISECONDS);
             } else {
                 secondResponded.countDown();
             }
-            return textResponse(request.uri());
+            writer.write(textResponse(request.uri()));
         };
     }
 

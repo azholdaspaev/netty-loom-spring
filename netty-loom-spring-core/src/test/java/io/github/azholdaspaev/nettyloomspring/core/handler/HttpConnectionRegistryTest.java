@@ -129,8 +129,7 @@ class HttpConnectionRegistryTest {
         Thread drain = Thread.currentThread();
         long startNanos = System.nanoTime();
         Thread.ofPlatform().start(() -> {
-            SpinWait.until(() -> drain.getState() == Thread.State.TIMED_WAITING,
-                Duration.ofSeconds(10), "the drain never parked");
+            SpinWait.untilParked(() -> drain, Duration.ofSeconds(10), "the drain never parked");
             registry.dispatchFinished();
         });
 
