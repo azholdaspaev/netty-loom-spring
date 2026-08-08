@@ -4,15 +4,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Identical to the Netty example's controller so the three benchmark targets serve the same work.
- *
- * <ul>
- *   <li>{@code /ping} — minimal work, for low-concurrency throughput.</li>
- *   <li>{@code /work} — a blocking {@code Thread.sleep(50)} simulating a 50ms database call,
- *       the high-concurrency scenario where virtual threads should win.</li>
- *   <li>{@code /work-secured} — the same blocking call behind the Spring Security filter chain,
- *       so the delta against {@code /work} is the chain's cost. See {@link BenchmarkSecurityConfig}.</li>
- * </ul>
+ * Identical to the Netty example's controller so the benchmark targets serve the same work.
  */
 @RestController
 public class BenchmarkController {

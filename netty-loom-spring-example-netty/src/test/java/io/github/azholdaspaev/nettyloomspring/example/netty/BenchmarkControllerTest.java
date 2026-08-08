@@ -32,10 +32,8 @@ class BenchmarkControllerTest {
     private static final String SESSION_COOKIE = "JSESSIONID";
 
     /**
-     * Spring Security renders the hidden field as {@code <input name="_csrf" type="hidden"
-     * value="..."/>} — {@code type} sits between the two attributes, so matching {@code name}
-     * immediately followed by {@code value} silently finds nothing. The k6 script uses the same
-     * pattern.
+     * Spring Security renders {@code <input name="_csrf" type="hidden" value="..."/>}: {@code type}
+     * sits between, so matching {@code name} immediately followed by {@code value} finds nothing.
      */
     private static final Pattern CSRF_INPUT = Pattern.compile("name=\"_csrf\"[^>]*value=\"([^\"]+)\"");
 
@@ -72,11 +70,6 @@ class BenchmarkControllerTest {
             .expectHeader().valueMatches("Location", ".*/login$");
     }
 
-    /**
-     * The executable spec for {@code k6/high-concurrency-secured.js}: the same three exchanges the
-     * load script's per-VU login performs. It is what proves the whole Security filter chain — form
-     * body parsing, CSRF, session creation and id rotation — survives the Netty servlet bridge.
-     */
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
     void workSecuredReturnsJsonAfterFormLoginOnTheRotatedSessionCookie() {
@@ -90,15 +83,6 @@ class BenchmarkControllerTest {
         expectWorkSecuredOk(postLoginSessionId);
     }
 
-    /**
-     * Guards the premise {@link BenchmarkSecurityConfig} rests on: login stays a string compare.
-     * Spring Security rewrites a stored credential whenever the configured encoder reports it is out
-     * of date, and {@code DelegatingPasswordEncoder} reports that of every {@code {noop}} password —
-     * so without a {@code PasswordEncoder} bean the first successful login silently re-encodes the
-     * in-memory user with bcrypt, and every login after it pays a full key derivation. That is one
-     * hash per virtual user during the k6 ramp, which is the cost the benchmark exists to keep out of
-     * the measurement (issue #111).
-     */
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
     void loginLeavesTheStoredCredentialAlone() {
@@ -110,7 +94,9 @@ class BenchmarkControllerTest {
             "a successful login must not re-encode the stored credential");
     }
 
-    /** The three exchanges the load script's per-VU login performs; returns the rotated session id. */
+    /**
+     * Returns the rotated post-login session id, not the one the login form was fetched with.
+     */
     private String logIn() {
         var loginPage = restTestClient.get().uri("/login")
             .exchange()
@@ -151,11 +137,7 @@ class BenchmarkControllerTest {
 
     /**
      * {@code RestTestClient} does not persist cookies across exchanges, so the session cookie is
-     * carried by hand. Parsed with {@link HttpCookie} rather than a substring split — a hand-rolled
-     * cookie grammar is not worth saving two lines. The starter's test sources own an equivalent
-     * helper ({@code ResponseCookies}), but sharing it would need a {@code java-test-fixtures}
-     * publication, and consuming that from the Tomcat example would put this library's starter on
-     * the control target's classpath — the one coupling the three-way benchmark exists to avoid.
+     * carried by hand — parsed with {@link HttpCookie} rather than a substring split.
      */
     private static String sessionIdFrom(HttpHeaders headers) {
         List<String> setCookies = headers.getOrEmpty(HttpHeaders.SET_COOKIE);
