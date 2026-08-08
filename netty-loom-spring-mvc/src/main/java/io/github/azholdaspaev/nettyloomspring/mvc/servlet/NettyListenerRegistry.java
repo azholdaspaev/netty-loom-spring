@@ -454,8 +454,11 @@ public class NettyListenerRegistry {
      * swallowing {@code OutOfMemoryError} keeps the container serving on a JVM that has already failed.
      * {@code log.warn} allocates, so continuing past one would usually fail there anyway -- silently,
      * and on the path where determinism matters most.
+     *
+     * <p>Package-private so {@code NettyHttpSession.notifyUnbound} draws the same line rather than
+     * carrying a second definition of what counts as fatal.
      */
-    private static void rethrowIfFatal(Throwable failure) {
+    static void rethrowIfFatal(Throwable failure) {
         if (failure instanceof VirtualMachineError error) {
             throw error;
         }
