@@ -75,7 +75,8 @@ The lenses below close both gaps and are the second pass's brief. They are phras
 - **Naming consistency (convention-by-example).** New types should match the emergent naming of their siblings even when no written rule exists. Example: everything in `core.handler` is `Http`-prefixed (`HttpRequestHandler`, `HttpRequestDispatcher`, `HttpExceptionHandler`, `HttpConnectionMetadata`) — a new class there should carry the prefix.
 - **Magic constants.** Flag bare literals that encode a named concept; prefer a named constant or an existing enum/util. Example: HTTP scheme names and their default ports come from `io.netty.handler.codec.http.HttpScheme` (`HttpScheme.HTTPS.toString()` → `"https"`, `HttpScheme.HTTPS.port()` → `443`) rather than hardcoded `"http"/"https"` or `80/443`. Sentinel values (e.g. `""`/`0` for an unknown address) should be named constants documenting their contract.
 - **Duplication.** Two shapes, both in scope. *The same fact expressed twice* — one concept living in two places, the coupling a per-hunk scan misses; a scheme→port default living as strings in one class and as `80/443` in another is the *same* fact, so centralize it in one owner and have the other delegate. *The same logic expressed twice* — copy-pasted or near-identical blocks across classes or test fixtures, where a later fix to one will not reach the other.
-- **Simplicity and scope.** Judge against the rules in the "Guidelines" section of this file — (2) Simplicity First, (3) Surgical Changes and (5) Comment With Restraint. Speculative abstraction, configurability nobody asked for, error handling for impossible states, comment volume that outruns the decision being recorded, and changed lines that do not trace to the stated goal are findings here, not taste.
+- **Comment budget.** Judge against rule 5's triggers and budgets. A comment firing no listed trigger is a finding, and so is one over budget — name the number it breaks. In scope: class javadoc past 8 lines (20 with a cited external contract), javadoc on a `private` member past 2 lines, javadoc on a `@Test`, rationale restated in a file that does not own it, and a paragraph about code that does not exist. Two shapes to look for: *volume outrunning the decision being recorded*, and *prose the diff has just falsified* — a comment the change made wrong or incomplete, or one asserting a count, a sole call site or an exhaustive list that a later edit will silently break. Since the source is the only source of truth, a comment contradicted by the code beside it is a correctness finding, not a nitpick.
+- **Simplicity and scope.** Judge against the rules in the "Guidelines" section of this file — (2) Simplicity First and (3) Surgical Changes. Speculative abstraction, configurability nobody asked for, error handling for impossible states, and changed lines that do not trace to the stated goal are findings here, not taste.
 - **Module boundaries.** Judge against the "Architecture" section of this file: the `starter → mvc → core` dependency flow, `core` carrying no Spring dependency, and `HttpRequestDispatcher` / `NettyPipelineConfigurer` as the seams. New coupling that crosses a layer or routes around a seam is a finding even when it compiles.
 
 ## Guidelines
@@ -134,11 +135,44 @@ For multi-step tasks, state a brief plan:
    Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
 5. Comment With Restraint
-   A moderate number of comments, each earning its place.
+   The source code is the only source of truth. Default to no comment.
 
-Comment the decision, not the code. If the line below it says the same thing, delete the comment.
-State a fact once, in the class that owns it. The Duplication lens applies to comments too.
-When a change makes an existing comment stale or incomplete, rewrite that comment. Do not append a new paragraph beside it - comments that accrete paragraphs stop being read.
-Reserve multi-paragraph javadoc for the few places where an external contract - a spec clause, another container's behaviour - is the only thing that explains the code's shape.
-Match the surrounding file, but treat its densest examples as a ceiling, not a target. This is the one place rule (3) "Match existing style" is bounded: the repository's heaviest files are not the bar to reach.
+The code is the sole artefact that executes, that the compiler checks and that the tests bind. A comment is unverified prose sitting beside it: nothing fails when the two disagree, so drift is silent and permanent. When code and comment conflict, the code is right and the comment is a bug. Three consequences, and they are the reason for everything below:
+
+Never describe what the code does. The code already says that, correctly, and forever. Such a comment adds no information the day it is written and becomes false later.
+A comment a later edit can silently falsify is a liability, not documentation. Counts, censuses, lists of call sites and "the only place that..." all decay unnoticed.
+Comment only what the source cannot state - a fact from outside this repository, or a choice the code cannot show because the rejected alternative is absent by definition.
+
+**Default: no comment, no javadoc.** Write one only when a trigger fires. "A reader might appreciate this" is not a trigger - if the code needs explaining, rename or restructure first.
+
+**Triggers.** This list is closed. If none applies, write nothing.
+
+1. An external contract dictates the shape - a spec clause, another container's behaviour (Tomcat, Jetty), a Netty or Servlet API quirk. Something unrecoverable from this repository. Cite the source.
+2. A decision with a named rejected alternative, written in the house shape *X rather than Y, because Z*: "Hex, not Base64: `ServerCookieEncoder.STRICT` throws on octets outside the RFC 6265 cookie-value set." If you cannot name Y, there was no decision; delete it.
+3. A concurrency or lifecycle invariant - what guards this state, which thread this runs on, why this is safe to run twice.
+4. A deliberate deviation from what the surrounding code or an inherited javadoc predicts.
+
+**Budgets.** Hard numbers, so a reviewer can quote them.
+
+- Class javadoc: 8 lines. Trigger 1, and only trigger 1, with the external source cited, raises it to 20. Past 20 lines it is a design document - put it in `docs/adr/` and leave a one-line pointer.
+- `private` members: 2 lines, invariant only, and only when that invariant is unguessable from the type and name. A private method's rationale belongs at the one call site that needs it, not above the method.
+- `@Test` methods: none. The test name and the assertion message carry the meaning; lengthen the assertion message rather than add a comment. A genuine harness trap - why the test would pass against a broken version - goes in the test body as a `//` block.
+
+**One owner per fact; link rather than restate.** Rationale for class X lives in X. If you find yourself writing "the reason is recorded there", stop - you have just proved the paragraph is redundant. Link and delete it. The Duplication lens applies to comments across files.
+
+**Never.** Each is a quotable violation:
+
+- A paragraph about code that does not exist yet - a pending issue, a planned handler.
+- A count or census a later change silently falsifies ("that is twelve of the fourteen events").
+- Rebutting a claim nobody made ("it is tempting to state the stronger fact...").
+- A comment restating the line beneath it.
+- A `<p>` chain where one sentence would do. Multi-paragraph javadoc is the exception; today's files are not evidence that it is the norm.
+
+**Rewrite, never append.** When a change makes a comment stale or incomplete, rewrite that comment. Do not stack a second paragraph beside it - comments that accrete paragraphs stop being read.
+
+**Subtract before you finish.** Reread every comment you added and delete each one whose trigger you cannot name. This is a required step, not advice; the change is not done until it has run.
+
+**Overrides rule 3 for volume.** Rule 3 says match existing style; for comment volume this rule wins. Density here is bimodal - past 50% in some files, zero in others - so the neighbouring file is not evidence of anything. The heaviest files are a ceiling already set too high, never a target. Nothing ships as a javadoc jar today, so javadoc's only reader is someone already looking at the source; if one ever ships, revisit this rule.
+
+Keep `#NN` issue citations and `// --- Name ---` section banners. Neither is prose, and neither is what this rule bounds.
 
