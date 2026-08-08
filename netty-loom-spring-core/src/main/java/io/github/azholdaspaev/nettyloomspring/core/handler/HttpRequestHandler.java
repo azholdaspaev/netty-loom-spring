@@ -147,7 +147,10 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
 
     private enum ResponseState { NOT_STARTED, STARTED, ENDED }
 
-    /** Bound to one exchange and touched only on the dispatch thread that owns it. */
+    /**
+     * Bound to one exchange and touched only on the dispatch thread that owns it. A response written in
+     * parts is not atomic on the wire, which widens issue #78.
+     */
     private final class HttpChannelResponseWriter implements HttpResponseWriter {
 
         private final ChannelHandlerContext ctx;
