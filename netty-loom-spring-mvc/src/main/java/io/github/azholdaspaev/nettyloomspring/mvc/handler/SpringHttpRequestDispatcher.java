@@ -2,13 +2,13 @@ package io.github.azholdaspaev.nettyloomspring.mvc.handler;
 
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionMetadata;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestDispatcher;
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpResponseWriter;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyFilterChain;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyHttpServletRequest;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyHttpServletResponse;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.RegisteredFilter;
 import io.netty.handler.codec.http.FullHttpRequest;
-import io.netty.handler.codec.http.FullHttpResponse;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.servlet.DispatcherServlet;
@@ -27,12 +27,13 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
     }
 
     @Override
-    public FullHttpResponse handle(FullHttpRequest request, HttpConnectionMetadata connection) throws Exception {
+    public void handle(FullHttpRequest request, HttpConnectionMetadata connection, HttpResponseWriter writer)
+        throws Exception {
         // The response is built first because the request holds on to it: a session created mid-dispatch
         // has to write its Set-Cookie straight away, since addCookie is ignored once the response is
         // committed by sendRedirect or sendError.
         NettyHttpServletResponse servletResponse =
-            new NettyHttpServletResponse(servletContext.getCookieSameSiteResolver());
+            new NettyHttpServletResponse(servletContext.getCookieSameSiteResolver(), writer);
         NettyHttpServletRequest servletRequest =
             new NettyHttpServletRequest(request, connection, servletContext, servletResponse);
 
@@ -40,7 +41,8 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
         // PathPatternParser would otherwise throw on a URI outside the context path.
         if (!servletRequest.isWithinContext()) {
             servletResponse.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            return servletResponse.toFullHttpResponse();
+            servletResponse.complete();
+            return;
         }
 
         // Filter URL patterns are context-relative, so match on the in-context servlet path.
@@ -64,6 +66,8 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
             servletContext.getListenerRegistry().fireRequestDestroyed(servletRequest);
         }
 
-        return servletResponse.toFullHttpResponse();
+        // Outside the try: a dispatch that threw has an incoherent response to send, and finishing it
+        // here would answer the request with it instead of letting the failure reach the connection.
+        servletResponse.complete();
     }
 }

@@ -225,7 +225,7 @@ class NettyServerDrainTest {
      * Holds the request open until the test releases it, so shutdown is guaranteed to race it.
      */
     private HttpRequestDispatcher blockingDispatcher() {
-        return (_, _) -> {
+        return (_, _, writer) -> {
             dispatcherEntered.countDown();
             if (!releaseDispatcher.await(20, TimeUnit.SECONDS)) {
                 throw new IllegalStateException("dispatcher was never released");
@@ -233,7 +233,7 @@ class NettyServerDrainTest {
             FullHttpResponse response = new DefaultFullHttpResponse(
                 HttpVersion.HTTP_1_1, HttpResponseStatus.OK, Unpooled.EMPTY_BUFFER);
             response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH, 0);
-            return response;
+            writer.write(response);
         };
     }
 

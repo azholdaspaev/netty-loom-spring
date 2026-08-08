@@ -1,10 +1,16 @@
 package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpResponseWriter;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.DateFormatter;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
+import io.netty.buffer.ByteBuf;
+import io.netty.handler.codec.http.DefaultHttpContent;
+import io.netty.handler.codec.http.DefaultHttpResponse;
+import io.netty.handler.codec.http.DefaultLastHttpContent;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.cookie.CookieHeaderNames;
@@ -36,17 +42,25 @@ public class NettyHttpServletResponse implements HttpServletResponse {
     // Hoisted so parseSameSite doesn't clone a fresh enum array on every addCookie (write path).
     private static final CookieHeaderNames.SameSite[] SAME_SITE_VALUES = CookieHeaderNames.SameSite.values();
 
+    /** Tomcat's default, and the point at which a body stops being buffered and starts streaming. */
+    private static final int DEFAULT_BUFFER_SIZE = 8192;
+
     private final FastByteArrayOutputStream body = new FastByteArrayOutputStream(256);
     private final HttpHeaders headers = new HttpHeaders();
     private int status = HttpServletResponse.SC_OK;
     private Charset characterEncoding = StandardCharsets.ISO_8859_1;
     private ServletOutputStream outputStream;
     private PrintWriter writer;
-    // Buffered until toFullHttpResponse(), so nothing is on the wire early; sendError/sendRedirect commit,
-    // matching Tomcat's setAppCommitted(true), and the spec then requires later mutations to be ignored.
+    private int bufferSize = DEFAULT_BUFFER_SIZE;
+    // The Servlet spec requires status and header mutations after a commit to be ignored; without that,
+    // Spring's HttpServlet.doOptions fallback stamps a reflected Allow header onto an already-errored 404.
     private boolean committed;
+    // The narrower half: bytes have actually left. sendError and sendRedirect commit without sending
+    // anything, and taking such a response back is honest, so reset and its kin refuse on this instead.
+    private boolean headWritten;
 
     private final NettyCookieSameSiteResolver sameSiteResolver;
+    private final HttpResponseWriter responseWriter;
 
     // Package-private: the container always builds a response with its policy, so a caller outside this
     // package that forgets one should not compile, and dropping the SameSite silently is the defect a
@@ -55,8 +69,18 @@ public class NettyHttpServletResponse implements HttpServletResponse {
         this(NettyCookieSameSiteResolver.NO_OPINION);
     }
 
-    public NettyHttpServletResponse(NettyCookieSameSiteResolver sameSiteResolver) {
+    // Likewise package-private, and likewise for what it omits: a response with nowhere to write is
+    // only ever a test's, and one that reaches the wire anyway should say so rather than lose the body.
+    NettyHttpServletResponse(NettyCookieSameSiteResolver sameSiteResolver) {
+        this(sameSiteResolver, _ -> {
+            throw new IllegalStateException("This response was built without a connection to write to");
+        });
+    }
+
+    public NettyHttpServletResponse(NettyCookieSameSiteResolver sameSiteResolver,
+                                    HttpResponseWriter responseWriter) {
         this.sameSiteResolver = sameSiteResolver;
+        this.responseWriter = responseWriter;
     }
 
     @Override
@@ -174,6 +198,7 @@ public class NettyHttpServletResponse implements HttpServletResponse {
 
     @Override
     public void sendRedirect(String location, int sc, boolean clearBuffer) throws IOException {
+        requireHeadNotWritten();
         this.status = sc;
         // Location must land before the commit closes the guard on setHeader.
         setHeader(HttpHeaders.LOCATION, location);
@@ -277,21 +302,28 @@ public class NettyHttpServletResponse implements HttpServletResponse {
                 @Override
                 public void write(int b) throws IOException {
                     body.write(b);
+                    flushIfBufferFull();
                 }
 
                 @Override
                 public void write(byte[] b, int off, int len) throws IOException {
                     body.write(b, off, len);
+                    flushIfBufferFull();
                 }
             };
         }
         return outputStream;
     }
 
+    /**
+     * Layered over {@link #getOutputStream()} rather than over the buffer directly, so text overflowing
+     * the buffer streams on the same terms bytes do. Writing straight to the buffer would keep a large
+     * body in heap however far past the buffer size it grew.
+     */
     @Override
     public PrintWriter getWriter() throws IOException {
         if (writer == null) {
-            writer = new PrintWriter(new OutputStreamWriter(body, characterEncoding), false);
+            writer = new PrintWriter(new OutputStreamWriter(getOutputStream(), characterEncoding), false);
         }
         return writer;
     }
@@ -321,22 +353,26 @@ public class NettyHttpServletResponse implements HttpServletResponse {
 
     @Override
     public void setBufferSize(int size) {
+        if (body.size() > 0 || headWritten) {
+            throw new IllegalStateException("Content has already been written");
+        }
+        this.bufferSize = size;
     }
 
     @Override
     public int getBufferSize() {
-        return 0;
+        return bufferSize;
     }
 
     @Override
     public void flushBuffer() throws IOException {
-        if (writer != null) {
-            writer.flush();
-        }
+        flushCharacterWriter();
+        flushToWire();
     }
 
     @Override
     public void resetBuffer() {
+        requireHeadNotWritten();
         body.reset();
         // Drop the cached writer/stream too: the writer (autoFlush=false) holds an encoder buffer
         // whose unflushed chars would otherwise be re-flushed into the body by toFullHttpResponse().
@@ -382,17 +418,92 @@ public class NettyHttpServletResponse implements HttpServletResponse {
         }
     }
 
-    public FullHttpResponse toFullHttpResponse() throws IOException {
-        flushBuffer();
+    FullHttpResponse toFullHttpResponse() throws IOException {
+        int length = body.size();
         FullHttpResponse response = new DefaultFullHttpResponse(
             HttpVersion.HTTP_1_1,
             HttpResponseStatus.valueOf(status),
-            Unpooled.wrappedBuffer(body.toByteArrayUnsafe(), 0, body.size())
+            takeBufferedBody()
         );
-        headers.forEach((name, values) -> response.headers().add(name, values));
+        copyHeadersTo(response);
         if (!response.headers().contains(HttpHeaderNames.CONTENT_LENGTH)) {
-            response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH, body.size());
+            response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH, length);
         }
         return response;
+    }
+
+    /**
+     * Ends the response: one buffered write if nothing has left yet, otherwise the remainder of the
+     * body and the terminator that marks the exchange answered.
+     */
+    public void complete() throws IOException {
+        flushCharacterWriter();
+        if (!headWritten) {
+            markHeadWritten();
+            responseWriter.write(toFullHttpResponse());
+            return;
+        }
+        // Remainder and terminator as one part: they encode to the same bytes as two, and cost the
+        // connection one write rather than two at the end of every streamed response.
+        responseWriter.write(new DefaultLastHttpContent(takeBufferedBody()));
+    }
+
+    private void flushIfBufferFull() throws IOException {
+        if (body.size() >= bufferSize) {
+            flushToWire();
+        }
+    }
+
+    /** Sends the head if it has not gone yet, then hands over whatever the buffer holds. */
+    private void flushToWire() throws IOException {
+        if (!headWritten) {
+            writeHead();
+        }
+        if (body.size() > 0) {
+            responseWriter.write(new DefaultHttpContent(takeBufferedBody()));
+        }
+    }
+
+    /**
+     * Hands the buffered bytes over and empties the buffer.
+     *
+     * <p>Wraps the buffer's own array rather than copying it, which is safe only because
+     * {@link FastByteArrayOutputStream#reset()} allocates a fresh buffer instead of reusing that array.
+     */
+    private ByteBuf takeBufferedBody() {
+        ByteBuf taken = Unpooled.wrappedBuffer(body.toByteArrayUnsafe(), 0, body.size());
+        body.reset();
+        return taken;
+    }
+
+    /** Writes the status line and headers, leaving framing to the connection, which owns it. */
+    private void writeHead() throws IOException {
+        HttpResponse head = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(status));
+        copyHeadersTo(head);
+        markHeadWritten();
+        responseWriter.write(head);
+    }
+
+    /** The one place the buffered and streamed exits agree on how servlet headers reach the wire. */
+    private void copyHeadersTo(HttpResponse response) {
+        headers.forEach((name, values) -> response.headers().add(name, values));
+    }
+
+    private void markHeadWritten() {
+        headWritten = true;
+        committed = true;
+    }
+
+    /** The writer holds an encoder buffer of its own, and it has to reach the body before the body ships. */
+    private void flushCharacterWriter() {
+        if (writer != null) {
+            writer.flush();
+        }
+    }
+
+    private void requireHeadNotWritten() {
+        if (headWritten) {
+            throw new IllegalStateException("Response has already been committed");
+        }
     }
 }

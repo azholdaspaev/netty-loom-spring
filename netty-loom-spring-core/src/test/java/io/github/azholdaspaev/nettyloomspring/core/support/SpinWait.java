@@ -2,6 +2,7 @@ package io.github.azholdaspaev.nettyloomspring.core.support;
 
 import java.time.Duration;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -15,6 +16,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public final class SpinWait {
 
     private SpinWait() {
+    }
+
+    /**
+     * Spins until {@code thread} is parked in a timed wait. Takes a supplier because the thread is
+     * submitted from the event loop, so a caller often has none yet.
+     */
+    public static void untilParked(Supplier<Thread> thread, Duration limit, String message) {
+        until(() -> {
+            Thread parked = thread.get();
+            return parked != null && parked.getState() == Thread.State.TIMED_WAITING;
+        }, limit, message);
     }
 
     /**
