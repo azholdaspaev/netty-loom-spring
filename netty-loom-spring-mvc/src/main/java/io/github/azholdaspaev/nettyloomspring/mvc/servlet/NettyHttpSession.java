@@ -326,14 +326,21 @@ public class NettyHttpSession implements HttpSession {
 
     /**
      * Unbinding happens during teardown -- invalidation, timeout, a sweep -- where no caller is in a
-     * position to handle a failure, so one bad listener must not strand the remaining values or kill
-     * the sweeper thread.
+     * position to handle a failure, so one bad listener must not strand the remaining values or kill the
+     * sweeper thread. It also runs inside {@link #setAttribute}'s {@code finally}, where completing
+     * abruptly would discard the {@code valueBound} failure that method exists to propagate.
+     *
+     * <p>{@code Throwable} rather than {@code RuntimeException}, because a value touching a lazily-loaded
+     * release helper raises {@code NoClassDefFoundError} and that is enough to do any of the above --
+     * paired with {@link NettyListenerRegistry#rethrowIfFatal} for the line that draws.
      */
     private void notifyUnbound(HttpSessionBindingListener listener, String name, Object value) {
         try {
             listener.valueUnbound(new HttpSessionBindingEvent(this, name, value));
-        } catch (RuntimeException e) {
-            log.warn("HttpSessionBindingListener for session attribute '{}' failed on valueUnbound", name, e);
+        } catch (Throwable failure) {
+            NettyListenerRegistry.rethrowIfFatal(failure);
+            log.warn("HttpSessionBindingListener for session attribute '{}' failed on valueUnbound",
+                name, failure);
         }
     }
 }

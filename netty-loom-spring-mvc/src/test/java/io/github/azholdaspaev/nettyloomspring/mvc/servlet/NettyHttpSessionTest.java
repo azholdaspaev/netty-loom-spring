@@ -258,6 +258,44 @@ class NettyHttpSessionTest {
     }
 
     @Test
+    void aLinkageErrorFromValueUnboundDoesNotAbortTheUnbindingOfOtherAttributes() {
+        // The other shape the same listener fails in, and the one a value touching a lazily-loaded
+        // release helper actually raises. It has to be swallowed for the same reason as the exception
+        // above: the values ordered after it in the teardown are otherwise left bound, with the
+        // @PreDestroy of every @SessionScope bean among them unrun.
+        NettyHttpSession session = manager.create();
+        RecordingValue survivor = new RecordingValue();
+        session.setAttribute("bad", new HttpSessionBindingListener() {
+            @Override
+            public void valueUnbound(HttpSessionBindingEvent event) {
+                throw new NoClassDefFoundError("com/example/Missing");
+            }
+        });
+        session.setAttribute("good", survivor);
+
+        assertDoesNotThrow(session::invalidate);
+
+        assertEquals(List.of("bound:good", "unbound:good"), survivor.events(),
+            "One misbehaving listener must not stop the sweeper or strand the remaining values");
+    }
+
+    @Test
+    void aVirtualMachineErrorFromValueUnboundIsNotSwallowed() {
+        // The line between the two shapes, as NettyListenerRegistry draws it: swallowing an
+        // OutOfMemoryError would keep tearing sessions down on a JVM that has already failed, and
+        // log.warn allocates, so continuing past one would usually fail there anyway.
+        NettyHttpSession session = manager.create();
+        session.setAttribute("bad", new HttpSessionBindingListener() {
+            @Override
+            public void valueUnbound(HttpSessionBindingEvent event) {
+                throw new OutOfMemoryError("Java heap space");
+            }
+        });
+
+        assertThrows(OutOfMemoryError.class, session::invalidate);
+    }
+
+    @Test
     void aThrowingValueBoundStillReleasesTheValueItDisplaced() {
         // valueBound runs after the publish -- it has to, since only the publish knows what it displaced
         // -- so by the time it fails the previous value is already out of the map and nothing else can
@@ -278,6 +316,32 @@ class NettyHttpSessionTest {
         assertSame(failing, session.getAttribute("cart"),
             "the value is published before valueBound runs, so its failure cannot veto the binding the "
                 + "way Tomcat's does");
+    }
+
+    @Test
+    void anErrorFromTheDisplacedValueDoesNotReplaceTheFailedBind() {
+        // The bind failure is the one the caller needs to see -- propagating it is the whole reason
+        // valueBound is not routed through the quiet path. The release it owes runs in a finally, and a
+        // finally completing abruptly discards whatever the try was throwing (JLS 14.20.2), with nothing
+        // attached as suppressed: addSuppressed is try-with-resources only.
+        NettyHttpSession session = manager.create();
+        session.setAttribute("cart", new HttpSessionBindingListener() {
+            @Override
+            public void valueUnbound(HttpSessionBindingEvent event) {
+                throw new NoClassDefFoundError("com/example/Missing");
+            }
+        });
+
+        IllegalStateException thrown = assertThrows(IllegalStateException.class,
+            () -> session.setAttribute("cart", new HttpSessionBindingListener() {
+                @Override
+                public void valueBound(HttpSessionBindingEvent event) {
+                    throw new IllegalStateException("inventory locked");
+                }
+            }));
+
+        assertEquals("inventory locked", thrown.getMessage(),
+            "the release of the displaced value must not mask the bind that failed");
     }
 
     // --- Invalidation ---
