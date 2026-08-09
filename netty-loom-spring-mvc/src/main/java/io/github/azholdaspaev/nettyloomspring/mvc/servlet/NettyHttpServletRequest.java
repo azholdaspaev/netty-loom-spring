@@ -283,13 +283,11 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     public String getRequestedSessionId() {
         if (!requestedSessionIdResolved) {
             requestedSessionIdResolved = true;
-            // The latch is not only an allocation saving: since issue #91 readSessionId picks among
-            // duplicate cookies by liveness, so re-resolving mid-dispatch could name a different id once
-            // the winner is invalidated. Pinning it keeps the request's identity fixed for the dispatch.
-            // DispatcherServlet resolves the flash map on every request, which calls getSession(false)
-            // and so lands here even for stateless endpoints. Netty's headers().getAll(name) allocates
-            // a list whether or not the header exists; contains() does not, so a request with no
-            // cookies costs one hash lookup and no garbage.
+            // Latched: readSessionId picks among duplicate cookies by liveness (issue #91), so
+            // re-resolving mid-dispatch could name a different id once the winner is invalidated.
+            // contains() rather than headers().getAll(name), which allocates a list whether or not the
+            // header exists -- and DispatcherServlet resolves the flash map on every request, so this
+            // runs even for stateless endpoints.
             if (nettyRequest.headers().contains(HttpHeaderNames.COOKIE)) {
                 // The shared cookie parse, not a second one: re-deriving ServerCookieDecoder.STRICT's
                 // quoting and legacy-attribute handling would only drift from it.
@@ -323,10 +321,8 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     }
 
     /**
-     * Whether the request URI falls within this server's context path — it equals the context path or
-     * begins with {@code "{contextPath}/"}. Always {@code true} for the root context ({@code ""}). This
-     * is the single owner of the in-context boundary fact: the dispatcher calls it to 404 out-of-context
-     * URIs, and {@link #getServletPath()} relies on it to strip the prefix safely.
+     * Whether the request URI falls within this server's context path -- it equals the context path or
+     * begins with {@code "{contextPath}/"}. Always {@code true} for the root context ({@code ""}).
      */
     public boolean isWithinContext() {
         String contextPath = servletContext.getContextPath();
@@ -342,8 +338,6 @@ public class NettyHttpServletRequest implements HttpServletRequest {
             // stripping the prefix, which would throw when requestURI is shorter than the context path.
             return "";
         }
-        // In-context remainder of the request URI: "" when the request targets the context root,
-        // and identical to the full request URI when no context path is set.
         return requestURI.substring(servletContext.getContextPath().length());
     }
 

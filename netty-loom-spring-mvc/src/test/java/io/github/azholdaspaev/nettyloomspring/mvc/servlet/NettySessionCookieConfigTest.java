@@ -12,11 +12,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Configuration of the session cookie (issue #13).
- *
- * <p>Everything is held in one attribute map keyed by the canonical cookie-attribute names, exactly as
- * {@code jakarta.servlet.http.Cookie} itself does since Servlet 6.0 ({@code setPath} is
- * {@code putAttribute("Path", ...)}). That keeps the typed accessors and {@code getAttribute} from
- * drifting apart, and lets the emit path hand the whole map to a {@code Cookie} in one call.
  */
 class NettySessionCookieConfigTest {
 
@@ -72,8 +67,6 @@ class NettySessionCookieConfigTest {
 
     @Test
     void flagsAreStoredAsPresenceWithAnEmptyValue() {
-        // The encoding jakarta.servlet.http.Cookie uses. Storing the text "false" instead would read
-        // back as *set* to anything following that model -- which is what the emit path does.
         config.setHttpOnly(false);
         config.setSecure(true);
 
@@ -116,8 +109,6 @@ class NettySessionCookieConfigTest {
 
     @Test
     void getAttributesIsCaseInsensitiveLikeTheBackingMap() {
-        // Map.copyOf would key the snapshot by plain equals and drop the comparator, so one class would
-        // answer the same question two ways -- getAttribute("path") finds it, getAttributes() does not.
         config.setPath("/app");
 
         assertEquals("/app", config.getAttributes().get("path"));
@@ -126,8 +117,6 @@ class NettySessionCookieConfigTest {
 
     @Test
     void anAttributeNameWithReservedCharactersIsRejected() {
-        // jakarta Cookie would reject it later anyway, but on the first session-creating request as a
-        // 500 pointing nowhere near the configuration.
         assertThrows(IllegalArgumentException.class, () -> config.setAttribute("Max Age", "600"));
         assertThrows(IllegalArgumentException.class, () -> config.setAttribute("a;b", "c"));
         assertThrows(IllegalArgumentException.class, () -> config.setAttribute("a=b", "c"));
@@ -155,9 +144,6 @@ class NettySessionCookieConfigTest {
 
     @Test
     void setCommentIsIgnoredRatherThanRejected() {
-        // Servlet 6.0 specifies setComment as "If called, this method has no effect" and deprecates it
-        // for removal. Throwing would abort context refresh for a legacy initializer that calls it
-        // defensively, where Tomcat and Jetty start fine.
         assertDoesNotThrow(() -> config.setComment("anything"));
         assertNull(config.getComment());
     }
@@ -166,9 +152,6 @@ class NettySessionCookieConfigTest {
 
     @Test
     void aBooleanAttributeGivenAsTextIsNormalisedToTheFlagEncoding() {
-        // Boot maps server.servlet.session.cookie.partitioned through Object::toString, so a configured
-        // `false` arrives as text. Stored verbatim it would be *present*, and so emit the very flag it
-        // was meant to suppress.
         config.setAttribute("Partitioned", "false");
         assertNull(config.getAttribute("Partitioned"), "a false flag must be absent, not the text \"false\"");
 
@@ -181,7 +164,6 @@ class NettySessionCookieConfigTest {
 
     @Test
     void anUnparseableMaxAgeIsRejectedWhereItIsConfigured() {
-        // Rather than at the first session-creating request, as a 500 pointing nowhere near the cause.
         assertThrows(NumberFormatException.class, () -> config.setAttribute("Max-Age", "forever"));
     }
 
@@ -195,8 +177,6 @@ class NettySessionCookieConfigTest {
     void theConfigurationIsFrozenOnceTheContextIsInitialized() {
         config.markInitialized();
 
-        // The cookie name is read live on every request, so a runtime rename would orphan every
-        // logged-in user's session. The spec declares IllegalStateException on every setter for this.
         assertThrows(IllegalStateException.class, () -> config.setName("SID"));
         assertThrows(IllegalStateException.class, () -> config.setPath("/other"));
         assertThrows(IllegalStateException.class, () -> config.setHttpOnly(false));

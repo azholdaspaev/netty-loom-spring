@@ -25,40 +25,20 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
 /**
- * The container-registered servlet listeners, and the one place that decides how each event is
- * delivered (issue #17).
- *
- * <p>One bucket per interface rather than a single list filtered per event: every {@code fire} below is
- * on a startup path or a per-request hot path, and a single list would mean an {@code instanceof} scan
- * over every listener the application registered on each of them.
- *
- * <p>{@code CopyOnWriteArrayList} rather than the {@code volatile}-snapshot idiom
- * {@link DefaultNettyServletContext} uses for filters. Registration is startup-only -- {@link
- * #markInitialized()} enforces that -- but the reads are per-request, and copy-on-write names its own
- * guard with no snapshot to invalidate and no chance of publishing a half-built list.
- *
- * <p>The seven types below are the complete set {@code ServletContext.addListener} accepts.
- * {@code HttpSessionActivationListener} is registered by being bound as a session attribute and
- * {@code AsyncListener} through {@code AsyncContext.addListener}, so neither belongs here in any
- * container -- rejecting them is the spec's plain wrong-type rejection, not a consequence of anything
- * this container has yet to build.
+ * The container-registered servlet listeners, and where each event's delivery is decided (issue #17).
+ * One bucket per interface rather than a single list filtered per event: every {@code fire} below is on
+ * a startup or per-request path, where one list would mean an {@code instanceof} scan over every
+ * registered listener. {@code CopyOnWriteArrayList} rather than the {@code volatile}-snapshot idiom
+ * {@link DefaultNettyServletContext} uses for filters -- registration is startup-only, the reads are
+ * per-request, and copy-on-write has no snapshot to invalidate and cannot publish a half-built list.
  */
 public class NettyListenerRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(NettyListenerRegistry.class);
 
     /**
-     * The interfaces {@link #addListener} accepts.
-     *
-     * <p>Two things read it: the rejection message, and {@link #requireSupportedType(Class)}, which is
-     * the only way to answer the question for a {@code Class} that has not been instantiated yet. The
-     * <em>filing</em> below does not -- it tests each interface directly, so the compiler still checks
-     * that every accepted type has a bucket of the matching element type, which a reflective dispatch
-     * over this list would give up.
-     *
-     * <p>So a new listener interface has to be added in both places. Adding it to the buckets and not
-     * here makes {@code createListener} refuse a type {@code addListener(EventListener)} accepts; adding
-     * it here and not to the buckets accepts a listener nothing will ever fire.
+     * The interfaces {@link #addListener} accepts. The filing below tests each interface directly rather
+     * than reflecting over this list, so a new type has to be added in both places.
      */
     private static final List<Class<? extends EventListener>> SUPPORTED_TYPES = List.of(
         ServletContextListener.class, ServletContextAttributeListener.class,
@@ -78,16 +58,8 @@ public class NettyListenerRegistry {
     private volatile boolean initialized;
 
     /**
-     * Closes {@code ServletContextListener} registration, earlier than {@link #initialized} closes the
-     * rest.
-     *
-     * <p>The other six types stay registrable through filter and servlet init -- which is why
-     * {@code markInitialized} is deliberately late -- but this one has already had its event by then, so
-     * a listener accepted afterwards would never receive {@code contextInitialized} and would still
-     * receive {@code contextDestroyed} at shutdown. The spec puts that clause on all three
-     * {@code addListener} overloads, and Tomcat clears {@code newServletContextListenerAllowed} just
-     * before {@code listenerStart} fires -- which is why this is set before the pass rather than after,
-     * so a listener registering another from inside its own {@code contextInitialized} is refused too.
+     * Closes {@code ServletContextListener} registration before {@link #initialized} closes the rest, and
+     * set before the pass, as Tomcat clears {@code newServletContextListenerAllowed} before it.
      */
     private volatile boolean contextListenersStarted;
 
@@ -105,7 +77,6 @@ public class NettyListenerRegistry {
      */
     public void addListener(EventListener listener) {
         requireNotInitialized();
-        // See contextListenersStarted for why this one type closes earlier than the rest.
         if (contextListenersStarted && listener instanceof ServletContextListener) {
             throw new IllegalArgumentException("A ServletContextListener cannot be registered once "
                 + "contextInitialized has been fired; " + listener.getClass().getName()
@@ -125,12 +96,9 @@ public class NettyListenerRegistry {
     }
 
     /**
-     * Rejects a type implementing none of the interfaces {@link #addListener} accepts.
-     *
-     * <p>Package-private so {@code createListener} can apply the spec's identical clause without
-     * restating the list. Check and throw together, matching {@link #requireNotInitialized()}: a caller
-     * handed a bare predicate and a separate message builder has to pair them correctly, and one that
-     * forgets the throw still compiles.
+     * Rejects a type implementing none of the interfaces {@link #addListener} accepts. Package-private so
+     * {@code createListener} can apply the spec's identical clause without restating the list; check and
+     * throw together rather than a bare predicate, which a caller that forgets to act on still compiles.
      */
     void requireSupportedType(Class<?> type) {
         if (SUPPORTED_TYPES.stream().noneMatch(supported -> supported.isAssignableFrom(type))) {
@@ -144,11 +112,8 @@ public class NettyListenerRegistry {
     }
 
     /**
-     * Adds {@code listener} to {@code bucket} if it implements {@code type}, reporting whether it did.
-     *
-     * <p>{@code Class<T>} and {@code List<T>} share one type variable, so passing a bucket that does not
-     * match its interface does not compile -- the same protection an {@code instanceof} chain gives,
-     * without the seven near-identical blocks.
+     * {@code Class<T>} and {@code List<T>} share one type variable, so passing a bucket that does not
+     * match its interface does not compile, as an {@code instanceof} chain would also have caught.
      */
     private <T extends EventListener> boolean fileUnder(EventListener listener, Class<T> type, List<T> bucket) {
         if (!type.isInstance(listener)) {
@@ -179,15 +144,13 @@ public class NettyListenerRegistry {
     void fireContextInitialized() {
         contextListenersStarted = true;
         ServletContextEvent event = new ServletContextEvent(servletContext);
-        // Every listener is initialized, and only then is the first failure rethrown, so a listener that
-        // cannot initialize still aborts startup. Aborting the loop instead would be asymmetric with the
-        // destroy pass, which walks the whole list: the startup backstop calls close() once getWebServer
-        // fails, so a listener that never received contextInitialized would receive contextDestroyed and
-        // tear down state it never built. Tomcat's listenerStart() records failure per listener for the
-        // same reason. Caught as Throwable because contextInitialized is where applications touch static
-        // initializers and lazily-loaded classes, so ExceptionInInitializerError and NoClassDefFoundError
-        // are the realistic failures. The exception leaves getWebServer uncaught and Boot reports it as
-        // an ApplicationContextException.
+        // Every listener is initialized, and only then is the first failure rethrown. Aborting the loop
+        // instead would be asymmetric with the destroy pass, which walks the whole list: the startup
+        // backstop calls close() once getWebServer fails, so a listener that never received
+        // contextInitialized would receive contextDestroyed and tear down state it never built. Tomcat's
+        // listenerStart() records failure per listener for the same reason. Caught as Throwable because
+        // contextInitialized is where applications touch static initializers and lazily-loaded classes,
+        // so ExceptionInInitializerError and NoClassDefFoundError are the realistic failures.
         Throwable failure = null;
         for (ServletContextListener listener : contextListeners) {
             try {
@@ -250,31 +213,25 @@ public class NettyListenerRegistry {
 
     // --- ServletRequestListener ---
     //
-    // Everything below is per-request, and the five methods here are the only ones that are: a bare
-    // dispatch fires two request events plus ~16 attribute events, because DispatcherServlet publishes
-    // its own context, locale resolver and matched handler as request attributes. Each therefore opens
-    // with an isEmpty() check -- one volatile array read on a CopyOnWriteArrayList, no lock -- so an
-    // application that registers no request listener allocates no event and no lambda at all. The
+    // Everything below is per-request, so each fire opens with an isEmpty() check -- one volatile array
+    // read on a CopyOnWriteArrayList, no lock -- and an application registering no request listener
+    // allocates no event and no lambda at all. DispatcherServlet publishes its own context, locale
+    // resolver and matched handler as request attributes, so even a bare dispatch reaches these. The
     // context and session events are startup- or per-session-scoped and need no such guard.
 
     /**
      * Notifies every request listener, or none: a failure releases the prefix that did initialize before
-     * it propagates.
-     *
-     * <p>The unwind is what makes {@code requestDestroyed} a release rather than a notification. The
-     * dispatcher fires this outside its {@code try}, so a failure here never reaches the {@code finally}
-     * -- without the unwind, a listener that ran before the failing one would keep whatever it acquired.
-     * {@code RequestContextListener} is the case that bites: its {@code requestInitialized} binds
-     * {@code ServletRequestAttributes}, and only its {@code requestDestroyed} runs the destruction
-     * callbacks of the {@code @RequestScope} beans that dispatch created.
+     * it propagates. The dispatcher fires this outside its {@code try}, so a failure here never reaches
+     * the {@code finally} -- and {@code RequestContextListener.requestDestroyed} is what runs the
+     * destruction callbacks of the {@code @RequestScope} beans its {@code requestInitialized} bound.
      */
     public void fireRequestInitialized(ServletRequest request) {
         if (requestListeners.isEmpty()) {
             return;
         }
         ServletRequestEvent event = new ServletRequestEvent(servletContext, request);
-        // Indexed so the unwind knows exactly how far it got; on failure `notified` is the failing index,
-        // so the listeners below it are the ones owed a release.
+        // On failure `notified` is the failing index, so the listeners below it are the ones owed a
+        // release.
         int notified = 0;
         try {
             for (; notified < requestListeners.size(); notified++) {
@@ -341,8 +298,7 @@ public class NettyListenerRegistry {
         // Quietly, not propagating: by the time this runs the session is already published in the store,
         // and an exception leaving here would abandon an entry that is still valid and whose id the
         // client never received -- nothing would invalidate or unbind it for the whole idle timeout.
-        // A container-registered listener is also a bystander by this class's own test, unlike
-        // valueBound, which belongs to the value being stored. Tomcat's tellNew() catches per listener.
+        // Tomcat's tellNew() catches per listener.
         fireQuietly(sessionListeners, "HttpSessionListener.sessionCreated",
             listener -> listener.sessionCreated(event));
     }
@@ -357,9 +313,8 @@ public class NettyListenerRegistry {
         HttpSessionEvent event = new HttpSessionEvent(session);
         // Quietly: the rotation has already committed and the caller has yet to write the Set-Cookie, so
         // an exception leaving here strands the client on an id the store no longer knows -- a silent
-        // logout that repeats for as long as the listener keeps failing. The listener is told about an
-        // irreversible change it cannot refuse, which is this class's definition of a bystander.
-        // Tomcat's StandardSession.tellChangedSessionId wraps each listener for the same reason.
+        // logout that repeats for as long as the listener keeps failing. Tomcat's
+        // StandardSession.tellChangedSessionId wraps each listener for the same reason.
         fireQuietly(sessionIdListeners, "HttpSessionIdListener.sessionIdChanged",
             listener -> listener.sessionIdChanged(event, oldSessionId));
     }
@@ -387,27 +342,8 @@ public class NettyListenerRegistry {
     // --- Dispatch ---
 
     /**
-     * Runs every listener, logging and continuing when one fails.
-     *
-     * <p>This is the default. An event is fired quietly whenever the listener is a <em>bystander</em>:
-     * told about a change that has already committed, that it cannot refuse, and that no caller is in a
-     * position to undo. That is twelve of the fourteen events -- the three teardown passes
-     * ({@code contextDestroyed}, {@code requestDestroyed}, {@code sessionDestroyed}), the id rotation,
-     * the session creation, and all nine attribute events.
-     *
-     * <p>The other two propagate, and both are reached before anything has committed:
-     * {@code contextInitialized}, where the application must not start half-configured, and
-     * {@code requestInitialized}, where the servlet must not run without its request scope. Each is
-     * written as its own loop rather than a call to this method, and they release differently:
-     * {@code requestInitialized} unwinds the prefix it notified, because the dispatcher fires it outside
-     * its {@code try} and nothing else would; {@code contextInitialized} deliberately does not, because
-     * every listener must still be initialized and the startup backstop's {@code close()} then destroys
-     * them all together.
-     *
-     * <p>That split is not in tension with {@code setAttribute} letting {@code valueBound} propagate:
-     * {@code HttpSessionBindingListener} is the stored value's own resource protocol -- a failed bind
-     * leaves something half-acquired -- whereas a container-registered listener has nothing to unwind.
-     * Tomcat draws the same line.
+     * Runs every listener, logging and continuing: the default, for a listener merely told about a change
+     * it cannot refuse. The two initialization passes propagate instead, and write their own loop.
      */
     private static <T> void fireQuietly(List<T> listeners, String description, Consumer<T> callback) {
         for (T listener : listeners) {
@@ -416,15 +352,8 @@ public class NettyListenerRegistry {
     }
 
     /**
-     * As {@link #fireQuietly}, but back to front: the spec reverses every destroy notification, so a
-     * listener registered later -- and therefore potentially built on an earlier one -- tears down
-     * before what it depends on.
-     *
-     * <p>Indexed rather than {@code List.reversed()}. On a {@code CopyOnWriteArrayList} that method is
-     * not the free view it looks like: it returns a {@code Reversed} whose {@code DescendingIterator}
-     * synchronizes on the list's write lock, so the per-request destroy path would allocate three
-     * objects and touch a shared monitor. {@code size()} and {@code get(i)} are plain volatile array
-     * reads.
+     * As {@link #fireQuietly}, but back to front, since the spec reverses every destroy notification.
+     * Indexed rather than {@code List.reversed()}, whose {@code CopyOnWriteArrayList} iterator locks.
      */
     private static <T> void fireQuietlyReversed(List<T> listeners, String description, Consumer<T> callback) {
         for (int i = listeners.size() - 1; i >= 0; i--) {
@@ -446,17 +375,11 @@ public class NettyListenerRegistry {
     }
 
     /**
-     * Lets a {@code VirtualMachineError} out of a pass that otherwise logs and continues.
-     *
-     * <p>The pairing Tomcat applies at every {@code catch (Throwable)} via
-     * {@code ExceptionUtils.handleThrowable}, and what makes the wide catch safe: swallowing
-     * {@code NoClassDefFoundError} keeps a broken listener from stranding the ones after it, whereas
-     * swallowing {@code OutOfMemoryError} keeps the container serving on a JVM that has already failed.
-     * {@code log.warn} allocates, so continuing past one would usually fail there anyway -- silently,
-     * and on the path where determinism matters most.
-     *
-     * <p>Package-private so {@code NettyHttpSession.notifyUnbound} draws the same line rather than
-     * carrying a second definition of what counts as fatal.
+     * Lets a {@code VirtualMachineError} out of a pass that otherwise logs and continues -- the pairing
+     * Tomcat applies at every {@code catch (Throwable)} via {@code ExceptionUtils.handleThrowable}.
+     * Swallowing {@code NoClassDefFoundError} keeps a broken listener from stranding the ones after it;
+     * swallowing {@code OutOfMemoryError} would keep the container serving on a JVM that has failed, and
+     * {@code log.warn} allocates, so continuing past one would usually fail there anyway.
      */
     static void rethrowIfFatal(Throwable failure) {
         if (failure instanceof VirtualMachineError error) {

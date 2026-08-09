@@ -36,9 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * The request half of the servlet listener contract (issue #17): {@code ServletRequestListener} is what
  * Spring's {@code RequestContextListener} uses to bind {@code RequestContextHolder} and, on the way out,
- * to run the destruction callbacks of every {@code @RequestScope} bean the dispatch created. A missing
- * {@code requestDestroyed} therefore skips those {@code @PreDestroy} methods outright -- which the
- * request's virtual thread ending does nothing to clean up.
+ * to run the destruction callbacks of every {@code @RequestScope} bean the dispatch created.
  */
 class SpringHttpRequestDispatcherTest {
 
@@ -54,7 +52,9 @@ class SpringHttpRequestDispatcherTest {
         events = new ArrayList<>();
     }
 
-    /** A dispatcher whose terminal runs {@code onService} instead of Spring's {@code DispatcherServlet}. */
+    /**
+     * A dispatcher whose terminal runs {@code onService} instead of Spring's {@code DispatcherServlet}.
+     */
     private SpringHttpRequestDispatcher dispatcher(BiConsumer<HttpServletRequest, HttpServletResponse> onService) {
         return new SpringHttpRequestDispatcher(new DispatcherServlet() {
             @Override
@@ -172,13 +172,17 @@ class SpringHttpRequestDispatcherTest {
         assertTrue(events.isEmpty(), "the servlet must not run once request setup has failed");
     }
 
-    /** Delivers a checked or unchecked failure where the compiler expects none. */
+    /**
+     * Delivers a checked or unchecked failure where the compiler expects none.
+     */
     @SuppressWarnings("unchecked")
     private static <T extends Throwable> void sneakyThrow(Throwable failure) throws T {
         throw (T) failure;
     }
 
-    /** The ordinary failure, and the linkage error a listener touching a missing class actually raises. */
+    /**
+     * The ordinary failure, and the linkage error a listener touching a missing class actually raises.
+     */
     static Stream<Throwable> theTwoFailureShapes() {
         return Stream.of(new IllegalStateException("boom"), new NoClassDefFoundError("com/example/Missing"));
     }
@@ -291,8 +295,8 @@ class SpringHttpRequestDispatcherTest {
 
     @Test
     void anErrorFromAReleasedListenerDoesNotReplaceTheOriginalFailure() {
-        // The comment on the unwind calls `failure` "the one the caller needs to see". An Error escaping
-        // the release loop would replace it and skip the listeners below it.
+        // An Error escaping the release loop would replace the original failure -- the one the caller
+        // needs to see -- and skip the listeners below it.
         servletContext.addListener(new ServletRequestListener() {
             @Override
             public void requestDestroyed(ServletRequestEvent event) {

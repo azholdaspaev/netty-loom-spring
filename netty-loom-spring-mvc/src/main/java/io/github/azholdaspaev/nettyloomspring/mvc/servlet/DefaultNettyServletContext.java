@@ -35,7 +35,7 @@ public class DefaultNettyServletContext implements NettyServletContext {
     private static final Logger log = LoggerFactory.getLogger(DefaultNettyServletContext.class);
 
     // ServletContext expresses the session timeout in minutes while HttpSession and the manager use
-    // seconds, so the two session-timeout methods below convert. This names that factor.
+    // seconds, so the session-timeout methods below convert.
     private static final int SECONDS_PER_MINUTE = 60;
 
     // Constructed here rather than injected: both need a ServletContext -- the manager for
@@ -61,10 +61,8 @@ public class DefaultNettyServletContext implements NettyServletContext {
     private final AtomicReference<ListenerState> listenerState = new AtomicReference<>(ListenerState.NEW);
 
     /**
-     * Where the listener lifecycle stands. {@code NEW} until {@code contextInitialized} has fired,
-     * {@code STARTED} between the two events, {@code STOPPED} once {@code contextDestroyed} has -- and
-     * only {@code STOPPED} is a state {@link #open()} re-initializes from, so a first start (which the
-     * factory has already initialized) is left alone.
+     * Only {@code STOPPED} is a state {@link #open()} re-initializes from, so a first start -- which the
+     * factory has already initialized -- is left alone.
      */
     private enum ListenerState { NEW, STARTED, STOPPED }
 
@@ -237,9 +235,6 @@ public class DefaultNettyServletContext implements NettyServletContext {
         try {
             return clazz.getDeclaredConstructor().newInstance();
         } catch (ReflectiveOperationException e) {
-            // Covers every way this fails: no no-arg constructor (NoSuchMethodException), abstract or an
-            // interface (InstantiationException), inaccessible (IllegalAccessException), and a
-            // constructor that throws (InvocationTargetException).
             throw new ServletException("Failed to instantiate listener " + clazz.getName(), e);
         }
     }
@@ -322,8 +317,7 @@ public class DefaultNettyServletContext implements NettyServletContext {
 
     /**
      * {@inheritDoc}
-     *
-     * <p>Rounds up rather than truncating: the manager stores seconds, so a 30-second timeout would
+     * Rounds up rather than truncating: the manager stores seconds, so a 30-second timeout would
      * otherwise report as 0 minutes -- which in this API means "never expires".
      */
     @Override
@@ -333,9 +327,8 @@ public class DefaultNettyServletContext implements NettyServletContext {
 
     @Override
     public void setSessionTimeout(int sessionTimeout) {
-        // Widened before the multiply and clamped, for the same reason the Duration overload on the
-        // manager is: the wrap lands on a plausible-looking value rather than an obviously wrong one.
-        // The manager's setter enforces the shared post-initialization freeze.
+        // Widened before the multiply and clamped rather than left to int arithmetic: the wrap lands on a
+        // plausible-looking value rather than an obviously wrong one.
         sessionManager.setDefaultMaxInactiveInterval(
             Math.clamp((long) sessionTimeout * SECONDS_PER_MINUTE, Integer.MIN_VALUE, Integer.MAX_VALUE));
     }
@@ -552,8 +545,7 @@ public class DefaultNettyServletContext implements NettyServletContext {
         }
 
         RegisteredFilter toRegisteredFilter() {
-            // EnumSet.copyOf(EnumSet) handles the empty case; an unmapped filter has no URL
-            // patterns either, so it never matches regardless of dispatcher types.
+            // EnumSet.copyOf(EnumSet) handles the empty case, unlike the Collection overload.
             return new RegisteredFilter(getName(), filter, new LinkedHashSet<>(urlPatterns),
                 EnumSet.copyOf(dispatcherTypes));
         }

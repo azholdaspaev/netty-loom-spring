@@ -10,31 +10,38 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 /**
- * Configuration of the {@code JSESSIONID} cookie (issue #13).
- *
- * <p>Every attribute lives in one case-insensitive map keyed by its cookie-attribute name, with the
- * typed accessors as views over it. That is exactly how {@code jakarta.servlet.http.Cookie} has
- * modelled itself since Servlet 6.0 -- {@code setPath} is {@code putAttribute("Path", ...)} over a
- * {@code TreeMap(String.CASE_INSENSITIVE_ORDER)}, and a boolean flag is <em>presence with an empty
- * value</em> rather than the text {@code "true"}. Matching that representation exactly is what lets the
- * emit path hand the whole map straight to a {@code Cookie} with nothing to fix up afterwards.
+ * Configuration of the {@code JSESSIONID} cookie (issue #13). Every attribute lives in one
+ * case-insensitive map keyed by its cookie-attribute name, with the typed accessors as views over it --
+ * how {@code jakarta.servlet.http.Cookie} has modelled itself since Servlet 6.0, where {@code setPath} is
+ * {@code putAttribute("Path", ...)} over a {@code TreeMap(String.CASE_INSENSITIVE_ORDER)} and a boolean
+ * flag is presence with an empty value rather than the text {@code "true"}. Matching that exactly lets
+ * the emit path hand the whole map straight to a {@code Cookie}.
  */
 public class NettySessionCookieConfig implements SessionCookieConfig {
 
-    /** The servlet-conventional default; public so tests on both sides of the module boundary
-     *  can assert against the one owner rather than restating the literal. */
+    /**
+     * The servlet-conventional default; public so tests assert against it rather than the literal.
+     */
     public static final String DEFAULT_NAME = "JSESSIONID";
 
-    /** -1 marks a browser-session cookie: {@code addCookie} then omits {@code Max-Age} entirely. */
+    /**
+     * -1 marks a browser-session cookie: {@code addCookie} then omits {@code Max-Age} entirely.
+     */
     private static final int SESSION_COOKIE_MAX_AGE = -1;
 
-    /** RFC 6265 separators; {@code jakarta.servlet.http.Cookie} rejects the same set. */
+    /**
+     * RFC 6265 separators; {@code jakarta.servlet.http.Cookie} rejects the same set.
+     */
     private static final String RESERVED_NAME_CHARACTERS = ",; \t()<>@:\"/[]?={}";
 
-    /** How {@code Cookie} encodes a set flag; absent means unset. */
+    /**
+     * How {@code Cookie} encodes a set flag; absent means unset.
+     */
     private static final String FLAG_SET = "";
 
-    /** The attributes whose presence, not value, carries the meaning. */
+    /**
+     * The attributes whose presence, not value, carries the meaning.
+     */
     private static final String[] FLAG_ATTRIBUTES = {
         CookieHeaderNames.SECURE, CookieHeaderNames.HTTPONLY, CookieHeaderNames.PARTITIONED};
 
@@ -93,9 +100,7 @@ public class NettySessionCookieConfig implements SessionCookieConfig {
 
     /**
      * {@inheritDoc}
-     *
-     * <p>Always {@code null}: {@link #setComment} is specified to have no effect, so there is never a
-     * comment to report. RFC 6265 dropped the attribute and Netty's encoder has no field for it.
+     * Always {@code null}: RFC 6265 dropped the attribute and Netty's encoder has no field for it.
      */
     @Override
     public String getComment() {
@@ -143,10 +148,9 @@ public class NettySessionCookieConfig implements SessionCookieConfig {
         }
         if (isFlag(name)) {
             // Boolean attributes are presence-encoded, but callers hand them over as text: Boot maps
-            // server.servlet.session.cookie.partitioned through Object::toString, so a configured
-            // `false` arrives here as the string "false" and, stored verbatim, would emit the flag it
-            // was meant to suppress. Normalising in the one owner keeps the invariant the class
-            // documents from depending on every caller knowing it.
+            // server.servlet.session.cookie.partitioned through Object::toString, so a configured `false`
+            // arrives here as the string "false" and, stored verbatim, would emit the flag it was meant
+            // to suppress.
             setFlag(name, !Boolean.toString(false).equalsIgnoreCase(value));
             return;
         }
@@ -165,11 +169,9 @@ public class NettySessionCookieConfig implements SessionCookieConfig {
 
     /**
      * {@inheritDoc}
-     *
-     * <p>The returned map is case-insensitive, as the contract requires. {@code Map.copyOf} would key
-     * the copy by plain {@code equals} and silently drop the comparator the backing map carries, so
-     * {@code getAttribute("path")} and {@code getAttributes().get("path")} would disagree -- and mixed
-     * casing really is present here, since this class writes Netty's spellings while Boot writes its own.
+     * Case-insensitive, as the contract requires. {@code Map.copyOf} would key the copy by plain
+     * {@code equals} and silently drop the comparator, so {@code getAttribute("path")} and
+     * {@code getAttributes().get("path")} would disagree.
      */
     @Override
     public Map<String, String> getAttributes() {
@@ -195,9 +197,8 @@ public class NettySessionCookieConfig implements SessionCookieConfig {
     }
 
     /**
-     * Rejects a name {@code jakarta.servlet.http.Cookie} would reject later anyway -- but here, where
-     * the misconfiguration is, rather than as a 500 on the first session-creating request. Same reason
-     * the {@code Max-Age} value is parsed eagerly above.
+     * Rejects a name {@code jakarta.servlet.http.Cookie} would reject later anyway, but here where the
+     * misconfiguration is rather than as a 500 on the first session-creating request.
      */
     private static void requireValidAttributeName(String name) {
         if (name == null || name.isEmpty()) {

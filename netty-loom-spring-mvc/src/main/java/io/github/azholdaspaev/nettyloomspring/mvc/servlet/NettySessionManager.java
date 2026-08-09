@@ -21,14 +21,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
 
 /**
- * In-memory store for {@link NettyHttpSession}, owning id generation and expiry (issue #13).
- *
- * <p>Expiry is enforced <em>lazily on lookup</em>: {@link #find(String)} checks the deadline and evicts,
- * so an expired session can never be handed back regardless of when the sweeper last ran. The sweeper
- * exists purely to reclaim memory for sessions nothing ever looks up again -- without it, traffic that
- * creates a session per visitor grows the heap without bound.
- *
- * <p>Distributed storage is out of scope; Spring Session's {@code SessionRepositoryFilter} replaces
+ * In-memory store for {@link NettyHttpSession}, owning id generation and expiry (issue #13). Expiry is
+ * enforced lazily on lookup -- {@link #find(String)} checks the deadline and evicts -- so the sweeper
+ * exists only to reclaim sessions nothing looks up again, which would otherwise grow the heap without
+ * bound. Distributed storage is out of scope; Spring Session's {@code SessionRepositoryFilter} replaces
  * {@code getSession} on a request wrapper and composes over this store without touching it.
  */
 public class NettySessionManager {
@@ -37,14 +33,17 @@ public class NettySessionManager {
 
     private static final int DEFAULT_MAX_INACTIVE_INTERVAL_SECONDS = (int) TimeUnit.MINUTES.toSeconds(30);
     /**
-     * How often idle sessions are reclaimed. This is reclamation <em>resolution</em> only -- expiry
-     * itself is exact, because every lookup checks the deadline.
+     * Reclamation resolution only; expiry itself is exact, because every lookup checks the deadline.
      */
     private static final long SWEEP_INTERVAL_SECONDS = 60;
     private static final int SESSION_ID_BYTES = 16;
-    /** Bounds the shutdown drain; two passes suffice unless an entry is stranded, which is a bug. */
+    /**
+     * Bounds the shutdown drain; two passes suffice unless an entry is stranded, which is a bug.
+     */
     private static final int MAX_SHUTDOWN_DRAIN_PASSES = 8;
-    /** The session cookie path for the root context, whose context path is the {@code ""} sentinel. */
+    /**
+     * The session cookie path for the root context, whose context path is the {@code ""} sentinel.
+     */
     private static final String ROOT_COOKIE_PATH = "/";
 
     // One shared instance, deliberately: never getInstanceStrong() (it can block on /dev/random), and
@@ -63,7 +62,9 @@ public class NettySessionManager {
     private static final ThreadFactory SWEEPER_THREAD_FACTORY =
         Thread.ofPlatform().name("netty-loom-session-sweeper").daemon(true).factory();
 
-    /** The only tracking mode this container implements; URL rewriting is deliberately not supported. */
+    /**
+     * URL rewriting is deliberately not supported, so cookie tracking is all this container implements.
+     */
     private static final Set<SessionTrackingMode> SUPPORTED_TRACKING_MODES = Set.of(SessionTrackingMode.COOKIE);
 
     private final ConcurrentMap<String, NettyHttpSession> sessions = new ConcurrentHashMap<>();
@@ -96,7 +97,9 @@ public class NettySessionManager {
         return servletContext.getListenerRegistry();
     }
 
-    /** The default idle timeout in <em>seconds</em>; zero or less means sessions never expire. */
+    /**
+     * The default idle timeout in <em>seconds</em>; zero or less means sessions never expire.
+     */
     public int getDefaultMaxInactiveInterval() {
         return defaultMaxInactiveInterval;
     }
@@ -107,12 +110,9 @@ public class NettySessionManager {
     }
 
     /**
-     * Applies a configured timeout, owning the conversion so the "zero or less means never expires"
-     * rule lives with the field that implements it rather than being restated by each caller.
-     *
-     * <p>Clamped, not cast: {@code toSeconds()} on a multi-century {@code Duration} overflows an
-     * {@code int}, and the wrap lands on a plausible-looking small positive value -- a configured 274
-     * years would silently become 579 days.
+     * Applies a configured timeout, owning the "zero or less means never expires" conversion so no caller
+     * restates it. Clamped, not cast: {@code toSeconds()} on a multi-century {@code Duration} overflows an
+     * {@code int}, and the wrap lands on a plausible-looking small positive value.
      */
     public void setDefaultMaxInactiveInterval(Duration timeout) {
         if (timeout == null || timeout.isZero() || timeout.isNegative()) {
@@ -129,7 +129,7 @@ public class NettySessionManager {
     /**
      * Signals that the owning {@code ServletContext} has finished initializing, freezing the session
      * cookie configuration as the {@code SessionCookieConfig} setters' {@code IllegalStateException}
-     * clauses require. The container calls this once, after the startup initializers have run.
+     * clauses require.
      */
     public void markContextInitialized() {
         this.contextInitialized = true;
@@ -193,11 +193,10 @@ public class NettySessionManager {
         String id = newSessionId();
         NettyHttpSession session = new NettyHttpSession(id, this, now, defaultMaxInactiveInterval);
         sessions.put(id, session);
-        // Re-checked after the publish, for the same reason NettyHttpSession.setAttribute re-checks after
-        // its put: the guard above is not atomic with this line -- ensureSweeperStarted and newSessionId
-        // both take monitors in between -- so close() can run the whole drain while this thread is
-        // between them. A session published afterwards would sit in the store never invalidated and
-        // never unbound, which is precisely the @PreDestroy the stop-phase teardown exists to guarantee.
+        // Re-checked after the publish: the guard above is not atomic with this line -- ensureSweeperStarted
+        // and newSessionId both take monitors in between -- so close() can run the whole drain while this
+        // thread is between them, and a session published afterwards would sit in the store never
+        // invalidated and never unbound.
         if (closed) {
             sessions.remove(id, session);
             session.markInvalidated();
@@ -206,8 +205,6 @@ public class NettySessionManager {
         }
         // Only once the session is reachable and the refusal window has passed: a listener told about a
         // session that is about to be dropped would hold a reference no teardown will ever revisit.
-        // Fired quietly, so the entry this line has already published can never be abandoned by a
-        // listener that throws -- see fireSessionCreated.
         listeners().fireSessionCreated(session);
         return session;
     }
@@ -241,7 +238,9 @@ public class NettySessionManager {
         return null;
     }
 
-    /** Whether {@code id} names a live session, without touching its access time or freshness. */
+    /**
+     * Whether {@code id} names a live session, without touching its access time or freshness.
+     */
     boolean isValidId(String id) {
         if (id == null) {
             return false;
@@ -252,13 +251,10 @@ public class NettySessionManager {
 
     /**
      * Rotates the session's id, as {@code HttpServletRequest.changeSessionId()} requires for
-     * session-fixation protection (CWE-384, issue #52).
-     *
-     * <p>Serialised on the session's monitor, along with every other path that unbinds it. The store is
-     * keyed by an id the session itself carries, so two unserialised rotations would each bind a new id
-     * and then both try to release the same old one: the second release is a no-op, and the entry the
-     * first one bound is stranded under a key nothing can name again. Two tabs submitting one login form
-     * is enough to reach that, since Spring Security rotates on every authentication.
+     * session-fixation protection (CWE-384, issue #52). Serialised on the session's monitor along with
+     * every other path that unbinds it: the store is keyed by an id the session itself carries, so two
+     * unserialised rotations would each bind a new id and both release the same old one, stranding an
+     * entry under a key nothing can name again.
      */
     public String changeId(NettyHttpSession session) {
         String oldId;
@@ -274,8 +270,8 @@ public class NettySessionManager {
             session.setId(newId);
             sessions.remove(oldId, session);
         }
-        // Outside the monitor, for the reason evict() gives: application code must never execute under a
-        // container lock, and Spring Security rotates here on every authentication.
+        // Outside the monitor: application code must never execute under a container lock, and Spring
+        // Security rotates here on every authentication.
         listeners().fireSessionIdChanged(session, oldId);
         return newId;
     }
@@ -287,41 +283,14 @@ public class NettySessionManager {
     }
 
     /**
-     * The read half of session-cookie tracking: the id the client presented, or {@code null}. Paired
-     * with {@link #writeSessionCookie} so both directions read the same name and the same tracking-mode
-     * gate; splitting them across classes is how the two drift.
-     *
-     * <p>The client can legitimately present this name more than once. RFC 6265 &sect;5.4 sends one pair
-     * per <em>stored</em> cookie, and cookies whose Path or Domain differ at all are distinct -- so a
-     * {@code JSESSIONID} left behind by an earlier context path, an earlier
-     * {@code server.servlet.session.cookie.path}, or a host-only cookie shadowed by a later
-     * Domain-scoped one arrives alongside the current one, and usually <em>before</em> it, since
-     * &sect;5.4 orders longest-path-first. It is never overwritten either: every {@code Set-Cookie}
-     * written here carries the current Path, so it cannot replace a cookie stored under a different one.
-     * Taking the first match on faith therefore strands the user on a dead id for as long as the stale
-     * cookie lives, minting a fresh session per request (issue #91).
-     *
-     * <p>The name selects the candidates; liveness picks among them. Failing that the last candidate
-     * stands, so {@code getRequestedSessionId()} still reports what the client sent and
-     * {@code isRequestedSessionIdValid()} can call it expired -- the pair Spring Security's
-     * {@code SessionManagementFilter} keys on to tell an expired session from a request that carried
-     * none. Both halves of that selection rule match Tomcat's
-     * {@code CoyoteAdapter.parseSessionCookiesId}, which replaces its candidate for as long as
-     * {@code isRequestedSessionIdValid()} is false -- though only the rule matches, not the side
-     * effects: Tomcat's predicate reaches {@code StandardSession.isValid()}, which expires a
-     * past-deadline session as it scans, where {@link #isValidId} deliberately evicts nothing.
-     *
-     * <p>This is not strictly better, and the one row that regresses is worth knowing. When the
-     * client's own cookie leads but is dead, it used to self-heal: the id resolved to nothing, a
-     * {@code getSession(true)} minted a fresh session, and that {@code Set-Cookie} replaced the stale
-     * cookie because it carried the same name, domain and path. Now a live candidate behind it is
-     * adopted instead, and adopting an existing session writes no {@code Set-Cookie} at all, so the
-     * dead lead cookie is never displaced and the choice repeats on every request. That is harmless
-     * when the trailing cookie is the user's own, which is the case issue #91 is about; it is not
-     * when an attacker who can write a {@code Domain}-scoped cookie for a sibling host has planted a
-     * live session there, since the victim then shares it pre-authentication. Post-authentication
-     * fixation is still defeated -- Spring Security rotates via {@code changeSessionId()} -- and this
-     * is Tomcat's behaviour too, but the stale cookie is only inert while it names nothing live.
+     * The read half of session-cookie tracking: the id the client presented, or {@code null}. Paired with
+     * {@link #writeSessionCookie} so both directions read the same name and the same tracking-mode gate.
+     * The client can legitimately present that name more than once -- RFC 6265 &sect;5.4 sends one pair
+     * per stored cookie, cookies differing at all in Path or Domain are distinct, and &sect;5.4 orders
+     * longest-path-first, so a stale {@code JSESSIONID} usually arrives first. Liveness therefore picks
+     * among the candidates instead of the first match winning (issue #91); failing that the last one
+     * stands, so {@code getRequestedSessionId()} still reports what the client sent, as Tomcat's
+     * {@code CoyoteAdapter.parseSessionCookiesId} does.
      *
      * @param cookies the request's already-parsed cookies, in wire order, or {@code null} if it sent none
      */
@@ -333,8 +302,7 @@ public class NettySessionManager {
         String lastMatch = null;
         for (Cookie cookie : cookies) {
             // Case-sensitive, per RFC 6265 4.1.1: a name differing only in case is a different cookie,
-            // and anything sharing the host can set one. Folding case would let it supply the session
-            // id -- outright, now that being live wins the tie.
+            // and anything sharing the host can set one.
             if (!name.equals(cookie.getName())) {
                 continue;
             }
@@ -347,9 +315,8 @@ public class NettySessionManager {
     }
 
     /**
-     * Creates a session and hands the client its id, refusing if the id can no longer be delivered.
-     *
-     * <p>The check precedes the creation so a refusal leaves nothing in the store.
+     * Creates a session and hands the client its id. The check precedes the creation, so a refusal leaves
+     * nothing in the store.
      */
     NettyHttpSession createAndTrack(NettyHttpServletResponse response, boolean secureConnection) {
         requireSessionCookieWritable(response);
@@ -359,13 +326,8 @@ public class NettySessionManager {
     }
 
     /**
-     * The Servlet contract, verbatim: "If the container is using cookies to maintain session integrity
-     * and is asked to create a new session when the response is committed, an IllegalStateException is
-     * thrown." COOKIE is the only tracking mode here, so the condition is simply whether tracking is on.
-     *
-     * <p>Warning instead would be worse than useless: the session would be created and populated, the
-     * client would never learn its id, and every subsequent request would silently get a fresh one --
-     * an unexplained login loop whose only trace is a log line.
+     * The Servlet contract: asked to create a session once the response is committed, a cookie-tracking
+     * container throws {@code IllegalStateException}, and COOKIE is the only mode here.
      */
     private void requireSessionCookieWritable(HttpServletResponse response) {
         if (isCookieTrackingEnabled() && response.isCommitted()) {
@@ -376,13 +338,10 @@ public class NettySessionManager {
     }
 
     /**
-     * The write half: hands the client the id of a session just created or just rotated.
-     *
-     * <p>Best-effort by design. The mandated {@code IllegalStateException} belongs to <em>creation</em>
-     * only -- {@code getSession(boolean)}'s wording is "asked to create a new session when the response
-     * is committed" -- and {@code changeSessionId} declares no such throw, so a late rotation must
-     * behave the way {@code addCookie} does and simply have no effect, as it does on Tomcat.
-     * {@link #createAndTrack} enforces the creation contract before it creates anything.
+     * The write half: hands the client the id of a session just created or just rotated. Best-effort by
+     * design -- the mandated {@code IllegalStateException} belongs to creation only, and
+     * {@code changeSessionId} declares no such throw, so a late rotation behaves the way {@code addCookie}
+     * does and simply has no effect, as it does on Tomcat.
      */
     void writeSessionCookie(NettyHttpServletResponse response, NettyHttpSession session, boolean secureConnection) {
         if (!isCookieTrackingEnabled()) {
@@ -394,7 +353,7 @@ public class NettySessionManager {
         // in one pass with nothing to fix up afterwards.
         cookieConfig.getAttributes().forEach(cookie::setAttribute);
         // Secure is the one attribute the request can strengthen: TLS forces it on regardless of
-        // configuration. Written this way, TLS support (issue #16) needs no change here.
+        // configuration (issue #16).
         if (secureConnection) {
             cookie.setSecure(true);
         }
@@ -410,17 +369,14 @@ public class NettySessionManager {
 
     private String defaultCookiePath() {
         String contextPath = servletContext.getContextPath();
-        // The root context path is the "" sentinel, which would emit a meaningless empty Path attribute.
         return NettyServletContext.ROOT_CONTEXT_PATH.equals(contextPath) ? ROOT_COOKIE_PATH : contextPath;
     }
 
     /**
-     * Reclaims every session past its deadline, returning how many. Package-private so tests exercise
-     * the sweep without starting the thread.
-     *
-     * <p>Deliberately not {@code values().removeIf(...)}: each session is marked invalid as well as
-     * removed, so a request thread that resolved it a moment earlier sees {@code IllegalStateException}
-     * rather than silently writing into a map nothing reads.
+     * Reclaims every session past its deadline, returning how many. Deliberately not
+     * {@code values().removeIf(...)}: each session is marked invalid as well as removed, so a request
+     * thread that resolved it a moment earlier sees {@code IllegalStateException} rather than silently
+     * writing into a map nothing reads.
      */
     int sweep(long now) {
         int reclaimed = 0;
@@ -439,7 +395,9 @@ public class NettySessionManager {
         return reclaimed;
     }
 
-    /** The running sweeper, or {@code null}. Package-private so a test can assert it was shut down. */
+    /**
+     * The running sweeper, or {@code null}. Package-private so a test can assert it was shut down.
+     */
     ScheduledExecutorService sweeper() {
         return sweeper;
     }
@@ -449,13 +407,8 @@ public class NettySessionManager {
     }
 
     /**
-     * Evicts only if the session is still past its deadline <em>as judged under the lock</em>.
-     *
-     * <p>The re-test is the point. A caller that decides expiry outside the lock and then evicts
-     * unconditionally destroys a session another thread has meanwhile extended: {@code
-     * setMaxInactiveInterval} is an ordinary volatile write taking no lock, so an "extend my session"
-     * call landing between the two would be overruled, and the request that made it would then see
-     * {@code IllegalStateException} on its next attribute access.
+     * Evicts only if still past the deadline as judged under the lock: {@code setMaxInactiveInterval} is
+     * an unlocked volatile write, so an extension landing after an outside-the-lock test would be lost.
      */
     private boolean evictIfExpired(NettyHttpSession session, long now) {
         boolean marked;
@@ -472,10 +425,8 @@ public class NettySessionManager {
     }
 
     /**
-     * Takes the session out of the store and tears it down regardless of its deadline -- shutdown, where
-     * every session goes. Removal and the invalid transition happen together under the lock so
-     * {@link #find} cannot hand back a session mid-eviction; the listener callbacks run outside it,
-     * because application code should never execute under a container lock.
+     * Removal and the invalid transition happen together under the lock, so {@link #find} cannot hand back
+     * a session mid-eviction; the listener callbacks run outside it, being application code.
      */
     private void evict(NettyHttpSession session) {
         boolean marked;
@@ -487,7 +438,9 @@ public class NettySessionManager {
         }
     }
 
-    /** Removes and marks invalid; caller must hold the session's monitor, and unbind values after. */
+    /**
+     * Removes and marks invalid; caller must hold the session's monitor, and unbind values after.
+     */
     private boolean unbind(NettyHttpSession session) {
         sessions.remove(session.getId(), session);
         return session.markInvalidated();
@@ -500,9 +453,8 @@ public class NettySessionManager {
     }
 
     /**
-     * Starts the sweeper on first session creation. Lazy rather than eager so an application that never
-     * calls {@code getSession(true)} -- and every servlet-context instance in the test suite -- carries
-     * no background thread at all.
+     * Lazy rather than eager, so an application that never calls {@code getSession(true)} -- and every
+     * servlet-context instance in the test suite -- carries no background thread at all.
      */
     private void ensureSweeperStarted() {
         if (sweeper != null) {
@@ -532,16 +484,10 @@ public class NettySessionManager {
     }
 
     /**
-     * Reverses {@link #close()}, letting the store accept sessions again.
-     *
-     * <p>Public where {@code close()} is package-private, because closing is a decision only the context's
-     * owner may take while reopening merely undoes it. Called from the stop/start lifecycle: Spring
-     * restarts the stop phase on {@code ApplicationContext.start()}, {@code restart()} and CRaC restore,
-     * and without this the store would stay closed for the life of the JVM -- every subsequent
-     * {@code getSession(true)} throwing, on an application that is otherwise serving normally.
-     *
-     * <p>The sweeper is deliberately not restarted here: {@code ensureSweeperStarted} is lazy, so the
-     * next session creation brings it back and an application that creates none stays thread-free.
+     * Reverses {@link #close()}, letting the store accept sessions again: Spring restarts the stop phase
+     * on {@code ApplicationContext.start()}, {@code restart()} and CRaC restore, and without this the
+     * store stays closed for the life of the JVM. The sweeper is deliberately not restarted here, since
+     * {@code ensureSweeperStarted} is lazy and the next creation brings it back.
      */
     public void open() {
         synchronized (this) {
@@ -551,8 +497,8 @@ public class NettySessionManager {
 
     /**
      * Stops the sweeper and drops every session. Package-private deliberately: the manager is reachable
-     * from any request handler via {@code ServletContext.getSessionManager()}, and wiping the store is a
-     * lifecycle operation that belongs to whoever owns the context, not to request-handling code.
+     * from any request handler via {@code ServletContext.getSessionManager()}, and wiping the store
+     * belongs to whoever owns the context, not to request-handling code.
      */
     void close() {
         ScheduledExecutorService running;
@@ -564,16 +510,12 @@ public class NettySessionManager {
         if (running != null) {
             running.shutdownNow();
         }
-        // Expire rather than drop: the sweep contract is that a session leaving the store is marked
-        // invalid and unbinds its values, and shutdown is no exception. Spring keeps a
-        // DestructionCallbackBindingListener as a session attribute, so clearing silently here would
-        // mean no @SessionScope bean ever runs its destruction callback on context close.
-        //
-        // Drained rather than iterate-then-clear: the map's iterator is weakly consistent, so an entry
-        // inserted into a bin the loop has already passed would be missed and then silently dropped by
-        // a trailing clear(). create() refuses once `closed` is set, so a pass that removes everything it
-        // sees converges -- but the loop is bounded rather than trusting that, because the failure mode
-        // of an unbounded drain is a JVM that never shuts down.
+        // Expire rather than drop: Spring keeps a DestructionCallbackBindingListener as a session
+        // attribute, so clearing silently here would mean no @SessionScope bean ever runs its destruction
+        // callback on context close. Drained rather than iterate-then-clear: the map's iterator is weakly
+        // consistent, so an entry inserted into a bin the loop has already passed would be missed and then
+        // silently dropped by a trailing clear(). Bounded rather than trusting convergence, because the
+        // failure mode of an unbounded drain is a JVM that never shuts down.
         for (int pass = 0; pass < MAX_SHUTDOWN_DRAIN_PASSES && !sessions.isEmpty(); pass++) {
             for (Map.Entry<String, NettyHttpSession> entry : sessions.entrySet()) {
                 try {

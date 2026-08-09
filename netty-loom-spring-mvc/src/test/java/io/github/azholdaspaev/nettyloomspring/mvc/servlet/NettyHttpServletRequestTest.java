@@ -82,14 +82,11 @@ class NettyHttpServletRequestTest {
 
     @Test
     void contextPathAndServletPathReadTheServletContext() {
-        // Context "/app", URI "/app/hello?x=1": context path is the mount, servlet path is the
-        // in-context remainder, and the request URI stays the full decoded path.
         var inContext = requestWithContext("/app/hello?x=1", "/app");
         assertEquals("/app", inContext.getContextPath());
         assertEquals("/app/hello", inContext.getRequestURI());
         assertEquals("/hello", inContext.getServletPath());
 
-        // Request exactly at the context root: the servlet path is empty.
         var atContextRoot = requestWithContext("/app", "/app");
         assertEquals("/app", atContextRoot.getContextPath());
         assertEquals("/app", atContextRoot.getRequestURI());
@@ -108,14 +105,12 @@ class NettyHttpServletRequestTest {
     void isWithinContextAcceptsContextRootAndPrefix() {
         assertTrue(requestWithContext("/app", "/app").isWithinContext());
         assertTrue(requestWithContext("/app/hello", "/app").isWithinContext());
-        // A prefix without the "/" boundary is a different path, not in-context.
         assertFalse(requestWithContext("/application", "/app").isWithinContext());
     }
 
     @Test
     void isWithinContextRejectsOutOfContextUri() {
         assertFalse(requestWithContext("/other", "/app").isWithinContext());
-        // URI shorter than the context path.
         assertFalse(requestWithContext("/ap", "/app").isWithinContext());
     }
 
@@ -128,8 +123,7 @@ class NettyHttpServletRequestTest {
 
     @Test
     void getServletPathReturnsEmptyForUriShorterThanContextPath() {
-        // Out of context and shorter than the context path: getServletPath must not throw
-        // StringIndexOutOfBoundsException, it returns "" (the context-relative path is undefined here).
+        // Blindly stripping the prefix would throw StringIndexOutOfBoundsException here.
         var request = requestWithContext("/ap", "/app");
         assertEquals("", request.getServletPath());
     }
@@ -485,7 +479,9 @@ class NettyHttpServletRequestTest {
     private static final HttpConnectionMetadata INSECURE = new HttpConnectionMetadata("", 0, "", 0, false);
     private static final HttpConnectionMetadata SECURE = new HttpConnectionMetadata("", 0, "", 0, true);
 
-    /** One request/response pair over a shared servlet context, as the dispatcher builds them. */
+    /**
+     * One request/response pair over a shared servlet context, as the dispatcher builds them.
+     */
     record Exchange(NettyHttpServletRequest request, NettyHttpServletResponse response) {
 
         List<String> setCookies() {
@@ -498,7 +494,9 @@ class NettyHttpServletRequestTest {
             return all.getFirst();
         }
 
-        /** The emitted cookie's Path, parsed rather than substring-matched. */
+        /**
+         * The emitted cookie's Path, parsed rather than substring-matched.
+         */
         String cookiePath() {
             return HttpCookie.parse(setCookie()).getFirst().getPath();
         }
@@ -625,8 +623,7 @@ class NettyHttpServletRequestTest {
     @Test
     void aStaleDuplicateSessionCookieDoesNotMaskTheLiveSession() {
         // Issue #91, through the real cookie decoder: the stale duplicate arrives first on the wire and
-        // used to win outright. See NettySessionManager.readSessionId's javadoc for why that ordering is
-        // the common one and why the stale cookie is never overwritten.
+        // used to win outright.
         var context = new DefaultNettyServletContext();
         var existing = context.getSessionManager().create();
 
@@ -661,8 +658,6 @@ class NettyHttpServletRequestTest {
         var context = new DefaultNettyServletContext();
         var live = context.getSessionManager().create();
 
-        // Derived, not spelled out: a literal "jsessionid" would quietly stop being a case variant --
-        // and this test would stop testing anything -- if the default name ever changed.
         String miscased = NettySessionCookieConfig.DEFAULT_NAME.toLowerCase(Locale.ROOT);
         var exchange = exchange(context, INSECURE,
             miscased + "=" + live.getId() + "; " + NettySessionCookieConfig.DEFAULT_NAME + "=DEADBEEF");
@@ -921,10 +916,10 @@ class NettyHttpServletRequestTest {
         // changeSessionId declares IllegalStateException only for "no session"; the commit-time throw
         // belongs to getSession(create). Tomcat routes the rotated cookie through addCookie, which is
         // specified to have no effect after a commit -- so this is silent there and must be here.
-        // The session is created through the request, so its cookie is already on the response before the
-        // commit. That is what makes the assertion below discriminating: "no further cookie" alone is
-        // satisfied by addCookie's guard, whereas an unguarded rotation would strip the emitted header
-        // as it scanned for the name to replace, leaving the client with no session cookie at all.
+        //
+        // The session is seeded before the commit deliberately: "no further cookie" alone is satisfied by
+        // addCookie's own guard, whereas an unguarded rotation would strip the already-emitted header as
+        // it scanned for the name to replace, leaving the client with no session cookie at all.
         var context = new DefaultNettyServletContext();
         var exchange = exchange(context);
         var existing = exchange.request().getSession(true);
@@ -1051,7 +1046,6 @@ class NettyHttpServletRequestTest {
 
     // --- Request attribute listeners (issue #17) ---
 
-    /** Registers a recorder on {@code context} and returns the log it appends to. */
     private static List<String> recordRequestAttributes(DefaultNettyServletContext context) {
         var events = new ArrayList<String>();
         context.addListener(new ServletRequestAttributeListener() {
@@ -1083,7 +1077,6 @@ class NettyHttpServletRequestTest {
         request.setAttribute("stage", "two");
         request.removeAttribute("stage");
 
-        // Replacement reports the displaced value, matching the session and context sides.
         assertEquals(List.of("added:stage=one", "replaced:stage=one", "removed:stage=two"), events);
     }
 

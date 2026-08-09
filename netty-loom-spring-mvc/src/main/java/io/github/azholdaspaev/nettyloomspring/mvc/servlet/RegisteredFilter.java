@@ -7,20 +7,13 @@ import java.util.EnumSet;
 import java.util.Set;
 
 /**
- * An executable filter registration: the live {@link Filter} instance together with the
- * URL patterns and dispatcher types it was mapped to. Produced by
- * {@link NettyServletContext#getRegisteredFilters()} and consumed by {@link NettyFilterChain}.
- *
- * <p>Matching is servlet-spec URL-pattern matching (Servlet 6, §12.2), not Ant matching.
+ * An executable filter registration: the live {@link Filter} instance together with the URL patterns and
+ * dispatcher types it was mapped to. Matching is servlet-spec URL-pattern matching (Servlet 6, §12.2),
+ * not Ant matching.
  */
 public record RegisteredFilter(String name, Filter filter, Set<String> urlPatterns,
                                EnumSet<DispatcherType> dispatcherTypes) {
 
-    /**
-     * Returns {@code true} if this filter applies to a {@code dispatchType} dispatch of
-     * {@code requestPath} — i.e. the filter is mapped for that dispatcher type and one of its
-     * URL patterns matches the path.
-     */
     public boolean matches(String requestPath, DispatcherType dispatchType) {
         if (!dispatcherTypes.contains(dispatchType)) {
             return false;
@@ -37,7 +30,6 @@ public record RegisteredFilter(String name, Filter filter, Set<String> urlPatter
         if (pattern == null || pattern.isEmpty()) {
             return false;
         }
-        // Match-all.
         if (pattern.equals("/*")) {
             return true;
         }
@@ -48,10 +40,9 @@ public record RegisteredFilter(String name, Filter filter, Set<String> urlPatter
         }
         // Extension mapping: "*.ext" (a bare "*." has no extension and matches nothing).
         if (pattern.startsWith("*.") && pattern.length() > 2) {
-            String extension = pattern.substring(1); // ".ext"
+            String extension = pattern.substring(1);
             return path.endsWith(extension);
         }
-        // Exact mapping.
         return pattern.equals(path);
     }
 }

@@ -22,8 +22,7 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
 
     public SpringHttpRequestDispatcher(DispatcherServlet dispatcherServlet, NettyServletContext servletContext) {
         this.servletContext = servletContext;
-        // The chain terminal hands the request to the DispatcherServlet; bound once here rather
-        // than re-creating the method reference per request.
+        // Bound once here rather than re-creating the method reference per request.
         this.terminal = dispatcherServlet::service;
     }
 
@@ -37,10 +36,8 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
         NettyHttpServletRequest servletRequest =
             new NettyHttpServletRequest(request, connection, servletContext, servletResponse);
 
-        // Out-of-context request: reject with a plain 404 before running filters or the servlet. Boot's
-        // PathPatternParser would otherwise throw on a URI outside the context path. Building the request
-        // first (a cheap, side-effect-free URI parse) lets the check reuse its already-parsed path via the
-        // request's own boundary predicate, keeping the "is this in-context?" fact in one place.
+        // Out-of-context request: a plain 404 before running filters or the servlet, because Boot's
+        // PathPatternParser would otherwise throw on a URI outside the context path.
         if (!servletRequest.isWithinContext()) {
             servletResponse.setStatus(HttpServletResponse.SC_NOT_FOUND);
             return servletResponse.toFullHttpResponse();
@@ -53,17 +50,12 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
             .toList();
 
         // Bracketing the chain, not the whole method: the out-of-context 404 above never enters this
-        // context, so announcing it would report a request the application never saw.
-        //
-        // requestDestroyed is in a finally because it is a release, not a notification.
-        // RequestContextListener.requestDestroyed calls ServletRequestAttributes.requestCompleted(),
-        // which runs the destruction callbacks of every @RequestScope bean the dispatch created. Skipping
-        // it on the throwing path means those @PreDestroy methods never run -- and unlike a stranded
-        // ThreadLocal, that is not swept up by the request's virtual thread ending.
-        //
-        // The init call stays outside the try, so a request whose setup failed gets no requestDestroyed
-        // it was never owed. fireRequestInitialized is all-or-nothing -- it releases the prefix it
-        // notified before propagating -- so every listener that did initialize is still released.
+        // context, so announcing it would report a request the application never saw. requestDestroyed is
+        // in a finally because it is a release, not a notification -- RequestContextListener.requestDestroyed
+        // runs the destruction callbacks of every @RequestScope bean the dispatch created, and unlike a
+        // stranded ThreadLocal that is not swept up by the request's virtual thread ending. The init call
+        // stays outside the try, so a request whose setup failed gets no requestDestroyed it was never
+        // owed; fireRequestInitialized releases the prefix it notified before propagating.
         servletContext.getListenerRegistry().fireRequestInitialized(servletRequest);
         try {
             NettyFilterChain chain = new NettyFilterChain(applicable, terminal);

@@ -647,9 +647,6 @@ class DefaultNettyServletContextTest {
 
     @Test
     void shouldRejectSessionReconfigurationOnceInitialized() {
-        // setSessionTrackingModes and setSessionTimeout carry the same "already initialized" clause as
-        // the SessionCookieConfig setters. The tracking modes are read live on every request, so
-        // disabling cookie tracking at runtime would silently stop issuing and reading session cookies.
         context.getSessionManager().markContextInitialized();
 
         assertThrows(IllegalStateException.class, () -> context.setSessionTrackingModes(Set.of()));
@@ -750,8 +747,7 @@ class DefaultNettyServletContextTest {
         var thrown = assertThrows(IllegalArgumentException.class,
             () -> context.createListener(UnsupportedListener.class));
 
-        // The message, not just the type: it names the accepted interfaces, and it is the half a third
-        // call site could drop by throwing a bare IllegalArgumentException of its own.
+        // The message, not just the type: it names the accepted interfaces.
         assertTrue(thrown.getMessage().contains(ServletContextListener.class.getName()),
             "the message must name the types that are accepted; got " + thrown.getMessage());
     }
@@ -775,8 +771,7 @@ class DefaultNettyServletContextTest {
     @Test
     void shouldFreezeEveryComponentFromOneCall() {
         // "Startup is over" is one fact, so the context fans it out rather than each caller naming every
-        // freezable component -- the same shape NettySessionManager already uses to reach the cookie
-        // config. A fourth component then needs no new call site, and none can be silently missed.
+        // freezable component, none of which can then be silently missed.
         context.markInitialized();
 
         assertThrows(IllegalStateException.class, () -> context.addListener(new CountingContextListener()),
@@ -900,7 +895,6 @@ class DefaultNettyServletContextTest {
         context.setAttribute("user", "alice");
         context.setAttribute("user", "bob");
 
-        // The replacement reports the displaced value, not the new one.
         assertEquals(List.of("added:user=alice", "replaced:user=alice"), events);
     }
 
@@ -967,7 +961,9 @@ class DefaultNettyServletContextTest {
         @Override public void contextDestroyed(ServletContextEvent event) { destroyed++; }
     }
 
-    /** Registered by class and by name, so it counts statically -- the container builds its own instance. */
+    /**
+     * Registered by class and by name, so it counts statically: the container builds its own instance.
+     */
     static class StubContextListener implements ServletContextListener {
 
         private static int initialized;
@@ -984,7 +980,9 @@ class DefaultNettyServletContextTest {
         }
     }
 
-    /** A legal EventListener, but none of the seven types addListener accepts. */
+    /**
+     * A legal EventListener, but not a type addListener accepts.
+     */
     static class UnsupportedListener implements java.util.EventListener {
     }
 }
