@@ -98,10 +98,6 @@ class HttpRequestHandlerTest {
         channel.finish();
     }
 
-    /**
-     * A response written in parts must reach the wire as those parts, in order — that is what the
-     * exchange-tracking handlers below this one are keyed to see.
-     */
     @Test
     void shouldWriteAStreamedResponseAsHeadChunksAndLastContent() {
         HttpResponse head = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
@@ -170,11 +166,6 @@ class HttpRequestHandlerTest {
         channel.finish();
     }
 
-    /**
-     * An HTTP/1.0 client reads chunk-size lines as body content, so the head is left unframed and the
-     * close delimits it. Netty's own keep-alive handler is what turns that into {@code Connection: close}
-     * — this asserts the outcome rather than adding HTTP/1.0 logic of our own.
-     */
     @Test
     void shouldLeaveAnHttp10StreamingHeadUnframedSoTheConnectionDelimitsIt() {
         EmbeddedChannel channel = keepAliveChannel((_, _, writer) -> {
@@ -197,13 +188,6 @@ class HttpRequestHandlerTest {
         channel.finish();
     }
 
-    /**
-     * The servlet contract is that a write to a departed client fails, and a streaming handler only
-     * learns of the departure by being told. The part it handed over is the writer's to free.
-     *
-     * <p>The type is load-bearing: {@link HttpExceptionHandler} classifies a departed client by it, so
-     * anything else there is reported as a server fault the application never committed.
-     */
     @Test
     void shouldReportAGoneClientAsADisconnectAndReleaseTheChunk() throws Exception {
         ByteBuf orphan = Unpooled.copiedBuffer("gone", StandardCharsets.UTF_8);
@@ -237,21 +221,14 @@ class HttpRequestHandlerTest {
             "a client that left is why the response stopped, not a dispatcher that broke its contract");
     }
 
-    /**
-     * Backpressure: a handler producing faster than the socket drains must be made to wait, or the
-     * chunks it is not queueing in heap simply queue in {@code ChannelOutboundBuffer} instead and the
-     * streaming path saves nothing.
-     *
-     * <p>On a real loop rather than an {@link EmbeddedChannel}, for the reason
-     * {@link #shouldReportAnAbandonedDispatchItselfWhenTheEventLoopHasTerminated} gives: that channel's
-     * loop reports {@code inEventLoop()} unconditionally true, so a wait inside the writer is refused as
-     * a deadlock instead of parking.
-     */
     @Test
     @Timeout(value = 30, unit = TimeUnit.SECONDS)
     void shouldParkTheDispatchThreadWhileTheConnectionIsUnwritable() throws Exception {
         CountDownLatch responseFinished = new CountDownLatch(1);
         AtomicReference<Thread> worker = new AtomicReference<>();
+        // On a real loop rather than an EmbeddedChannel, whose loop reports inEventLoop()
+        // unconditionally true: a wait inside the writer would be refused there as a deadlock
+        // instead of parking, and this test would pass against a writer that never waits.
         try (StalledConnection connection = new StalledConnection(new HttpRequestHandler(
             (_, _, writer) -> {
                 writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
@@ -273,12 +250,6 @@ class HttpRequestHandlerTest {
         }
     }
 
-    /**
-     * The wait has to be bounded. {@link HttpReadTimeoutHandler} suspends its clock until the
-     * {@code LastHttpContent} is written, so a peer that stops reading mid-stream would otherwise park
-     * the dispatch thread for ever <em>and</em> leave the connection with nothing left to reclaim it —
-     * the failure that handler's javadoc forbids of everything below it.
-     */
     @Test
     @Timeout(value = 30, unit = TimeUnit.SECONDS)
     void shouldGiveUpOnAConnectionThatStaysUnwritable() throws Exception {
@@ -305,10 +276,6 @@ class HttpRequestHandlerTest {
         }
     }
 
-    /**
-     * Once the head is on the wire the status is spent, and the tail handler's error response would be
-     * read by the client as more body. Closing is the only honest way left to say the response is bad.
-     */
     @Test
     void shouldCloseInsteadOfFiringExceptionCaughtWhenTheDispatcherFailsAfterCommitting() {
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
@@ -418,10 +385,6 @@ class HttpRequestHandlerTest {
         }
     }
 
-    /**
-     * A client that hangs up mid-download is the ordinary end of a stream, not a fault. Asserted on the
-     * log because that is the whole of the difference: the connection is closed either way.
-     */
     @Test
     @Timeout(value = 30, unit = TimeUnit.SECONDS)
     void shouldNotRecordAClientDisconnectMidResponseAsAFailure() throws Exception {
@@ -456,13 +419,6 @@ class HttpRequestHandlerTest {
             "a client that hung up mid-stream is not a failure; log was: " + logged);
     }
 
-    /**
-     * A status that can never carry a body must carry no framing either. Netty sanitizes some of them
-     * for us — {@code HttpResponseEncoder.sanitizeHeadersBeforeEncode} strips {@code Transfer-Encoding}
-     * for 1xx and 204 and rewrites 205 — but not 304, while {@code isContentAlwaysEmpty} does swallow
-     * 304's body and terminator. So a chunked 304 would go out framed for a body that can never follow.
-     * Tomcat suppresses framing for exactly this set in {@code Http11Processor.prepareResponse}.
-     */
     @ParameterizedTest
     @ValueSource(ints = {100, 204, 205, 304})
     void shouldLeaveAStatusThatCanNeverCarryABodyUnframed(int status) {
