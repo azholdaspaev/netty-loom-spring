@@ -364,11 +364,6 @@ class NettyHttpServletResponseTest {
         assertEquals("0123456789", contentOf(wire.parts.get(1)));
     }
 
-    /**
-     * The other half of {@link #outputStreamFlushesToTheWireOnceTheBufferIsFull}: most handlers write
-     * text, and a writer that wrote past the container's buffer straight into it would keep the whole
-     * body in heap however large it grew.
-     */
     @Test
     void writerFlushesToTheWireOnceTheBufferIsFull() throws Exception {
         var wire = new RecordingWriter();
@@ -439,11 +434,6 @@ class NettyHttpServletResponseTest {
         assertThrows(IllegalStateException.class, () -> response.setBufferSize(4096));
     }
 
-    /**
-     * The writer holds its own encoder buffer, so flushing it after the wire flush rather than before
-     * would commit an empty chunk and leave the text behind — the whole of incremental delivery for
-     * anything written through {@code getWriter()}.
-     */
     @Test
     void flushBufferFlushesTheCachedWriterBeforeCommitting() throws Exception {
         var wire = new RecordingWriter();
@@ -503,10 +493,6 @@ class NettyHttpServletResponseTest {
             () -> response.sendRedirect("/elsewhere", HttpResponseStatus.FOUND.code(), true));
     }
 
-    /**
-     * The guard is on bytes actually sent, not on the spec-level commit {@code sendError} sets: nothing
-     * has left, so taking the response back is honest here and must stay allowed.
-     */
     @Test
     void sendErrorThenResetStillWorksWhenNothingWasFlushed() throws Exception {
         var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, new RecordingWriter());
@@ -516,7 +502,6 @@ class NettyHttpServletResponseTest {
         assertEquals(HttpResponseStatus.OK.code(), response.getStatus());
     }
 
-    /** Pins the no-aliasing rule that {@code takeBufferedBody()} rests on. */
     @Test
     void consecutiveChunksDoNotShareABuffer() throws Exception {
         var wire = new RecordingWriter();

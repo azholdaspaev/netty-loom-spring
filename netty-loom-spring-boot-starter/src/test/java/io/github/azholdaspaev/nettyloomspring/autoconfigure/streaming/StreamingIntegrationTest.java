@@ -39,7 +39,6 @@ class StreamingIntegrationTest {
     @Autowired
     StreamingGate gate;
 
-    /** Each event is produced only after the previous one has been read off the socket. */
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
     void shouldDeliverEachEventBeforeTheNextIsProduced() throws Exception {
@@ -80,10 +79,6 @@ class StreamingIntegrationTest {
         }
     }
 
-    /**
-     * A handler that declares a length streams unframed rather than chunked — the shape
-     * {@code /actuator/heapdump} has, since its converter knows the resource's size up front.
-     */
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
     void shouldStreamWithContentLengthWhenTheHandlerDeclaresOne() throws Exception {
@@ -99,7 +94,6 @@ class StreamingIntegrationTest {
         }
     }
 
-    /** Netty's codec drops the body of a HEAD, terminator included, so the framing must stand alone. */
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
     void shouldAnswerAHeadRequestForAStreamedBodyWithoutOne() throws Exception {
@@ -109,17 +103,14 @@ class StreamingIntegrationTest {
 
             assertEquals(200, response.status());
 
+            // Netty's codec drops the body of a HEAD, terminator included, so absence cannot be read
+            // off this response; a second request on the same socket is what proves nothing followed.
             RawHttpClient.send(socket, "GET /streaming/sized HTTP/1.1", "Host: localhost");
             assertEquals(200, RawHttpResponse.read(socket.getInputStream()).status(),
                 "no body may have been written, or the next response would read as part of this one");
         }
     }
 
-    /**
-     * Spring's {@code HttpEntityMethodProcessor} flushes the response after writing an entity, and a
-     * flush now genuinely commits — so these lose their {@code Content-Length}. That is Tomcat's
-     * behaviour too, the converter having no length to declare before it serializes.
-     */
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
     void shouldChunkAResponseEntityBody() throws Exception {
@@ -132,11 +123,6 @@ class StreamingIntegrationTest {
         }
     }
 
-    /**
-     * A 304 can never carry a body, so it must not be framed for one. Netty strips the header for 1xx
-     * and 204 but not for 304, while still swallowing its body and terminator — so a framed 304 would
-     * promise a chunked body that never arrives. The reused connection is the proof it did not.
-     */
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
     void shouldNotFrameANotModifiedResponse() throws Exception {
