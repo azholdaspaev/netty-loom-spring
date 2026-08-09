@@ -85,6 +85,7 @@ class HttpPipeliningHandlerTest {
 
     @Test
     void shouldReleaseAQueuedRequestEvenWhenTheResponseIsNeverAcceptedBySocket() {
+        // issue #76 review
         EmbeddedChannel channel = new EmbeddedChannel(new NeverCompletingWrite(), new HttpPipeliningHandler());
         channel.writeInbound(request("/first"), request("/second"));
         uriOf(channel.readInbound());
