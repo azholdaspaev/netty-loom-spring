@@ -15,10 +15,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The pipelining handler's correctness rests entirely on where it sits, and that position is decided by
- * the auto-configuration — not by the pipelines the core tests hand-build. Without this, moving
- * "pipelining" above "aggregator" or below "dispatcher" would silently stop it serializing exchanges
- * (issue #63) while every other test stayed green, because they each validate their own private copy of
- * the order.
+ * the auto-configuration rather than by the pipelines the core tests hand-build: moving "pipelining"
+ * above "aggregator" or below "dispatcher" would silently stop it serializing exchanges (issue #63)
+ * without failing a hand-built one.
  */
 @Timeout(value = 60, unit = TimeUnit.SECONDS)
 class PipeliningPipelineOrderTest {

@@ -21,15 +21,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
- * Counts every event the container is expected to deliver, keyed by event name.
- *
- * <p>One class implementing all seven interfaces rather than seven fixtures: it is also the assertion
- * that a single instance is filed under every type it qualifies for, which is how Spring Security's
+ * Counts every event the container is expected to deliver, keyed by event name. One class implementing
+ * the listener interfaces rather than a fixture per interface: it is also the assertion that a single
+ * instance is filed under every type it qualifies for, which is how Spring Security's
  * {@code HttpSessionEventPublisher} (an {@code HttpSessionListener} <em>and</em> an
- * {@code HttpSessionIdListener}) arrives.
- *
- * <p>Counters are concurrent because requests are served on virtual threads and the session sweeper is
- * a thread of its own -- a plain {@code int} here would make the test flaky rather than wrong.
+ * {@code HttpSessionIdListener}) arrives. Counters are concurrent because requests are served on
+ * virtual threads and the session sweeper is a thread of its own.
  */
 public class RecordingListener implements ServletContextListener, ServletContextAttributeListener,
     ServletRequestListener, ServletRequestAttributeListener, HttpSessionListener,
@@ -42,33 +39,27 @@ public class RecordingListener implements ServletContextListener, ServletContext
     }
 
     /**
-     * Attribute events are counted per attribute name, not just per event.
-     *
-     * <p>Necessary rather than tidy: {@code DispatcherServlet} sets more than a dozen request attributes
-     * of its own on every dispatch -- the {@code WebApplicationContext}, the locale resolver, the matched
-     * handler -- and each one legitimately notifies. A bare {@code requestAttributeAdded} counter
-     * therefore measures Spring's traffic, not the fixture's.
+     * Keyed by attribute name too: {@code DispatcherServlet} sets request attributes of its own on every
+     * dispatch, each legitimately notifying, so a bare counter measures Spring's traffic not the fixture's.
      */
     private void countAttribute(String event, String name) {
         count(event);
         count(event + ":" + name);
     }
 
-    /** How many times {@code event} has fired. */
     public int countOf(String event) {
         AtomicInteger counter = counts.get(event);
         return counter == null ? 0 : counter.get();
     }
 
-    /** Every event seen so far, for a failure message that names what did fire instead. */
     public Map<String, Integer> snapshot() {
         return counts.entrySet().stream()
             .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().get()));
     }
 
     /**
-     * Clears the counters between tests. Deliberately not resetting {@code contextInitialized}'s history
-     * for the whole context: that event fires once per application, long before any test method runs.
+     * Clearing also wipes {@code contextInitialized}, which fires once per application and so cannot be
+     * observed again by a later test method.
      */
     public void reset() {
         counts.clear();

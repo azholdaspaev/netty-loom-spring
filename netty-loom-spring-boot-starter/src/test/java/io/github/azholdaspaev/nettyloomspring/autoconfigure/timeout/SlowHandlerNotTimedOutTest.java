@@ -19,19 +19,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Issue #76 regression gate, end to end. The handler outlasts the read timeout, and before the fix that
- * closed the connection with no response at all — not a 504, just EOF — because the timeout ran against
- * the dispatch rather than against the client.
- *
- * <p>The timeout must stay below {@link SlowController#DELAY_MILLIS} for the gate to have teeth, and far
- * enough below it to absorb the connect-to-request window: the clock arms when the connection is
- * accepted and only stops once the whole request has arrived, so a stalled runner between
- * {@code connect()} and {@code flush()} would close the connection and fail with the same null status
- * line the real regression produces. A flake here would read as a genuine bug, which is why the budget
- * is 1s rather than the tightest value that passes.
- *
- * <p>Raw socket rather than a client library: the distinction being asserted is a status line versus a
- * bare TCP close, which is exactly what an HTTP client hides behind an IOException.
+ * Issue #76 regression gate, end to end: before the fix the read timeout ran against the dispatch
+ * rather than against the client, so a handler outlasting it had its connection closed with no
+ * response at all — not a 504, just EOF. The timeout must stay below
+ * {@link SlowController#DELAY_MILLIS} for the gate to have teeth, and far enough below it to absorb
+ * the connect-to-request window, in which a stalled runner would produce that same null status line;
+ * hence a 1s budget rather than the tightest value that passes. Raw socket rather than a client
+ * library: the distinction asserted is a status line versus a bare TCP close, which is exactly what
+ * an HTTP client hides behind an IOException.
  */
 @SpringBootTest(
     classes = TimeoutTestApplication.class,
@@ -40,7 +35,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 class SlowHandlerNotTimedOutTest {
 
-    /** Shared with the annotation above, and asserted against the handler's delay below. */
     static final int READ_TIMEOUT_MILLIS = 1_000;
 
     @LocalServerPort

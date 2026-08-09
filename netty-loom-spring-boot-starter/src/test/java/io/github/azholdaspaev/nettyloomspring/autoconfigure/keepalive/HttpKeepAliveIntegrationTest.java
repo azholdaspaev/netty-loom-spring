@@ -114,7 +114,6 @@ class HttpKeepAliveIntegrationTest {
         return Response.read(socket.getInputStream());
     }
 
-    /** A parsed HTTP response: status code, header names lower-cased for lookup, body drained. */
     private record Response(int status, Map<String, String> headers) {
 
         static Response read(InputStream in) throws IOException {

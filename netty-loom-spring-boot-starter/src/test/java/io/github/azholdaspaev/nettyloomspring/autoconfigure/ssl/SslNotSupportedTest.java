@@ -12,9 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * TLS is not implemented yet (issue #16). Because the factory is now a
- * {@code ConfigurableServletWebServerFactory}, Boot binds {@code server.ssl.*} onto it; the server must
- * fail fast at startup rather than silently serve plaintext while appearing TLS-configured.
+ * TLS is not implemented yet (issue #16): the server must fail startup rather than serve plaintext.
  */
 class SslNotSupportedTest {
 

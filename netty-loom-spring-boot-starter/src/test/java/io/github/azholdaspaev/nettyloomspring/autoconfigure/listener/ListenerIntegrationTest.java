@@ -20,15 +20,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * End-to-end delivery of the container-registered servlet listeners over a real Netty server (issue #17).
- *
- * <p>The listener is registered through Boot's {@code ServletListenerRegistrationBean}, so this is also
- * the regression test for the original symptom: that route calls {@code ServletContext.addListener},
- * which threw {@code UnsupportedOperationException} out of {@code onStartup} and aborted startup
- * outright. If registration ever breaks again, every test in this class fails at context load.
- *
- * <p>{@code RestTestClient} does not persist cookies, so a test that needs two requests on one session
- * captures the {@code JSESSIONID} and resends it explicitly.
+ * End-to-end delivery of the container-registered servlet listeners over a real Netty server
+ * (issue #17). The listener is registered through Boot's {@code ServletListenerRegistrationBean}, so
+ * this is also the regression test for the original symptom: that route calls
+ * {@code ServletContext.addListener}, which threw {@code UnsupportedOperationException} out of
+ * {@code onStartup} and aborted startup outright.
  */
 @AutoConfigureRestTestClient
 @SpringBootTest(
@@ -57,7 +53,6 @@ class ListenerIntegrationTest {
                 + listener.snapshot());
     }
 
-    /** Runs {@code uri}, returning the session id its {@code Set-Cookie} carried, if any. */
     private String call(String uri) {
         var result = restTestClient.get().uri(uri)
             .exchange()
@@ -111,8 +106,6 @@ class ListenerIntegrationTest {
 
     @Test
     void requestAttributeMutationsFireAddedReplacedAndRemoved() {
-        // Scoped to the fixture's own attribute: DispatcherServlet sets more than a dozen of its own on
-        // every dispatch, and each of those notifies too -- correctly, and exactly as it does on Tomcat.
         call("/listener/request/attributes");
 
         assertFired("requestAttributeAdded:stage", 1);
@@ -122,8 +115,8 @@ class ListenerIntegrationTest {
 
     @Test
     void springsOwnRequestAttributesAlsoReachTheListener() {
-        // Not incidental: a container that only announced application-set attributes would be a subtly
-        // different container. DispatcherServlet always publishes its WebApplicationContext this way.
+        // DispatcherServlet always publishes its WebApplicationContext as a request attribute, so this
+        // fires without the fixture setting anything.
         call("/listener/ping");
 
         assertTrue(listener.countOf("requestAttributeAdded") > 0,

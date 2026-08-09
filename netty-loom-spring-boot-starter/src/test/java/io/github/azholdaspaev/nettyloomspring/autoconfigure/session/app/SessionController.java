@@ -13,7 +13,6 @@ import java.util.Map;
 @Controller
 public class SessionController {
 
-    /** What an endpoint returns when there is no session, or no attribute, to report. */
     public static final String NONE = "none";
 
     @GetMapping("/session/set")
@@ -42,7 +41,6 @@ public class SessionController {
         return session == null ? NONE : session.getId();
     }
 
-    /** Touches nothing session-related, so the response must carry no {@code Set-Cookie}. */
     @GetMapping("/session/stateless")
     @ResponseBody
     public String stateless() {
@@ -60,7 +58,9 @@ public class SessionController {
         return "invalidated";
     }
 
-    /** Mirrors what Spring Security does on login: rotate the id, keeping the session's contents. */
+    /**
+     * Mirrors what Spring Security does on login: rotate the id, keeping the session's contents.
+     */
     @GetMapping("/session/rotate")
     @ResponseBody
     public String rotate(HttpServletRequest request) {

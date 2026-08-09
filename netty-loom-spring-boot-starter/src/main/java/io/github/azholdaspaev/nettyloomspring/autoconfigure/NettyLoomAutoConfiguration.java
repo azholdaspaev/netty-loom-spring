@@ -67,9 +67,6 @@ public class NettyLoomAutoConfiguration {
         return new DefaultNettyServletContext();
     }
 
-    // Sessions are torn down here rather than only by the context's inferred close(): a destroy callback
-    // runs after the application's own singletons are gone, so @SessionScope @PreDestroy would see
-    // closed data sources. close() stays as the idempotent backstop for a failed startup.
     @Bean
     public SessionStoreLifecycle sessionStoreLifecycle(NettyServletContext servletContext) {
         return new SessionStoreLifecycle(servletContext);

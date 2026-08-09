@@ -9,10 +9,8 @@ import org.springframework.web.bind.annotation.ResponseBody;
 @Controller
 public class ListenerController {
 
-    /** What an endpoint returns when there is no session to act on. */
     public static final String NONE = "none";
 
-    /** Touches nothing stateful: the request events must fire for it all the same. */
     @GetMapping("/listener/ping")
     @ResponseBody
     public String ping() {
@@ -25,7 +23,6 @@ public class ListenerController {
         return request.getSession().getId();
     }
 
-    /** Adds, replaces and removes one attribute, so all three session attribute events fire once. */
     @GetMapping("/listener/session/attributes")
     @ResponseBody
     public String cycleAttributes(HttpServletRequest request) {
@@ -56,7 +53,6 @@ public class ListenerController {
         return request.changeSessionId();
     }
 
-    /** Adds, replaces and removes one request attribute within a single dispatch. */
     @GetMapping("/listener/request/attributes")
     @ResponseBody
     public String cycleRequestAttributes(HttpServletRequest request) {

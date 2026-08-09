@@ -14,10 +14,9 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The drain handler's correctness rests entirely on where it sits, and that position is decided by
- * the auto-configuration — not by the pipelines the core tests hand-build. Without this, moving
- * "drain" below "aggregator" would break in-flight uploads on shutdown (issue #67) while every other
- * test stayed green, because they each validate their own private copy of the order.
+ * The drain handler's correctness rests entirely on where it sits, and that position is decided by the
+ * auto-configuration rather than by the pipelines the core tests hand-build: moving "drain" below
+ * "aggregator" would break in-flight uploads on shutdown (issue #67) without failing a hand-built one.
  */
 @Timeout(value = 60, unit = TimeUnit.SECONDS)
 class DrainPipelineOrderTest {
