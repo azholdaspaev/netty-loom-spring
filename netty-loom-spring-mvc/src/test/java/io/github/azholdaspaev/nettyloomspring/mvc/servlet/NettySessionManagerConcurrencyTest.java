@@ -20,22 +20,17 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Races on the session store (issue #13 review).
- *
- * <p>The store is keyed by an id the session itself carries and {@code changeId} mutates, so every
- * removal path has to agree on which key it is unbinding. These run many rounds because the windows
- * are narrow; each round is its own manager, so a single leaked entry fails the assertion.
+ * Races on the session store (issue #13 review). The store is keyed by an id the session itself carries
+ * and {@code changeId} mutates, so every removal path has to agree on which key it is unbinding. These
+ * run many rounds because the windows are narrow.
  */
 @Timeout(value = 60, unit = TimeUnit.SECONDS)
 class NettySessionManagerConcurrencyTest {
 
     private static final int ROUNDS = 2_000;
     /**
-     * For the two same-key attribute races. Their window holds no application code -- a quiet re-bind
-     * fires no callback -- so it is a handful of bytecodes wide, and how often it is hit swings with the
-     * machine: issue #90 reported single-digit hits per 20,000 rounds where a run here fails inside 200.
-     * Budgeted for the slow end, because a race test that stays green on the reporter's hardware is worse
-     * than no test at all.
+     * For the same-key attribute races (issue #90): their window holds no application code, so it is a
+     * handful of bytecodes wide and budgeted for the slow end, or the test goes green by luck.
      */
     private static final int ATTRIBUTE_ROUNDS = 20_000;
     private static final int ONE_MINUTE = 60;
@@ -57,8 +52,7 @@ class NettySessionManagerConcurrencyTest {
 
     /**
      * Spins until {@code thread} is blocked entering a monitor, so the interleaving under test is
-     * established rather than hoped for. Sleeping instead would make the assertions vacuous whenever the
-     * sleep lost -- and vacuous means green, which is the failure mode worth engineering away.
+     * established rather than hoped for: a sleep that lost would leave the assertions vacuously green.
      */
     private static void awaitBlockedOnTheSessionLock(Thread thread) {
         long limit = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
@@ -68,7 +62,9 @@ class NettySessionManagerConcurrencyTest {
         }
     }
 
-    /** Runs both bodies on two threads released together, so they interleave rather than queue. */
+    /**
+     * Runs both bodies on two threads released together, so they interleave rather than queue.
+     */
     private static void race(Runnable first, Runnable second) throws InterruptedException {
         var start = new CountDownLatch(1);
         var done = new CountDownLatch(2);
@@ -92,8 +88,8 @@ class NettySessionManagerConcurrencyTest {
     }
 
     /**
-     * Counts its own notifications, which is what every attribute race here asserts on: a value must be
-     * released exactly once per bind, whatever interleaving produced the binds.
+     * Counts its own notifications: a value must be released exactly once per bind, whatever interleaving
+     * produced the binds.
      */
     private static final class CountingValue implements HttpSessionBindingListener {
 
@@ -241,7 +237,6 @@ class NettySessionManagerConcurrencyTest {
         // Named for what it checks, which is weaker than the race it runs: every assertion here is made
         // after both threads have joined, so this pins the *outcome* invariant -- nothing invalidated
         // stays reachable, nothing reachable is invalidated -- and not the locking that produces it.
-        // find()'s own guards are covered deterministically by the two tests below.
         for (int round = 0; round < ROUNDS; round++) {
             NettyHttpSession session = manager.create();
             String id = session.getId();
@@ -264,8 +259,8 @@ class NettySessionManagerConcurrencyTest {
     @Test
     void findRefusesAnInvalidatedSessionStillPresentInTheStore() {
         // find()'s in-lock isInvalidated() guard, without a race: the state it exists for -- marked but
-        // not yet unbound from the store -- is exactly what the teardown paths pass through, and can be
-        // constructed directly. Racing for it only ever covered it by luck.
+        // not yet unbound from the store -- is what the teardown paths pass through, and can be
+        // constructed directly rather than covered by luck.
         NettyHttpSession session = manager.create();
         session.markInvalidated();
 

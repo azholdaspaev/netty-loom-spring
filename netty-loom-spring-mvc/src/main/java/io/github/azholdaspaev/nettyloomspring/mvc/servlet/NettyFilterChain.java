@@ -9,14 +9,11 @@ import java.io.IOException;
 import java.util.List;
 
 /**
- * A {@link FilterChain} over an ordered list of applicable filters that terminates by invoking
- * a terminal {@link FilterChain} (typically {@code DispatcherServlet::service}). One instance
- * per request — the cursor is stateful, so it must not be shared across threads.
- *
- * <p>Each {@link #doFilter(ServletRequest, ServletResponse)} hands the request/response it
- * <em>receives</em> to the next filter and to the terminal, so request/response wrappers
- * installed by a filter propagate downstream. A filter that does not call {@code doFilter}
- * short-circuits the chain: the terminal never runs and the controller is never invoked.
+ * A {@link FilterChain} over an ordered list of applicable filters, terminating in a terminal
+ * {@link FilterChain} (typically {@code DispatcherServlet::service}). One instance per request -- the
+ * cursor is stateful, so it must not be shared across threads. Each
+ * {@link #doFilter(ServletRequest, ServletResponse)} hands on the request/response it <em>receives</em>,
+ * so wrappers a filter installs propagate downstream.
  */
 public class NettyFilterChain implements FilterChain {
 

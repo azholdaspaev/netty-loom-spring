@@ -6,10 +6,6 @@ import jakarta.servlet.ServletContext;
 import java.util.Collections;
 import java.util.Enumeration;
 
-/**
- * Minimal {@link FilterConfig} passed to {@code Filter#init} at startup. Mirror of
- * {@link NettyServletConfig}.
- */
 public class NettyFilterConfig implements FilterConfig {
 
     private final String filterName;

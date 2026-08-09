@@ -36,12 +36,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Registration and dispatch of the container-registered servlet listeners (issue #17).
- *
- * <p>Covers the registry in isolation: which types are accepted, what order each event reaches them in,
- * and which failures are allowed to escape. The wiring that decides <em>when</em> each event fires lives
- * with the class that owns the state -- {@link DefaultNettyServletContextTest},
- * {@link NettySessionManagerTest}, {@link NettyHttpSessionTest} and the dispatcher's own test.
+ * Registration and dispatch of the container-registered servlet listeners (issue #17), in isolation:
+ * which types are accepted, what order each event reaches them in, and which failures may escape.
  */
 class NettyListenerRegistryTest {
 
@@ -66,9 +62,8 @@ class NettyListenerRegistryTest {
     }
 
     /**
-     * Implements every supported interface at once, recording "event:label". One class rather than
-     * seven keeps the ordering assertions below readable, and doubles as the multi-interface case:
-     * a single instance must land in every bucket it qualifies for.
+     * Implements every supported interface at once, recording "event:label" -- one class rather than one
+     * per interface, which doubles as the multi-interface filing case.
      */
     private final class RecordingListener implements ServletContextListener, ServletContextAttributeListener,
         ServletRequestListener, ServletRequestAttributeListener, HttpSessionListener,
@@ -190,10 +185,8 @@ class NettyListenerRegistryTest {
     }
 
     /**
-     * The seven interfaces {@code ServletContext.addListener} defines, restated here on purpose: this is
-     * the independent copy that makes a drift in {@code SUPPORTED_TYPES} a test failure. Without it,
-     * dropping an entry from that list leaves the suite green while {@code addListener(Class)} starts
-     * refusing a type {@code addListener(instance)} still accepts.
+     * A deliberate independent copy of {@code SUPPORTED_TYPES}, so a drift between the two gates is a test
+     * failure rather than a green suite.
      */
     static Stream<Class<? extends EventListener>> theSevenAcceptedTypes() {
         return Stream.of(ServletContextListener.class, ServletContextAttributeListener.class,
@@ -224,11 +217,9 @@ class NettyListenerRegistryTest {
 
     @Test
     void aContextListenerCannotRegisterOnceTheInitPassHasStarted() {
-        // The two passes read the list differently: fireContextInitialized iterates a CopyOnWriteArrayList
-        // with an enhanced-for, whose iterator is a snapshot taken at loop entry, while fireQuietlyReversed
-        // indexes it live. A ServletContextListener added in between would therefore miss
-        // contextInitialized and still receive contextDestroyed -- the exact state the init pass exists to
-        // prevent. The spec closes this at registration, and Tomcat clears
+        // fireContextInitialized iterates a CopyOnWriteArrayList snapshot taken at loop entry, so a
+        // ServletContextListener added in between would miss contextInitialized and still receive
+        // contextDestroyed. The spec closes this at registration, and Tomcat clears
         // newServletContextListenerAllowed immediately before listenerStart fires.
         registry.fireContextInitialized();
 
@@ -276,8 +267,6 @@ class NettyListenerRegistryTest {
 
     @Test
     void destructionEventsFireInReverseRegistrationOrder() {
-        // The servlet spec reverses the destroy notifications so a listener registered later -- and
-        // therefore built on top of an earlier one -- tears down before what it depends on.
         registry.addListener(new RecordingListener("first"));
         registry.addListener(new RecordingListener("second"));
 
@@ -328,7 +317,7 @@ class NettyListenerRegistryTest {
     @MethodSource("theTwoFailureShapes")
     void aFailingListenerDoesNotStrandTheRestOfATeardown(Throwable failure) {
         // Teardown has no caller in a position to handle the failure, so it is logged and the remaining
-        // listeners still run -- the same rule NettyHttpSession applies to valueUnbound.
+        // listeners still run.
         registry.addListener(new RecordingListener("survivor"));
         registry.addListener(new ServletContextListener() {
             @Override
@@ -357,8 +346,7 @@ class NettyListenerRegistryTest {
     }
 
     /**
-     * The two shapes a listener fails in. {@code RuntimeException} is the ordinary case;
-     * {@code NoClassDefFoundError} is the one {@code contextInitialized} actually sees, because that is
+     * The ordinary failure, and the linkage error {@code contextInitialized} actually sees, since that is
      * where applications touch static initializers and lazily-loaded classes.
      */
     static Stream<Throwable> theTwoFailureShapes() {
@@ -387,7 +375,9 @@ class NettyListenerRegistryTest {
         assertEquals(List.of("contextInitialized:first", "contextInitialized:third"), events);
     }
 
-    /** Delivers a checked exception where the compiler thinks none can occur, as Kotlin and Lombok do. */
+    /**
+     * Delivers a checked exception where the compiler thinks none can occur, as Kotlin and Lombok do.
+     */
     @SuppressWarnings("unchecked")
     private static <T extends Throwable> void sneakyThrow(Throwable failure) throws T {
         throw (T) failure;
@@ -449,10 +439,6 @@ class NettyListenerRegistryTest {
 
     @Test
     void aVirtualMachineErrorIsNotSwallowedByAQuietPass() {
-        // catch (Throwable) is right for NoClassDefFoundError and wrong for OutOfMemoryError: logging a
-        // VM error at WARN and carrying on leaves the container running on a JVM that has already
-        // failed, and log.warn allocates, so the next one escapes anyway. Tomcat pairs every
-        // catch (Throwable) with handleThrowable, which rethrows VirtualMachineError first.
         registry.addListener(new RecordingListener("survivor"));
         registry.addListener(new ServletContextListener() {
             @Override
@@ -466,7 +452,6 @@ class NettyListenerRegistryTest {
 
     @Test
     void aLinkageErrorIsStillSwallowedByAQuietPass() {
-        // The case the widened catch exists for, and the line between the two.
         registry.addListener(new RecordingListener("survivor"));
         registry.addListener(new ServletContextListener() {
             @Override

@@ -33,12 +33,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The session store behind {@code HttpServletRequest.getSession(...)} (issue #13).
- *
- * <p>Every test drives an injected clock rather than the wall clock, so expiry is asserted
- * deterministically and instantly instead of via {@code Thread.sleep}: {@code sweep(now)} is called
- * directly, which is the same code the scheduled task runs. {@code create()} does start the real
- * sweeper thread, which is why {@code @AfterEach} closes the manager.
+ * The session store behind {@code HttpServletRequest.getSession(...)} (issue #13). Every test drives an
+ * injected clock rather than the wall clock, so expiry is asserted deterministically instead of via
+ * {@code Thread.sleep}; {@code sweep(now)} is called directly, which is what the scheduled task runs.
  */
 class NettySessionManagerTest {
 
@@ -75,8 +72,6 @@ class NettySessionManagerTest {
         Set<String> ids = new HashSet<>();
         for (int i = 0; i < 100; i++) {
             String id = manager.create().getId();
-            // Hex, not Base64: ServerCookieEncoder.STRICT rejects octets outside the RFC 6265
-            // cookie-value set, and hex cannot produce one.
             assertTrue(id.matches("[0-9A-F]{32}"),
                 "Session id should be 32 uppercase hex characters (128 bits) but was '" + id + "'");
             assertTrue(ids.add(id), "Session ids must be distinct but '" + id + "' repeated");
@@ -305,9 +300,6 @@ class NettySessionManagerTest {
 
     @Test
     void openLetsTheStoreServeAgainAfterAStopStartCycle() {
-        // close() runs in the stop phase now, and Spring restarts that phase on context start/restart and
-        // on CRaC restore. Without a reopen the store stays closed for the life of the JVM and every
-        // getSession(true) after a restart throws, on an application that is otherwise serving normally.
         manager.close();
         manager.open();
 
@@ -318,9 +310,6 @@ class NettySessionManagerTest {
 
     @Test
     void closeExpiresSessionsRatherThanDroppingThem() {
-        // The sweep contract is that a session leaving the store is marked invalid and unbinds its
-        // values; shutdown is no exception, or Spring's DestructionCallbackBindingListener never runs
-        // and no @SessionScope bean is destroyed on context close.
         NettyHttpSession session = manager.create();
 
         manager.close();
@@ -351,10 +340,7 @@ class NettySessionManagerTest {
 
     @Test
     void aScheduledSweepSwallowsEvenAnError() {
-        // scheduleWithFixedDelay cancels the task on anything that escapes -- silently, and for the
-        // lifetime of the application. sweep() already isolates per session, so this outer guard is the
-        // backstop for the sweep machinery itself; an Error is what distinguishes it from catching only
-        // RuntimeException.
+        // An Error is what distinguishes this outer guard from catching only RuntimeException.
         var exploding = new NettySessionManager(new DefaultNettyServletContext(), () -> {
             throw new Error("clock exploded");
         });
@@ -366,8 +352,6 @@ class NettySessionManagerTest {
 
     @Test
     void aSweepSurvivesASessionWhoseListenerThrows() {
-        // scheduleWithFixedDelay cancels the task on anything that escapes, silently and permanently,
-        // so reclamation has to be isolated per session.
         NettyHttpSession poisoned = manager.create();
         poisoned.setAttribute("bad", new HttpSessionBindingListener() {
             @Override
@@ -388,7 +372,9 @@ class NettySessionManagerTest {
 
     private static final String SESSION_COOKIE = NettySessionCookieConfig.DEFAULT_NAME;
 
-    /** Cookies as the request presents them, in wire order: name, value, name, value... */
+    /**
+     * Cookies as the request presents them, in wire order: name, value, name, value...
+     */
     private static Cookie[] cookies(String... nameValuePairs) {
         Cookie[] presented = new Cookie[nameValuePairs.length / 2];
         for (int i = 0; i < presented.length; i++) {
@@ -400,8 +386,7 @@ class NettySessionManagerTest {
     @Test
     void readSessionIdSkipsAStaleDuplicateAndReturnsTheLiveId() {
         // Issue #91: the stale duplicate routinely arrives first, and reading it hands find() an id that
-        // is not in the store, so the user is logged out on every request. The javadoc on readSessionId
-        // owns the explanation of why duplicates happen and why the stale one is never overwritten.
+        // is not in the store, so the user is logged out on every request.
         NettyHttpSession live = manager.create();
 
         String resolved = manager.readSessionId(cookies(SESSION_COOKIE, "DEADBEEF", SESSION_COOKIE, live.getId()));
@@ -474,8 +459,8 @@ class NettySessionManagerTest {
     @Test
     void readSessionIdMatchesTheCookieNameCaseSensitively() {
         // RFC 6265 4.1.1: cookie names are case-sensitive, so "jsessionid" is a different cookie -- one
-        // anything sharing the host can set, a sibling subdomain included. Folding case would let it
-        // supply the session id, and with liveness breaking the tie it would beat the real one outright.
+        // anything sharing the host can set. Folding case would let it supply the session id, and with
+        // liveness breaking the tie it would beat the real one outright.
         NettyHttpSession live = manager.create();
 
         // Derived, not spelled out: a literal "jsessionid" would quietly stop being a case variant --
@@ -512,7 +497,9 @@ class NettySessionManagerTest {
 
     // --- Container-registered session listeners (issue #17) ---
 
-    /** Records the ids each callback was handed, so a missed or duplicated event is visible. */
+    /**
+     * Records the ids each callback was handed, so a missed or duplicated event is visible.
+     */
     private static final class RecordingSessionListener implements HttpSessionListener, HttpSessionIdListener {
 
         private final List<String> created = Collections.synchronizedList(new ArrayList<>());
@@ -617,7 +604,6 @@ class NettySessionManagerTest {
         assertEquals(List.of(id), listener.destroyed);
     }
 
-    /** A container-registered listener whose {@code sessionCreated} always fails. */
     private static HttpSessionListener throwingOnCreate() {
         return new HttpSessionListener() {
             @Override

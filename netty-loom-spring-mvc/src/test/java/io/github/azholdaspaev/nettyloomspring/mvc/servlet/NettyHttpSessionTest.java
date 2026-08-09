@@ -27,15 +27,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Servlet-contract behaviour of a single session (issue #13).
- *
- * <p>{@link HttpSessionBindingListener} is a different mechanism from the container-registered listeners
- * ({@code HttpSessionListener} and friends, issue #17): binding callbacks need no {@code addListener}
- * support, because the attribute value itself is the listener. Spring stores a
- * {@code DestructionCallbackBindingListener} as a session attribute, so without {@code valueUnbound}
- * no {@code @SessionScope} bean would ever run its destruction callback. Both are covered here, and the
- * order between them is part of the contract: a value's own {@code valueUnbound} runs before the
- * container listeners' {@code attributeRemoved}.
+ * Servlet-contract behaviour of a single session (issue #13). {@link HttpSessionBindingListener} is a
+ * different mechanism from the container-registered listeners (issue #17): binding callbacks need no
+ * {@code addListener} support, because the attribute value itself is the listener. Spring stores a
+ * {@code DestructionCallbackBindingListener} as a session attribute, so without {@code valueUnbound} no
+ * {@code @SessionScope} bean would ever run its destruction callback.
  */
 class NettyHttpSessionTest {
 
@@ -58,7 +54,9 @@ class NettyHttpSessionTest {
         manager.close();
     }
 
-    /** Records the binding callbacks fired at it, in order, as "bound:name" / "unbound:name". */
+    /**
+     * Records the binding callbacks fired at it, in order, as "bound:name" / "unbound:name".
+     */
     private static final class RecordingValue implements HttpSessionBindingListener {
 
         private final List<String> events = Collections.synchronizedList(new ArrayList<>());
@@ -151,8 +149,7 @@ class NettyHttpSessionTest {
 
         session.setAttribute("callback", value);
 
-        // Neither bound nor unbound: the value was already bound under this name and still is. Firing
-        // valueBound again while valueUnbound stays guarded would make an acquire-in-bound /
+        // Firing valueBound again while valueUnbound stays guarded would make an acquire-in-bound /
         // release-in-unbound listener acquire twice and release once. Tomcat guards both sides too.
         assertEquals(List.of("bound:callback"), value.events());
     }
@@ -281,9 +278,6 @@ class NettyHttpSessionTest {
 
     @Test
     void aVirtualMachineErrorFromValueUnboundIsNotSwallowed() {
-        // The line between the two shapes, as NettyListenerRegistry draws it: swallowing an
-        // OutOfMemoryError would keep tearing sessions down on a JVM that has already failed, and
-        // log.warn allocates, so continuing past one would usually fail there anyway.
         NettyHttpSession session = manager.create();
         session.setAttribute("bad", new HttpSessionBindingListener() {
             @Override
@@ -382,8 +376,6 @@ class NettyHttpSessionTest {
 
         session.invalidate();
 
-        // Servlet 6.0 dropped the IllegalStateException here, so logging and audit code can still name
-        // the session it just destroyed.
         assertEquals(id, assertDoesNotThrow(session::getId));
     }
 
@@ -514,7 +506,6 @@ class NettyHttpSessionTest {
 
     @Test
     void theDestroyWindowClosesOnceTeardownIsOver() {
-        // Strictly scoped to the notification: afterwards the session is as invalid as it has always been.
         NettyHttpSession session = manager.create();
         session.setAttribute("user", "alice");
 
@@ -548,7 +539,6 @@ class NettyHttpSessionTest {
         session.setAttribute("user", "bob");
         session.removeAttribute("user");
 
-        // Replacement reports the displaced value, matching the ServletContext side.
         assertEquals(List.of("added:user=alice", "replaced:user=alice", "removed:user=bob"), events);
     }
 
@@ -645,10 +635,7 @@ class NettyHttpSessionTest {
 
     @Test
     void aRemovalUnbindsTheValueBeforeAnnouncingItGone() {
-        // notifyRemoved's javadoc calls this ordering Tomcat's, and this class's own javadoc calls the
-        // order part of the contract -- so it needs a test, or a refactor can reverse it silently. It
-        // matters for the sibling of the case setAttribute's early announcement fixed: a valueUnbound
-        // that reads the session would otherwise run after the container was told the value was gone.
+        // A valueUnbound that reads the session must run before the container is told the value is gone.
         var events = new ArrayList<String>();
         servletContext.addListener(new HttpSessionAttributeListener() {
             @Override
@@ -672,9 +659,6 @@ class NettyHttpSessionTest {
 
     @Test
     void removingAnAbsentSessionAttributeNotifiesNothing() {
-        // The identical rule is already asserted on both sibling paths --
-        // shouldNotFireContextAttributeRemovedForAnAbsentName and
-        // removingAnAbsentRequestAttributeNotifiesNothing -- so this was an omission, not a decision.
         var events = new ArrayList<String>();
         servletContext.addListener(new HttpSessionAttributeListener() {
             @Override
@@ -718,11 +702,8 @@ class NettyHttpSessionTest {
 
     @Test
     void aThrowingAttributeRemovedListenerDoesNotAbortTheTeardown() {
-        // fireSessionAttributeRemoved sits inside the same unbind loop the sessionDestroyed test protects:
-        // unbindAll -> removeIfStillBound -> notifyRemoved. notifyUnbound one line above it is already
-        // guarded, so a propagating attributeRemoved would be the last uncaught throw in that loop -- one
-        // bad listener would abort the remaining unbinds and escape into invalidate(), the sweep and the
-        // shutdown drain.
+        // fireSessionAttributeRemoved runs inside the unbind loop, so a propagating attributeRemoved would
+        // abort the remaining unbinds and escape into invalidate(), the sweep and the shutdown drain.
         var unbound = new ArrayList<String>();
         servletContext.addListener(new HttpSessionAttributeListener() {
             @Override

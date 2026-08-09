@@ -42,18 +42,15 @@ public class NettyHttpServletResponse implements HttpServletResponse {
     private Charset characterEncoding = StandardCharsets.ISO_8859_1;
     private ServletOutputStream outputStream;
     private PrintWriter writer;
-    // The whole response is buffered until toFullHttpResponse(), so nothing is ever on the wire early:
-    // sendError/sendRedirect are the only honest commit points, matching Tomcat's setAppCommitted(true).
-    // Once committed, status and header mutations are silently ignored, as the Servlet spec requires --
-    // without that, Spring's HttpServlet.doOptions fallback stamps a reflected Allow header onto an
-    // already-errored 404, advertising methods no handler serves.
+    // Buffered until toFullHttpResponse(), so nothing is on the wire early; sendError/sendRedirect commit,
+    // matching Tomcat's setAppCommitted(true), and the spec then requires later mutations to be ignored.
     private boolean committed;
 
     private final NettyCookieSameSiteResolver sameSiteResolver;
 
-    // Package-private: the container always builds a response with its policy, so a caller outside
-    // this package that forgets one should not compile. Dropping the SameSite silently is the very
-    // defect this constructor's public twin would reintroduce (issue #85).
+    // Package-private: the container always builds a response with its policy, so a caller outside this
+    // package that forgets one should not compile, and dropping the SameSite silently is the defect a
+    // public twin would reintroduce (issue #85).
     NettyHttpServletResponse() {
         this(NettyCookieSameSiteResolver.NO_OPINION);
     }
@@ -96,21 +93,17 @@ public class NettyHttpServletResponse implements HttpServletResponse {
         if (cookie.getAttribute(CookieHeaderNames.PARTITIONED) != null) {
             nettyCookie.setPartitioned(true);
         }
-        // Only the attributes above are mapped; Netty's Cookie has no arbitrary-attribute setter, so any
-        // other Servlet 6.0 attribute (e.g. Expires) is dropped. version is likewise NOT propagated: RFC
-        // 6265 / Netty have no Version field.
-        // STRICT validates RFC 6265 name/value octets and throws IllegalArgumentException for invalid
-        // input; we let it propagate (fail-fast, matching Tomcat's Rfc6265CookieProcessor) rather than
-        // silently dropping or mangling the cookie.
+        // Netty's Cookie has no arbitrary-attribute setter, so any other Servlet 6.0 attribute (Expires,
+        // and version, for which RFC 6265 and Netty have no field) is dropped. STRICT throws
+        // IllegalArgumentException on octets outside the RFC 6265 name/value sets, and that propagates
+        // rather than mangling the cookie, matching Tomcat's Rfc6265CookieProcessor.
         headers.add(HttpHeaders.SET_COOKIE, ServerCookieEncoder.STRICT.encode(nettyCookie));
     }
 
     /**
-     * Adds {@code cookie}, first dropping any {@code Set-Cookie} already written for the same name.
-     *
-     * <p>For cookies whose value supersedes rather than accompanies an earlier one -- the session id
-     * being the case that matters -- appending would leave a stale value as the first header of that
-     * name. {@link #addCookie} keeps the plain appending semantics the Servlet API specifies.
+     * Adds {@code cookie}, first dropping any {@code Set-Cookie} already written for the same name. For a
+     * value that supersedes rather than accompanies an earlier one, appending would leave a stale value
+     * as the first header of that name; {@link #addCookie} keeps the Servlet API's appending semantics.
      */
     void setCookie(Cookie cookie) {
         if (committed) {
