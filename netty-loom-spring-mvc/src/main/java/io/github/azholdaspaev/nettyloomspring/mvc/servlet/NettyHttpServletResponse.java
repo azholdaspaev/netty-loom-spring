@@ -310,6 +310,21 @@ public class NettyHttpServletResponse implements HttpServletResponse {
                     body.write(b, off, len);
                     flushIfBufferFull();
                 }
+
+                // Tomcat commits on both, in CoyoteOutputStream.flush() and .close(); OutputStream's
+                // inherited no-ops would leave the portable out.write()/out.flush() idiom delivering
+                // nothing. flushToWire() rather than flushBuffer(), which a writer-driven flush would
+                // re-enter through flushCharacterWriter(); rather than complete(), which would
+                // terminate a response the dispatcher has yet to finish.
+                @Override
+                public void flush() throws IOException {
+                    flushToWire();
+                }
+
+                @Override
+                public void close() throws IOException {
+                    flushToWire();
+                }
             };
         }
         return outputStream;
