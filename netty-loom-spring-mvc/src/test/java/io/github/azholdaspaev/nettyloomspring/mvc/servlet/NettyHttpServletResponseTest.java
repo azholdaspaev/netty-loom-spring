@@ -383,6 +383,47 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
+    void outputStreamFlushCommitsWhatIsBuffered() throws Exception {
+        var wire = new RecordingWriter();
+        var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, wire);
+
+        response.getOutputStream().write("data: tick".getBytes(StandardCharsets.UTF_8));
+        response.getOutputStream().flush();
+
+        assertInstanceOf(HttpResponse.class, wire.parts.get(0));
+        assertFalse(wire.parts.get(0) instanceof FullHttpResponse,
+            "a flush is a commit, so the head cannot wait for a body that is still being written");
+        assertEquals("data: tick", contentOf(wire.parts.get(1)));
+    }
+
+    @Test
+    void writerFlushCommitsWhatIsBuffered() throws Exception {
+        var wire = new RecordingWriter();
+        var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, wire);
+
+        response.getWriter().print("data: tick");
+        response.getWriter().flush();
+
+        assertInstanceOf(HttpResponse.class, wire.parts.get(0));
+        assertEquals("data: tick", contentOf(wire.parts.get(1)));
+    }
+
+    @Test
+    void outputStreamCloseCommitsWhatIsBuffered() throws Exception {
+        var wire = new RecordingWriter();
+        var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, wire);
+
+        response.getOutputStream().write("data: tick".getBytes(StandardCharsets.UTF_8));
+        response.getOutputStream().close();
+        response.complete();
+
+        assertEquals("data: tick", contentOf(wire.parts.get(1)));
+        assertEquals(3, wire.parts.size(),
+            "closing the stream commits what is buffered; ending the response stays complete()'s to do");
+        assertInstanceOf(LastHttpContent.class, wire.parts.get(2));
+    }
+
+    @Test
     void getBufferSizeReportsTheConfiguredSize() {
         var response = new NettyHttpServletResponse();
         response.setBufferSize(4096);
