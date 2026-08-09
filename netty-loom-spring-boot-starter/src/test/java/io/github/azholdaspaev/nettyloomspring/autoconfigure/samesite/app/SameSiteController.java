@@ -9,7 +9,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class SameSiteController {
 
-    /** Written with no SameSite of its own, so only a supplier can put one on it. */
     @GetMapping("/same-site/tracked")
     public String tracked(HttpServletResponse response) {
         response.addCookie(new Cookie("tracker", "t"));

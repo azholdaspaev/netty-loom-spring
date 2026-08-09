@@ -18,13 +18,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@code server.servlet.session.*} must actually reach the container (issue #13).
- *
- * <p>Boot has always bound these properties onto the factory -- it is a
- * {@code ConfigurableServletWebServerFactory} -- but until sessions existed they were dropped on the
- * floor. The cookie properties now arrive through Boot's own {@code SessionConfiguringInitializer};
- * the timeout and {@code same-site} do not (verified against spring-boot-web-server 4.0.5), so the
- * factory applies those two itself.
+ * {@code server.servlet.session.*} must actually reach the container (issue #13). Boot has always bound
+ * these properties onto the factory -- it is a {@code ConfigurableServletWebServerFactory} -- but until
+ * sessions existed they were dropped on the floor.
  */
 @Timeout(value = 60, unit = TimeUnit.SECONDS)
 class SessionConfigurationTest {
@@ -49,11 +45,6 @@ class SessionConfigurationTest {
         }
     }
 
-    /**
-     * That the property reaches the manager at all. The {@code Duration}-to-seconds conversion itself
-     * belongs to the manager and is table-tested in {@code NettySessionManagerTest}, rather than by
-     * booting an application per case.
-     */
     @Test
     void aConfiguredTimeoutReachesTheSessionManager() {
         try (var context = run("server.servlet.session.timeout=45s")) {
@@ -83,8 +74,6 @@ class SessionConfigurationTest {
 
     @Test
     void configuredSameSiteReachesTheCookieConfig() {
-        // Boot's SessionConfiguringInitializer maps seven cookie properties but not same-site: for
-        // Tomcat it is applied by a container-specific cookie processor, so the factory applies it here.
         try (var context = run("server.servlet.session.cookie.same-site=lax")) {
             assertEquals("Lax", servletContext(context).getSessionCookieConfig().getAttribute("SameSite"));
         }
@@ -101,8 +90,6 @@ class SessionConfigurationTest {
 
     @Test
     void sessionPersistenceFailsStartupRatherThanBeingSilentlyIgnored() {
-        // Under Tomcat this writes SESSIONS.ser and survives a restart. An in-memory store cannot, and
-        // ignoring the property would silently drop every session on deploy.
         RuntimeException failure = assertThrows(RuntimeException.class,
             () -> run("server.servlet.session.persistent=true").close());
 

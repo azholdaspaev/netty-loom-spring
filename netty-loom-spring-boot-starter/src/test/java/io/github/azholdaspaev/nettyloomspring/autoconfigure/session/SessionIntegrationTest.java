@@ -25,10 +25,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * End-to-end session round-trips over a real Netty server (issue #13).
- *
- * <p>{@code RestTestClient} does not persist cookies across exchanges, so every test captures the
- * {@code Set-Cookie} it wants to carry and resends it explicitly -- which is also what makes the
- * assertions about <em>when</em> a cookie is and is not emitted meaningful.
  */
 @AutoConfigureRestTestClient
 @SpringBootTest(
@@ -40,7 +36,9 @@ class SessionIntegrationTest {
 
     private static final String SESSION_COOKIE = NettySessionCookieConfig.DEFAULT_NAME;
 
-    /** Well-formed as an id the server could have minted -- 32 uppercase hex -- but naming no session. */
+    /**
+     * Well-formed as an id the server could have minted -- 32 uppercase hex -- but naming no session.
+     */
     private static final String UNKNOWN_SESSION_ID = "0123456789ABCDEF0123456789ABCDEF";
 
     @Autowired
@@ -63,7 +61,6 @@ class SessionIntegrationTest {
         return cookieId;
     }
 
-    /** The acceptance criterion for issue #13. */
     @Test
     void anAttributeSetOnOneRequestIsReadableOnTheNextUsingTheReturnedCookie() {
         String sessionId = createSessionWith("hello");
@@ -241,12 +238,10 @@ class SessionIntegrationTest {
             .expectBody(String.class).isEqualTo(SessionController.NONE);
     }
 
-    // --- Cookie emission across a commit: the regression these two tests exist for ---
+    // --- Cookie emission across a commit ---
 
     @Test
     void aSessionCreatedBeforeSendRedirectStillEmitsItsCookie() {
-        // RedirectView saves the flash map (creating the session), then commits via sendRedirect. Since
-        // addCookie is ignored after a commit, emitting the cookie any later than creation loses it.
         var result = restTestClient.get().uri("/session/flash")
             .exchange()
             .expectStatus().is3xxRedirection()

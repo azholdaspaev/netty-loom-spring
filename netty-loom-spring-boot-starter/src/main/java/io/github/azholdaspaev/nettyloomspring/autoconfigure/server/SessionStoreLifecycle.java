@@ -5,37 +5,20 @@ import org.springframework.boot.web.server.context.WebServerApplicationContext;
 import org.springframework.context.SmartLifecycle;
 
 /**
- * Tears the session store down in the <em>stop</em> phase, while the application's beans are still live.
- *
- * <p>Closing the servlet context is otherwise a bean-destruction callback, and that is the wrong phase.
- * {@code AbstractApplicationContext.doClose()} runs {@code lifecycleProcessor.onClose()} first and
- * {@code destroyBeans()} afterwards, and singletons are destroyed in reverse creation order -- the
- * servlet context is created during {@code onRefresh()}, before nearly every application bean, so it is
- * destroyed near the end, after data sources and connection pools have already closed. Expiring sessions
- * there means {@code DestructionCallbackBindingListener} fires a {@code @SessionScope} bean's
- * {@code @PreDestroy} against a closed {@code DataSource}. Tomcat expires in {@code
- * StandardManager.stopInternal()}, i.e. in this phase, where the same callback succeeds.
- *
- * <p>The phase sits one below {@code WebServerStartStopLifecycle}'s, so this stops <em>after</em> the
- * server has stopped accepting and drained: higher phases stop first. {@code close()} on the servlet
- * context remains as an idempotent backstop, and is the only thing that covers a failed startup, where
- * {@code onRefresh()} succeeded but {@code finishRefresh()} never ran.
- *
- * <p><strong>The drain is not guaranteed to have finished.</strong> {@code LifecycleGroup.stop()} waits
- * {@code spring.lifecycle.timeout-per-shutdown-phase} (30s by default) and then moves on regardless, and
- * {@code server.netty.shutdown-grace-period} also defaults to 30s -- so whenever a request is still in
- * flight at the deadline, Spring gives up on the server's phase before the drain reports done, and this
- * stop runs alongside servlet threads that are still executing. Set the grace period strictly below the
- * phase timeout for the ordering above to hold in that case; see issue #89.
+ * Tears the session store down in the <em>stop</em> phase, while the application's beans are still
+ * live. As a bean-destruction callback this would be the wrong phase: the servlet context is created
+ * during {@code onRefresh()} and singletons are destroyed in reverse creation order, so it closes
+ * after data sources have, leaving a {@code @SessionScope} bean's {@code @PreDestroy} to run against
+ * a closed {@code DataSource}. Tomcat expires in {@code StandardManager.stopInternal()}, i.e. in this
+ * phase, where the same callback succeeds. Set {@code server.netty.shutdown-grace-period} strictly
+ * below {@code spring.lifecycle.timeout-per-shutdown-phase}, which {@code LifecycleGroup.stop()}
+ * gives up after, or the drain may still be running here (issue #89).
  */
 public class SessionStoreLifecycle implements SmartLifecycle {
 
     /**
-     * One below {@code WebServerStartStopLifecycle}'s phase, so this stops just after it.
-     *
-     * <p>Read from Boot's own constant rather than restated: if the number ever moves, hardcoding it
-     * would put this bean silently on the wrong side of the server's stop phase -- no compile error and
-     * no test failure, just the destroy-phase teardown this class exists to prevent, quietly back.
+     * Read from Boot's constant rather than hardcoded: were the number to move, this bean would land
+     * on the wrong side of the server's stop phase with no compile error and no test failure.
      */
     private static final int PHASE = WebServerApplicationContext.START_STOP_LIFECYCLE_PHASE - 1;
 
@@ -69,14 +52,9 @@ public class SessionStoreLifecycle implements SmartLifecycle {
     }
 
     /**
-     * Never paused, mirroring {@code WebServerStartStopLifecycle}, which returns {@code false} for the
-     * same reason.
-     *
-     * <p>{@code SmartLifecycle.isPauseable} defaults to {@code true}, and a plain {@code pause()} stops
-     * only pauseable beans. Left at the default, {@code pause()} would skip the web server -- which keeps
-     * accepting requests -- while stopping this bean and invalidating every session, logging every user
-     * out of an application that is still serving. Sessions may only be torn down when the server they
-     * belong to is going down with them.
+     * Never paused, mirroring {@code WebServerStartStopLifecycle}: {@code SmartLifecycle.isPauseable}
+     * defaults to {@code true}, and a plain {@code pause()} stops only pauseable beans -- so at the
+     * default it would invalidate every session while leaving the web server accepting requests.
      */
     @Override
     public boolean isPauseable() {

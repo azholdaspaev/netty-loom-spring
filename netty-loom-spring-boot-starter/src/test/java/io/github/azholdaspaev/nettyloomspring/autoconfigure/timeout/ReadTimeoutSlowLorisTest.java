@@ -21,10 +21,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Keeps its own 500ms rather than following {@link SlowHandlerNotTimedOutTest} up to 1s. Not because the
- * dribble needs it — a longer timeout would if anything make that relation more comfortable — but because
- * both tests here close <em>at</em> the timeout, so sharing 1s would add about a second of sleeping to
- * save a context boot measured at 60-100ms on this branch. The second context is the cheaper half.
+ * Keeps its own 500ms rather than following {@link SlowHandlerNotTimedOutTest} up to 1s: the tests here
+ * close <em>at</em> the timeout, so sharing 1s would trade sleeping time for a saved context boot.
  */
 @SpringBootTest(
     classes = TimeoutTestApplication.class,
@@ -33,13 +31,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 class ReadTimeoutSlowLorisTest {
 
-    /** The server's own deadline. Shared with the annotation above so the two cannot drift apart. */
     static final int READ_TIMEOUT_MILLIS = 500;
 
-    /** A request the client never finishes, sent a byte at a time. Its length sets how long that lasts. */
     private static final String DRIBBLE = "GET /a/path/this/client/never/finishes/sending";
 
-    /** Must stay well inside {@link #READ_TIMEOUT_MILLIS} — see the assertions in the dribble test. */
     private static final int DRIBBLE_INTERVAL_MILLIS = 100;
 
     @LocalServerPort
@@ -59,29 +54,22 @@ class ReadTimeoutSlowLorisTest {
             // behaviour: hardcoding the wiring to any timeout in (0, 5000ms] left the whole suite green.
             assertTrue(elapsedMillis >= READ_TIMEOUT_MILLIS * 4 / 5,
                 "closed after " + elapsedMillis + "ms, before the configured " + READ_TIMEOUT_MILLIS + "ms");
-            // Tight enough to kill a mis-wiring to 1000ms -- the value the sibling timeout test configures,
-            // so the likeliest constant to end up here by copy-paste, and one a looser bound waves through
-            // as a silent 2x. The bound has to clear the real close time, not some fraction of soTimeout:
-            // measured 501-526ms, so this leaves ~475ms of headroom.
+            // Tight enough to kill a mis-wiring to 1000ms, the likeliest constant to arrive here by
+            // copy-paste, which a looser bound would wave through as a silent 2x.
             assertTrue(elapsedMillis < READ_TIMEOUT_MILLIS * 2L,
                 "closed after " + elapsedMillis + "ms, far past the configured " + READ_TIMEOUT_MILLIS + "ms");
         }
     }
 
-    /**
-     * The classic slow loris, which a byte-level idle clock never expires: every byte refreshes it, so
-     * dribbling one faster than the timeout holds a connection open indefinitely. Measuring whole
-     * requests instead closes it — the client has not delivered one within the interval (issue #76).
-     */
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
     void shouldCloseConnectionWhenClientDribblesARequestItNeverCompletes() throws Exception {
         int soTimeout = (DRIBBLE.length() * DRIBBLE_INTERVAL_MILLIS) * 2 / 3;
 
-        // This is the discrimination, and the only relation that carries it: a byte-level clock survives
-        // a dribble only while each byte lands inside the timeout. Raise the interval past it -- a
-        // plausible edit, to cut CPU -- and such a clock closes the connection too, greenlighting the
-        // exact bug this guards while every assertion below still passes.
+        // The classic slow loris: a byte-level idle clock is refreshed by every byte, so a dribble holds
+        // the connection open for ever, while measuring whole requests closes it (issue #76). That
+        // discrimination survives only while each byte lands inside the timeout -- raise the interval past
+        // it, a plausible edit to cut CPU, and a byte-level clock would close the connection too.
         assertTrue(DRIBBLE_INTERVAL_MILLIS < READ_TIMEOUT_MILLIS,
             "the dribble must out-pace the server's deadline or a byte-level clock would expire too");
         // Otherwise a regression surfaces as SocketTimeoutException rather than the assertion. Shortening
@@ -108,24 +96,17 @@ class ReadTimeoutSlowLorisTest {
     }
 
     /**
-     * The dribbling client is closed on while bytes it sent are still sitting unread in the server's
-     * receive buffer, and TCP answers a close with pending unread data by sending RST rather than FIN. So
-     * the client sees either a clean EOF or a reset depending on how the last dribbled byte raced the
-     * close — observed as a "Connection reset" failure once under full-build load having passed 5/5 in
-     * isolation. Both outcomes are the server closing the connection, which is the whole assertion; only
-     * the kernel's choice between them is racy, and it is not something the server can control.
-     *
-     * <p>Deliberately catches {@link SocketException} and not {@link IOException}: a {@code soTimeout}
-     * expiry arrives as {@link java.net.SocketTimeoutException}, which extends
-     * {@link java.io.InterruptedIOException} rather than {@code SocketException}, so a server that never
-     * closes at all still fails here instead of being swallowed.
+     * Catches {@link SocketException} and not {@link IOException}: a {@code soTimeout} expiry arrives as
+     * {@code SocketTimeoutException extends InterruptedIOException}, so a server that never closes fails.
      */
     private static void assertServerClosedTheConnection(Socket socket) throws IOException {
         try {
             assertEquals(-1, socket.getInputStream().read(),
                 "a request that never completes must not hold the connection open");
         } catch (SocketException reset) {
-            // A reset is the server having closed too; see above.
+            // TCP answers a close that still has unread data buffered with RST rather than FIN, so the
+            // client sees a reset or a clean EOF depending on how the last dribbled byte raced the close.
+            // Both are the server having closed, which is the whole assertion.
         }
     }
 

@@ -21,18 +21,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * Issue #25 compat gate: the standard {@code server.port} must bind the Netty server to the exact
  * chosen port. A fixed port is required (not {@code RANDOM_PORT}, which forces {@code server.port=0}
- * and can never observe a specific value), which means a free port has to be picked in advance. That
- * pick-then-rebind carries an inherent TOCTOU window, so the test retries on the rare bind collision
- * rather than flaking CI.
- *
- * <p>The timeout is derived from {@link #MAX_ATTEMPTS} rather than written as a literal so the retry
- * budget cannot drift from the loop it bounds: a run that exhausts every attempt has to fit inside
- * it, or the anti-flake mechanism is unreachable (issue #68).
+ * and can never observe a specific value), so a free port has to be picked in advance; that
+ * pick-then-rebind carries an inherent TOCTOU window, which the retry loop absorbs. The timeout is
+ * derived from {@link #MAX_ATTEMPTS} rather than written as a literal so a run that exhausts every
+ * attempt still fits inside it, keeping the anti-flake mechanism reachable (issue #68).
  */
 class ServerPortBindingTest {
 
     private static final int MAX_ATTEMPTS = 3;
-    /** Cold Spring boot + bind + probe + drain, with slack for a loaded CI runner. */
     private static final int SECONDS_PER_ATTEMPT = 5;
 
     @Test

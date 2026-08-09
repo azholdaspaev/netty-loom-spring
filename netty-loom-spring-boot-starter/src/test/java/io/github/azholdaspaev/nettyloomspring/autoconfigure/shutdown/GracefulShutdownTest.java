@@ -20,10 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Issue #67 regression gate. Spring Boot defaults {@code server.shutdown} to {@code graceful}, so
  * every application on this starter drains on context close. Draining used to wait for open sockets,
  * which an HTTP/1.1 client pools and holds open by design — so shutdown burned the whole
- * {@code server.netty.shutdown-grace-period} (30s by default) on a server with nothing in flight.
- *
- * <p>A pooling {@link HttpClient} is essential here: it is what keeps the connection alive after the
- * response, which is precisely the condition that used to hang.
+ * {@code server.netty.shutdown-grace-period} on a server with nothing in flight. A pooling
+ * {@link HttpClient} is essential here: it is what keeps the connection alive after the response.
  */
 @Timeout(value = 60, unit = TimeUnit.SECONDS)
 class GracefulShutdownTest {

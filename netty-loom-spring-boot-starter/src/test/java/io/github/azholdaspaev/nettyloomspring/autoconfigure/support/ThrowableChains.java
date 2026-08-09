@@ -12,7 +12,6 @@ public final class ThrowableChains {
     private ThrowableChains() {
     }
 
-    /** Whether any throwable in {@code throwable}'s cause chain (inclusive) has a message containing {@code needle}. */
     public static boolean chainMentions(Throwable throwable, String needle) {
         for (Throwable cause = throwable; cause != null; cause = cause.getCause()) {
             if (cause.getMessage() != null && cause.getMessage().contains(needle)) {
@@ -22,7 +21,6 @@ public final class ThrowableChains {
         return false;
     }
 
-    /** The first throwable in {@code throwable}'s cause chain (inclusive) assignable to {@code type}, or {@code null}. */
     public static <T extends Throwable> T findInChain(Throwable throwable, Class<T> type) {
         for (Throwable cause = throwable; cause != null; cause = cause.getCause()) {
             if (type.isInstance(cause)) {

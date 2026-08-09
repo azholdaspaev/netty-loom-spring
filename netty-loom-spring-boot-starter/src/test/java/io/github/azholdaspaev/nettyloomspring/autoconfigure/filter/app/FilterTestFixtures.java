@@ -21,7 +21,6 @@ public final class FilterTestFixtures {
     private FilterTestFixtures() {
     }
 
-    /** Sets {@code X-Filtered: yes} on every response and counts how often it is initialised. */
     public static final class HeaderFilter implements Filter {
 
         private final AtomicInteger initCount = new AtomicInteger();
@@ -43,7 +42,6 @@ public final class FilterTestFixtures {
         }
     }
 
-    /** Appends its token to the {@code X-Order} header, so invocation order is observable. */
     static final class OrderFilter implements Filter {
 
         private final String token;
@@ -81,7 +79,6 @@ public final class FilterTestFixtures {
         }
     }
 
-    /** Short-circuits with 403 and never proceeds, so the controller is not invoked. */
     static final class ForbiddenFilter implements Filter {
 
         @Override
@@ -91,7 +88,6 @@ public final class FilterTestFixtures {
         }
     }
 
-    /** Upstream error filter: catches anything thrown downstream and converts it to a 500. */
     static final class ErrorHandlingFilter implements Filter {
 
         @Override
@@ -107,7 +103,6 @@ public final class FilterTestFixtures {
         }
     }
 
-    /** Throws mid-chain, to be caught by an upstream {@link ErrorHandlingFilter}. */
     static final class ThrowingFilter implements Filter {
 
         @Override

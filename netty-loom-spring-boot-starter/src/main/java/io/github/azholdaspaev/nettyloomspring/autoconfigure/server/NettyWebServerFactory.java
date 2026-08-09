@@ -95,12 +95,8 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
     }
 
     /**
-     * Applies the two session settings Boot's own {@code SessionConfiguringInitializer} does not carry.
-     * The cookie properties arrive with that initializer during
-     * {@link #initializeServletContext(ServletContextInitializer...)}; the timeout it never touches, and
-     * {@code same-site} it applies through a container-specific path (a Tomcat cookie processor) rather
-     * than the {@code ServletContext}. Both are set before the initializers run so an application
-     * initializer can still override them.
+     * Boot's {@code SessionConfiguringInitializer} carries neither the timeout nor {@code same-site},
+     * which it routes via a Tomcat cookie processor; run first so an initializer can still override.
      */
     private void configureSessions() {
         Session session = getSettings().getSession();
@@ -116,16 +112,12 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
     }
 
     /**
-     * Applies the application's {@code CookieSameSiteSupplier} beans, which Boot binds onto every
-     * servlet factory (issue #85). Tomcat additionally prepends a rule for the session cookie; none is
-     * needed here, because {@link #configureSessions()} has already written {@code same-site} as an
-     * attribute on it and {@code addCookie} prefers an attribute the cookie declares. That also avoids
-     * capturing the session cookie name before Boot's initializer has had a chance to change it.
-     *
-     * <p>One case diverges: {@code same-site=omitted} writes no attribute, so a supplier matching the
-     * session cookie applies to it where Tomcat suppresses that supplier instead.
+     * Tomcat additionally prepends a rule for the session cookie; unneeded here (issue #85), since
+     * {@link #configureSessions()} writes {@code same-site} as an attribute {@code addCookie} prefers.
      */
     private void configureCookieSameSite() {
+        // Diverges from Tomcat at same-site=omitted, which writes no attribute: a supplier matching the
+        // session cookie applies to it here, where Tomcat suppresses that supplier instead.
         List<? extends CookieSameSiteSupplier> suppliers = getSettings().getCookieSameSiteSuppliers();
         if (!suppliers.isEmpty()) {
             servletContext.setCookieSameSiteResolver(new SuppliedCookieSameSiteResolver(suppliers));

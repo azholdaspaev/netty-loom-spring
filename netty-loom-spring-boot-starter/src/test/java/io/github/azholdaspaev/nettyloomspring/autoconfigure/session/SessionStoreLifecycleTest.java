@@ -49,8 +49,7 @@ class SessionStoreLifecycleTest {
 
         assertFalse(lifecycle.isRunning());
         // Asserted through the servlet contract rather than the internal flag: an invalidated session is
-        // exactly one whose accessors throw. A session outliving this phase would instead run its
-        // @PreDestroy later, during bean destruction, against data sources that have already closed.
+        // exactly one whose accessors throw.
         assertThrows(IllegalStateException.class, () -> session.getAttribute("anything"),
             "stopping must invalidate the sessions it drops");
     }
@@ -79,9 +78,6 @@ class SessionStoreLifecycleTest {
 
     @Test
     void theStoreIsNotPauseable() {
-        // SmartLifecycle.isPauseable defaults to true, and pause() stops only pauseable beans. Left at
-        // the default, a pause would skip the web server -- which keeps accepting requests -- while this
-        // bean invalidated every session, logging every user out of an application still serving traffic.
         assertFalse(lifecycle.isPauseable(),
             "sessions may only be torn down when the server they belong to is going down too");
     }

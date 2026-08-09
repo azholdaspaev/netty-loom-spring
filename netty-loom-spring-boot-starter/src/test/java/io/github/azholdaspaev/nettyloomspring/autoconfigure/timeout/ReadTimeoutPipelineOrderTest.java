@@ -14,9 +14,9 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * What the read timeout measures is decided by where it sits, and that position is decided by the
- * auto-configuration rather than by the pipelines the core tests hand-build. At the head — where it used
- * to be — it counted dispatch time and closed connections mid-request (issue #76).
+ * What the read timeout measures rests entirely on where it sits, and that position is decided by the
+ * auto-configuration rather than by the pipelines the core tests hand-build: at the head, where it used
+ * to be, it counted dispatch time and closed connections mid-request (issue #76).
  */
 @Timeout(value = 60, unit = TimeUnit.SECONDS)
 class ReadTimeoutPipelineOrderTest {
