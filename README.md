@@ -170,23 +170,28 @@ The last two are the same mechanism. If your clients pool connections and send l
 
 ## Benchmarks
 
-**Methodology.** Three identical blocking Spring MVC apps — Netty-Loom (`:18080`), Tomcat platform threads (`:18081`, `threads.max=200`), Tomcat virtual threads (`:18082`, `threads.max=20000`) — driven by k6 against `GET /work` (`Thread.sleep(50)`, simulating a blocking DB call) at **10,000 concurrent connections**, 60s plateau. Single box, Darwin 25.5.0 ARM64, 8 logical cores, Java 25, identical JVM flags (`-XX:+UseG1GC -Xmx2g`). Tomcat `max-connections=20000` on both targets to remove the accept ceiling as a confound.
+**Methodology.** Three identical blocking Spring MVC apps — Netty-Loom (`:18080`), Tomcat platform threads (`:18081`, `threads.max=200`), Tomcat virtual threads (`:18082`, `threads.max=20000`) — driven by k6 against `GET /work` (`Thread.sleep(50)`, simulating a blocking DB call) at **10,000 concurrent connections**, 60s plateau. Single box, Darwin 25.5.0 ARM64, 8 logical cores, Java 25, identical JVM flags (`-XX:+UseG1GC -Xmx2g`). Tomcat `max-connections=20000` on both targets to remove the accept ceiling as a confound. Numbers below are the 2026-08-09 sweep; the same run also measures `GET /work-secured` behind a Spring Security filter chain.
+
+**The claim, in one line:** at 10,000 concurrent blocking connections, ~1.7× the throughput and ~5.7× better p99 than Tomcat with virtual threads, on **2.4× the throughput per core**. At 2,000 connections — the only other level measured — that advantage is gone.
 
 **Results @ 10,000 concurrent blocking connections**
 
 | Metric | Netty-Loom | Tomcat-virtual | Tomcat-platform |
 | --- | --- | --- | --- |
-| Throughput (req/s) | **41,412** | 12,640 (3.3×) | 3,834 (10.8×) |
-| p95 latency | **392 ms** | 3,233 ms | 2,643 ms |
-| p99 latency | **447 ms** | 5,417 ms (12.1×) | 2,653 ms (5.9×) |
-| Per-core throughput (req/s/core) | **22,908** | 5,734 (4.0×) | 11,799 (1.94×) |
-| CPU used (of 8 cores) | 1.81 (22.6%) | 2.20 (27.6%) | 0.32 (4.1%, pool-capped) |
-| Memory / connection | **20.17 KB** | 148.50 KB (7.4×) | 29.29 KB |
+| Per-core throughput (req/s/core) | **20,336** | 8,322 (2.4×) | 8,069 (2.5×) |
+| Throughput (req/s) | **44,584** | 26,819 (1.7×) | 3,663 (12.2×) |
+| p95 latency | **345 ms** | 1,563 ms | 2,812 ms |
+| p99 latency | **420 ms** | 2,409 ms (5.7×) | 2,831 ms (6.7×) |
+| CPU used (of 8 cores) | 2.19 (27.4%) | 3.22 (40.3%) | 0.45 (5.7%, pool-capped) |
 | Error rate | 0.00% | 0.00% | 0.00% |
 
-At **low concurrency** (1–10 VUs, `GET /ping`) all three are essentially equivalent (~25.8k–26.0k req/s) — the gain is structural and shows up only under blocking concurrency, not as raw transport overhead.
+**Per-core throughput leads the table because it is the claim that survives leaving this box.** Netty-Loom serves 2.4× the requests per core of CPU *while using less CPU in absolute terms* (2.19 cores vs 3.22). Raw throughput on a single box partly records who won the fight for cores with the k6 client; throughput-per-core does not.
 
-> Single-box loopback test: client and server share the 8 cores, so absolute latencies are inflated and throughput is relative. **Per-core throughput** is the discriminator most likely to transfer off-box. Tomcat-platform's low memory is an artifact of its ~200-thread cap queuing/refusing excess load — read throughput, tail latency, and CPU efficiency together. Numbers are from 2026-06-13 on darwin-arm64; relative ordering transfers more reliably than absolute values. See [`netty-loom-spring-benchmarks`](netty-loom-spring-benchmarks) for the full harness and caveats.
+**Where the advantage does not apply.** At **2,000** connections Netty-Loom and Tomcat+VT are statistically indistinguishable — 30,885 vs 30,128 req/s (+2.5%, inside the harness's ±11% noise floor) with identical tails, p99 93.0 vs 93.2 ms. The wedge opens as connections climb past what a thread-per-request pool absorbs, so every number here carries its connection count. In that sweep per-core throughput held flat (~18,200–19,000 req/s/core from 2,000 to 10,000 VUs) while Tomcat+VT's halved — which is what "structural" means here, and it is measured by the 2026-08-01 sweep, not this one.
+
+At **low concurrency** (1–10 VUs, `GET /ping`) Netty-Loom is the **slowest** of the three — 24,540 req/s against ~29k, about +28 microseconds per request. There is no per-request speed advantage to claim; the gain is structural and shows up only under blocking concurrency.
+
+> Single-box loopback test: client and server share the 8 cores, so absolute latencies are inflated and throughput is relative. **Per-core throughput** is the discriminator most likely to transfer off-box. Tomcat-platform's 0.00% error rate is an artifact of its ~200-thread cap *queuing* excess load rather than refusing it — read throughput, tail latency, and CPU efficiency together. **Memory per connection is withheld**: it rose 20.17 → 49.2 → 66.6 KB across three sweeps and is unattributed ([#144](https://github.com/azholdaspaev/netty-loom-spring/issues/144)). Numbers are from 2026-08-09 on darwin-arm64, one forward pass with no crossover; relative ordering transfers more reliably than absolute values. Full sweeps, methodology and caveats in [`docs/benchmarks/`](docs/benchmarks) and [`netty-loom-spring-benchmarks`](netty-loom-spring-benchmarks).
 
 **Reproduce**
 

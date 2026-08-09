@@ -231,4 +231,10 @@ overridable with `--env USERNAME=... --env PASSWORD=...`).
 ## Results snapshot
 
 See [`results/SNAPSHOT.md`](results/SNAPSHOT.md) for the committed numbers, the exact machine, and the
-JVM flags they were produced with. Regenerate any time by re-running `scripts/run-all.sh`.
+JVM flags they were produced with. Regenerate any time by re-running `scripts/run-all.sh` — the
+committed copy is currently transcribed by hand, because its sweep's raw exports did not survive.
+
+The analysed sweeps live in [`../docs/benchmarks/`](../docs/benchmarks): the
+[2026-08-09](../docs/benchmarks/2026-08-09/COMPARISON.md) one is current and is what the snapshot
+carries; the [2026-08-01](../docs/benchmarks/2026-08-01/COMPARISON.md) one adds a reversed pass and
+the 2,000-VU level, which is the only measurement of where the advantage disappears.
