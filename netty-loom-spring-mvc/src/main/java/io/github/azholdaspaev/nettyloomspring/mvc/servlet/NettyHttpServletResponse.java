@@ -481,9 +481,7 @@ public class NettyHttpServletResponse implements HttpServletResponse {
     }
 
     /**
-     * Hands the buffered bytes over and empties the buffer.
-     *
-     * <p>Wraps the buffer's own array rather than copying it, which is safe only because
+     * Wraps the buffer's own array rather than copying it, which is safe only because
      * {@link FastByteArrayOutputStream#reset()} allocates a fresh buffer instead of reusing that array.
      */
     private ByteBuf takeBufferedBody() {
