@@ -94,7 +94,7 @@ prefix (`NettyLoomProperties`). See [ADR 0001](docs/adr/0001-server-properties-n
 | `server.netty.shutdown-grace-period` | `Duration` | `30s` | Time to wait for in-flight requests before forcibly closing |
 | `server.netty.read-timeout` | `Duration` | `30s` | How long the server waits on the client. A **single** interval measured from the previous response — or from the connection being accepted, which is what makes it a slow-loris defense — covering idle time and delivery of the next request together, not one interval each. Handler execution time does **not** count against it. Channels exceeding it are closed without a response; `0` or negative disables |
 
-Fixed HTTP frame limits (not yet configurable): max initial line, header, and chunk size = **10 KB** each; max aggregated body = **1 MB**. Exceeding one is answered and the connection closed — `414` for the initial line, `431` for the header block, `413` for the body — rather than dispatched to your application.
+Fixed HTTP frame limits (not yet configurable): max initial line, header, and chunk size = **10 KB** each; max aggregated body = **1 MB**. An over-limit initial line (`414`) or header block (`431`) is answered and the connection closed, rather than dispatched to your application; an over-limit body is answered `413` by the aggregator, which leaves a keep-alive connection open.
 
 ### Response framing
 
