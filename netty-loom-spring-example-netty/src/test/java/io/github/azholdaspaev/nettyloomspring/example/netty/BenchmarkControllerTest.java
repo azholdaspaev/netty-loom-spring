@@ -86,6 +86,7 @@ class BenchmarkControllerTest {
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
     void loginLeavesTheStoredCredentialAlone() {
+        // issue #111
         String before = userDetailsService.loadUserByUsername("bench").getPassword();
 
         logIn();

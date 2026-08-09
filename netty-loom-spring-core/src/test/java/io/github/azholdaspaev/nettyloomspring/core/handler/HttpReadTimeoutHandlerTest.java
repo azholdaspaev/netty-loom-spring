@@ -61,6 +61,7 @@ class HttpReadTimeoutHandlerTest {
 
     @Test
     void shouldNotCloseWhileARequestIsStillBeingServed() {
+        // issue #76
         EmbeddedChannel channel = newChannel();
         receiveRequest(channel);
 
