@@ -4,6 +4,7 @@ import io.github.azholdaspaev.nettyloomspring.autoconfigure.properties.NettyLoom
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.NettyWebServerFactory;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.SessionStoreLifecycle;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpDecoderFailureHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpDrainHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpExceptionHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpPipeliningHandler;
@@ -108,6 +109,11 @@ public class NettyLoomAutoConfiguration {
             // written from that handler's own context, towards the head -- never reaches it; above the
             // dispatcher so requests are gated before dispatch while responses still pass back through.
             new NamedChannelHandler("pipelining", HttpPipeliningHandler::new),
+            // Below the gate so the rejection is sequenced behind an earlier pipelined response and releases
+            // the gate on its way out, rather than travelling towards the head unsequenced as the
+            // aggregator's own 413 does (issue #78). Nothing is lost by rejecting this late: the decoder
+            // discards every byte after a bad message, so no request can be queued behind one.
+            NamedChannelHandler.shared("decoderFailure", new HttpDecoderFailureHandler()),
             new NamedChannelHandler("dispatcher", () -> new HttpRequestHandler(httpRequestDispatcher, nettyLoomDispatchExecutor, httpConnectionRegistry)),
             NamedChannelHandler.shared("exceptionHandler", new HttpExceptionHandler())
         ));

@@ -94,7 +94,7 @@ prefix (`NettyLoomProperties`). See [ADR 0001](docs/adr/0001-server-properties-n
 | `server.netty.shutdown-grace-period` | `Duration` | `30s` | Time to wait for in-flight requests before forcibly closing |
 | `server.netty.read-timeout` | `Duration` | `30s` | How long the server waits on the client. A **single** interval measured from the previous response — or from the connection being accepted, which is what makes it a slow-loris defense — covering idle time and delivery of the next request together, not one interval each. Handler execution time does **not** count against it. Channels exceeding it are closed without a response; `0` or negative disables |
 
-Fixed HTTP frame limits (not yet configurable): max initial line, header, and chunk size = **10 KB** each; max aggregated body = **1 MB**.
+Fixed HTTP frame limits (not yet configurable): max initial line, header, and chunk size = **10 KB** each; max aggregated body = **1 MB**. Exceeding one is answered and the connection closed — `414` for the initial line, `431` for the header block, `413` for the body — rather than dispatched to your application.
 
 ### Response framing
 
@@ -139,6 +139,7 @@ TCP accept (Netty boss loop)
       → HttpObjectAggregator(1MB)    # buffers full request body
       → HttpReadTimeoutHandler(30s)  # client-progress deadline; suspended while dispatching
       → HttpPipeliningHandler        # one exchange at a time, so responses leave in request order
+      → HttpDecoderFailureHandler    # rejects what the codec could not parse, before it reaches the app
       → HttpRequestHandler           # retains request, hands off to...
           → virtual thread (Executors.newVirtualThreadPerTaskExecutor)
               → SpringHttpRequestDispatcher
@@ -165,7 +166,7 @@ The cost of counting requests rather than bytes is that idle time and delivery s
 
 The last two are the same mechanism. If your clients pool connections and send large bodies after long idle periods, size `read-timeout` for the sum, not for either part.
 
-`HttpExceptionHandler` maps: `ReadTimeoutException` → close; `ClosedChannelException`/client-disconnect `IOException` → clean close; `TooLongFrameException` → 413; `DecoderException`/`IllegalArgumentException` → 400; `UnsupportedOperationException` → 501; else → 500 (5xx logged as error, <5xx as warn).
+`HttpExceptionHandler` maps: `ReadTimeoutException` → close; `ClosedChannelException`/`PrematureChannelClosureException`/client-disconnect `IOException` → clean close; `TooLongHttpHeaderException` → 431; `TooLongHttpLineException` → 414; `TooLongFrameException` → 413; `DecoderException`/`IllegalArgumentException` → 400; `UnsupportedOperationException` → 501; else → 500 (5xx logged as error, <5xx as warn).
 
 ## Benchmarks
 

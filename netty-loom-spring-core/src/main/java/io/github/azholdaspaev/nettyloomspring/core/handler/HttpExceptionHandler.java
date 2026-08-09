@@ -7,6 +7,7 @@ import io.netty.channel.ChannelHandler.Sharable;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.DecoderException;
+import io.netty.handler.codec.PrematureChannelClosureException;
 import io.netty.handler.codec.TooLongFrameException;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -14,6 +15,8 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.codec.http.TooLongHttpHeaderException;
+import io.netty.handler.codec.http.TooLongHttpLineException;
 import io.netty.handler.timeout.ReadTimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,6 +59,13 @@ public class HttpExceptionHandler extends ChannelInboundHandlerAdapter {
             ? cause.getCause()
             : cause;
 
+        // Both subclasses first: they extend TooLongFrameException, so the 413 below would swallow them.
+        if (unwrapped instanceof TooLongHttpHeaderException) {
+            return HttpResponseStatus.REQUEST_HEADER_FIELDS_TOO_LARGE;
+        }
+        if (unwrapped instanceof TooLongHttpLineException) {
+            return HttpResponseStatus.REQUEST_URI_TOO_LONG;
+        }
         if (unwrapped instanceof TooLongFrameException) {
             return HttpResponseStatus.REQUEST_ENTITY_TOO_LARGE;
         }
@@ -78,7 +88,7 @@ public class HttpExceptionHandler extends ChannelInboundHandlerAdapter {
     }
 
     private static boolean isClientDisconnect(Throwable cause) {
-        if (cause instanceof ClosedChannelException) {
+        if (cause instanceof ClosedChannelException || cause instanceof PrematureChannelClosureException) {
             return true;
         }
         if (!(cause instanceof IOException)) {

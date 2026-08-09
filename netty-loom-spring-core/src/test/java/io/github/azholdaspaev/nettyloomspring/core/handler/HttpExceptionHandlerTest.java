@@ -2,10 +2,13 @@ package io.github.azholdaspaev.nettyloomspring.core.handler;
 
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.DecoderException;
+import io.netty.handler.codec.PrematureChannelClosureException;
 import io.netty.handler.codec.TooLongFrameException;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.TooLongHttpHeaderException;
+import io.netty.handler.codec.http.TooLongHttpLineException;
 import io.netty.handler.timeout.ReadTimeoutException;
 import org.junit.jupiter.api.Test;
 
@@ -66,6 +69,34 @@ class HttpExceptionHandlerTest {
     }
 
     @Test
+    void shouldRespondWith431OnTooLongHttpHeaderException() {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpExceptionHandler());
+
+        channel.pipeline().fireExceptionCaught(new TooLongHttpHeaderException("header too big"));
+
+        FullHttpResponse response = channel.readOutbound();
+        assertNotNull(response);
+        assertEquals(HttpResponseStatus.REQUEST_HEADER_FIELDS_TOO_LARGE, response.status(),
+            "an oversized header block names the header limit, not the 413 its TooLongFrameException supertype maps to");
+        response.release();
+        assertFalse(channel.isOpen());
+    }
+
+    @Test
+    void shouldRespondWith414OnTooLongHttpLineException() {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpExceptionHandler());
+
+        channel.pipeline().fireExceptionCaught(new TooLongHttpLineException("line too big"));
+
+        FullHttpResponse response = channel.readOutbound();
+        assertNotNull(response);
+        assertEquals(HttpResponseStatus.REQUEST_URI_TOO_LONG, response.status(),
+            "an oversized initial line names the line limit, not the 413 its TooLongFrameException supertype maps to");
+        response.release();
+        assertFalse(channel.isOpen());
+    }
+
+    @Test
     void shouldRespondWith400OnIllegalArgumentException() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpExceptionHandler());
 
@@ -101,6 +132,19 @@ class HttpExceptionHandlerTest {
         Object outbound = channel.readOutbound();
         assertNull(outbound, "no response should be written on read timeout");
         assertFalse(channel.isOpen(), "channel must be closed on read timeout");
+    }
+
+    @Test
+    void shouldCloseWithoutResponseWhenTheClientVanishedMidHeaders() {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpExceptionHandler());
+
+        channel.pipeline().fireExceptionCaught(
+            new PrematureChannelClosureException("Connection closed before received headers"));
+        channel.runPendingTasks();
+
+        Object outbound = channel.readOutbound();
+        assertNull(outbound, "a client that hung up mid-headers is a disconnect, not a 500 to answer");
+        assertFalse(channel.isOpen(), "channel must be closed after a premature closure");
     }
 
     @Test
