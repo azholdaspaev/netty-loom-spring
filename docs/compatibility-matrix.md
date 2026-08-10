@@ -12,7 +12,9 @@ What the servlet bridge implements, method by method. Verified against the sourc
 | `partial` | Implemented with a deviation you need to know about |
 | `none` | Not implemented — the call returns a stub value or throws |
 | `ignored` | Accepted without complaint and has no effect. **No warning, no failure** |
+| `warns` | Accepted and has no effect, but logs a WARN saying so |
 | `fails startup` | Rejected loudly at startup with a message naming the property |
+| `untested` | No coverage either way — not a claim about behaviour |
 
 ---
 
@@ -25,7 +27,7 @@ What the servlet bridge implements, method by method. Verified against the sourc
 | Content negotiation, `@RequestParam`, `@PathVariable` | `works` | |
 | `HandlerInterceptor`, `@ControllerAdvice` | `works` | |
 | Spring Security | `works` | It is a servlet `Filter` with its own `SecurityContext`; it does not depend on the container auth methods, which are stubs |
-| Actuator | untested | No compatibility test module yet ([#25](https://github.com/azholdaspaev/netty-loom-spring/issues/25)) |
+| Actuator | `untested` | No compatibility test module yet ([#25](https://github.com/azholdaspaev/netty-loom-spring/issues/25)) |
 | `@Async` MVC, `Callable` return values | `none` | Routes through `startAsync()` |
 | Welcome page (`index.html`) | `none` | Boot's `forward:index.html` needs a `RequestDispatcher`, which is `null`; returns 500 with a static `index.html` present ([#59](https://github.com/azholdaspaev/netty-loom-spring/issues/59)), 404 without one |
 
@@ -143,7 +145,7 @@ fired on an object bound into a session, and passing one to `addListener` throws
 | `addFilter(name, Filter instance)` | `works` | This is what `FilterRegistrationBean` and Boot's own filters use |
 | `addFilter(name, Class)` / `addFilter(name, String className)` | `ignored` | Registration is recorded and **silently skipped at request time** — the filter is never instantiated and never runs |
 | Filter URL-pattern mappings | `works` | Servlet-spec §12.2 matching (exact, `/*`, `/prefix/*`, `*.ext`) against the context-relative path |
-| Filter servlet-name mappings | `ignored` | Logged at WARN and discarded |
+| Filter servlet-name mappings | `warns` | Logged at WARN and discarded — unlike the `Class` overload above, which is silent |
 | Filter dispatcher types | `partial` | Recorded and checked, but `getDispatcherType()` is always `REQUEST`, so `FORWARD` / `INCLUDE` / `ERROR` / `ASYNC` mappings can never match |
 | Filter ordering | `works` | Registration order, which is Boot's `@Order` resolution |
 | `FilterConfig` init parameters | `none` | `setInitParameter` records them; `getInitParameter` always returns `null` |
