@@ -231,8 +231,9 @@ Three library modules, dependency flow **`starter → mvc → core`**. `core` ha
 
 ```
 TCP accept (boss loop)
-  → HttpConnectionRegistry.register(channel)     # before any handler exists
-  → worker loop pipeline:
+  → worker loop, in NettyServerChannelInitializer.initChannel:
+      HttpConnectionRegistry.register(channel)   # before the pipeline is configured
+  → then the pipeline, on that same loop:
       httpCodec          HttpServerCodec(10_000, 10_000, 10_000)
       httpKeepAlive      HttpServerKeepAliveHandler
       drain              HttpDrainHandler          # counts the exchange for graceful shutdown
