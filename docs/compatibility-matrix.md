@@ -107,8 +107,12 @@ What the servlet bridge implements, method by method. Verified against the sourc
 
 ## Listeners
 
-All registered through `ServletContext.addListener`, so `@WebListener`,
-`ServletListenerRegistrationBean` and `HttpSessionEventPublisher` all work.
+Registered through `ServletContext.addListener`, so `ServletListenerRegistrationBean` and
+`HttpSessionEventPublisher` both work — each is a `ServletContextInitializer` that calls it.
+
+**`@WebListener` does not.** Under `@ServletComponentScan` Boot collects the annotated class names
+into `ServletWebServerSettings.webListenerClassNames`, which `NettyWebServerFactory` never reads, so
+they are dropped without reaching `addListener` and without a warning.
 
 | Listener | Status |
 | --- | --- |
