@@ -1,9 +1,12 @@
 plugins {
     `java-library`
-    alias(libs.plugins.spring.dependency.management)
 }
 
 dependencies {
+    // Platform rather than io.spring.dependency-management: the plugin writes no versions into
+    // published Gradle module metadata, leaving consumers unable to resolve. #147
+    api(platform(libs.spring.boot.dependencies))
+
     api(project(":netty-loom-spring-core"))
 
     implementation(libs.spring.web)
