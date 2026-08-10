@@ -165,7 +165,7 @@ with `IllegalArgumentException`, as on Tomcat. `AsyncListener` is registered thr
 | Graceful shutdown | `works` | Two-phase drain. Note `server.shutdown=immediate` is ignored — it always drains ([#87](https://github.com/azholdaspaev/netty-loom-spring/issues/87)) |
 | Slow-loris protection | `works` | Per-connection read timeout measuring the client, not the handler |
 | Frame-size limits | `partial` | Fixed, not configurable ([#42](https://github.com/azholdaspaev/netty-loom-spring/issues/42)) |
-| Write timeout / bounded outbound queue | `none` | A pipelining client that never reads accumulates unbounded buffer ([#88](https://github.com/azholdaspaev/netty-loom-spring/issues/88)) |
+| Bounded outbound queue | `none` | A pipelining client that never reads accumulates unbounded buffer — 5.7 MB queued out for 888 bytes in, measured ([#88](https://github.com/azholdaspaev/netty-loom-spring/issues/88)). The 60s write-stall timeout above bounds this in time, not in space |
 | Handler execution deadline | `none` | A handler that never returns holds its connection until shutdown ([#43](https://github.com/azholdaspaev/netty-loom-spring/issues/43)) |
 | Connection cap / admission control | `none` | [#45](https://github.com/azholdaspaev/netty-loom-spring/issues/45), [#47](https://github.com/azholdaspaev/netty-loom-spring/issues/47) |
 | TLS | `fails startup` | [#16](https://github.com/azholdaspaev/netty-loom-spring/issues/16) |
