@@ -114,8 +114,8 @@ Ordinary blocking `@RestController` code works: request mapping, `@RequestBody` 
 servlet listeners, and Spring Security — which works because it is a filter and keeps its own
 context, not because the container's auth methods are implemented (they are not).
 
-Three things do not, in ascending order of how badly they will surprise you. Method-by-method detail
-is in the **[compatibility matrix](docs/compatibility-matrix.md)**.
+Three things do not. Method-by-method detail is in the
+**[compatibility matrix](docs/compatibility-matrix.md)**.
 
 ### 1. Standard settings that are accepted and silently ignored
 
