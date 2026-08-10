@@ -123,12 +123,18 @@ they are dropped without reaching `addListener` and without a warning.
 | `HttpSessionListener` | `works` |
 | `HttpSessionAttributeListener` | `works` |
 | `HttpSessionIdListener` | `works` |
-| `HttpSessionBindingListener` | `works` — fired on both bind and unbind |
-| `HttpSessionActivationListener` | `none` — sessions are never passivated or activated, so `sessionDidActivate` never fires, silently |
 
-Those seven `addListener` types are the complete set the spec defines; anything else is rejected
-with `IllegalArgumentException`, as on Tomcat. `AsyncListener` is registered through
-`AsyncContext`, which does not exist here.
+Those seven are exactly what `addListener` accepts (`NettyListenerRegistry.SUPPORTED_TYPES`);
+anything else is rejected with `IllegalArgumentException`, as on Tomcat. `AsyncListener` is
+registered through `AsyncContext`, which does not exist here.
+
+Two further interfaces are attribute-value contracts rather than registration types — they are
+fired on an object bound into a session, and passing one to `addListener` throws:
+
+| Interface | Status | Notes |
+| --- | --- | --- |
+| `HttpSessionBindingListener` | `works` | `valueBound` and `valueUnbound` both fire, for a value bound as a session attribute |
+| `HttpSessionActivationListener` | `none` | Sessions are never passivated or activated, so `sessionDidActivate` never fires, silently |
 
 ## Filters and servlets
 
