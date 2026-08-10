@@ -17,7 +17,7 @@ document for how changes are made here. This file is the practical summary.
 ./gradlew build                              # compile + test, everything
 ./gradlew build -x test                      # compile only
 ./gradlew :netty-loom-spring-core:test       # a single module
-./gradlew test --tests 'io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.test.SmokeControllerTest'
+./gradlew :netty-loom-spring-boot-starter:test --tests 'io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.test.SmokeControllerTest'
 ```
 
 Tests use JUnit 6 on the JUnit Platform and run with `--enable-native-access=ALL-UNNAMED`, which
