@@ -262,9 +262,10 @@ virtual thread, so the loop stays free to keep accepting.
 - **`HttpRequestDispatcher`** — `void handle(FullHttpRequest, HttpConnectionMetadata, HttpResponseWriter) throws Exception`.
   The seam between the Netty pipeline and any higher-layer router; keeps `core` free of Spring. A
   dispatcher that returns without having written a complete response is treated as a failure.
-- **`HttpResponseWriter`** — `void write(HttpObject)`. How a dispatcher emits a response, part by
-  part. Not thread-safe, owns every part passed to it, and valid only for the duration of one
-  `handle` call.
+- **`HttpResponseWriter`** — `void write(HttpObject) throws IOException`. How a dispatcher emits a
+  response, part by part. Not thread-safe, owns every part passed to it, and valid only for the
+  duration of one `handle` call. The `IOException` is how a departed or stalled client reaches the
+  dispatcher.
 
 **Taking either of the first two seams needs `@Primary`.** Nothing in the starter is declared
 `@ConditionalOnMissingBean`, so your bean does not displace the auto-configured one. Omit `@Primary`
