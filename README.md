@@ -166,10 +166,11 @@ issue. The contrast with the list above is the point.
 - **No TLS ([#16](https://github.com/azholdaspaev/netty-loom-spring/issues/16)), HTTP/2
   ([#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23)), compression
   ([#22](https://github.com/azholdaspaev/netty-loom-spring/issues/22)) or WebSocket upgrade.**
-- **No forwarded-header support ([#50](https://github.com/azholdaspaev/netty-loom-spring/issues/50)).**
-  The session cookie's `Secure` flag comes from the actual connection, which behind a
-  TLS-terminating proxy is plaintext — set `server.servlet.session.cookie.secure=true` explicitly,
-  or the session id can leak over a forced plaintext request (CWE-614).
+- **The session cookie ignores forwarded headers ([#50](https://github.com/azholdaspaev/netty-loom-spring/issues/50)).**
+  Its `Secure` flag comes from the actual connection, which behind a TLS-terminating proxy is
+  plaintext — set `server.servlet.session.cookie.secure=true` explicitly, or the session id can leak
+  over a forced plaintext request (CWE-614). `server.forward-headers-strategy=framework` does not
+  cover this: it fixes the *request* via Boot's `ForwardedHeaderFilter`, not the cookie.
 - **No container auth.** `getUserPrincipal()` → `null`, `isUserInRole()` → `false`; `login` and
   `logout` are silent no-ops that report no failure.
 - **Requests are buffered whole**, capped at 1 MiB ([#51](https://github.com/azholdaspaev/netty-loom-spring/issues/51)). Responses do stream.
