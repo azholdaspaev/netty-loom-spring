@@ -76,7 +76,7 @@ What the servlet bridge implements, method by method. Verified against the sourc
 | Framing | `works` | Matches Tomcat; see [docs/configuration.md](configuration.md#response-framing) for the full table |
 | Backpressure | `works` | A handler producing faster than the client reads blocks on its virtual thread, bounded by a fixed 60s write-stall timeout |
 | `setBufferSize`, `getBufferSize` | `works` | Default 8192; `setBufferSize` throws once anything is written |
-| `flushBuffer()` | `partial` | Flushes, but does not commit — status and headers stay mutable afterwards ([#119](https://github.com/azholdaspaev/netty-loom-spring/issues/119)) |
+| `flushBuffer()` | `works` | Commits, as the spec requires: the head goes on the wire, so `setStatus` and the header mutators no-op afterwards and `resetBuffer` throws |
 | `reset()`, `resetBuffer()` | `partial` | Both throw once the head is on the wire. `resetBuffer` drops a still-bound `PrintWriter` ([#117](https://github.com/azholdaspaev/netty-loom-spring/issues/117)) |
 | Headers, `setStatus` | `works` | Silently no-op after commit, as the spec requires |
 | `addCookie` | `partial` | Maps name, value, path, domain, max-age, `Secure`, `HttpOnly`, `SameSite`, `Partitioned`. **`Expires`, `Comment` and `Version` are silently dropped** |
