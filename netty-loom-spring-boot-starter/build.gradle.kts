@@ -1,9 +1,10 @@
 plugins {
     `java-library`
-    alias(libs.plugins.spring.dependency.management)
 }
 
 dependencies {
+    api(platform(libs.spring.boot.dependencies))
+
     api(project(":netty-loom-spring-core"))
     api(project(":netty-loom-spring-mvc"))
 
@@ -15,6 +16,9 @@ dependencies {
 
     implementation(libs.jakarta.servlet.api)
 
+    // annotationProcessor is resolvable and extends nothing, so the api platform above cannot
+    // reach it; without its own it would resolve a versionless processor.
+    annotationProcessor(platform(libs.spring.boot.dependencies))
     annotationProcessor(libs.spring.boot.configuration.processor)
 
     testImplementation(libs.spring.boot.starter.test)
