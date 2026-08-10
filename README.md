@@ -188,7 +188,7 @@ Standard knobs bind under Spring Boot's `server.*` namespace; Netty-only tuning 
 
 | Property | Type | Default | Description |
 | --- | --- | --- | --- |
-| `server.netty.transport` | `String` | `auto` | `auto` selects the best native transport (epoll on Linux, kqueue on macOS/BSD) and falls back to NIO. `nio` forces the portable transport. `epoll` and `kqueue` force that transport and fail startup if it is unavailable |
+| `server.netty.transport` | `String` | `auto` | `auto` selects the best native transport (epoll on Linux, kqueue on macOS) and falls back to NIO. `nio` forces the portable transport. `epoll` and `kqueue` force that transport and fail startup if it is unavailable |
 | `server.netty.boss-threads` | `int` | `1` | Threads in the boss event-loop group, which accepts connections |
 | `server.netty.worker-threads` | `int` | `0` | Threads in the worker event-loop group; `0` uses Netty's default of `2 × availableProcessors()` |
 | `server.netty.tcp-keep-alive` | `boolean` | `true` | Socket-level `SO_KEEPALIVE`. Unrelated to HTTP keep-alive, which is protocol behaviour and always on |

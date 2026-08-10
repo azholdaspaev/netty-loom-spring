@@ -16,7 +16,7 @@ First release. Not yet published to Maven Central; publishing is tracked by
 - **Netty-backed `ServletWebServerFactory`** that replaces the embedded Tomcat container in a
   Spring Boot application, dispatching each request onto its own Java 25 virtual thread. Blocking
   `@RestController` code runs unchanged.
-- **Transport auto-selection** via `server.netty.transport` — epoll on Linux, kqueue on macOS/BSD,
+- **Transport auto-selection** via `server.netty.transport` — epoll on Linux, kqueue on macOS,
   NIO everywhere else; `nio`, `epoll` and `kqueue` force a specific transport, the two native
   values failing startup when unavailable.
 - **Two-phase graceful shutdown** with a configurable drain deadline
