@@ -34,9 +34,9 @@ First release. Not yet published to Maven Central; publishing is tracked by
   `NettyHttpServletResponse` and `DefaultNettyServletContext`.
 - **In-memory sessions** with the standard `server.servlet.session.*` cookie and timeout
   properties, plus `CookieSameSiteSupplier` support.
-- **Two SPI seams for extension** — `NettyPipelineConfigurer` for the channel pipeline and
-  `HttpRequestDispatcher` (with `HttpResponseWriter`) for the layer above it, keeping
-  `netty-loom-spring-core` free of any Spring dependency.
+- **Three SPI seams for extension** — `NettyPipelineConfigurer` for the channel pipeline,
+  `HttpRequestDispatcher` for the layer above it, and `HttpResponseWriter` for how that layer emits
+  a response, keeping `netty-loom-spring-core` free of any Spring dependency.
 - **Configuration metadata** for every `server.netty.*` property, with IDE value hints.
 
 ### Known limitations
