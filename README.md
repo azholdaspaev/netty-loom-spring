@@ -174,10 +174,11 @@ issue. The contrast with the list above is the point.
   `logout` are silent no-ops that report no failure.
 - **Requests are buffered whole**, capped at 1 MiB ([#51](https://github.com/azholdaspaev/netty-loom-spring/issues/51)). Responses do stream.
 - **Filters and servlets are initialized but never destroyed** ([#103](https://github.com/azholdaspaev/netty-loom-spring/issues/103)).
-- **No write timeout and no bound on queued responses** — a client that pipelines while never
-  reading has been measured queuing ~5.7 MB out for ~900 bytes in
-  ([#88](https://github.com/azholdaspaev/netty-loom-spring/issues/88)). Nothing bounds handler
-  execution either ([#43](https://github.com/azholdaspaev/netty-loom-spring/issues/43)).
+- **No bound on queued responses** — a client that pipelines while never reading has been measured
+  queuing ~5.7 MB out for ~900 bytes in
+  ([#88](https://github.com/azholdaspaev/netty-loom-spring/issues/88)). A fixed 60s write-stall
+  timeout bounds this in time, not in space. Nothing bounds handler execution at all
+  ([#43](https://github.com/azholdaspaev/netty-loom-spring/issues/43)).
 
 ## Configuration
 
