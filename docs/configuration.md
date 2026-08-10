@@ -45,7 +45,7 @@ beans and `CookieSameSiteSupplier` beans.
 
 | Property | Message |
 | --- | --- |
-| `server.ssl.*` with SSL enabled | `WebServerException` naming [#16](https://github.com/azholdaspaev/netty-loom-spring/issues/16); remove `server.ssl.*` or set `server.ssl.enabled=false`. Failing loudly is deliberate — silently serving plaintext while the app looks TLS-configured is a security footgun |
+| `server.ssl.*` with SSL enabled | `WebServerException` naming [#16](https://github.com/azholdaspaev/netty-loom-spring/issues/16); remove `server.ssl.*` or set `server.ssl.enabled=false`. Note `Ssl.enabled` defaults to `true`, so binding **any** `server.ssl.*` key — `server.ssl.bundle` included — is enough to trip this. Failing loudly is deliberate — silently serving plaintext while the app looks TLS-configured is a security footgun |
 | `server.servlet.session.persistent=true` | `WebServerException`; sessions are in-memory only. Use Spring Session for a durable store |
 | `server.servlet.session.tracking-modes` with `URL` or `SSL` | `IllegalArgumentException` naming the property |
 | `server.netty.transport` unknown or unavailable | `IllegalArgumentException` listing the valid values, or `IllegalStateException` if the requested native transport is not available on this platform |
@@ -70,7 +70,7 @@ Everything below is set on the factory and never read again — **no warning, no
 | `server.servlet.jsp.*` | No JSP servlet | |
 | `server.servlet.encoding.mapping.*` | Locale-to-charset mappings are never read. Note this is a different property from `spring.servlet.encoding.*`, which *is* honoured because Boot implements it as a filter | |
 | `server.servlet.session.store-dir` | Only `persistent` is checked | |
-| `server.ssl.bundle`, `spring.ssl.bundle.*` | Never read | [#16](https://github.com/azholdaspaev/netty-loom-spring/issues/16) |
+| `spring.ssl.bundle.*` | Never read. Unlike `server.ssl.bundle`, which fails startup, this namespace does not bind to `server.ssl` and so starts cleanly | [#16](https://github.com/azholdaspaev/netty-loom-spring/issues/16) |
 | `server.forward-headers-strategy=native` | No native forwarded-header handling. `=framework` does work, via Boot's `ForwardedHeaderFilter` | [#50](https://github.com/azholdaspaev/netty-loom-spring/issues/50) |
 | `spring.mvc.servlet.path` | `DispatcherServlet` receives every in-context request regardless | |
 | `server.netty.port` | Removed; use `server.port` | |
