@@ -186,31 +186,31 @@ issue. The contrast with the list above is the point.
 Standard knobs bind under Spring Boot's `server.*` namespace; Netty-only tuning lives under
 `server.netty.*`. The rule for which is which, and why, is [ADR 0001](docs/adr/0001-server-properties-namespace.md).
 
-| Property | Type | Default | Description |
-| --- | --- | --- | --- |
-| `server.netty.transport` | `String` | `auto` | `auto` selects the best native transport (epoll on Linux, kqueue on macOS) and falls back to NIO. `nio` forces the portable transport. `epoll` and `kqueue` force that transport and fail startup if it is unavailable |
-| `server.netty.boss-threads` | `int` | `1` | Threads in the boss event-loop group, which accepts connections |
-| `server.netty.worker-threads` | `int` | `0` | Threads in the worker event-loop group; `0` uses Netty's default of `2 × availableProcessors()` |
-| `server.netty.tcp-keep-alive` | `boolean` | `true` | Socket-level `SO_KEEPALIVE`. Unrelated to HTTP keep-alive, which is protocol behaviour and always on |
-| `server.netty.shutdown-grace-period` | `Duration` | `30s` | How long graceful shutdown waits for in-flight requests before force-closing |
-| `server.netty.read-timeout` | `Duration` | `30s` | A single client-progress deadline covering idle time and delivery of the next request *together*. Handler execution does not count against it. `0` or negative disables it |
+Six Netty-only properties. Types, defaults and exact semantics are in
+**[docs/configuration.md](docs/configuration.md#servernetty)**, which is where they are maintained:
+
+| Property | Controls |
+| --- | --- |
+| `server.netty.transport` | Which transport to use, or `auto` to pick the best one available |
+| `server.netty.boss-threads` | Size of the event-loop group that accepts connections |
+| `server.netty.worker-threads` | Size of the event-loop group that reads and writes on them |
+| `server.netty.tcp-keep-alive` | Socket-level `SO_KEEPALIVE` |
+| `server.netty.shutdown-grace-period` | How long graceful shutdown drains before force-closing |
+| `server.netty.read-timeout` | The slow-loris deadline, measured on the client rather than on your handler |
 
 Honoured from the standard namespace: `server.port`, `server.address`,
 `server.servlet.context-path`, `server.servlet.session.timeout`,
 `server.servlet.session.cookie.*`, `server.servlet.session.tracking-modes`,
 `server.servlet.context-parameters.*`, and `spring.servlet.encoding.*`. Everything else is in one of
-the two lists above. Details, and the reasoning behind the read-timeout design, are in
-**[docs/configuration.md](docs/configuration.md)**.
+the two lists above.
 
-**Set `server.netty.shutdown-grace-period` strictly below `spring.lifecycle.timeout-per-shutdown-phase`.**
-Both default to 30s, so at the defaults a slow drain is not guaranteed to finish before Spring tears
-the session store down ([#89](https://github.com/azholdaspaev/netty-loom-spring/issues/89)).
-
-HTTP frame limits are fixed, not configurable
-([#42](https://github.com/azholdaspaev/netty-loom-spring/issues/42)): max initial line, header block
-and chunk are 10,000 bytes each, and the aggregated body is 1 MiB. An over-limit initial line is
-answered `414` and a header block `431`, both closing the connection; an over-limit body is answered
-`413`. The listen backlog is fixed at 128.
+Two things to know before tuning any of it. `server.netty.shutdown-grace-period` must be set
+strictly below `spring.lifecycle.timeout-per-shutdown-phase`, or a slow drain is not guaranteed to
+finish before Spring tears the session store down
+([#89](https://github.com/azholdaspaev/netty-loom-spring/issues/89) —
+[why](docs/configuration.md#graceful-shutdown)). And the HTTP frame limits are fixed rather than
+configurable ([#42](https://github.com/azholdaspaev/netty-loom-spring/issues/42) —
+[the values, and the status each over-limit request gets](docs/configuration.md#fixed-limits)).
 
 ## Architecture
 
