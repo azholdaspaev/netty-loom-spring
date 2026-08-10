@@ -1,4 +1,7 @@
 [versions]
+# Bumping this moves Mockito on the test classpath but not the jar loaded as -javaagent, which
+# resolves the pinned `mockito` below. Move both together or the agent instruments one version
+# while the tests run another.
 spring-boot = "4.0.5"
 netty = "4.2.12.Final"
 slf4j = "2.0.17"
