@@ -1,224 +1,270 @@
 # netty-loom-spring
 
-Drop-in Spring Boot web server that replaces the embedded Tomcat/Jetty servlet container with a **Netty** HTTP server dispatching every request onto a **Java 25 virtual thread** (Project Loom). You keep writing ordinary blocking Spring MVC controllers — `@RestController`, `DispatcherServlet`, servlet semantics — but each request runs on a cheap virtual thread instead of a scarce platform thread, so blocking I/O no longer caps your concurrency. Targets only stable JDK features: **no `--enable-preview` for consumers**.
+A Spring Boot web server that replaces the embedded Tomcat servlet container with **Netty**,
+dispatching every request onto a **Java 25 virtual thread**. You keep writing ordinary blocking
+Spring MVC controllers — `@RestController`, `DispatcherServlet`, servlet semantics — but each
+request runs on a virtual thread instead of a pooled platform thread, so blocking I/O no longer
+caps concurrency. Targets only stable JDK features: no `--enable-preview` for consumers.
 
-```kotlin
-io.github.azholdaspaev:netty-loom-spring-boot-starter:0.1.0-SNAPSHOT
-```
+*Pre-release — not yet published to Maven Central. [What that means](#status).*
 
-## Features
+## Benchmarks
 
-- Netty-based `ServletWebServerFactory` that transparently replaces Tomcat
-- One **virtual thread per request** via `Executors.newVirtualThreadPerTaskExecutor()` — no pool sizing
-- Standard Spring MVC programming model (`DispatcherServlet`, blocking controllers)
-- Java NIO transport (`NioServerSocketChannel`) on every platform
-- Two-phase **graceful shutdown** with configurable drain timeout
-- **Slow-loris protection** via a per-channel read timeout that measures the client, not your handler
-- HTTP frame-size limits to defeat parser abuse
-- Pluggable pipeline and dispatch via two clean SPI seams
+Three identical blocking Spring MVC apps driven by k6 against `GET /work` (a 50 ms `Thread.sleep`,
+standing in for a blocking DB call), at 10,000 concurrent connections. The comparison is against
+other **same-model** servers — Tomcat with virtual threads enabled, and Tomcat with a platform
+thread pool — not against a reactive stack, which would be a rewrite rather than a swap.
 
-## Why
+| Metric | Netty-Loom | Tomcat + virtual threads | Tomcat + platform threads |
+| --- | --- | --- | --- |
+| Throughput per core (req/s/core) | **20,336** | 8,322 (2.4×) | 8,069 (2.5×) |
+| Throughput (req/s) | **44,584** | 26,819 (1.7×) | 3,663 (12.2×) |
+| p99 latency | **420 ms** | 2,409 ms (5.7×) | 2,831 ms (6.7×) |
+| CPU used (of 8 cores) | 2.19 | 3.22 | 0.45 (pool-capped) |
 
-Thread-per-request is the most ergonomic server model: linear control flow, trivial debugging, normal stack traces. Its historical flaw is the **platform-thread ceiling** — each blocking call parks an OS thread, so a few hundred slow downstream calls exhaust the pool and throughput collapses. Virtual threads remove that ceiling: a parked virtual thread costs ~kilobytes, not megabytes, and unmounts its carrier while blocked. `netty-loom-spring` pairs Netty's event-loop acceptor (which never blocks) with a virtual thread per dispatched request, giving you thread-per-request ergonomics at event-loop-class concurrency.
+**Where the advantage does not apply.** At 2,000 connections Netty-Loom and Tomcat + virtual threads
+are statistically indistinguishable — 30,885 vs 30,128 req/s, inside the harness's ±11% noise floor,
+with identical tails. At low concurrency (1–10 VUs, `GET /ping`) Netty-Loom is the **slowest** of
+the three, by about 28 microseconds per request. There is no per-request speed advantage to claim;
+the gain is structural and appears only as connection count climbs past what a thread-per-request
+pool absorbs.
+
+Read these as relative, not absolute: it is a single-box loopback test where client and server share
+8 cores, so throughput-per-core is the one figure likely to transfer off-box. Memory per connection
+is deliberately withheld — it rose 20.2 → 49.2 → 66.6 KB across three sweeps and is unattributed
+([#144](https://github.com/azholdaspaev/netty-loom-spring/issues/144)).
+
+Methodology, every sweep, and the reproduce recipe:
+[`docs/benchmarks/`](docs/benchmarks) and [`netty-loom-spring-benchmarks/`](netty-loom-spring-benchmarks).
+
+## Should you use this?
+
+**Yes, if**
+
+- You serve **thousands of concurrent connections** that block on downstream I/O — a database, an
+  HTTP call, a queue. That is where the measured advantage lives.
+- Your handlers are plain blocking Spring MVC: `@RestController`, `@RequestBody`, filters, sessions.
+- You can work with a pre-release dependency that you build yourself.
+
+**No, if**
+
+- You need **TLS, HTTP/2 or response compression** terminated at the application. None are
+  implemented; TLS fails startup, the other two are ignored.
+- You use **SSE, `StreamingResponseBody`, `DeferredResult`, or file upload**. Servlet async and
+  multipart are both absent.
+- You rely on **Spring Boot's `/error` JSON body**. Error responses here have an empty body.
+- Your traffic is **below roughly 2,000 concurrent connections** — there is no measured gain, and at
+  low concurrency this is the slowest of the three servers benchmarked.
+
+Full detail: [what works, what doesn't](#what-works-what-doesnt) below, and the
+[compatibility matrix](docs/compatibility-matrix.md).
+
+## Status
+
+> **This library is not published anywhere.** There is no `maven-publish` configuration, no signing
+> key and no release workflow in the repository, so the coordinates below do not resolve from any
+> repository — not Maven Central, not a snapshot repo, not even your local Maven cache. Getting
+> there is tracked by [#28](https://github.com/azholdaspaev/netty-loom-spring/issues/28) (namespace
+> verification), [#29](https://github.com/azholdaspaev/netty-loom-spring/issues/29) (signing),
+> [#30](https://github.com/azholdaspaev/netty-loom-spring/issues/30) (publishing config) and
+> [#31](https://github.com/azholdaspaev/netty-loom-spring/issues/31) (release workflow).
+>
+> The servlet bridge is also deliberately partial — several standard Spring Boot settings are
+> accepted and then silently ignored.
 
 ## Quick start
 
-### 1. Add the starter
-
-**Gradle (Kotlin DSL)**
-
-```kotlin
-dependencies {
-    implementation("io.github.azholdaspaev:netty-loom-spring-boot-starter:0.1.0-SNAPSHOT")
-}
+```bash
+git clone https://github.com/azholdaspaev/netty-loom-spring
+cd netty-loom-spring
+./gradlew :netty-loom-spring-example-netty:bootRun    # listens on :18080
 ```
 
-**Maven**
+```bash
+curl localhost:18080/ping        # pong
+curl localhost:18080/work        # {"status":"ok","sleptMillis":50} after a 50ms blocking sleep
+```
+
+The example is an ordinary Spring Boot app: `@SpringBootApplication`, a `@RestController` with
+blocking methods, and `implementation(project(":netty-loom-spring-boot-starter"))`. Nothing in the
+controller knows it is running on Netty.
+
+### Once published
+
+The starter will pull in `spring-boot-starter-web` with Tomcat excluded; the Netty
+`ServletWebServerFactory` takes over because it is the only factory on the classpath. Do not add
+Tomcat back.
+
+```kotlin
+implementation("io.github.azholdaspaev:netty-loom-spring-boot-starter:0.1.0")
+```
 
 ```xml
 <dependency>
     <groupId>io.github.azholdaspaev</groupId>
     <artifactId>netty-loom-spring-boot-starter</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.1.0</version>
 </dependency>
 ```
 
-> The starter pulls in `spring-boot-starter-web` with its Tomcat excluded — the Netty `ServletWebServerFactory` takes over because it is the sole factory on the classpath. Don't add Tomcat back.
+## What works, what doesn't
 
-### 2. Write a normal Spring Boot app
+Ordinary blocking `@RestController` code works: request mapping, `@RequestBody` and
+`@ResponseBody`, content negotiation, cookies, sessions, servlet filters registered as beans,
+servlet listeners, and Spring Security — which works because it is a filter and keeps its own
+context, not because the container's auth methods are implemented (they are not).
 
-```java
-@SpringBootApplication
-@RestController
-public class DemoApplication {
+Three things do not, in ascending order of how badly they will surprise you. Method-by-method detail
+is in the **[compatibility matrix](docs/compatibility-matrix.md)**.
 
-    @GetMapping("/ping")
-    public String ping() {
-        return "pong";
-    }
+### 1. Standard settings that are accepted and silently ignored
 
-    public static void main(String[] args) {
-        SpringApplication.run(DemoApplication.class, args);
-    }
-}
-```
+`NettyWebServerFactory` extends Boot's `AbstractConfigurableWebServerFactory`, so Spring Boot binds
+and pushes the full `server.*` surface onto it. Accepting is not honouring, and these produce **no
+warning, no startup failure and no signal of any kind** — the highest-risk category here. The four
+that cost the most:
 
-### 3. Run it
+- `server.compression.*` — responses are never compressed ([#22](https://github.com/azholdaspaev/netty-loom-spring/issues/22))
+- `server.http2.*` — HTTP/1.1 only ([#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23))
+- `server.shutdown=immediate` — the server drains anyway ([#87](https://github.com/azholdaspaev/netty-loom-spring/issues/87))
+- `spring.web.error.*` and error-page registrations — never read; there is no `ERROR` dispatch
 
-```bash
-./gradlew bootRun
-# Listens on server.port (default 8080); override it in application.properties
-```
+The [full list](docs/configuration.md#properties-that-are-silently-ignored) covers the rest,
+including `server.server-header`, `server.mime-mappings.*` and `spring.mvc.servlet.path`.
 
-```properties
-server.port=8080
-```
+### 2. Settings that fail startup loudly
+
+These are the safe ones — you find out immediately, with a message naming the property and the
+issue. The contrast with the list above is the point.
+
+- `server.ssl.*` with SSL enabled — TLS is not implemented ([#16](https://github.com/azholdaspaev/netty-loom-spring/issues/16))
+- `server.servlet.session.persistent=true` — sessions are in-memory only
+- `server.servlet.session.tracking-modes` containing anything but `cookie`
+- `server.netty.transport` set to an unknown value, or to a native transport unavailable on the platform
+
+### 3. Unimplemented servlet features
+
+- **No `/error` dispatch ([#38](https://github.com/azholdaspaev/netty-loom-spring/issues/38)).**
+  `sendError` sets the status, discards the message and empties the body; `BasicErrorController` is
+  never invoked. **Every** Spring-generated 400/404/405/415 reaches the client as a bare status line
+  with a zero-length body, where Tomcat returns `{"timestamp":…,"status":…,"path":…}`. An uncaught
+  controller exception yields `500` with a plain-text body and a closed connection. This is the
+  first thing most people hit.
+- **No async ([#18](https://github.com/azholdaspaev/netty-loom-spring/issues/18)).** `startAsync()`
+  returns `null` rather than throwing, so `SseEmitter`, `DeferredResult`, `StreamingResponseBody`
+  and `Callable` return values fail — usually as an NPE at Spring's call site.
+- **No multipart ([#14](https://github.com/azholdaspaev/netty-loom-spring/issues/14)).** `getParts()`
+  is always empty; `@RequestParam MultipartFile` fails with a 400 and an empty body.
+- **Extra servlets never run.** `addServlet(name, instance)` discards the instance and the chain
+  terminates at `DispatcherServlet`, so a `ServletRegistrationBean` registers and is never invoked.
+- **Filters registered by class never run.** `addFilter(name, Filter)` works; the `Class` and
+  class-name overloads are dropped without a warning. URL-pattern mappings only.
+- **No static resources or JSP ([#15](https://github.com/azholdaspaev/netty-loom-spring/issues/15)).**
+  `getResource*` and `getRealPath` return `null`; `request.getRequestDispatcher(path)` returns
+  `null` where `ServletContext.getRequestDispatcher` throws. `GET /` with an `index.html` present
+  returns 500 ([#59](https://github.com/azholdaspaev/netty-loom-spring/issues/59)).
+- **No TLS ([#16](https://github.com/azholdaspaev/netty-loom-spring/issues/16)), HTTP/2
+  ([#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23)), compression
+  ([#22](https://github.com/azholdaspaev/netty-loom-spring/issues/22)) or WebSocket upgrade.**
+- **No forwarded-header support ([#50](https://github.com/azholdaspaev/netty-loom-spring/issues/50)).**
+  The session cookie's `Secure` flag comes from the actual connection, which behind a
+  TLS-terminating proxy is plaintext — set `server.servlet.session.cookie.secure=true` explicitly,
+  or the session id can leak over a forced plaintext request (CWE-614).
+- **No container auth.** `getUserPrincipal()` → `null`, `isUserInRole()` → `false`; `login` and
+  `logout` are silent no-ops that report no failure.
+- **Requests are buffered whole**, capped at 1 MiB ([#51](https://github.com/azholdaspaev/netty-loom-spring/issues/51)). Responses do stream.
+- **Filters and servlets are initialized but never destroyed** ([#103](https://github.com/azholdaspaev/netty-loom-spring/issues/103)).
+- **No write timeout and no bound on queued responses** — a client that pipelines while never
+  reading has been measured queuing ~5.7 MB out for ~900 bytes in
+  ([#88](https://github.com/azholdaspaev/netty-loom-spring/issues/88)). Nothing bounds handler
+  execution either ([#43](https://github.com/azholdaspaev/netty-loom-spring/issues/43)).
 
 ## Configuration
 
-Standard knobs bind under Spring Boot's `server.*` namespace (`server.port`, `server.address`,
-`server.servlet.context-path`, `server.ssl.*`); Netty-only tuning lives under the `server.netty`
-prefix (`NettyLoomProperties`). See [ADR 0001](docs/adr/0001-server-properties-namespace.md).
+Standard knobs bind under Spring Boot's `server.*` namespace; Netty-only tuning lives under
+`server.netty.*`. The rule for which is which, and why, is [ADR 0001](docs/adr/0001-server-properties-namespace.md).
 
 | Property | Type | Default | Description |
 | --- | --- | --- | --- |
-| `server.port` | `int` | `8080` | Listening port; `0` lets the OS select an available port |
-| `server.address` | `InetAddress` | all interfaces | Network address to bind; unset binds every interface |
-| `server.servlet.context-path` | `String` | `""` | Context path the application is mounted under |
-| `server.servlet.session.timeout` | `Duration` | `30m` | Session idle timeout; honoured at second resolution, and `0` (or less) means sessions never expire |
-| `server.servlet.session.cookie.*` | — | `JSESSIONID`, `HttpOnly` | Session cookie name, path, domain, `http-only`, `secure`, `max-age`, `same-site` |
-| `server.servlet.session.tracking-modes` | `Set` | `cookie` | Only `cookie` is supported; anything else fails startup rather than being silently ignored |
-| `server.netty.boss-threads` | `int` | `1` | Netty boss group thread count (accepts connections) |
-| `server.netty.worker-threads` | `int` | `0` | Netty worker group thread count; `0` = Netty default (`CPU_COUNT * 2`) |
-| `server.netty.tcp-keep-alive` | `boolean` | `true` | TCP `SO_KEEPALIVE` socket option; unrelated to HTTP keep-alive, which is protocol behaviour and always on |
-| `server.netty.shutdown-grace-period` | `Duration` | `30s` | Time to wait for in-flight requests before forcibly closing |
-| `server.netty.read-timeout` | `Duration` | `30s` | How long the server waits on the client. A **single** interval measured from the previous response — or from the connection being accepted, which is what makes it a slow-loris defense — covering idle time and delivery of the next request together, not one interval each. Handler execution time does **not** count against it. Channels exceeding it are closed without a response; `0` or negative disables |
+| `server.netty.transport` | `String` | `auto` | `auto` selects the best native transport (epoll on Linux, kqueue on macOS/BSD) and falls back to NIO. `nio` forces the portable transport. `epoll` and `kqueue` force that transport and fail startup if it is unavailable |
+| `server.netty.boss-threads` | `int` | `1` | Threads in the boss event-loop group, which accepts connections |
+| `server.netty.worker-threads` | `int` | `0` | Threads in the worker event-loop group; `0` uses Netty's default of `2 × availableProcessors()` |
+| `server.netty.tcp-keep-alive` | `boolean` | `true` | Socket-level `SO_KEEPALIVE`. Unrelated to HTTP keep-alive, which is protocol behaviour and always on |
+| `server.netty.shutdown-grace-period` | `Duration` | `30s` | How long graceful shutdown waits for in-flight requests before force-closing |
+| `server.netty.read-timeout` | `Duration` | `30s` | A single client-progress deadline covering idle time and delivery of the next request *together*. Handler execution does not count against it. `0` or negative disables it |
 
-Fixed HTTP frame limits (not yet configurable): max initial line, header, and chunk size = **10 KB** each; max aggregated body = **1 MB**. An over-limit initial line (`414`) or header block (`431`) is answered and the connection closed, rather than dispatched to your application; an over-limit body is answered `413` by the aggregator, which leaves a keep-alive connection open.
+Honoured from the standard namespace: `server.port`, `server.address`,
+`server.servlet.context-path`, `server.servlet.session.timeout`,
+`server.servlet.session.cookie.*`, `server.servlet.session.tracking-modes`,
+`server.servlet.context-parameters.*`, and `spring.servlet.encoding.*`. Everything else is in one of
+the two lists above. Details, and the reasoning behind the read-timeout design, are in
+**[docs/configuration.md](docs/configuration.md)**.
 
-### Response framing
+**Set `server.netty.shutdown-grace-period` strictly below `spring.lifecycle.timeout-per-shutdown-phase`.**
+Both default to 30s, so at the defaults a slow drain is not guaranteed to finish before Spring tears
+the session store down ([#89](https://github.com/azholdaspaev/netty-loom-spring/issues/89)).
 
-Framing follows Tomcat, which means most handlers are chunked rather than length-declared, and that is
-worth knowing before you measure it:
-
-| Handler returns | Framing | Why |
-|---|---|---|
-| `ResponseEntity<Pojo>` | `Transfer-Encoding: chunked` | Spring flushes the response after writing an entity, and Jackson cannot report a length without serialising first |
-| `ResponseEntity<String>` | `Content-Length` | same flush, but `StringHttpMessageConverter` does report a length |
-| `@ResponseBody` (any type) | `Content-Length` | never flushed, so it commits once, whole |
-| body over 8 KB, or an explicit `flushBuffer()` | `Transfer-Encoding: chunked` | committed before the body is complete |
-| `204`, `205`, `304`, `1xx` | `Content-Length: 0` | no body can follow, so nothing is framed for one |
-
-The `ResponseEntity` rows are Spring's doing, not this server's: `HttpEntityMethodProcessor` calls
-`flush()` after writing an entity, and a flush commits. Tomcat behaves identically — verified by
-running the same endpoints on `netty-loom-spring-example-tomcat`.
+HTTP frame limits are fixed, not configurable
+([#42](https://github.com/azholdaspaev/netty-loom-spring/issues/42)): max initial line, header block
+and chunk are 10,000 bytes each, and the aggregated body is 1 MiB. An over-limit initial line is
+answered `414` and a header block `431`, both closing the connection; an over-limit body is answered
+`413`. The listen backlog is fixed at 128.
 
 ## Architecture
 
-Three library modules, dependency flow **`starter → mvc → core`** (core has no Spring dependency):
+Thread-per-request is the most ergonomic server model — linear control flow, ordinary stack traces,
+a debugger that works. Its historical flaw is the platform-thread ceiling: each blocking call parks
+an OS thread, so a few hundred slow downstream calls exhaust the pool and throughput collapses.
+Virtual threads remove that ceiling. `netty-loom-spring` pairs Netty's event-loop acceptor, which
+never blocks, with one virtual thread per dispatched request.
+
+Three library modules, dependency flow **`starter → mvc → core`**. `core` has no Spring dependency.
 
 | Module | Responsibility |
 | --- | --- |
-| `netty-loom-spring-core` | Pure-Netty HTTP foundation: `NettyServer` lifecycle, `NettyServerChannelInitializer`, pipeline SPI, dispatch SPI, virtual-thread `HttpRequestHandler`, `HttpExceptionHandler`, graceful-shutdown semantics. No Spring. |
-| `netty-loom-spring-mvc` | Servlet bridge: `SpringHttpRequestDispatcher` wraps `DispatcherServlet`, adapting `FullHttpRequest`/`FullHttpResponse` to `NettyHttpServletRequest`/`NettyHttpServletResponse` over `DefaultNettyServletContext`. |
-| `netty-loom-spring-boot-starter` | `NettyLoomAutoConfiguration` (runs `@AutoConfiguration(before = WebMvcAutoConfiguration.class)`), `NettyWebServerFactory` (`ServletWebServerFactory`), `NettyWebServer` (`WebServer`), `NettyLoomProperties`. |
-
-### SPI seams
-
-- **`NettyPipelineConfigurer`** — `void configure(ChannelPipeline)`. The seam for customizing the Netty channel pipeline. `DefaultNettyPipelineConfigurer` builds it from a `List<NamedChannelHandler>`; `NamedChannelHandler.shared(name, handler)` enforces the `@Sharable` annotation at construction to prevent cross-channel reuse bugs.
-- **`HttpRequestDispatcher`** — `FullHttpResponse handle(FullHttpRequest)`. The seam between the Netty pipeline and any higher-layer router. Keeps `core` free of Spring; `SpringHttpRequestDispatcher` is the MVC implementation.
+| `netty-loom-spring-core` | Pure-Netty foundation: `NettyServer` lifecycle, transport selection, `HttpConnectionRegistry` (drain accounting), the virtual-thread `HttpRequestHandler`, and the SPI seams |
+| `netty-loom-spring-mvc` | Servlet bridge: `SpringHttpRequestDispatcher` runs the filter chain and `DispatcherServlet` over `NettyHttpServletRequest` / `NettyHttpServletResponse` / `DefaultNettyServletContext` |
+| `netty-loom-spring-boot-starter` | `NettyLoomAutoConfiguration`, `NettyWebServerFactory` (`ServletWebServerFactory`), `NettyWebServer`, `NettyLoomProperties` |
 
 ### Request flow
 
 ```
-TCP accept (Netty boss loop)
+TCP accept (boss loop)
+  → HttpConnectionRegistry.register(channel)     # before any handler exists
   → worker loop pipeline:
-      HttpServerCodec                # decodes the request, encodes the response
-      → HttpServerKeepAliveHandler   # honours Connection: close
-      → HttpDrainHandler             # counts the exchange so graceful shutdown can wait for it
-      → HttpObjectAggregator(1MB)    # buffers full request body
-      → HttpReadTimeoutHandler(30s)  # client-progress deadline; suspended while dispatching
-      → HttpPipeliningHandler        # one exchange at a time, so responses leave in request order
-      → HttpDecoderFailureHandler    # rejects what the codec could not parse, before it reaches the app
-      → HttpRequestHandler           # retains request, hands off to...
+      httpCodec          HttpServerCodec(10_000, 10_000, 10_000)
+      httpKeepAlive      HttpServerKeepAliveHandler
+      drain              HttpDrainHandler          # counts the exchange for graceful shutdown
+      aggregator         HttpObjectAggregator(1 MiB)
+      readTimeout        HttpReadTimeoutHandler    # client deadline; suspended while dispatching
+      pipelining         HttpPipeliningHandler     # responses leave in request order
+      decoderFailure     HttpDecoderFailureHandler # @Sharable
+      dispatcher         HttpRequestHandler
           → virtual thread (Executors.newVirtualThreadPerTaskExecutor)
               → SpringHttpRequestDispatcher
-                  → NettyHttpServletRequest / NettyHttpServletResponse
-                      → DispatcherServlet.service()   # your @Controller, blocking is fine
-          ← FullHttpResponse written + flushed; request buffer released
-      → HttpExceptionHandler (@Sharable)  # maps errors to status, closes client disconnects
+                  → filter chain → DispatcherServlet.service()   # blocking is fine
+          ← response parts streamed back through HttpResponseWriter
+      exceptionHandler   HttpExceptionHandler      # @Sharable; maps errors to status
 ```
 
-The event loop only accepts and decodes; all blocking application work happens on the per-request virtual thread, leaving the loop free to keep accepting connections.
+The event loop only accepts and decodes. All blocking application work happens on the per-request
+virtual thread, so the loop stays free to keep accepting.
 
-`HttpReadTimeoutHandler` sits below the aggregator deliberately. It counts requests, not bytes, so the interval is a deadline for the client to deliver a whole request — a client dribbling a header a byte at a time is closed, where a byte-level clock would be refreshed by every byte and hold the connection forever. It also means a request being dispatched suspends the clock, so however long your controller blocks, the connection is never closed out from under it.
+### SPI seams
 
-The clock arms when the connection is accepted — a client that connects and says nothing is closed one interval later, which is the slow-loris defense — and restarts each time a response is written.
+- **`NettyPipelineConfigurer`** — `void configure(ChannelPipeline)`. Customizes the channel
+  pipeline. The default implementation walks a `List<NamedChannelHandler>` that is assembled in the
+  **starter**, not in core, so replacing this bean replaces the entire list — frame limits and read
+  timeout included.
+- **`HttpRequestDispatcher`** — `void handle(FullHttpRequest, HttpConnectionMetadata, HttpResponseWriter) throws Exception`.
+  The seam between the Netty pipeline and any higher-layer router; keeps `core` free of Spring. A
+  dispatcher that returns without having written a complete response is treated as a failure.
+- **`HttpResponseWriter`** — `void write(HttpObject)`. How a dispatcher emits a response, part by
+  part. Not thread-safe, owns every part passed to it, and valid only for the duration of one
+  `handle` call.
 
-The cost of counting requests rather than bytes is that idle time and delivery share one budget. Nothing inbound advances the clock, so a pooled connection that sits idle for most of the interval has only the remainder left to deliver its next request:
-
-| Scenario (30s timeout) | Outcome |
-| --- | --- |
-| Slow handler, any duration | answered — dispatch is exempt |
-| Idle 5s, then a request arrives | fine — 25s left to deliver it |
-| **Idle 29s, then a large upload begins** | **closed 1s in, mid-upload** |
-| Header dribbled a byte at a time | closed — the loris defense |
-
-The last two are the same mechanism. If your clients pool connections and send large bodies after long idle periods, size `read-timeout` for the sum, not for either part.
-
-`HttpExceptionHandler` maps: `ReadTimeoutException` → close; `ClosedChannelException`/`PrematureChannelClosureException`/client-disconnect `IOException` → clean close; `TooLongHttpHeaderException` → 431; `TooLongHttpLineException` → 414; `TooLongFrameException` → 413; `DecoderException`/`IllegalArgumentException` → 400; `UnsupportedOperationException` → 501; else → 500 (5xx logged as error, <5xx as warn).
-
-## Benchmarks
-
-**Methodology.** Three identical blocking Spring MVC apps — Netty-Loom (`:18080`), Tomcat platform threads (`:18081`, `threads.max=200`), Tomcat virtual threads (`:18082`, `threads.max=20000`) — driven by k6 against `GET /work` (`Thread.sleep(50)`, simulating a blocking DB call) at **10,000 concurrent connections**, 60s plateau. Single box, Darwin 25.5.0 ARM64, 8 logical cores, Java 25, identical JVM flags (`-XX:+UseG1GC -Xmx2g`). Tomcat `max-connections=20000` on both targets to remove the accept ceiling as a confound. Numbers below are the 2026-08-09 sweep; the same run also measures `GET /work-secured` behind a Spring Security filter chain.
-
-**The claim, in one line:** at 10,000 concurrent blocking connections, ~1.7× the throughput and ~5.7× better p99 than Tomcat with virtual threads, on **2.4× the throughput per core**. At 2,000 connections — the only other level measured — that advantage is gone.
-
-**Results @ 10,000 concurrent blocking connections**
-
-| Metric | Netty-Loom | Tomcat-virtual | Tomcat-platform |
-| --- | --- | --- | --- |
-| Per-core throughput (req/s/core) | **20,336** | 8,322 (2.4×) | 8,069 (2.5×) |
-| Throughput (req/s) | **44,584** | 26,819 (1.7×) | 3,663 (12.2×) |
-| p95 latency | **345 ms** | 1,563 ms | 2,812 ms |
-| p99 latency | **420 ms** | 2,409 ms (5.7×) | 2,831 ms (6.7×) |
-| CPU used (of 8 cores) | 2.19 (27.4%) | 3.22 (40.3%) | 0.45 (5.7%, pool-capped) |
-| Error rate | 0.00% | 0.00% | 0.00% |
-
-**Per-core throughput leads the table because it is the claim that survives leaving this box.** Netty-Loom serves 2.4× the requests per core of CPU *while using less CPU in absolute terms* (2.19 cores vs 3.22). Raw throughput on a single box partly records who won the fight for cores with the k6 client; throughput-per-core does not.
-
-**Where the advantage does not apply.** At **2,000** connections Netty-Loom and Tomcat+VT are statistically indistinguishable — 30,885 vs 30,128 req/s (+2.5%, inside the harness's ±11% noise floor) with identical tails, p99 93.0 vs 93.2 ms. The wedge opens as connections climb past what a thread-per-request pool absorbs, so every number here carries its connection count. In that sweep per-core throughput held flat (~18,200–19,000 req/s/core from 2,000 to 10,000 VUs) while Tomcat+VT's halved — which is what "structural" means here, and it is measured by the 2026-08-01 sweep, not this one.
-
-At **low concurrency** (1–10 VUs, `GET /ping`) Netty-Loom is the **slowest** of the three — 24,540 req/s against ~29k, about +28 microseconds per request. There is no per-request speed advantage to claim; the gain is structural and shows up only under blocking concurrency.
-
-> Single-box loopback test: client and server share the 8 cores, so absolute latencies are inflated and throughput is relative. **Per-core throughput** is the discriminator most likely to transfer off-box. Tomcat-platform's 0.00% error rate is an artifact of its ~200-thread cap *queuing* excess load rather than refusing it — read throughput, tail latency, and CPU efficiency together. **Memory per connection is withheld**: it rose 20.17 → 49.2 → 66.6 KB across three sweeps and is unattributed ([#144](https://github.com/azholdaspaev/netty-loom-spring/issues/144)). Numbers are from 2026-08-09 on darwin-arm64, one forward pass with no crossover; relative ordering transfers more reliably than absolute values. Full sweeps, methodology and caveats in [`docs/benchmarks/`](docs/benchmarks) and [`netty-loom-spring-benchmarks`](netty-loom-spring-benchmarks).
-
-**Reproduce**
-
-```bash
-# Build the benchmark jars
-./gradlew :netty-loom-spring-example-netty:bootJar :netty-loom-spring-example-tomcat:bootJar
-
-# Raise OS file-descriptor limit
-ulimit -n 200000
-
-# Full sweep → writes results/SNAPSHOT.md
-cd netty-loom-spring-benchmarks && VUS=10000 DURATION=60s SETTLE=35 bash scripts/run-all.sh
-```
-
-Run targets by hand:
-
-```bash
-java -jar netty-loom-spring-example-netty/build/libs/*.jar                                      # Netty       :18080
-java -jar netty-loom-spring-example-tomcat/build/libs/*.jar --spring.profiles.active=platform   # Tomcat-plat :18081
-java -jar netty-loom-spring-example-tomcat/build/libs/*.jar --spring.profiles.active=virtual    # Tomcat-virt :18082
-```
-
-```bash
-# High-concurrency scenario against one target
-k6 run --env BASE_URL=http://localhost:18080 --env VUS=10000 --env DURATION=60s --env RAMP=15s \
-  --quiet --summary-export results/custom_high.json netty-loom-spring-benchmarks/k6/high-concurrency.js
-```
+The pipeline handler names above (`httpCodec`, `drain`, `dispatcher`, …) are the addressable handles
+for anyone reaching into the pipeline directly.
 
 ## Requirements
 
@@ -226,38 +272,18 @@ k6 run --env BASE_URL=http://localhost:18080 --env VUS=10000 --env DURATION=60s 
 - **Spring Boot 4.0.x** (built against BOM 4.0.5)
 - **Netty 4.2.x** (built against 4.2.12.Final)
 
-## Build & test
+## Build
 
 ```bash
-./gradlew build                              # Full build (compile + test)
-./gradlew build -x test                      # Build without tests
-./gradlew :netty-loom-spring-core:test       # Test a single module
-./gradlew test --tests 'io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.test.SmokeControllerTest'  # Single test
+./gradlew build                              # compile + test
+./gradlew :netty-loom-spring-core:test       # one module
 ```
 
-### CI
+Every push to `main` and every pull request runs `./gradlew build` on both Linux and macOS, so that
+epoll and kqueue are both exercised; both cells must pass to merge.
 
-Every push to `main` and every pull request runs `./gradlew build` on Linux and macOS (`.github/workflows/build.yml`); both matrix cells must pass to merge.
-
-Labelling a pull request `review/claude` additionally runs an automated two-pass Claude review that leaves inline comments. It is advisory only — never a required check, and it does not run unless a maintainer applies the label.
-
-## Limitations & status
-
-**Early / `0.1.0-SNAPSHOT`** — API may change, and the artifact is not yet published to Maven Central. The servlet bridge is deliberately minimal:
-
-- **Requests are buffered whole** — a request body is accumulated in memory before the handler sees it (issue #51); fine for virtual threads, unsuitable for very large uploads. Responses stream: see below.
-- **Responses stream** — writing to `HttpServletResponse.getOutputStream()` flushes incrementally as `Transfer-Encoding: chunked` once the body outgrows the response buffer (8 KB, `setBufferSize`) or the handler calls `flushBuffer()`, and a handler producing faster than the client reads is made to wait. A handler that never flushes and stays inside the buffer is sent as a single `Content-Length` response — but note Spring flushes for you on every `ResponseEntity`, so most handlers are chunked; see [response framing](#response-framing) above.
-- **Synchronous only** — `startAsync()` returns `null`, `isAsyncSupported()` is `false`, `setReadListener` throws; servlet async is not supported. `SseEmitter`, `DeferredResult` and `StreamingResponseBody` all route through `startAsync()`, so they remain unavailable even though the response path beneath them now streams (issue #18).
-- **Sessions are in-memory and cookie-tracked** — no URL rewriting (`encodeURL` is the identity), no persistence across restarts (`server.servlet.session.persistent=true` fails startup rather than silently losing sessions), and no distributed store; use Spring Session for that.
-- **Session attributes never see activation events** — a bound value implementing `HttpSessionActivationListener` is never notified, because sessions are never passivated or activated. `HttpSessionBindingListener` is fired on both the bind and unbind paths, so the gap is only the activation half, and it is silent: an application relying on `sessionDidActivate` to re-establish transient state gets no signal here.
-- **Servlet listeners: all seven `addListener` types are fired** — `ServletContextListener`, `ServletContextAttributeListener`, `ServletRequestListener`, `ServletRequestAttributeListener`, `HttpSessionListener`, `HttpSessionAttributeListener` and `HttpSessionIdListener`, registered via `ServletContext.addListener` (so `@WebListener`, `ServletListenerRegistrationBean` and `HttpSessionEventPublisher` all work). Those seven are the complete set the servlet spec defines for `addListener`; anything else is rejected with `IllegalArgumentException`, as it is on Tomcat. `HttpSessionActivationListener` is registered by being bound as a session attribute and `AsyncListener` through `AsyncContext.addListener`, so neither belongs here in any container.
-- **No forwarded-header support, so the session cookie is not `Secure` behind a TLS-terminating proxy** — `Secure` is derived from the actual connection, and `server.forward-headers-strategy` is not honoured (issue #84). If you terminate TLS at nginx/ALB, set `server.servlet.session.cookie.secure=true` explicitly, or the session id can leak over a forced plaintext request (CWE-614).
-- **No auth** — `getUserPrincipal()` → `null`, `isUserInRole()` → `false`; `authenticate`/`login`/`logout` are no-ops.
-- **No resource serving / JSP** — `getResource*`/`getRealPath` return `null`; resource paths and request dispatch throw `UnsupportedOperationException`. Intended for application logic only.
-- **Network metadata stubbed** — `getRemoteAddr/Host/Port`, `getScheme`, `getServerName/Port` return empty/0; designed for proxied deployments.
-- **No write-timeout handler, and no bound on queued responses** — only `HttpReadTimeoutHandler` is configured, and it measures the client, not the socket. A peer that stops reading is reclaimed only *between* exchanges, and only while `read-timeout` is positive: the clock is suspended for as long as requests are outstanding, so a client that pipelines steadily while never reading holds the connection open indefinitely and the responses accumulate in Netty's outbound buffer with no ceiling. Because the server generates far more than the client sends, this amplifies — one connection, ~900 bytes in, has been measured queuing ~5.7 MB out (issue #88). Setting `read-timeout` to `0` or a negative value removes the reclamation entirely, leaving only shutdown.
-- **No request/dispatch deadline** — the read timeout deliberately does not bound handler execution, so a handler that never returns holds its connection indefinitely. Nothing reclaims it short of shutdown.
-- HTTP frame-size limits are fixed (not yet configurable).
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, including the
+test-first rule this repository enforces. Release history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
