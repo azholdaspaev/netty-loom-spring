@@ -13,7 +13,7 @@ The rule for which namespace a knob belongs to — Spring Boot's `server.*` vers
 
 | Property | Type | Default | Description |
 | --- | --- | --- | --- |
-| `server.netty.transport` | `String` | `auto` | `auto` picks the best native transport (epoll on Linux, kqueue on macOS/BSD) and falls back to NIO when neither is available. `nio` forces the portable transport. `epoll` and `kqueue` force that transport and **fail startup** if it is unavailable. Any other value fails startup. The selected transport is logged at INFO on startup |
+| `server.netty.transport` | `String` | `auto` | `auto` picks the best native transport (epoll on Linux, kqueue on macOS) and falls back to NIO when neither is available. Only the `linux-*` epoll and `osx-*` kqueue natives are bundled, so on any other BSD `auto` falls back to NIO. `nio` forces the portable transport. `epoll` and `kqueue` force that transport and **fail startup** if it is unavailable. Any other value fails startup. The selected transport is logged at INFO on startup |
 | `server.netty.boss-threads` | `int` | `1` | Threads in the boss event-loop group, which accepts connections. One is normally enough |
 | `server.netty.worker-threads` | `int` | `0` | Threads in the worker event-loop group. `0` applies Netty's default of `2 × availableProcessors()` |
 | `server.netty.tcp-keep-alive` | `boolean` | `true` | Socket-level `SO_KEEPALIVE` on accepted channels. Unrelated to HTTP keep-alive, which is protocol behaviour and always on |
