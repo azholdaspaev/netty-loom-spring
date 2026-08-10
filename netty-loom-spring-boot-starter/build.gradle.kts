@@ -14,8 +14,6 @@ dependencies {
         exclude(group = "org.springframework.boot", module = "spring-boot-starter-tomcat")
     }
 
-    api(libs.jakarta.servlet.api)
-
     // annotationProcessor is resolvable and extends nothing, so the api platform above cannot
     // reach it; without its own it would resolve a versionless processor.
     annotationProcessor(platform(libs.spring.boot.dependencies))
