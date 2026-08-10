@@ -254,7 +254,7 @@ virtual thread, so the loop stays free to keep accepting.
 
 - **`NettyPipelineConfigurer`** — `void configure(ChannelPipeline)`. Customizes the channel
   pipeline. The default implementation walks a `List<NamedChannelHandler>` that is assembled in the
-  **starter**, not in core, so replacing this bean replaces the entire list — frame limits and read
+  **starter**, not in core, so supplying your own replaces the entire list — frame limits and read
   timeout included.
 - **`HttpRequestDispatcher`** — `void handle(FullHttpRequest, HttpConnectionMetadata, HttpResponseWriter) throws Exception`.
   The seam between the Netty pipeline and any higher-layer router; keeps `core` free of Spring. A
@@ -262,6 +262,12 @@ virtual thread, so the loop stays free to keep accepting.
 - **`HttpResponseWriter`** — `void write(HttpObject)`. How a dispatcher emits a response, part by
   part. Not thread-safe, owns every part passed to it, and valid only for the duration of one
   `handle` call.
+
+**Taking either of the first two seams needs `@Primary`.** Nothing in the starter is declared
+`@ConditionalOnMissingBean`, so your bean does not displace the auto-configured one. Omit `@Primary`
+and the context still starts while your bean is **never used** — Spring settles the ambiguity by
+matching the injection point's parameter name against the auto-configuration's bean name, and that
+one wins.
 
 The pipeline handler names above (`httpCodec`, `drain`, `dispatcher`, …) are the addressable handles
 for anyone reaching into the pipeline directly.
