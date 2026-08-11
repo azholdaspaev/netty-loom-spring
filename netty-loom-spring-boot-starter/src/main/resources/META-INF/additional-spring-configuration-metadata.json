@@ -29,7 +29,7 @@
     {
       "name": "server.netty.transport",
       "type": "java.lang.String",
-      "description": "Netty I/O transport to use. 'auto' picks the best native transport for the platform (epoll on Linux, kqueue on macOS/BSD) and falls back to NIO when none is available. 'nio' forces the portable Java NIO transport. 'epoll' or 'kqueue' force that native transport and fail fast at startup if it is not available on the platform.",
+      "description": "Netty I/O transport to use. 'auto' picks the best native transport for the platform (epoll on Linux, kqueue on macOS) and falls back to NIO when none is available. 'nio' forces the portable Java NIO transport. 'epoll' or 'kqueue' force that native transport and fail fast at startup if it is not available on the platform.",
       "defaultValue": "auto"
     }
   ],
@@ -51,7 +51,7 @@
         },
         {
           "value": "kqueue",
-          "description": "macOS/BSD native transport. Fails fast if unavailable."
+          "description": "macOS native transport. Fails fast if unavailable."
         }
       ]
     },
