@@ -67,7 +67,9 @@ What the servlet bridge implements, method by method. Verified against the sourc
 | `getUserPrincipal`, `getRemoteUser`, `getAuthType` | `none` | Always `null` |
 | `isUserInRole` | `none` | Always `false` |
 | `authenticate`, `login`, `logout` | `none` | Silent no-ops — `login` reports no failure, so a caller believes it succeeded |
-| `getRequestId()`, `getProtocolRequestId()` | `partial` | Return `""` where the spec requires a unique id ([#116](https://github.com/azholdaspaev/netty-loom-spring/issues/116)) |
+| `getRequestId()` | `none` | Always `""`, so every request shares one id where the spec requires a unique one ([#116](https://github.com/azholdaspaev/netty-loom-spring/issues/116)) |
+| `getProtocolRequestId()` | `works` | `""`, which is what the spec prescribes for HTTP/1.x |
+| `getServletConnection()` | `none` | Returns **`null`**, for which the spec defines no case, so callers NPE at their own call site ([#116](https://github.com/azholdaspaev/netty-loom-spring/issues/116)) |
 | `getDispatcherType()` | `partial` | Always `REQUEST` |
 
 ## Response
