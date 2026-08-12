@@ -141,8 +141,9 @@ reclaim connections.
 
 ## Response framing
 
-Framing follows Tomcat, which means most handlers are chunked rather than length-declared. Worth
-knowing before you measure it.
+Framing follows Tomcat for the body-carrying cases, which means most handlers are chunked rather
+than length-declared. The bodyless statuses are where it diverges. Worth knowing before you measure
+it — these are the bytes on the wire, not the headers the servlet layer set.
 
 | Handler returns | Framing | Why |
 | --- | --- | --- |
@@ -150,7 +151,8 @@ knowing before you measure it.
 | `ResponseEntity<String>` | `Content-Length` | Same flush, but `StringHttpMessageConverter` does report a length |
 | `@ResponseBody` (any type) | `Content-Length` | Never flushed, so it commits once, whole |
 | Body over 8 KB, or an explicit `flushBuffer()` | `Transfer-Encoding: chunked` | Committed before the body is complete |
-| `204`, `205`, `304`, `1xx` | `Content-Length: 0` | No body can follow |
+| `205`, `304` | `Content-Length: 0` | No body can follow. `304` deviates from Tomcat, which sends no length here: a bare head would make `HttpServerKeepAliveHandler` close after every conditional GET |
+| `204`, `1xx` | No `Content-Length` | No body can follow; Netty's encoder strips the header the server set |
 
 The `ResponseEntity` rows are Spring's doing, not this server's: `HttpEntityMethodProcessor` calls
 `flush()` after writing an entity, and a flush commits. Tomcat behaves identically — verified by
