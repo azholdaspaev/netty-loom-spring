@@ -289,11 +289,11 @@ for anyone reaching into the pipeline directly.
 ./gradlew :netty-loom-spring-core:test       # one module
 ```
 
-Every push to `main` and every pull request runs `./gradlew build` on both Linux and macOS, so that
-epoll and kqueue are both exercised; both cells must pass to merge.
+Every push to `main` and every pull request runs `./gradlew build` on both Linux and macOS.
 
 Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, including the
-test-first rule this repository enforces. Release history is in [CHANGELOG.md](CHANGELOG.md).
+test-first rule this repository enforces and what CI requires before a merge. Release history is in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
