@@ -77,7 +77,7 @@ What the servlet bridge implements, method by method. Verified against the sourc
 | Feature | Status | Notes |
 | --- | --- | --- |
 | `getOutputStream()` / `getWriter()` | `partial` | Streams as `Transfer-Encoding: chunked` once the body outgrows the 8 KB buffer or `flushBuffer()` is called; otherwise a single `Content-Length` response. Both can currently be obtained on the same response ([#118](https://github.com/azholdaspaev/netty-loom-spring/issues/118)) |
-| Framing | `works` | Matches Tomcat; see [docs/configuration.md](configuration.md#response-framing) for the full table |
+| Framing | `partial` | Matches Tomcat for the body-carrying cases. On a `304` this server sends `Content-Length: 0` where Tomcat sends none; see [docs/configuration.md](configuration.md#response-framing) for the full table |
 | Backpressure | `works` | A handler producing faster than the client reads blocks on its virtual thread, bounded by a fixed 60s write-stall timeout |
 | `setBufferSize`, `getBufferSize` | `works` | Default 8192; `setBufferSize` throws once anything is written |
 | `flushBuffer()` | `works` | Commits, as the spec requires: the head goes on the wire, so `setStatus` and the header mutators no-op afterwards and `resetBuffer` throws |
