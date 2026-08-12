@@ -35,7 +35,7 @@ What the servlet bridge implements, method by method. Verified against the sourc
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| `sendError(int)` | `partial` | Sets the status, clears the body, drops `Content-Length`. The client gets a bare status line with a zero-length body |
+| `sendError(int)` | `partial` | Sets the status, clears the body and drops any handler-set `Content-Length`. The client gets the status line and `Content-Length: 0` — no body, no error page |
 | `sendError(int, String)` | `partial` | Identical to the single-argument form — **the message is discarded** |
 | Error-page dispatch to `/error` | `none` | `getErrorPages()` is never read and there is no `ERROR` dispatch, so `BasicErrorController` never runs for a failed request. Every Spring-generated 400/404/405/415 has an empty body ([#38](https://github.com/azholdaspaev/netty-loom-spring/issues/38)). A direct `GET /error` still works, being an ordinary mapping |
 | `spring.web.error.*` | `ignored` | Boot 4 moved these from `server.error.*`; neither is honoured |

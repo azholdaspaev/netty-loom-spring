@@ -146,8 +146,8 @@ issue. The contrast with the list above is the point.
 
 - **No `/error` dispatch ([#38](https://github.com/azholdaspaev/netty-loom-spring/issues/38)).**
   `sendError` sets the status, discards the message and empties the body; `BasicErrorController` is
-  never invoked. **Every** Spring-generated 400/404/405/415 reaches the client as a bare status line
-  with a zero-length body, where Tomcat returns `{"timestamp":…,"status":…,"path":…}`. An uncaught
+  never invoked. **Every** Spring-generated 400/404/405/415 reaches the client as a status line with
+  `Content-Length: 0` and no body, where Tomcat returns `{"timestamp":…,"status":…,"path":…}`. An uncaught
   controller exception yields `500` with a plain-text body and a closed connection. This is the
   first thing most people hit.
 - **No async ([#18](https://github.com/azholdaspaev/netty-loom-spring/issues/18)).** `startAsync()`
