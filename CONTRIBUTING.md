@@ -7,8 +7,9 @@ document for how changes are made here. This file is the practical summary.
 
 ## Prerequisites
 
-- **JDK 25.** Gradle resolves the toolchain itself, so any JDK can launch the wrapper, but a local
-  25 avoids a download.
+- **JDK 25 installed.** Gradle picks the toolchain out of the JDKs already on the machine, so the
+  wrapper itself can be launched by any JDK 17+ — but a 25 must be present somewhere. Toolchain
+  auto-provisioning is not configured, so a missing 25 fails the build rather than downloading one.
 - Nothing else — the Gradle wrapper is checked in.
 
 ## Build and test
