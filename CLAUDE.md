@@ -41,7 +41,7 @@ Sub-packages: `core.server`, `core.pipeline`, `core.handler`, `mvc.servlet`, `mv
 ## Build System Details
 
 - **Gradle 9.4.1**, Kotlin DSL, Java 25 toolchain
-- **Spring Boot BOM 4.0.5** — Spring/Jakarta deps need no explicit version. The published modules (`mvc`, `starter`) get it as a Gradle platform on the `springBom` dependencyScope declared in root; the two examples still use the `io.spring.dependency-management` plugin. The plugin cannot be used in a published module: it writes no versions into Gradle module metadata, so consumers cannot resolve (#147). It also *overrides* transitive versions where a platform only raises them
+- **Spring Boot BOM 4.0.5** — Spring/Jakarta deps need no explicit version. `mvc` and `starter` get it as a Gradle platform on the `springBom` dependencyScope declared in root; the two examples still use the `io.spring.dependency-management` plugin. The plugin cannot be used in a published module: it writes no versions into Gradle module metadata, so consumers cannot resolve (#147). It also *overrides* transitive versions where a platform only raises them
 - **The BOM must not reach a published variant.** Keep it on the `springBom` dependencyScope, never `api(platform(...))`, and keep `versionMapping { allVariants { fromResolutionResult() } }` — neither works without the other. Rationale and the measured consequence live at the `springBom` declaration in `build.gradle.kts` (#30)
 - **Version catalog** at `gradle/libs.versions.toml` for Netty 4.2.12.Final, JUnit 6.0.3, etc.
 - Native transport deps use classifier variants: `variantOf(libs.netty.transport.native.epoll) { classifier("linux-x86_64") }`
