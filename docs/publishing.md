@@ -81,15 +81,21 @@ yet — the only publishing repository it declares is a local directory. Wiring 
 
 ## Not done yet
 
-The namespace is the only part of publishing that is out-of-band. The rest is repository work, and
+The namespace is the one out-of-band item already done. Three remain, and no pull request can do any
+of them: **enable SNAPSHOTs** on the namespace, **generate a GPG key** and publish it to
+`keyserver.ubuntu.com`, and **mint a Portal user token**. Budget for them separately — each needs
+someone logged in somewhere this repository cannot reach.
+
+The repository half is further along.
 [#30](https://github.com/azholdaspaev/netty-loom-spring/issues/30) has landed: `maven-publish` and
 `signing` are configured in the root build for `core`, `mvc` and the starter, each publishing a jar,
 a sources jar and a javadoc jar into the root project's `build/staging`. The examples are not
 published. Nothing reaches Sonatype yet.
 
-- [#29](https://github.com/azholdaspaev/netty-loom-spring/issues/29) — the GPG key itself. The
-  build already reads `MAVEN_GPG_PRIVATE_KEY` and `MAVEN_GPG_PASSPHRASE` and requires a signature
-  for any non-`-SNAPSHOT` version, so what is missing is the key and the CI secrets, not the wiring.
+- [#29](https://github.com/azholdaspaev/netty-loom-spring/issues/29) — the build already reads
+  `MAVEN_GPG_PRIVATE_KEY` and `MAVEN_GPG_PASSPHRASE` and requires a signature for any
+  non-`-SNAPSHOT` version, so the wiring exists. What is missing is the key above, plus those two
+  as Actions secrets.
 - [#31](https://github.com/azholdaspaev/netty-loom-spring/issues/31) — the release workflow, which
   is what actually uploads, and where the token above gets wired in.
 
