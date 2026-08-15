@@ -81,10 +81,11 @@ yet — the only publishing repository it declares is a local directory. Wiring 
 
 ## Not done yet
 
-The namespace is the one out-of-band item already done. Three remain, and no pull request can do any
-of them: **enable SNAPSHOTs** on the namespace, **generate a GPG key** and publish it to
-`keyserver.ubuntu.com`, and **mint a Portal user token**. Budget for them separately — each needs
-someone logged in somewhere this repository cannot reach.
+The namespace is the one out-of-band item already done. The rest is not, and no pull request can do
+any of it: **enable SNAPSHOTs** on the namespace, **generate a GPG key** and publish it to
+`keyserver.ubuntu.com`, **mint a Portal user token**, and **store the key, its passphrase and the
+token as Actions secrets**. Budget for them separately — each needs someone logged in somewhere this
+repository cannot reach.
 
 The repository half is further along.
 [#30](https://github.com/azholdaspaev/netty-loom-spring/issues/30) has landed: `maven-publish` and
