@@ -1,11 +1,17 @@
 plugins {
     `java-library`
+    alias(libs.plugins.maven.publish)
+}
+
+mavenPublishing {
+    pom {
+        name = "netty-loom-spring-mvc"
+        description = "Servlet bridge that runs Spring MVC's DispatcherServlet on a Netty HTTP server, one Java 25 virtual thread (Project Loom) per request."
+    }
 }
 
 dependencies {
-    // Platform rather than io.spring.dependency-management: the plugin writes no versions into
-    // published Gradle module metadata, leaving consumers unable to resolve. #147
-    api(platform(libs.spring.boot.dependencies))
+    "springBom"(platform(libs.spring.boot.dependencies))
 
     api(project(":netty-loom-spring-core"))
 

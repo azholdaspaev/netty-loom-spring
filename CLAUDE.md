@@ -41,7 +41,8 @@ Sub-packages: `core.server`, `core.pipeline`, `core.handler`, `mvc.servlet`, `mv
 ## Build System Details
 
 - **Gradle 9.4.1**, Kotlin DSL, Java 25 toolchain
-- **Spring Boot BOM 4.0.5** — Spring/Jakarta deps need no explicit version. The published modules (`mvc`, `starter`) get it as a Gradle platform, `api(platform(libs.spring.boot.dependencies))`; the two examples still use the `io.spring.dependency-management` plugin. The plugin cannot be used in a published module: it writes no versions into Gradle module metadata, so consumers cannot resolve (#147). It also *overrides* transitive versions where a platform only raises them
+- **Spring Boot BOM 4.0.5** — Spring/Jakarta deps need no explicit version. The published modules (`mvc`, `starter`) get it as a Gradle platform on the `springBom` dependencyScope declared in root; the two examples still use the `io.spring.dependency-management` plugin. The plugin cannot be used in a published module: it writes no versions into Gradle module metadata, so consumers cannot resolve (#147). It also *overrides* transitive versions where a platform only raises them
+- **The BOM must not reach a published variant.** `api(platform(...))` lands in `apiElements`/`runtimeElements`, so consumers inherit the whole Boot constraint set — measured, a consumer's `kafka-clients:3.6.0` silently became `4.1.2`. The `springBom` dependencyScope keeps it off the publication, and `versionMapping { allVariants { fromResolutionResult() } }` puts the resolved versions back into both the POM and the `.module`. Neither works without the other (#30)
 - **Version catalog** at `gradle/libs.versions.toml` for Netty 4.2.12.Final, JUnit 6.0.3, etc.
 - Native transport deps use classifier variants: `variantOf(libs.netty.transport.native.epoll) { classifier("linux-x86_64") }`
 - `the<DependencyManagementExtension>()` doesn't work inside `subprojects {}` — use `pluginManager.withPlugin("io.spring.dependency-management") { configure<...> {} }` instead
@@ -172,7 +173,7 @@ Comment only what the source cannot state - a fact from outside this repository,
 
 **Subtract before you finish.** Reread every comment you added and delete each one whose trigger you cannot name. This is a required step, not advice; the change is not done until it has run.
 
-**Overrides rule 3 for volume.** Rule 3 says match existing style; for comment volume this rule wins. Density here is bimodal - past 50% in some files, zero in others - so the neighbouring file is not evidence of anything. The heaviest files are a ceiling already set too high, never a target. Nothing ships as a javadoc jar today, so javadoc's only reader is someone already looking at the source; if one ever ships, revisit this rule.
+**Overrides rule 3 for volume.** Rule 3 says match existing style; for comment volume this rule wins. Density here is bimodal - past 50% in some files, zero in others - so the neighbouring file is not evidence of anything. The heaviest files are a ceiling already set too high, never a target. A javadoc jar ships as of #30, so javadoc now has readers who are not looking at the source. The budgets above are deliberately unchanged; widening them is a separate decision, not a consequence of that jar.
 
 Keep `#NN` issue citations and `// --- Name ---` section banners. Neither is prose, and neither is what this rule bounds.
 

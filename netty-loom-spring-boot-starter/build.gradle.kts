@@ -1,9 +1,17 @@
 plugins {
     `java-library`
+    alias(libs.plugins.maven.publish)
+}
+
+mavenPublishing {
+    pom {
+        name = "netty-loom-spring-boot-starter"
+        description = "Spring Boot starter that swaps embedded Tomcat for a Netty server, running every request on a Java 25 virtual thread (Project Loom). No reactive rewrite."
+    }
 }
 
 dependencies {
-    api(platform(libs.spring.boot.dependencies))
+    "springBom"(platform(libs.spring.boot.dependencies))
 
     api(project(":netty-loom-spring-core"))
     api(project(":netty-loom-spring-mvc"))
@@ -14,9 +22,6 @@ dependencies {
         exclude(group = "org.springframework.boot", module = "spring-boot-starter-tomcat")
     }
 
-    // annotationProcessor is resolvable and extends nothing, so the api platform above cannot
-    // reach it; without its own it would resolve a versionless processor.
-    annotationProcessor(platform(libs.spring.boot.dependencies))
     annotationProcessor(libs.spring.boot.configuration.processor)
 
     testImplementation(libs.spring.boot.starter.test)
