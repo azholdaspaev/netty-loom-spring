@@ -52,6 +52,7 @@ Deleting needs the `delete_repo` scope, which this project's `gh` token does not
 ```bash
 gh auth refresh -h github.com -s delete_repo
 gh repo delete azholdaspaev/<verification-key> --yes
+gh auth refresh -h github.com -r delete_repo
 ```
 
 The web UI does the same without widening the token.
