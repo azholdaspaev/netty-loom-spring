@@ -87,9 +87,9 @@ subprojects {
 
                 pom {
                     name = project.name
-                    // Lazy: this block runs while the root project is evaluated, before any
-                    // subproject script has assigned `description`. Central rejects a POM without
-                    // one, so a missing description fails here rather than at release.
+                    // A provider, not a plain assignment: this callback fires when the subproject
+                    // applies `maven-publish`, before its script reaches `description =`. Central
+                    // rejects a POM with no description, so generatePomFile fails, not the upload.
                     description.set(
                         provider {
                             requireNotNull(project.description) { "$path must set `description`" }
