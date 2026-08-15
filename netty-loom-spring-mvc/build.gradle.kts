@@ -1,14 +1,9 @@
 plugins {
     `java-library`
-    alias(libs.plugins.maven.publish)
+    `maven-publish`
 }
 
-mavenPublishing {
-    pom {
-        name = "netty-loom-spring-mvc"
-        description = "Servlet bridge that runs Spring MVC's DispatcherServlet on a Netty HTTP server, one Java 25 virtual thread (Project Loom) per request."
-    }
-}
+description = "Servlet bridge that runs Spring MVC's DispatcherServlet on a Netty HTTP server, one Java 25 virtual thread (Project Loom) per request."
 
 dependencies {
     "springBom"(platform(libs.spring.boot.dependencies))

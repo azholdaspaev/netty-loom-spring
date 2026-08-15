@@ -3,7 +3,6 @@ import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 plugins {
     java
     alias(libs.plugins.spring.dependency.management) apply false
-    alias(libs.plugins.maven.publish) apply false
 }
 
 val springBootVersion = libs.versions.spring.boot.get()
@@ -68,43 +67,80 @@ subprojects {
         }
     }
 
-    pluginManager.withPlugin("com.vanniktech.maven.publish") {
-        configure<com.vanniktech.maven.publish.MavenPublishBaseExtension> {
-            publishToMavenCentral()
-            signAllPublications()
+    pluginManager.withPlugin("maven-publish") {
+        apply(plugin = "signing")
 
-            pom {
-                url = "https://github.com/azholdaspaev/netty-loom-spring"
-                licenses {
-                    license {
-                        name = "Apache License, Version 2.0"
-                        url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
-                    }
+        java {
+            withSourcesJar()
+            withJavadocJar()
+        }
+
+        configure<PublishingExtension> {
+            publications.create<MavenPublication>("maven") {
+                from(components["java"])
+
+                // Dependencies are declared versionless against the Boot BOM, so without this the
+                // POM and the .module both publish empty versions and nothing resolves. #147
+                versionMapping {
+                    allVariants { fromResolutionResult() }
                 }
-                developers {
-                    developer {
-                        id = "azholdaspaev"
-                        name = "Adil Zholdaspaev"
-                        email = "adilzholdaspaev@gmail.com"
-                        url = "https://github.com/azholdaspaev"
-                    }
-                }
-                scm {
+
+                pom {
+                    name = project.name
+                    // Lazy: this block runs while the root project is evaluated, before any
+                    // subproject script has assigned `description`. Central rejects a POM without
+                    // one, so a missing description fails here rather than at release.
+                    description.set(
+                        provider {
+                            requireNotNull(project.description) { "$path must set `description`" }
+                        },
+                    )
                     url = "https://github.com/azholdaspaev/netty-loom-spring"
-                    connection = "scm:git:https://github.com/azholdaspaev/netty-loom-spring.git"
-                    developerConnection = "scm:git:ssh://git@github.com/azholdaspaev/netty-loom-spring.git"
+                    licenses {
+                        license {
+                            name = "Apache License, Version 2.0"
+                            url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
+                        }
+                    }
+                    developers {
+                        developer {
+                            id = "azholdaspaev"
+                            name = "Adil Zholdaspaev"
+                            email = "adilzholdaspaev@gmail.com"
+                            url = "https://github.com/azholdaspaev"
+                        }
+                    }
+                    scm {
+                        url = "https://github.com/azholdaspaev/netty-loom-spring"
+                        connection = "scm:git:https://github.com/azholdaspaev/netty-loom-spring.git"
+                        developerConnection = "scm:git:ssh://git@github.com/azholdaspaev/netty-loom-spring.git"
+                    }
+                }
+            }
+
+            // One directory for all three modules: they are interdependent, so #31 uploads a
+            // single bundle or ships a partial release.
+            repositories {
+                maven {
+                    name = "staging"
+                    url = rootProject.layout.buildDirectory.dir("staging").get().asFile.toURI()
                 }
             }
         }
 
-        // Dependencies are declared versionless against the Boot BOM, so without this the POM and
-        // the .module both publish empty versions and no consumer can resolve them. #147
-        configure<PublishingExtension> {
-            publications.withType<MavenPublication>().configureEach {
-                versionMapping {
-                    allVariants { fromResolutionResult() }
-                }
+        configure<SigningExtension> {
+            // Central rejects an unsigned release; a snapshot needs no signature, so a machine
+            // with no key can still publishToMavenLocal.
+            setRequired(!version.toString().endsWith("-SNAPSHOT"))
+
+            val signingKey = providers.environmentVariable("MAVEN_GPG_PRIVATE_KEY")
+            if (signingKey.isPresent) {
+                useInMemoryPgpKeys(
+                    signingKey.get(),
+                    providers.environmentVariable("MAVEN_GPG_PASSPHRASE").getOrElse(""),
+                )
             }
+            sign(the<PublishingExtension>().publications["maven"])
         }
     }
 

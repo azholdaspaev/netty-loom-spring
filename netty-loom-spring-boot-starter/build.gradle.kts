@@ -1,14 +1,9 @@
 plugins {
     `java-library`
-    alias(libs.plugins.maven.publish)
+    `maven-publish`
 }
 
-mavenPublishing {
-    pom {
-        name = "netty-loom-spring-boot-starter"
-        description = "Spring Boot starter that swaps embedded Tomcat for a Netty server, running every request on a Java 25 virtual thread (Project Loom). No reactive rewrite."
-    }
-}
+description = "Spring Boot starter that swaps embedded Tomcat for a Netty server, running every request on a Java 25 virtual thread (Project Loom). No reactive rewrite."
 
 dependencies {
     "springBom"(platform(libs.spring.boot.dependencies))
