@@ -1,14 +1,9 @@
 plugins {
     `java-library`
-    alias(libs.plugins.maven.publish)
+    `maven-publish`
 }
 
-mavenPublishing {
-    pom {
-        name = "netty-loom-spring-core"
-        description = "Netty HTTP server with a pluggable pipeline SPI, running every request on a Java 25 virtual thread (Project Loom). No Spring dependency."
-    }
-}
+description = "Netty HTTP server with a pluggable pipeline SPI, running every request on a Java 25 virtual thread (Project Loom). No Spring dependency."
 
 dependencies {
     api(libs.netty.transport)
