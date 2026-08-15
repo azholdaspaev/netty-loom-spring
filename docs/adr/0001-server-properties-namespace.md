@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-07-03
+- Amended: 2026-08-16 ([#159](https://github.com/azholdaspaev/netty-loom-spring/issues/159))
 - Issue: [#49](https://github.com/azholdaspaev/netty-loom-spring/issues/49)
 
 ## Context
@@ -53,7 +54,7 @@ earlier version is therefore **silently ignored — not a startup error**. Users
 `server.netty.port` to `server.port` who forget to change the key will get Boot's default `8080`
 with no warning. This is documented here and in the CHANGELOG.
 
-### SSL fails fast; other unsupported setters are no-ops
+### Some inherited setters fail fast; the rest are silent no-ops
 
 Because the factory now extends `AbstractConfigurableWebServerFactory` and implements
 `ConfigurableServletWebServerFactory`, it **inherits** setters for capabilities the Netty server
@@ -64,14 +65,18 @@ TLS-configured is a security footgun, `getWebServer()` **fails fast** with a cle
 `WebServerException` pointing at #16 whenever SSL is enabled. Wire TLS (#16) or set
 `server.ssl.enabled=false`.
 
+`setSession` is split three ways: `server.servlet.session.timeout`, `cookie.*` and
+`tracking-modes` are honoured (#13); `persistent=true` and any tracking mode other than `cookie`
+**fail startup**; only `store-dir` is read by nothing.
+
 The remaining inherited setters are silent no-ops by design (the interface contract requires them);
 these `server.*` knobs appear configurable but currently have **no effect**:
 
-- `setHttp2`, `setCompression`, `setServerHeader` — not applied to the Netty pipeline.
-- `server.servlet.session.*` (`setSession`) — sessions are unsupported; timeout is deferred to #13.
+- `setHttp2` (#23), `setCompression` (#22), `setServerHeader` — not applied to the Netty pipeline.
 - `setMimeMappings` — no static resource serving.
 
-Wiring each is tracked by its own issue.
+[docs/configuration.md](../configuration.md#properties-that-are-silently-ignored) owns the
+per-property list and is the one to keep current.
 
 ### Bypassed error handling for out-of-context requests
 
@@ -84,3 +89,13 @@ URIs — a plain 404, by design (an out-of-context URI would otherwise throw in 
 
 In scope for #49: `server.port`, `server.address`, `server.servlet.context-path`. Session timeout
 (`server.servlet.session.timeout`) is deferred to #13.
+
+## Amendments
+
+### 2026-08-16 — sessions are implemented (#159)
+
+The ownership rule is unchanged; its worked example had drifted. #13 closed on 2026-07-29, so
+`server.servlet.session.*` is no longer an inherited setter with no effect, and SSL is no longer
+the only knob that fails fast. **Consequences** was corrected in place.
+
+**Scope** above still describes #49's boundary as it stood on 2026-07-03 and is left as written.
