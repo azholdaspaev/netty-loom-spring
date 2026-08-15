@@ -95,8 +95,8 @@ published. Nothing reaches Sonatype yet.
 
 - [#29](https://github.com/azholdaspaev/netty-loom-spring/issues/29) — the build already reads
   `MAVEN_GPG_PRIVATE_KEY` and `MAVEN_GPG_PASSPHRASE` and requires a signature for any
-  non-`-SNAPSHOT` version, so the wiring exists. What is missing is the key above, plus those two
-  as Actions secrets.
+  non-`-SNAPSHOT` version, so the wiring exists. What is missing is the key, the two secrets, and a
+  record of the key's fingerprint, creation date and rotation policy — which #29 wants in this file.
 - [#31](https://github.com/azholdaspaev/netty-loom-spring/issues/31) — the release workflow, which
   is what actually uploads, and where the token above gets wired in.
 
