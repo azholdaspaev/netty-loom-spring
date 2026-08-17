@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./gradlew build                              # Full build (compile + test)
 ./gradlew build -x test                      # Build without tests
 ./gradlew :netty-loom-spring-core:test       # Test a single module
-./gradlew test --tests 'io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.test.SmokeControllerTest'  # Single test
+./gradlew :netty-loom-spring-boot-starter:test --tests 'io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.test.SmokeControllerTest'  # Single test
 ```
 
 Java 25 toolchain (LTS). No `--enable-preview` — the library targets only stable JDK features, so consumers don't need special JVM flags.
