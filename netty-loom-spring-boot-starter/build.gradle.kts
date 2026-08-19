@@ -27,3 +27,7 @@ dependencies {
     // spring-boot-starter-test brings Mockito in transitively; load it as an agent.
     "mockitoAgent"(libs.mockito.core)
 }
+
+tasks.named<JavaCompile>("compileJava") {
+    inputs.files(tasks.named("processResources"))
+}
