@@ -13,6 +13,20 @@ Do not restate those lenses here, do not cache them, and do not add lenses of yo
 pass enforces a rule against the same fact living in two files; a copy of the lens list in this
 file would be the first violation of it.
 
+## Before you read
+
+When the `idea` MCP server is available, run IntelliJ's inspections over the files the pull
+request touches — `mcp__idea__lint_files`, first at `min_severity: "error"`, then at
+`"warning"`. `CLAUDE.md` § "IDE Tooling" has the loader line and the caveats.
+
+Treat the output as a candidate list, never as findings. Most of it is noise, and a lint hit
+earns an inline comment only by surviving the lenses and citing precedent like anything else.
+What it is good for is the class of issue a human reader's eye slides over: `@Incubating` API
+use, JSpecify `@NullMarked` gaps, and idioms the language level has superseded.
+
+Skip this step silently if the server is not connected. It is an aid to the pass, not a
+precondition for it.
+
 ## How to look
 
 Read whole files and their siblings in the same package. Anything visible from the diff hunk
