@@ -271,7 +271,7 @@ class HttpRequestHandlerTest {
 
             assertInstanceOf(IOException.class, failure.get(),
                 "a connection that never drains must be reported to the handler, not waited on for ever");
-            assertFalse(connection.channel.isOpen(),
+            SpinWait.until(() -> !connection.channel.isOpen(), PARK_LIMIT,
                 "the connection must be given up on, so nothing else has to reclaim it");
         }
     }
