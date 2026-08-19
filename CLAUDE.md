@@ -48,6 +48,22 @@ Sub-packages: `core.server`, `core.pipeline`, `core.handler`, `mvc.servlet`, `mv
 - `the<DependencyManagementExtension>()` doesn't work inside `subprojects {}` — use `pluginManager.withPlugin("io.spring.dependency-management") { configure<...> {} }` instead
 - `libs` version catalog accessor is not available inside `subprojects {}` blocks — extract needed values to `val` at root level first
 
+## IDE Tooling
+
+A JetBrains MCP server (`idea`) is available whenever IntelliJ has this project open; CI never has it. Its tools are deferred — load them in one call: `ToolSearch("select:mcp__idea__lint_files,mcp__idea__search_symbol,mcp__idea__read_file,mcp__idea__get_symbol_info")`.
+
+Reach for it only for what the IDE knows and the shell cannot:
+
+- **`lint_files` / `get_file_problems`** — IntelliJ inspections, which catch what `javac` and `./gradlew build` do not: `@Incubating` API use, JSpecify `@NullMarked` violations, `SequencedCollection` idioms, malformed markdown tables. Gate at `min_severity: "error"`; `"warning"` also returns unused-lambda-parameter noise. A clean file is omitted from `items` entirely, not returned empty
+- **`search_symbol` with `include_external: true`, then `read_file` on the path it returns** — reads a dependency's own sources out of its `-sources.jar`, and decompiles bytecode where no sources jar exists. `javap` gives signatures, never method bodies
+- **`get_symbol_info`** — resolved declaration and javadoc at a line/column, following references into dependencies
+
+Never:
+
+- **`rename_refactoring`.** Renaming `NettyLoomAutoConfiguration` left `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` pointing at the old name, and rewrote README prose unasked. The result still compiles, so nothing catches it. Cross-module renames are manual
+- **For files inside the source tree.** `grep`, `find` and `cat` are faster and already permitted; the IDE's search tools return the same answers
+- **As build authority.** `./gradlew` is the ground truth for builds and tests, and `get_project_dependencies` is a flat union across modules with no per-configuration breakdown. On an index error (`PSI and index do not match`), fall back to `grep` rather than retrying
+
 ## Development Workflow
 
 All source code changes must strictly follow TDD (Test-Driven Development): write a failing test first, then write the minimal production code to make it pass, then refactor. Never write production code without a corresponding test already in place.
