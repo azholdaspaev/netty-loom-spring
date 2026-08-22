@@ -2,9 +2,8 @@ package io.github.azholdaspaev.nettyloomspring.core.server;
 
 import io.github.azholdaspaev.nettyloomspring.core.exception.NettyServerException;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
-import io.github.azholdaspaev.nettyloomspring.core.pipeline.DefaultNettyPipelineConfigurer;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NamedChannelHandler;
-import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineConfigurer;
+import io.github.azholdaspaev.nettyloomspring.core.support.NettyServerFixture;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.group.DefaultChannelGroup;
@@ -52,19 +51,17 @@ class NettyServerTest {
      */
     private static NettyServer newServer(InetAddress address, CountDownLatch accepted, int port) {
         NettyServerConfiguration configuration = new NettyServerConfiguration(port, address, 0, 0, false);
-        NettyPipelineConfigurer pipelineConfigurer = new DefaultNettyPipelineConfigurer(
-            accepted == null ? List.of() : List.of(new NamedChannelHandler("accepted", () -> new ChannelInboundHandlerAdapter() {
+        List<NamedChannelHandler> handlers = accepted == null ? List.of()
+            : List.of(new NamedChannelHandler("accepted", () -> new ChannelInboundHandlerAdapter() {
                 @Override
                 public void channelActive(ChannelHandlerContext ctx) {
                     accepted.countDown();
                     ctx.fireChannelActive();
                 }
-            })));
+            }));
         HttpConnectionRegistry connectionRegistry = new HttpConnectionRegistry(
             new DefaultChannelGroup(GlobalEventExecutor.INSTANCE));
-        NettyServerChannelInitializer channelInitializer = new NettyServerChannelInitializer(pipelineConfigurer, connectionRegistry);
-        NettyIoHandlerFactory nettyIoHandlerFactory = new NettyIoHandlerFactory("auto");
-        return new NettyServer(configuration, channelInitializer, nettyIoHandlerFactory, connectionRegistry);
+        return NettyServerFixture.newServer(configuration, connectionRegistry, handlers);
     }
 
     @AfterEach

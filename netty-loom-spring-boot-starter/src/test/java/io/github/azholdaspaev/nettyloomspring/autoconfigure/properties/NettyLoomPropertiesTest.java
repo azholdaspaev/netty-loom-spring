@@ -1,5 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.properties;
 
+import io.github.azholdaspaev.nettyloomspring.core.server.NettyTransportPreference;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
@@ -29,14 +30,21 @@ class NettyLoomPropertiesTest {
     void shouldDefaultTransportToAuto() {
         NettyLoomProperties properties = bind(Map.of());
 
-        assertEquals("auto", properties.transport());
+        assertEquals(NettyTransportPreference.AUTO, properties.transport());
     }
 
     @Test
     void shouldOverrideTransportFromConfiguration() {
         NettyLoomProperties properties = bind(Map.of("server.netty.transport", "nio"));
 
-        assertEquals("nio", properties.transport());
+        assertEquals(NettyTransportPreference.NIO, properties.transport());
+    }
+
+    @Test
+    void shouldFallBackToAutoWhenTransportIsBlank() {
+        NettyLoomProperties properties = bind(Map.of("server.netty.transport", ""));
+
+        assertEquals(NettyTransportPreference.AUTO, properties.transport());
     }
 
     private static NettyLoomProperties bind(Map<String, Object> source) {
