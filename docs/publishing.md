@@ -67,17 +67,19 @@ missing setting. Snapshots are pruned after 90 days.
 Sonatype validates nothing on a snapshot — no GPG signature, no sources jar, no javadoc jar — and
 the snapshot endpoint speaks the ordinary Maven deploy protocol. A release does not: the Portal
 takes it as a single zipped bundle over a multipart POST, which is why the build stages releases
-into a local directory for #31 to upload rather than publishing them straight out. A snapshot needs
-none of that machinery, so it is the cheapest end-to-end proof that the namespace works, and it does
-not wait on the signing key.
+into a local directory for the release workflow to zip and upload rather than publishing them
+straight out. A snapshot needs none of that machinery, so it is the cheapest end-to-end proof that
+the namespace works, and it does not wait on the signing key.
 
 ## Credentials are user tokens
 
 Portal credentials are a username/password pair generated at
 [`central.sonatype.com/usertoken`](https://central.sonatype.com/usertoken), not the login password.
 **The pair cannot be retrieved once its modal closes**, so rotating means generating a replacement
-rather than looking the old one up. No token is recorded here, and nothing in the build reads one
-yet — the only publishing repository it declares is a local directory. Wiring the token in is #31.
+rather than looking the old one up. No token is recorded here. The build reads the pair as the
+`centralSnapshots` repository's credentials and the release workflow passes it to the Portal upload,
+so both arrive from the `CENTRAL_PORTAL_USERNAME` / `CENTRAL_PORTAL_PASSWORD` Actions secrets.
+Minting the token and storing it is #175.
 
 ## Signing key
 
@@ -117,22 +119,33 @@ already-published release keeps verifying. Generate a *replacement* key only on 
 the old one, send the revocation, and overwrite both secrets. Central does not re-check signatures
 on releases it has already accepted, so revoking does not retract them.
 
+## How a publish happens
+
+`.github/workflows/publish.yml`, added by
+[#31](https://github.com/azholdaspaev/netty-loom-spring/issues/31). Two paths that never overlap:
+
+| | Snapshot | Release |
+|---|---|---|
+| Trigger | Actions ▸ Publish ▸ *Run workflow* | push a `v*.*.*` tag |
+| Version | `gradle.properties` verbatim | the tag, checked against `gradle.properties` |
+| Protocol | Maven deploy to the snapshot endpoint | zipped bundle, multipart POST |
+| Signed | no | yes |
+| Ends at | uploaded | `VALIDATED`, awaiting your *Publish* click |
+
+The release path uploads with `publishingType=USER_MANAGED`, so the last step is manual. That is
+what makes a rehearsal possible: a `VALIDATED` deployment can still be dropped with
+`DELETE /api/v1/publisher/deployment/<id>`, while a published one is on Maven Central permanently.
+The bundle omits every `maven-metadata.xml` Gradle writes into `build/staging`, which the Portal
+does not accept.
+
 ## Not done yet
 
-The namespace and the signing key are done. Two out-of-band items remain, and no pull request can
-do either: **enable SNAPSHOTs** on the namespace, and **mint a Portal user token** and store it as
-an Actions secret. Both need someone logged in to the Portal.
-
-The repository half is further along.
-[#30](https://github.com/azholdaspaev/netty-loom-spring/issues/30) has landed: `maven-publish` and
-`signing` are configured in the root build for `core`, `mvc` and the starter, each publishing a jar,
-a sources jar and a javadoc jar into the root project's `build/staging`. The examples are not
-published. Nothing reaches Sonatype yet.
-
-- [#31](https://github.com/azholdaspaev/netty-loom-spring/issues/31) — the release workflow, which
-  is what actually uploads, and where the token above gets wired in.
+The namespace, the signing key and the workflow are done. Two out-of-band items remain, and no pull
+request can do either: **enable SNAPSHOTs** on the namespace, and **mint a Portal user token** and
+store it as an Actions secret. Both need someone logged in to the Portal, and both are
+[#175](https://github.com/azholdaspaev/netty-loom-spring/issues/175). Nothing reaches Sonatype until
+they are.
 
 [#28](https://github.com/azholdaspaev/netty-loom-spring/issues/28) also asked for a
 `publishToMavenCentral` snapshot dry run. No such task exists: that name belongs to the Vanniktech
-plugin, and #30 used Gradle's own `maven-publish`, whose tasks stop at `build/staging`. The dry run
-moved to #31 along with the upload.
+plugin, and #30 used Gradle's own `maven-publish`. The dry run moved to #175 along with the token.
