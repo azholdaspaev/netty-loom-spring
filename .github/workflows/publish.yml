@@ -1,0 +1,188 @@
+name: Publish
+
+# Two paths that never overlap: a snapshot is dispatched by hand, a release is a v*.*.* tag.
+#
+# #31 asked for the snapshot to go out on every push to main. Deliberately not done: a snapshot is
+# a disposable artifact -- Central prunes them after 90 days -- so publishing one per merge buys
+# nothing and costs a red main for as long as the Portal token is missing. Gating on the token's
+# presence is not an option either; GitHub does not expose the `secrets` context in jobs.<id>.if.
+on:
+  workflow_dispatch:
+  push:
+    tags: [ 'v*.*.*' ]
+
+# cancel-in-progress: false, the opposite of claude-review.yml and for the opposite reason.
+# There, a superseded review is waste; here, cancelling between the bundle upload and the status
+# poll abandons a deployment on the Portal with nothing watching it.
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    if: github.event_name == 'workflow_dispatch'
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # No -Pversion: a snapshot publishes gradle.properties verbatim, and Central timestamps each
+      # upload underneath that one coordinate. No GPG secrets: Sonatype validates nothing on a
+      # snapshot -- no signature, no sources jar, no javadoc jar. And no missing-secret guard,
+      # because build.gradle.kts declares this repository with credentials(PasswordCredentials),
+      # which fails the build once the task graph is populated and names both missing properties.
+      #
+      # The named task, not `publish`, which would also target the local `staging` repository.
+      - run: ./gradlew publishAllPublicationsToCentralSnapshotsRepository
+        env:
+          ORG_GRADLE_PROJECT_centralSnapshotsUsername: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
+          ORG_GRADLE_PROJECT_centralSnapshotsPassword: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write  # gh release create; the job never pushes a commit
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # This job's Portal credentials go to curl, not to Gradle, so it gets no credential check for
+      # free the way `snapshot` does. Checked before the build rather than at the upload, so a
+      # missing secret costs seconds instead of a full test run.
+      - name: Require publishing secrets
+        env:
+          CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
+          CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
+          MAVEN_GPG_PRIVATE_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in CENTRAL_PORTAL_USERNAME CENTRAL_PORTAL_PASSWORD \
+                      MAVEN_GPG_PRIVATE_KEY MAVEN_GPG_PASSPHRASE; do
+            [ -n "${!name:-}" ] || missing+=("$name")
+          done
+          [ ${#missing[@]} -eq 0 ] || { echo "::error::Missing repository secrets: ${missing[*]}"; exit 1; }
+
+      # `v*.*.*` in the trigger is a glob, not a regex: it matches va.b.c and v1.2.3-rc1-something
+      # just as happily, so the shape is re-checked here.
+      #
+      # The second check refuses a tag for a version the repository was not working toward. Without
+      # it, `git tag v9.9.9` on today's tree publishes 9.9.9 to a registry that never forgets.
+      - name: Resolve the release version
+        run: |
+          set -euo pipefail
+          version=${GITHUB_REF_NAME#v}
+          declared=$(sed -n 's/^version=//p' gradle.properties)
+          [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || { echo "::error::Tag ${GITHUB_REF_NAME} is not vMAJOR.MINOR.PATCH"; exit 1; }
+          [ "$version" = "${declared%-SNAPSHOT}" ] \
+            || { echo "::error::Tag ${GITHUB_REF_NAME} does not match gradle.properties version=${declared}"; exit 1; }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      # `build` first: the test suite is the last gate before an upload that cannot be taken back.
+      # Publishing goes to the local staging directory, because the Portal's release endpoint is a
+      # multipart POST of a zipped bundle rather than a Maven repository -- see the next two steps.
+      - name: Build and stage
+        env:
+          MAVEN_GPG_PRIVATE_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: ./gradlew build publishAllPublicationsToStagingRepository -Pversion="$VERSION"
+
+      # maven-metadata.xml is stripped: Gradle writes one per artifactId for any repository it does
+      # not consider local -- a file: URL included -- and the Portal does not recognise a bundle
+      # containing it. .sha256/.sha512 are kept; central.sonatype.org/publish/requirements calls
+      # .md5 and .sha1 required and those two supported.
+      - name: Build the Central bundle
+        run: |
+          set -euo pipefail
+          cd build/staging
+          zip -qr "$RUNNER_TEMP/central-bundle.zip" . -x '*maven-metadata*'
+
+          # Grep a materialised listing rather than `unzip -l | grep -q`: grep -q exits on its
+          # first match, and once the listing outgrows the 64K pipe buffer that SIGPIPEs unzip,
+          # which pipefail then reports as a failed guard. Reproduced at 8000 entries; today's 150
+          # fit the buffer and hide it.
+          unzip -l "$RUNNER_TEMP/central-bundle.zip" > "$RUNNER_TEMP/bundle-listing.txt"
+          grep -q ' io/github/azholdaspaev/' "$RUNNER_TEMP/bundle-listing.txt" \
+            || { echo "::error::bundle is not in Maven repository layout"; exit 1; }
+
+      - name: Upload to the Central Portal
+        env:
+          CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
+          CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # Actions masks a secret's literal value, never a transform of it, so this base64 would
+          # otherwise print in full on any traced command.
+          auth=$(printf '%s:%s' "$CENTRAL_PORTAL_USERNAME" "$CENTRAL_PORTAL_PASSWORD" | base64 | tr -d '\n')
+          echo "::add-mask::$auth"
+
+          # --fail-with-body, not a bare -sS: curl exits 0 on a 401 and prints the error page to
+          # stdout, so the deployment id would silently become that HTML and the poll below would
+          # spend ten minutes querying it.
+          id=$(curl --fail-with-body -sS -X POST \
+                 -H "Authorization: Bearer ${auth}" \
+                 -F bundle=@"$RUNNER_TEMP/central-bundle.zip" \
+                 "https://central.sonatype.com/api/v1/publisher/upload?name=netty-loom-spring-${VERSION}&publishingType=USER_MANAGED")
+          echo "Deployment \`${id}\` — https://central.sonatype.com/publishing/deployments" >> "$GITHUB_STEP_SUMMARY"
+
+          # VALIDATED is terminal here, not PUBLISHED: publishingType is USER_MANAGED, so the last
+          # step is a human pressing Publish in the Portal. Until they do, the deployment can still
+          # be dropped with DELETE /api/v1/publisher/deployment/<id>; afterwards it is on Maven
+          # Central permanently.
+          state=UNKNOWN
+          for _ in $(seq 60); do
+            body=$(curl --fail-with-body -sS -X POST \
+                     -H "Authorization: Bearer ${auth}" \
+                     "https://central.sonatype.com/api/v1/publisher/status?id=${id}")
+            state=$(jq -r .deploymentState <<<"$body")
+            echo "deploymentState=${state}"
+            case "$state" in
+              VALIDATED) exit 0 ;;
+              FAILED) echo "::error::$(jq -c .errors <<<"$body")"; exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "::error::Deployment ${id} is still ${state} after 10 minutes"
+          exit 1
+
+      # index($0, h) == 1 matches the literal heading prefix and stops there, so the em dash, the
+      # date and the word "unreleased" that may follow it are all irrelevant -- and the version's
+      # dots need no escaping into a regex. There is no commits-since-last-tag fallback on purpose:
+      # a CHANGELOG with no section for this version is an error, and a commit dump would hide it.
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          awk -v h="## [$VERSION]" '
+            index($0, h) == 1                 { section = 1; next }
+            section && index($0, "## [") == 1 { exit }
+            section' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          [ -s "$RUNNER_TEMP/notes.md" ] \
+            || { echo "::error::CHANGELOG.md has no '## [${VERSION}]' section"; exit 1; }
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file "$RUNNER_TEMP/notes.md"
