@@ -79,13 +79,49 @@ Portal credentials are a username/password pair generated at
 rather than looking the old one up. No token is recorded here, and nothing in the build reads one
 yet — the only publishing repository it declares is a local directory. Wiring the token in is #31.
 
+## Signing key
+
+Read from the local keyring on 2026-08-22.
+
+|              |                                                                 |
+|--------------|-----------------------------------------------------------------|
+| Fingerprint  | `7F873460471889882D06C882305DAA44A997D1FC`                       |
+| Long key id  | `305DAA44A997D1FC`                                               |
+| Algorithm    | RSA 4096, sign and certify only — no encryption subkey           |
+| Created      | 2026-08-22                                                       |
+| Expires      | 2028-08-21                                                       |
+| User id      | `netty-loom-spring release signing <adilzholdaspaev@gmail.com>`  |
+| Published to | `keyserver.ubuntu.com`                                           |
+
+Project-specific, not a personal key, and sign-only: an encryption subkey would be key material
+that exists only to be leaked. It lives in exactly two places — one laptop's GnuPG keyring, and the
+`MAVEN_GPG_PRIVATE_KEY` / `MAVEN_GPG_PASSPHRASE` Actions secrets added on 2026-08-22. Those secrets
+are write-only, so neither the key nor the passphrase is recoverable from GitHub; without a backup
+elsewhere, a lost laptop forces a rotation.
+
+`keyserver.ubuntu.com` is the one that matters — Sonatype's default lookup host. `keys.openpgp.org`
+accepts a key but withholds its user id until an email round trip is completed, which Central does
+not require.
+
+### Rotation
+
+Extend the expiry in place, on the same key, around 2028-06 rather than on the day:
+
+```bash
+gpg --quick-set-expire 7F873460471889882D06C882305DAA44A997D1FC 2y
+gpg --keyserver hkps://keyserver.ubuntu.com --send-keys 7F873460471889882D06C882305DAA44A997D1FC
+```
+
+Extending preserves the fingerprint, so this table stays correct and every signature on an
+already-published release keeps verifying. Generate a *replacement* key only on compromise: revoke
+the old one, send the revocation, and overwrite both secrets. Central does not re-check signatures
+on releases it has already accepted, so revoking does not retract them.
+
 ## Not done yet
 
-The namespace is the one out-of-band item already done. The rest is not, and no pull request can do
-any of it: **enable SNAPSHOTs** on the namespace, **generate a GPG key** and publish it to
-`keyserver.ubuntu.com`, **mint a Portal user token**, and **store the key, its passphrase and the
-token as Actions secrets**. Budget for them separately — each needs someone logged in somewhere this
-repository cannot reach.
+The namespace and the signing key are done. Two out-of-band items remain, and no pull request can
+do either: **enable SNAPSHOTs** on the namespace, and **mint a Portal user token** and store it as
+an Actions secret. Both need someone logged in to the Portal.
 
 The repository half is further along.
 [#30](https://github.com/azholdaspaev/netty-loom-spring/issues/30) has landed: `maven-publish` and
@@ -93,10 +129,6 @@ The repository half is further along.
 a sources jar and a javadoc jar into the root project's `build/staging`. The examples are not
 published. Nothing reaches Sonatype yet.
 
-- [#29](https://github.com/azholdaspaev/netty-loom-spring/issues/29) — the build already reads
-  `MAVEN_GPG_PRIVATE_KEY` and `MAVEN_GPG_PASSPHRASE` and requires a signature for any
-  non-`-SNAPSHOT` version, so the wiring exists. What is missing is the key, the two secrets, and a
-  record of the key's fingerprint, creation date and rotation policy — which #29 wants in this file.
 - [#31](https://github.com/azholdaspaev/netty-loom-spring/issues/31) — the release workflow, which
   is what actually uploads, and where the token above gets wired in.
 
