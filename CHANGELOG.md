@@ -9,8 +9,6 @@ in any minor release.
 ## [0.1.0] — unreleased
 
 First release. Not yet published to Maven Central; publishing is tracked by
-[#28](https://github.com/azholdaspaev/netty-loom-spring/issues/28),
-[#29](https://github.com/azholdaspaev/netty-loom-spring/issues/29) and
 [#31](https://github.com/azholdaspaev/netty-loom-spring/issues/31).
 
 ### Added
