@@ -20,6 +20,15 @@ subprojects {
         options.compilerArgs.add("-parameters")
     }
 
+    tasks.withType<Javadoc> {
+        (options as StandardJavadocDocletOptions).apply {
+            encoding = "UTF-8"
+            docEncoding = "UTF-8"
+            charSet = "UTF-8"
+            addStringOption("Xdoclint:all,-missing", "-quiet")
+        }
+    }
+
     // Mockito must be loaded as a -javaagent: self-attaching is deprecated on the JDK 25
     // toolchain and will be disallowed outright in a future release. Declared for every
     // subproject but left empty by default — modules whose tests pull in Mockito opt in with
