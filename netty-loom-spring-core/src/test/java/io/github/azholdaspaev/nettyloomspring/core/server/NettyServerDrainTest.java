@@ -4,9 +4,8 @@ import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistr
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpDrainHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestDispatcher;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestHandler;
-import io.github.azholdaspaev.nettyloomspring.core.pipeline.DefaultNettyPipelineConfigurer;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NamedChannelHandler;
-import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineConfigurer;
+import io.github.azholdaspaev.nettyloomspring.core.support.NettyServerFixture;
 import io.github.azholdaspaev.nettyloomspring.core.support.SpinWait;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.group.ChannelGroup;
@@ -206,19 +205,15 @@ class NettyServerDrainTest {
     private NettyServer newServer() {
         connections = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
         HttpConnectionRegistry connectionRegistry = new HttpConnectionRegistry(connections);
-        NettyPipelineConfigurer pipelineConfigurer = new DefaultNettyPipelineConfigurer(List.of(
+        NettyServerConfiguration configuration = new NettyServerConfiguration(
+            0, InetAddress.getLoopbackAddress(), 0, 0, false);
+        return NettyServerFixture.newServer(configuration, connectionRegistry, List.of(
             new NamedChannelHandler("httpCodec", HttpServerCodec::new),
             new NamedChannelHandler("httpKeepAlive", HttpServerKeepAliveHandler::new),
             new NamedChannelHandler("drain", () -> new HttpDrainHandler(connectionRegistry)),
             new NamedChannelHandler("aggregator", () -> new HttpObjectAggregator(MAX_HTTP_REQUEST_BODY_BYTES)),
             new NamedChannelHandler("dispatcher",
                 () -> new HttpRequestHandler(blockingDispatcher(), dispatchExecutor, connectionRegistry))));
-        NettyServerConfiguration configuration = new NettyServerConfiguration(
-            0, InetAddress.getLoopbackAddress(), 0, 0, false);
-        return new NettyServer(configuration,
-            new NettyServerChannelInitializer(pipelineConfigurer, connectionRegistry),
-            new NettyIoHandlerFactory("auto"),
-            connectionRegistry);
     }
 
     /**

@@ -13,7 +13,7 @@ The rule for which namespace a knob belongs to — Spring Boot's `server.*` vers
 
 | Property | Type | Default | Description |
 | --- | --- | --- | --- |
-| `server.netty.transport` | `String` | `auto` | `auto` picks the best native transport (epoll on Linux, kqueue on macOS) and falls back to NIO when neither is available. Only the `linux-*` epoll and `osx-*` kqueue natives are bundled, so on any other BSD `auto` falls back to NIO. `nio` forces the portable transport. `epoll` and `kqueue` force that transport and **fail startup** if it is unavailable. Any other value fails startup. The selected transport is logged at INFO on startup |
+| `server.netty.transport` | `NettyTransportPreference` | `auto` | `auto` picks the best native transport (epoll on Linux, kqueue on macOS) and falls back to NIO when neither is available. Only the `linux-*` epoll and `osx-*` kqueue natives are bundled, so on any other BSD `auto` falls back to NIO. `nio` forces the portable transport. `epoll` and `kqueue` force that transport and **fail startup** if it is unavailable. Any other value fails startup when the property binds; an unset or empty value falls back to `auto`. The selected transport is logged at INFO on startup |
 | `server.netty.boss-threads` | `int` | `1` | Threads in the boss event-loop group, which accepts connections. One is normally enough |
 | `server.netty.worker-threads` | `int` | `0` | Threads in the worker event-loop group. `0` applies Netty's default of `2 × availableProcessors()` |
 | `server.netty.tcp-keep-alive` | `boolean` | `true` | Socket-level `SO_KEEPALIVE` on accepted channels. Unrelated to HTTP keep-alive, which is protocol behaviour and always on |
@@ -48,7 +48,7 @@ beans and `CookieSameSiteSupplier` beans.
 | `server.ssl.*` with SSL enabled | `WebServerException` naming [#16](https://github.com/azholdaspaev/netty-loom-spring/issues/16); remove `server.ssl.*` or set `server.ssl.enabled=false`. Note `Ssl.enabled` defaults to `true`, so binding **any** `server.ssl.*` key — `server.ssl.bundle` included — is enough to trip this. Failing loudly is deliberate — silently serving plaintext while the app looks TLS-configured is a security footgun |
 | `server.servlet.session.persistent=true` | `WebServerException`; sessions are in-memory only. Use Spring Session for a durable store |
 | `server.servlet.session.tracking-modes` with `URL` or `SSL` | `IllegalArgumentException` naming the property |
-| `server.netty.transport` unknown or unavailable | `IllegalArgumentException` listing the valid values, or `IllegalStateException` if the requested native transport is not available on this platform |
+| `server.netty.transport` unknown or unavailable | A binding failure naming the property, with Boot's failure analyzer listing the valid constants (`AUTO`, `EPOLL`, `KQUEUE`, `NIO`) at startup, or `IllegalStateException` if the requested native transport is not available on this platform |
 
 ## Properties that are silently ignored
 
