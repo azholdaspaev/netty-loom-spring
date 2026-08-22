@@ -61,11 +61,12 @@ Full detail: [what works, what doesn't](#what-works-what-doesnt) below, and the
 
 ## Status
 
-> **This library is not published anywhere.** The build can produce signed artifacts, but there is
-> no release workflow in the repository, so the coordinates below do not resolve from any
-> repository — not Maven Central, not a snapshot repo, not even your local Maven cache. Getting
-> there is tracked by
-> [#31](https://github.com/azholdaspaev/netty-loom-spring/issues/31) (release workflow).
+> **This library is not published anywhere yet.** The release workflow exists — a snapshot is
+> published by hand from the Actions tab, a release by pushing a `v*.*.*` tag — but the Sonatype
+> credentials it needs have not been configured, so nothing has been uploaded. The coordinates
+> below therefore resolve from no repository: not Maven Central, not a snapshot repo, not even your
+> local Maven cache. The remaining step is
+> [#175](https://github.com/azholdaspaev/netty-loom-spring/issues/175).
 >
 > The servlet bridge is also deliberately partial — several standard Spring Boot settings are
 > accepted and then silently ignored.

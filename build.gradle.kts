@@ -134,6 +134,17 @@ subprojects {
                     name = "staging"
                     url = rootProject.layout.buildDirectory.dir("staging").get().asFile.toURI()
                 }
+
+                // credentials(PasswordCredentials::class) rather than reading env vars the way
+                // signing does below: Gradle fails the build as soon as the task graph is
+                // populated, naming centralSnapshotsUsername and centralSnapshotsPassword, where
+                // an absent env var would deploy anonymously and return a 401 that reads as a bad
+                // token. Supplied in CI as ORG_GRADLE_PROJECT_centralSnapshotsUsername. #31
+                maven {
+                    name = "centralSnapshots"
+                    url = uri("https://central.sonatype.com/repository/maven-snapshots/")
+                    credentials(PasswordCredentials::class)
+                }
             }
         }
 
