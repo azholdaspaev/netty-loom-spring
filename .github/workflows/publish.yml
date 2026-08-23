@@ -155,8 +155,8 @@ jobs:
 
           # Grep a materialised listing rather than `unzip -l | grep -q`: grep -q exits on its
           # first match, and once the listing outgrows the 64K pipe buffer that SIGPIPEs unzip,
-          # which pipefail then reports as a failed guard. Reproduced at 8000 entries; today's 150
-          # fit the buffer and hide it.
+          # which pipefail then reports as a failed guard. Reproduced at 8000 entries; a bundle
+          # this small fits the buffer and hides it.
           unzip -l "$RUNNER_TEMP/central-bundle.zip" > "$RUNNER_TEMP/bundle-listing.txt"
           grep -q ' io/github/azholdaspaev/' "$RUNNER_TEMP/bundle-listing.txt" \
             || { echo "::error::bundle is not in Maven repository layout"; exit 1; }
