@@ -39,9 +39,8 @@ jobs:
 
       # No -Pversion: a snapshot publishes gradle.properties verbatim, and Central timestamps each
       # upload underneath that one coordinate. No GPG secrets: Sonatype validates nothing on a
-      # snapshot -- no signature, no sources jar, no javadoc jar. And no missing-secret guard,
-      # because build.gradle.kts declares this repository with credentials(PasswordCredentials),
-      # which fails the build once the task graph is populated and names both missing properties.
+      # snapshot -- no signature, no sources jar, no javadoc jar. And no missing-secret guard; see
+      # the `centralSnapshots` repository in build.gradle.kts.
       #
       # The named task, not `publish`, which would also target the local `staging` repository.
       - run: ./gradlew publishAllPublicationsToCentralSnapshotsRepository
@@ -181,10 +180,8 @@ jobs:
                  "https://central.sonatype.com/api/v1/publisher/upload?name=netty-loom-spring-${VERSION}&publishingType=USER_MANAGED")
           echo "Deployment \`${id}\` — https://central.sonatype.com/publishing/deployments" >> "$GITHUB_STEP_SUMMARY"
 
-          # VALIDATED is terminal here, not PUBLISHED: publishingType is USER_MANAGED, so the last
-          # step is a human pressing Publish in the Portal. Until they do, the deployment can still
-          # be dropped with DELETE /api/v1/publisher/deployment/<id>; afterwards it is on Maven
-          # Central permanently.
+          # VALIDATED is terminal here, not PUBLISHED: publishingType is USER_MANAGED, so a human
+          # finishes the release in the Portal. docs/publishing.md covers what to do from there.
           state=UNKNOWN
           for _ in $(seq 60); do
             body=$(curl --fail-with-body -sS -X POST \
