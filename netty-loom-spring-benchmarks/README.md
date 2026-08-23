@@ -224,9 +224,9 @@ overridable with `--env USERNAME=... --env PASSWORD=...`).
   pool-bounded, but this forecloses the "you throttled the VT path" objection). The **platform** target
   keeps `threads.max=200` — the bounded thread-per-request pool *is* the architecture under test. The
   OS backlog (`accept-count=100`) is left at its default, ≈ Netty core's hardcoded `SO_BACKLOG=128`,
-  and isn't the bottleneck under the 15s gradual ramp **on loopback** — near-zero RTT drains the accept
-  queue between arrivals. It is emphatically the bottleneck off-box: over a 77ms link the same ramp
-  produced 17,643 `connection refused` and 11.16% failures while the server sat 95% idle
+  and isn't the bottleneck under the 15s gradual ramp — verified on loopback, where
+  `TcpExtListenOverflows` stays flat across a 10,000-VU run. Untested off-box, because no sweep has
+  managed to generate that load remotely
   ([2026-08-23](../docs/benchmarks/2026-08-23/COMPARISON.md) §8). Whatever gap survives this is
   architecture; the earlier default-config snapshot is in git history (commit `c4f4270`) for a
   before/after comparison.

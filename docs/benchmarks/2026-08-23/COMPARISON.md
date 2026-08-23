@@ -190,17 +190,31 @@ target-scenario pair — so no conclusion in this document rests on its exact va
 
 ## 8. Defects and findings
 
-- **`SO_BACKLOG` is hardcoded to 128 (`NettyServer.java:136`), and that is a real ceiling off-box.**
-  A 10,000-VU probe run from a remote client over a 77 ms link produced **17,643 `connection
-  refused` errors, 11.16% failures, and 2,972 req/s while the server sat 95% idle** (0.52 of 8
-  cores). The same ramp on loopback completes cleanly with 0.00% errors. Over a high-RTT link a 15 s
-  ramp to 10,000 connections arrives faster than a 128-deep accept queue drains.
+- **Off-box load generation from the development Mac is not viable at 10,000 VUs, for a reason
+  outside the server.** A 10,000-VU probe over the 77 ms link produced **23,238 request failures
+  (11.16%), all `connection refused`, and 2,972 req/s while the server sat 95% idle** (0.52 of 8
+  cores). The same ramp on loopback completes at 22,677 req/s with 0.00% errors.
 
-  This **falsifies the claim** at `netty-loom-spring-benchmarks/README.md:226` that the accept
-  backlog "isn't the bottleneck under the 15s gradual ramp". That is true on loopback only — a
-  near-zero RTT lets the queue drain between arrivals. It went unnoticed for three sweeps because
-  every one of them was loopback. The README has been corrected; whether `SO_BACKLOG` should be
-  configurable is a separate question this sweep does not answer.
+  **The cause is client- or path-side, not server-side**, and the server-side explanations are ruled
+  out by measurement rather than argument:
+
+  | Hypothesis | Evidence against |
+  | --- | --- |
+  | Accept-queue overflow (`SO_BACKLOG=128`) | `TcpExtListenOverflows` = **250 cumulative over 253 days of uptime** — cannot account for 23,238 failures in 60 s. And `tcp_abort_on_overflow=0`, so an overflow drops the ACK silently; it does not send the RST that produces `connection refused` |
+  | Firewall / fail2ban | Zero `ufw.log` entries for the client IP; neither jail (`sshd`, `3x-ipl`) covers 18080 |
+  | conntrack exhaustion | `nf_conntrack_count` 17 against a max of 262,144; no "table full" in `dmesg` |
+  | Server death | Server log shows it serving normally throughout and past the end of the run |
+
+  The residual explanation is the client host or the NAT/path between it and the server — 10,000
+  simultaneous outbound connections to one destination is a load few consumer network paths hold.
+  **This is a finding about the harness's environment, not about Netty-Loom.**
+
+  What it does *not* establish: anything about `SO_BACKLOG`. That value is hardcoded to 128 at
+  `NettyServer.java:136` and documented as a fixed limit
+  ([#42](https://github.com/azholdaspaev/netty-loom-spring/issues/42)); this sweep produced **no
+  evidence** that it is a bottleneck at any load level. It is worth revisiting on its own merits —
+  128 is *below* Netty's own default of `NetUtil.SOMAXCONN` — but not on the strength of anything
+  measured here.
 
 - **The load generator costs more than the server on this box** (3.53 cores vs 2.37 at 2,000 VUs).
   Not a defect, but it bounds what the absolute numbers mean.
@@ -212,7 +226,8 @@ target-scenario pair — so no conclusion in this document rests on its exact va
   streamed memory sampling, reversed order, and provenance captured from the *server's* host rather
   than the client's — but it was not used for this sweep, and at 10,000 VUs it fails for the reason
   in §8. The two-host configuration the README calls "the only fully defensible one" therefore
-  remains unmeasured: it needs either a low-RTT peer or a deeper accept backlog.
+  remains unmeasured: it needs a load generator that can hold 10,000 WAN connections, which the
+  development Mac and its network path demonstrably cannot.
 - **No open-model run.** Coordinated omission is uncorrected.
 - **No memory A/B** against the Security starter or NL-37's response buffering (#144).
 - **No comparison against the M1 sweeps**, deliberately. See §1.
