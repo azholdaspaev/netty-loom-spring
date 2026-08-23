@@ -138,6 +138,17 @@ what makes a rehearsal possible: a `VALIDATED` deployment can still be dropped w
 The bundle omits every `maven-metadata.xml` Gradle writes into `build/staging`, which the Portal
 does not accept.
 
+### Before tagging
+
+`CHANGELOG.md`'s `## [x.y.z]` section becomes the GitHub release notes verbatim, so it has to read
+as released *before* the tag exists: date the heading (`## [0.1.0] — 2026-09-01`, in place of
+`— unreleased`) and rewrite the section's opening paragraph, which is written from the unreleased
+side and would otherwise open the release by announcing that it is not one.
+
+Nothing in the workflow catches this. `main` stays on `x.y.z-SNAPSHOT` by design, the version guard
+compares the tag against `${declared%-SNAPSHOT}` so the suffix never trips it, and the notes guard
+only fires on a section that is missing or blank.
+
 ## Not done yet
 
 The namespace, the signing key and the workflow are done. Two out-of-band items remain, and no pull
