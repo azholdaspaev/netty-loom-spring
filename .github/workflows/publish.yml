@@ -135,7 +135,6 @@ jobs:
         run: ./gradlew build -Pversion="$VERSION"
 
       # Publishing goes to the local staging directory, because the Portal's release endpoint is a
-      # Publishing goes to the local staging directory, because the Portal's release endpoint is a
       # multipart POST of a zipped bundle rather than a Maven repository -- see the steps below.
       - name: Stage
         env:
