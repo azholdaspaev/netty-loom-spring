@@ -1,0 +1,11 @@
+captured 2026-08-23T18:38:06Z
+ 18:38:06 up 253 days, 23:09,  3 users,  load average: 2.77, 6.33, 5.37
+
+ubuntu   3637582  0.3  0.6 850096 207456 ?       Ssl  Jul03 224:03 /home/ubuntu/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main gateway run
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+ubuntu   4132920  0.0  0.0   9216  3840 ?        S    18:38   0:00 awk NR<=8
+ubuntu   4132919  0.0  0.0  27468  3328 ?        S    18:38   0:00 sort -rnk3
+ubuntu   4132918  0.0  0.0  10884  4480 ?        R    18:38   0:00 ps aux
+ubuntu   4132837  0.0  0.0   7340  3712 ?        S    18:38   0:00 bash /home/ubuntu/netty-loom-spring/netty-loom-spring-benchmarks/scripts/collect-env.sh /home/ubuntu/bench-results/2026-08-23/pass2-reversed /home/ubuntu/netty-loom-spring
+ubuntu   4132823  0.0  0.0   6692  2304 ?        S    18:38   0:00 grep -E ^====|^####|scenario|k6 exited|wrote|run order
+ubuntu   4132822  0.0  0.0   7472  3712 ?        S    18:38   0:00 bash scripts/run-all.sh
