@@ -10,6 +10,7 @@ Reads, per target:
   <name>_high_load.csv         RSS samples taken during the high-concurrency run
 
 Usage: summarize.py <results_dir> <vus> <java_flags> <uname> <tomcat_max_connections>
+                    [env_capture]
 """
 import json
 import os
@@ -22,6 +23,7 @@ VUS = int(sys.argv[2])
 JAVA_FLAGS = sys.argv[3]
 UNAME = sys.argv[4] if len(sys.argv) > 4 else "unknown"
 TOMCAT_MAXCONN = sys.argv[5] if len(sys.argv) > 5 else None
+ENV_CAPTURE = sys.argv[6] if len(sys.argv) > 6 else None
 NCORES = os.cpu_count() or 1
 
 TARGETS = [
@@ -211,11 +213,31 @@ def row(cells):
     return "| " + " | ".join(cells) + " |"
 
 
+def machine_lines():
+    """The snapshot's provenance block: `collect-env.sh`'s capture when one was named, else the
+    bare `uname` the caller passed.
+
+    Named-but-unusable is fatal rather than a silent fall back to `uname`: the caller asked for the
+    capture to be this snapshot's provenance, and publishing a snapshot attributed to the wrong
+    machine is the same class of defect as publishing an aborted run (#110).
+    """
+    if ENV_CAPTURE is None:
+        return [f"- **Machine:** `{UNAME}`"]
+    try:
+        with open(ENV_CAPTURE) as f:
+            captured = f.read().strip()
+    except OSError as exc:
+        sys.exit(f"summarize.py: cannot read the environment capture {ENV_CAPTURE}: {exc}")
+    if not captured:
+        sys.exit(f"summarize.py: the environment capture {ENV_CAPTURE} is empty")
+    return captured.splitlines()
+
+
 out = []
 out.append("# Benchmark snapshot — Netty-Loom vs Tomcat")
 out.append("")
 out.append(f"- **Date:** {date.today().isoformat()}")
-out.append(f"- **Machine:** `{UNAME}`")
+out.extend(machine_lines())
 out.append(f"- **JVM flags (identical for all targets):** `{JAVA_FLAGS}`")
 out.append(f"- **Logical cores:** {NCORES} (client and server share this box — see CPU efficiency below)")
 if TOMCAT_MAXCONN:

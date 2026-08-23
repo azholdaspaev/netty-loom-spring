@@ -96,12 +96,26 @@ class SummarizeTest(unittest.TestCase):
     CPU = "CPU efficiency"
     MEMORY = "Memory per connection"
 
-    def render(self, runs=None):
-        """Render a snapshot. `runs` overrides individual (target, scenario) pairs with a dict of
+    def render(self, runs=None, env=None, env_path=None):
+        """Render a snapshot, asserting summarize.py accepted the sweep.
+
+        `runs` overrides individual (target, scenario) pairs with a dict of
         `exit` / `count` / `rate` / `check_fails`; `exit=None` writes no .exit file at all,
         `no_export=True` writes no summary export -- the shape of a run that died before k6 could
         write one -- `empty_export=True` writes `{}`, and `drop_metrics` omits named metrics, the
-        shape of a tagged sub-metric no threshold asked k6 to emit."""
+        shape of a tagged sub-metric no threshold asked k6 to emit. `env` writes an environment
+        capture and names it to summarize.py; `env_path` names one without writing it."""
+        proc = self._summarize(runs, env, env_path)
+        self.assertEqual(0, proc.returncode, proc.stderr)
+        return proc.stdout
+
+    def render_refused(self, runs=None, env=None, env_path=None):
+        """Render a snapshot that summarize.py must refuse outright, returning its stderr."""
+        proc = self._summarize(runs, env, env_path)
+        self.assertNotEqual(0, proc.returncode, "expected a refusal, got a snapshot")
+        return proc.stderr
+
+    def _summarize(self, runs=None, env=None, env_path=None):
         runs = runs or {}
         with tempfile.TemporaryDirectory() as results:
             for target in LABELS:
@@ -123,10 +137,14 @@ class SummarizeTest(unittest.TestCase):
                         with open(os.path.join(results, f"{target}_{scenario}.exit"), "w") as f:
                             f.write(f"{code}\n")
                 self._write_samples(results, target)
-            proc = subprocess.run(
-                [sys.executable, SUMMARIZE, results, str(VUS), "-Xmx2g", "test-box", "4000"],
-                capture_output=True, text=True, check=True)
-        return proc.stdout
+            argv = [sys.executable, SUMMARIZE, results, str(VUS), "-Xmx2g", "test-box", "4000"]
+            if env is not None:
+                env_path = os.path.join(results, "env-server.txt")
+                with open(env_path, "w") as f:
+                    f.write(env)
+            if env_path is not None:
+                argv.append(env_path)
+            return subprocess.run(argv, capture_output=True, text=True)
 
     def _write_samples(self, results, target):
         """Idle and under-load memory/CPU samples, in sample-memory.sh's CSV shape."""
@@ -449,6 +467,27 @@ class SummarizeTest(unittest.TestCase):
         md = self.render({(t, "secured"): {"exit": None, "empty_export": True} for t in LABELS})
         self.assertIn("## Security overhead", md)
         self.assertEqual("\n".join(section(md, self.SECURITY)).count("Not answerable"), 2)
+
+
+    # ---- the environment capture ----
+
+    def test_a_captured_environment_replaces_the_machine_line(self):
+        md = self.render(env="- **Machine:** Xeon E3-1230 v3, 4 cores / 8 threads\n"
+                             "- **Kernel:** 6.8.0-90-generic\n")
+        self.assertIn("- **Machine:** Xeon E3-1230 v3, 4 cores / 8 threads", md)
+        self.assertIn("- **Kernel:** 6.8.0-90-generic", md)
+        self.assertNotIn("test-box", md)
+
+    def test_no_environment_file_renders_the_machine_line_as_before(self):
+        self.assertIn("- **Machine:** `test-box`", self.render())
+
+    def test_a_named_environment_capture_that_is_missing_refuses_to_render(self):
+        err = self.render_refused(env_path="/nonexistent/env-server.txt")
+        self.assertIn("env-server.txt", err)
+
+    def test_an_empty_environment_capture_is_refused(self):
+        err = self.render_refused(env="\n  \n")
+        self.assertIn("env-server.txt", err)
 
 
 if __name__ == "__main__":
