@@ -26,33 +26,15 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
 
     private static final Logger log = LoggerFactory.getLogger(HttpRequestHandler.class);
 
-    /** Long enough that a merely slow client is never mistaken for one that has stopped reading. */
-    private static final Duration WRITE_STALL_TIMEOUT = Duration.ofSeconds(60);
-
     private final HttpRequestDispatcher requestDispatcher;
     private final Executor dispatchExecutor;
     private final HttpConnectionRegistry connectionRegistry;
     private final long writeStallTimeoutNanos;
 
-    /**
-     * @param dispatchExecutor must run every accepted task exactly once. One that silently discards
-     *                         an accepted task leaks the request and leaves the dispatch counted,
-     *                         holding every later shutdown open for its whole grace period.
-     *                         Rejecting by throwing is fine; that path is handled. It must also not
-     *                         run tasks on the event loop: a dispatch waits there for an unwritable
-     *                         connection to drain, which on the loop is the deadlock that drains it.
-     */
     public HttpRequestHandler(HttpRequestDispatcher requestDispatcher,
                               Executor dispatchExecutor,
-                              HttpConnectionRegistry connectionRegistry) {
-        this(requestDispatcher, dispatchExecutor, connectionRegistry, WRITE_STALL_TIMEOUT);
-    }
-
-    /** Package-private so a test can provoke the stall without waiting out the real bound. */
-    HttpRequestHandler(HttpRequestDispatcher requestDispatcher,
-                       Executor dispatchExecutor,
-                       HttpConnectionRegistry connectionRegistry,
-                       Duration writeStallTimeout) {
+                              HttpConnectionRegistry connectionRegistry,
+                              Duration writeStallTimeout) {
         this.requestDispatcher = requestDispatcher;
         this.dispatchExecutor = dispatchExecutor;
         this.connectionRegistry = connectionRegistry;
@@ -180,9 +162,16 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
             awaitAccepted(ctx.writeAndFlush(part));
         }
 
-        /** Bounded, because HttpReadTimeoutHandler suspends its clock for the whole exchange. */
+        /**
+         * Bounded, because HttpReadTimeoutHandler suspends its clock for the whole exchange; a
+         * non-positive bound disables that, as it does the read timeout's.
+         */
         private void awaitAccepted(ChannelFuture write) throws IOException {
             if (ctx.channel().isWritable()) {
+                return;
+            }
+            if (writeStallTimeoutNanos <= 0) {
+                write.awaitUninterruptibly();
                 return;
             }
             if (!write.awaitUninterruptibly(writeStallTimeoutNanos, TimeUnit.NANOSECONDS)) {

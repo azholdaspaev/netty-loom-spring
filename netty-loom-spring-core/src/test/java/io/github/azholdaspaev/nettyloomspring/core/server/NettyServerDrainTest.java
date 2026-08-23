@@ -57,6 +57,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(value = 30, unit = TimeUnit.SECONDS)
 class NettyServerDrainTest {
 
+    private static final Duration UNREACHED_WRITE_STALL_TIMEOUT = Duration.ofSeconds(60);
+
     private static final int MAX_HTTP_REQUEST_BODY_BYTES = 64 * 1024;
 
     private final CountDownLatch dispatcherEntered = new CountDownLatch(1);
@@ -213,7 +215,7 @@ class NettyServerDrainTest {
             new NamedChannelHandler("drain", () -> new HttpDrainHandler(connectionRegistry)),
             new NamedChannelHandler("aggregator", () -> new HttpObjectAggregator(MAX_HTTP_REQUEST_BODY_BYTES)),
             new NamedChannelHandler("dispatcher",
-                () -> new HttpRequestHandler(blockingDispatcher(), dispatchExecutor, connectionRegistry))));
+                () -> new HttpRequestHandler(blockingDispatcher(), dispatchExecutor, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT))));
     }
 
     /**

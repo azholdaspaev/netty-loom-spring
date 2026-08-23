@@ -13,5 +13,6 @@ public record NettyLoomProperties(
     @DefaultValue("true") boolean tcpKeepAlive,
     @DefaultValue("30s") Duration shutdownGracePeriod,
     @DefaultValue("30s") Duration readTimeout,
+    @DefaultValue("60s") Duration writeStallTimeout,
     @DefaultValue("auto") NettyTransportPreference transport
 ) {}

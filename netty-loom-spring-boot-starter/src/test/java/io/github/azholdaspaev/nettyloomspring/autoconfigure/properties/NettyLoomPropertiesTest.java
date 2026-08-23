@@ -27,6 +27,20 @@ class NettyLoomPropertiesTest {
     }
 
     @Test
+    void shouldApplyDefaultWriteStallTimeout() {
+        NettyLoomProperties properties = bind(Map.of());
+
+        assertEquals(Duration.ofSeconds(60), properties.writeStallTimeout());
+    }
+
+    @Test
+    void shouldOverrideWriteStallTimeoutFromConfiguration() {
+        NettyLoomProperties properties = bind(Map.of("server.netty.write-stall-timeout", "5s"));
+
+        assertEquals(Duration.ofSeconds(5), properties.writeStallTimeout());
+    }
+
+    @Test
     void shouldDefaultTransportToAuto() {
         NettyLoomProperties properties = bind(Map.of());
 
