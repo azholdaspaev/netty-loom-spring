@@ -16,6 +16,9 @@
 #   SETTLE      drain seconds between targets AND between scenarios 2 and 3 (default 10)
 #   JAVA_FLAGS  JVM flags applied IDENTICALLY to all three targets
 #   RESULTS_DIR where raw artifacts and SNAPSHOT.md are written       (default ./results)
+#   ORDER       forward | reversed — the sequence targets are run in    (default forward)
+#   REMOTE_HOST ssh destination running the server JVMs; unset = this box (default unset)
+#   REMOTE_REPO the repo checkout on REMOTE_HOST, holding the bootJars  (default netty-loom-spring)
 #
 # Usage:  ./run-all.sh
 set -euo pipefail
@@ -44,21 +47,73 @@ JAVA_FLAGS="${JAVA_FLAGS:--XX:+UseG1GC -Xmx2g -XX:NativeMemoryTracking=summary}"
 # Raise the cap well above the offered load so the comparison reflects architecture. The VT
 # target also gets threads.max raised (its executor isn't pool-bounded, but this is explicit).
 TOMCAT_MAXCONN=$(( VUS * 2 ))
+# Validated rather than defaulted: a typo silently running a third forward pass would be read as a
+# crossover control that had agreed, which is worse than no crossover at all.
+ORDER="${ORDER:-forward}"
+case "$ORDER" in forward|reversed) ;; *) echo "ORDER must be forward or reversed, got '$ORDER'" >&2; exit 1 ;; esac
+
+# When REMOTE_HOST is set the server JVMs run there and only k6 runs here. Everything touching the
+# server process -- launch, RSS/CPU sampling, teardown -- then crosses the link, so the connection
+# is multiplexed: sample-memory.sh samples every 2s for the whole plateau, and paying an SSH
+# handshake per sample would perturb the measurement it is taking.
+REMOTE_HOST="${REMOTE_HOST:-}"
+REMOTE_REPO="${REMOTE_REPO:-netty-loom-spring}"
+SSH=(ssh -o BatchMode=yes -o ControlMaster=auto
+     -o ControlPath="${TMPDIR:-/tmp}/nls-bench-%r@%h:%p" -o ControlPersist=300)
+SERVER_HOST=localhost
+if [ -n "$REMOTE_HOST" ]; then
+  SERVER_HOST="${REMOTE_HOST#*@}"
+  "${SSH[@]}" "$REMOTE_HOST" true   # open the master now, not mid-measurement
+fi
 
 # Resolve the bootJars by glob so a version bump doesn't silently break the run. The plain
 # (-plain.jar) artifact is filtered out; the boot-packaged jar is the runnable one.
-NETTY_JAR=$(ls "$REPO_ROOT"/netty-loom-spring-example-netty/build/libs/*.jar 2>/dev/null | grep -v -- '-plain\.jar$' | head -1 || true)
-TOMCAT_JAR=$(ls "$REPO_ROOT"/netty-loom-spring-example-tomcat/build/libs/*.jar 2>/dev/null | grep -v -- '-plain\.jar$' | head -1 || true)
+JAR_ROOT="$REPO_ROOT"
+[ -n "$REMOTE_HOST" ] && JAR_ROOT="$REMOTE_REPO"
+find_jar() {
+  local cmd="ls $JAR_ROOT/$1/build/libs/*.jar 2>/dev/null | grep -v -- '-plain\.jar\$' | awk 'NR==1'"
+  if [ -n "$REMOTE_HOST" ]; then "${SSH[@]}" "$REMOTE_HOST" "$cmd"; else eval "$cmd"; fi
+}
+NETTY_JAR=$(find_jar netty-loom-spring-example-netty || true)
+TOMCAT_JAR=$(find_jar netty-loom-spring-example-tomcat || true)
 
 if [ -z "$NETTY_JAR" ] || [ -z "$TOMCAT_JAR" ]; then
   echo "Missing bootJars. Build them first:" >&2
-  echo "  (cd $REPO_ROOT && ./gradlew :netty-loom-spring-example-netty:bootJar :netty-loom-spring-example-tomcat:bootJar)" >&2
+  echo "  (cd $JAR_ROOT && ./gradlew :netty-loom-spring-example-netty:bootJar :netty-loom-spring-example-tomcat:bootJar)" >&2
   exit 1
 fi
 
 SERVER_PID=""
 SAMPLER_PID=""
-cleanup() { kill "$SAMPLER_PID" "$SERVER_PID" 2>/dev/null || true; }
+
+# SERVER_PID lives in REMOTE_HOST's PID namespace when one is set, so it must never be passed to a
+# local kill -- that number belongs to an unrelated process here.
+stop_server() {
+  [ -n "$SERVER_PID" ] || return 0
+  if [ -n "$REMOTE_HOST" ]; then
+    "${SSH[@]}" "$REMOTE_HOST" "kill $SERVER_PID 2>/dev/null || true" || true
+  else
+    kill "$SERVER_PID" 2>/dev/null || true
+    wait "$SERVER_PID" 2>/dev/null || true
+  fi
+  SERVER_PID=""
+}
+
+# One ssh invocation streams the whole CSV back, rather than one per sample.
+sample_memory() {
+  local pid="$1" out="$2" interval="$3" max="$4"
+  if [ -n "$REMOTE_HOST" ]; then
+    "${SSH[@]}" "$REMOTE_HOST" "bash -s -- $pid /dev/stdout $interval $max" \
+      < "$SCRIPT_DIR/sample-memory.sh" > "$out"
+  else
+    "$SCRIPT_DIR/sample-memory.sh" "$pid" "$out" "$interval" "$max"
+  fi
+}
+
+cleanup() {
+  [ -n "$SAMPLER_PID" ] && kill "$SAMPLER_PID" 2>/dev/null || true
+  stop_server
+}
 trap cleanup EXIT
 
 # Run one k6 scenario, recording its exit code beside the summary export. Worth recording because
@@ -76,7 +131,7 @@ run_scenario() {
 
 benchmark_target() {
   local name="$1" port="$2"; shift 2
-  local base="http://localhost:${port}"
+  local base="http://${SERVER_HOST}:${port}"
   local -a load_env=(--env VUS="$VUS" --env DURATION="$DURATION" --env RAMP="$RAMP")
   echo "================ $name ($base) ================"
 
@@ -92,21 +147,26 @@ benchmark_target() {
   rm -f "$RESULTS/${name}"_{low,high,secured}.{summary.json,exit} \
         "$RESULTS/${name}_idle.csv" "$RESULTS/${name}_high_load.csv"
 
-  # shellcheck disable=SC2086
-  java $JAVA_FLAGS "$@" > "$RESULTS/${name}.server.log" 2>&1 &
-  SERVER_PID=$!
+  if [ -n "$REMOTE_HOST" ]; then
+    SERVER_PID=$("${SSH[@]}" "$REMOTE_HOST" \
+      "nohup java $JAVA_FLAGS $(printf '%q ' "$@") > /tmp/${name}.server.log 2>&1 < /dev/null & echo \$!")
+  else
+    # shellcheck disable=SC2086
+    java $JAVA_FLAGS "$@" > "$RESULTS/${name}.server.log" 2>&1 &
+    SERVER_PID=$!
+  fi
   echo "  started pid=$SERVER_PID with flags: $JAVA_FLAGS"
 
   "$SCRIPT_DIR/wait-for-health.sh" "$base/ping" 90
 
   echo "  sampling idle memory..."
-  "$SCRIPT_DIR/sample-memory.sh" "$SERVER_PID" "$RESULTS/${name}_idle.csv" 1 6
+  sample_memory "$SERVER_PID" "$RESULTS/${name}_idle.csv" 1 6
 
   echo "  scenario 1: low-concurrency..."
   run_scenario "$name" "$base" low low-concurrency.js
 
   echo "  scenario 2: high-concurrency (VUS=$VUS, $DURATION)..."
-  "$SCRIPT_DIR/sample-memory.sh" "$SERVER_PID" "$RESULTS/${name}_high_load.csv" 2 100000 &
+  sample_memory "$SERVER_PID" "$RESULTS/${name}_high_load.csv" 2 100000 &
   SAMPLER_PID=$!
   run_scenario "$name" "$base" high high-concurrency.js "${load_env[@]}"
   kill "$SAMPLER_PID" 2>/dev/null || true
@@ -126,9 +186,10 @@ benchmark_target() {
   run_scenario "$name" "$base" secured high-concurrency-secured.js "${load_env[@]}"
 
   echo "  tearing down pid=$SERVER_PID..."
-  kill "$SERVER_PID" 2>/dev/null || true
-  wait "$SERVER_PID" 2>/dev/null || true
-  SERVER_PID=""
+  stop_server
+  if [ -n "$REMOTE_HOST" ]; then
+    "${SSH[@]}" "$REMOTE_HOST" "cat /tmp/${name}.server.log" > "$RESULTS/${name}.server.log" 2>/dev/null || true
+  fi
   # wait for the port to be released, then let client-side TIME_WAIT sockets drain before
   # the next target competes for ephemeral ports.
   for _ in $(seq 1 60); do curl -fs "$base/ping" >/dev/null 2>&1 || break; sleep 0.5; done
@@ -136,13 +197,34 @@ benchmark_target() {
   sleep "$SETTLE"
 }
 
-benchmark_target "netty-loom"      18080 -jar "$NETTY_JAR"
-benchmark_target "tomcat-platform" 18081 -jar "$TOMCAT_JAR" --spring.profiles.active=platform \
-  --server.tomcat.max-connections="$TOMCAT_MAXCONN"
-benchmark_target "tomcat-virtual"  18082 -jar "$TOMCAT_JAR" --spring.profiles.active=virtual \
-  --server.tomcat.max-connections="$TOMCAT_MAXCONN" --server.tomcat.threads.max="$TOMCAT_MAXCONN"
+echo "================ environment ================"
+if [ -n "$REMOTE_HOST" ]; then
+  "${SSH[@]}" "$REMOTE_HOST" "mkdir -p /tmp/nls-env && bash -s /tmp/nls-env $REMOTE_REPO" \
+    < "$SCRIPT_DIR/collect-env.sh" > /dev/null
+  for f in env-server.txt machine-load.txt; do
+    "${SSH[@]}" "$REMOTE_HOST" "cat /tmp/nls-env/$f" > "$RESULTS/$f"
+  done
+else
+  "$SCRIPT_DIR/collect-env.sh" "$RESULTS" "$REPO_ROOT"
+fi
+
+netty()           { benchmark_target "netty-loom"      18080 -jar "$NETTY_JAR"; }
+tomcat_platform() { benchmark_target "tomcat-platform" 18081 -jar "$TOMCAT_JAR" \
+  --spring.profiles.active=platform --server.tomcat.max-connections="$TOMCAT_MAXCONN"; }
+tomcat_virtual()  { benchmark_target "tomcat-virtual"  18082 -jar "$TOMCAT_JAR" \
+  --spring.profiles.active=virtual --server.tomcat.max-connections="$TOMCAT_MAXCONN" \
+  --server.tomcat.threads.max="$TOMCAT_MAXCONN"; }
+
+if [ "$ORDER" = forward ]; then
+  SEQUENCE=(netty tomcat_platform tomcat_virtual)
+else
+  SEQUENCE=(tomcat_virtual tomcat_platform netty)
+fi
+echo "run order ($ORDER): ${SEQUENCE[*]}"
+for target in "${SEQUENCE[@]}"; do "$target"; done
 
 echo "================ summarizing ================"
 UNAME=$(uname -srm)
-python3 "$SCRIPT_DIR/summarize.py" "$RESULTS" "$VUS" "$JAVA_FLAGS" "$UNAME" "$TOMCAT_MAXCONN" > "$RESULTS/SNAPSHOT.md"
+python3 "$SCRIPT_DIR/summarize.py" "$RESULTS" "$VUS" "$JAVA_FLAGS" "$UNAME" "$TOMCAT_MAXCONN" \
+  "$RESULTS/env-server.txt" > "$RESULTS/SNAPSHOT.md"
 echo "wrote $RESULTS/SNAPSHOT.md"
