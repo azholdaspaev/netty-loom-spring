@@ -168,7 +168,30 @@ Knobs (env vars): `VUS` (connections for scenarios 2 and 3), `DURATION` (steady-
 `RAMP` (warmup ramp, trimmed when interpreting steady state), `SETTLE` (drain seconds, applied both
 between targets and between scenarios 2 and 3), `JAVA_FLAGS` (applied **identically** to all three
 for a fair memory comparison), `RESULTS_DIR` (where artifacts and the snapshot are written — point
-it at a versioned subdirectory to keep a release's numbers).
+it at a versioned subdirectory to keep a release's numbers), `ORDER` (`forward` or `reversed` — the
+sequence the three targets run in, so a crossover pass needs no edit to the script), and
+`REMOTE_HOST` / `REMOTE_REPO` (below).
+
+Every sweep also writes `env-server.txt` and `machine-load.txt` via `scripts/collect-env.sh`: the CPU,
+RAM, kernel, governor, JDK, k6 version, commit and OS limits it ran under. `summarize.py` inlines the
+first into the snapshot header, and refuses to render at all if it was named but cannot be read — a
+snapshot attributed to the wrong machine is the same class of defect as one carrying an aborted run.
+
+### Running the server on another host
+
+`REMOTE_HOST=user@host` runs the three server JVMs there over SSH — launch, health, memory/CPU
+sampling and teardown all cross the link — while k6 stays local. `REMOTE_REPO` (default
+`netty-loom-spring`) is the checkout on that host holding the bootJars, which must be built there.
+The connection is multiplexed, because the sampler runs every 2s for the whole plateau and an SSH
+handshake per sample would perturb what it measures.
+
+```bash
+REMOTE_HOST=ubuntu@203.0.113.10 VUS=10000 bash scripts/run-all.sh
+```
+
+Mind what this does to scenario 1: it measures a per-request difference of tens of microseconds, so
+any link whose RTT is large compared to that turns it into a measurement of the network. Scenarios 2
+and 3 carry a 50 ms server-side sleep and tolerate far more latency.
 
 `SETTLE` matters more now that each target runs two high-VU scenarios back to back: scenario 2 leaves
 roughly `VUS` client sockets in TIME_WAIT just as scenario 3 asks for `VUS` more. Under-settling shows
