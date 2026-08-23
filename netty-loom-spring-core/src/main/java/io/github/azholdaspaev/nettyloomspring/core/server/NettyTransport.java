@@ -62,19 +62,15 @@ enum NettyTransport {
      * Resolves the configured transport preference to a concrete transport. An explicitly requested
      * native transport fails fast when unavailable rather than silently degrading to NIO.
      *
-     * @throws IllegalArgumentException if {@code requested} is null or not one of the known values
+     * @throws IllegalStateException if the requested native transport is unavailable on this platform
      */
-    static NettyTransport resolve(String requested, boolean epollAvailable, boolean kqueueAvailable) {
-        if (requested == null) {
-            throw new IllegalArgumentException("transport must be one of: auto, nio, epoll, kqueue");
-        }
-        return switch (requested.trim().toLowerCase(Locale.ROOT)) {
-            case "auto" -> epollAvailable ? EPOLL : kqueueAvailable ? KQUEUE : NIO;
-            case "nio" -> NIO;
-            case "epoll" -> requireAvailable(EPOLL, epollAvailable);
-            case "kqueue" -> requireAvailable(KQUEUE, kqueueAvailable);
-            default -> throw new IllegalArgumentException(
-                "Unknown transport '" + requested + "'. Valid values: auto, nio, epoll, kqueue");
+    static NettyTransport resolve(NettyTransportPreference requested,
+                                  boolean epollAvailable, boolean kqueueAvailable) {
+        return switch (requested) {
+            case AUTO -> epollAvailable ? EPOLL : kqueueAvailable ? KQUEUE : NIO;
+            case NIO -> NIO;
+            case EPOLL -> requireAvailable(EPOLL, epollAvailable);
+            case KQUEUE -> requireAvailable(KQUEUE, kqueueAvailable);
         };
     }
 

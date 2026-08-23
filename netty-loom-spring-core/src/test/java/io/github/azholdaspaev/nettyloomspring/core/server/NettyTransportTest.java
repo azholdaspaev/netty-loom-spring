@@ -19,64 +19,48 @@ class NettyTransportTest {
 
     @Test
     void autoPrefersEpollWhenAvailable() {
-        assertEquals(NettyTransport.EPOLL, NettyTransport.resolve("auto", true, true));
-        assertEquals(NettyTransport.EPOLL, NettyTransport.resolve("auto", true, false));
+        assertEquals(NettyTransport.EPOLL, NettyTransport.resolve(NettyTransportPreference.AUTO, true, true));
+        assertEquals(NettyTransport.EPOLL, NettyTransport.resolve(NettyTransportPreference.AUTO, true, false));
     }
 
     @Test
     void autoFallsBackToKqueueWhenOnlyKqueueAvailable() {
-        assertEquals(NettyTransport.KQUEUE, NettyTransport.resolve("auto", false, true));
+        assertEquals(NettyTransport.KQUEUE, NettyTransport.resolve(NettyTransportPreference.AUTO, false, true));
     }
 
     @Test
     void autoFallsBackToNioWhenNoNativeAvailable() {
-        assertEquals(NettyTransport.NIO, NettyTransport.resolve("auto", false, false));
+        assertEquals(NettyTransport.NIO, NettyTransport.resolve(NettyTransportPreference.AUTO, false, false));
     }
 
     @Test
     void nioIsAlwaysSelectedRegardlessOfAvailability() {
-        assertEquals(NettyTransport.NIO, NettyTransport.resolve("nio", true, true));
-        assertEquals(NettyTransport.NIO, NettyTransport.resolve("nio", false, false));
+        assertEquals(NettyTransport.NIO, NettyTransport.resolve(NettyTransportPreference.NIO, true, true));
+        assertEquals(NettyTransport.NIO, NettyTransport.resolve(NettyTransportPreference.NIO, false, false));
     }
 
     @Test
     void explicitEpollSelectedWhenAvailable() {
-        assertEquals(NettyTransport.EPOLL, NettyTransport.resolve("epoll", true, false));
+        assertEquals(NettyTransport.EPOLL, NettyTransport.resolve(NettyTransportPreference.EPOLL, true, false));
     }
 
     @Test
     void explicitKqueueSelectedWhenAvailable() {
-        assertEquals(NettyTransport.KQUEUE, NettyTransport.resolve("kqueue", false, true));
+        assertEquals(NettyTransport.KQUEUE, NettyTransport.resolve(NettyTransportPreference.KQUEUE, false, true));
     }
 
     @Test
     void explicitEpollFailsFastWhenUnavailable() {
         IllegalStateException ex = assertThrows(IllegalStateException.class,
-            () -> NettyTransport.resolve("epoll", false, false));
+            () -> NettyTransport.resolve(NettyTransportPreference.EPOLL, false, false));
         assertTrue(ex.getMessage().contains("epoll"));
     }
 
     @Test
     void explicitKqueueFailsFastWhenUnavailable() {
         IllegalStateException ex = assertThrows(IllegalStateException.class,
-            () -> NettyTransport.resolve("kqueue", false, false));
+            () -> NettyTransport.resolve(NettyTransportPreference.KQUEUE, false, false));
         assertTrue(ex.getMessage().contains("kqueue"));
-    }
-
-    @Test
-    void unknownTransportIsRejected() {
-        assertThrows(IllegalArgumentException.class, () -> NettyTransport.resolve("io_uring", true, true));
-    }
-
-    @Test
-    void nullTransportIsRejected() {
-        assertThrows(IllegalArgumentException.class, () -> NettyTransport.resolve(null, true, true));
-    }
-
-    @Test
-    void requestedValueIsCaseAndWhitespaceInsensitive() {
-        assertEquals(NettyTransport.NIO, NettyTransport.resolve("  NIO ", true, true));
-        assertEquals(NettyTransport.EPOLL, NettyTransport.resolve("Auto", true, false));
     }
 
     // --- Live native paths: prove the platform's classifier jar is actually on the classpath ---
@@ -85,7 +69,7 @@ class NettyTransportTest {
     @EnabledOnOs(OS.LINUX)
     void selectsEpollOnLinux() {
         assertTrue(Epoll.isAvailable(), "epoll native library must be on the classpath on Linux");
-        NettyIoHandlerFactory factory = new NettyIoHandlerFactory("auto");
+        NettyIoHandlerFactory factory = new NettyIoHandlerFactory(NettyTransportPreference.AUTO);
         assertEquals(EpollServerSocketChannel.class, factory.getServerChannelClass());
     }
 
@@ -93,13 +77,13 @@ class NettyTransportTest {
     @EnabledOnOs(OS.MAC)
     void selectsKqueueOnMac() {
         assertTrue(KQueue.isAvailable(), "kqueue native library must be on the classpath on macOS");
-        NettyIoHandlerFactory factory = new NettyIoHandlerFactory("auto");
+        NettyIoHandlerFactory factory = new NettyIoHandlerFactory(NettyTransportPreference.AUTO);
         assertEquals(KQueueServerSocketChannel.class, factory.getServerChannelClass());
     }
 
     @Test
     void nioFactorySelectsNioServerChannel() {
-        NettyIoHandlerFactory factory = new NettyIoHandlerFactory("nio");
+        NettyIoHandlerFactory factory = new NettyIoHandlerFactory(NettyTransportPreference.NIO);
         assertEquals(NioServerSocketChannel.class, factory.getServerChannelClass());
     }
 }

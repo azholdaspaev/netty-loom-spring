@@ -27,34 +27,15 @@
       "description": "How long the server waits on the client before closing the connection. A single interval measured from the previous response -- or from the connection being accepted, so a client that connects and sends nothing is closed one interval later, which is the slow-loris defence -- covering idle time on a keep-alive connection and delivery of the next request together, not one interval for each, so a connection that idles most of the interval has only the remainder left to deliver its next request. Time spent handling a request does not count against it, so a handler slower than the timeout still gets to answer. A connection that expires is closed without a response. Use 0 or a negative value to disable. Defaults to 30 seconds."
     },
     {
+      "name": "server.netty.write-stall-timeout",
+      "description": "How long a response may sit unsent against a client that has stopped reading it. The clock starts only once the connection is unwritable -- its outbound buffer past the high-water mark -- and not on every write, so a client that reads slowly but steadily is never cut off; this is not Netty's WriteTimeoutHandler. On expiry the connection is closed mid-response and the handler is told the client stopped reading. Use 0 or a negative value to disable, which leaves a stalled dispatch waiting indefinitely. Defaults to 60 seconds."
+    },
+    {
       "name": "server.netty.transport",
-      "type": "java.lang.String",
-      "description": "Netty I/O transport to use. 'auto' picks the best native transport for the platform (epoll on Linux, kqueue on macOS) and falls back to NIO when none is available. 'nio' forces the portable Java NIO transport. 'epoll' or 'kqueue' force that native transport and fail fast at startup if it is not available on the platform.",
-      "defaultValue": "auto"
+      "description": "Netty I/O transport to use. 'auto' picks the best native transport for the platform (epoll on Linux, kqueue on macOS) and falls back to NIO when none is available. 'nio' forces the portable Java NIO transport. 'epoll' or 'kqueue' force that native transport and fail fast at startup if it is not available on the platform."
     }
   ],
   "hints": [
-    {
-      "name": "server.netty.transport",
-      "values": [
-        {
-          "value": "auto",
-          "description": "Auto-select the best native transport (epoll/kqueue), falling back to NIO."
-        },
-        {
-          "value": "nio",
-          "description": "Portable Java NIO transport. Works everywhere."
-        },
-        {
-          "value": "epoll",
-          "description": "Linux native transport. Fails fast if unavailable."
-        },
-        {
-          "value": "kqueue",
-          "description": "macOS native transport. Fails fast if unavailable."
-        }
-      ]
-    },
     {
       "name": "server.netty.worker-threads",
       "values": [

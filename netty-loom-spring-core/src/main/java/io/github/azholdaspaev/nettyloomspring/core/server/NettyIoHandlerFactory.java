@@ -8,9 +8,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Resolves the configured transport preference ({@code auto|nio|epoll|kqueue}) to a concrete
- * {@link NettyTransport} once at construction, probing {@link Epoll}/{@link KQueue} availability, and
- * exposes the matching {@link IoHandlerFactory} and server channel class for {@link NettyServer}.
+ * Resolves a {@link NettyTransportPreference} to a concrete {@link NettyTransport} once at
+ * construction, probing {@link Epoll}/{@link KQueue} availability, and exposes the matching
+ * {@link IoHandlerFactory} and server channel class for {@link NettyServer}.
  */
 public class NettyIoHandlerFactory {
 
@@ -18,7 +18,7 @@ public class NettyIoHandlerFactory {
 
     private final NettyTransport transport;
 
-    public NettyIoHandlerFactory(String transport) {
+    public NettyIoHandlerFactory(NettyTransportPreference transport) {
         this.transport = NettyTransport.resolve(transport, Epoll.isAvailable(), KQueue.isAvailable());
         log.info("Netty transport selected: {}", this.transport);
     }

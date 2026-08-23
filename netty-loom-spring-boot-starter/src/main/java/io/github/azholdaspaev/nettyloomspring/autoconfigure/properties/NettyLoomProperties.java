@@ -1,5 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.properties;
 
+import io.github.azholdaspaev.nettyloomspring.core.server.NettyTransportPreference;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
@@ -12,5 +13,6 @@ public record NettyLoomProperties(
     @DefaultValue("true") boolean tcpKeepAlive,
     @DefaultValue("30s") Duration shutdownGracePeriod,
     @DefaultValue("30s") Duration readTimeout,
-    @DefaultValue("auto") String transport
+    @DefaultValue("60s") Duration writeStallTimeout,
+    @DefaultValue("auto") NettyTransportPreference transport
 ) {}

@@ -78,7 +78,7 @@ What the servlet bridge implements, method by method. Verified against the sourc
 | --- | --- | --- |
 | `getOutputStream()` / `getWriter()` | `partial` | Streams as `Transfer-Encoding: chunked` once the body outgrows the 8 KB buffer or `flushBuffer()` is called; otherwise a single `Content-Length` response. Both can currently be obtained on the same response ([#118](https://github.com/azholdaspaev/netty-loom-spring/issues/118)) |
 | Framing | `partial` | Matches Tomcat for the body-carrying cases. On a `304` this server sends `Content-Length: 0` where Tomcat sends none; see [docs/configuration.md](configuration.md#response-framing) for the full table |
-| Backpressure | `works` | A handler producing faster than the client reads blocks on its virtual thread, bounded by a fixed 60s write-stall timeout |
+| Backpressure | `works` | A handler producing faster than the client reads blocks on its virtual thread, bounded by the write-stall timeout (`server.netty.write-stall-timeout`, 60s by default) |
 | `setBufferSize`, `getBufferSize` | `works` | Default 8192; `setBufferSize` throws once anything is written |
 | `flushBuffer()` | `works` | Commits, as the spec requires: the head goes on the wire, so `setStatus` and the header mutators no-op afterwards and `resetBuffer` throws |
 | `reset()`, `resetBuffer()` | `partial` | Both throw once the head is on the wire. `resetBuffer` drops a still-bound `PrintWriter` ([#117](https://github.com/azholdaspaev/netty-loom-spring/issues/117)) |
@@ -179,7 +179,7 @@ fired on an object bound into a session, and passing one to `addListener` throws
 | Graceful shutdown | `works` | Two-phase drain. Note `server.shutdown=immediate` is ignored — it always drains ([#87](https://github.com/azholdaspaev/netty-loom-spring/issues/87)) |
 | Slow-loris protection | `works` | Per-connection read timeout measuring the client, not the handler |
 | Frame-size limits | `partial` | Fixed, not configurable ([#42](https://github.com/azholdaspaev/netty-loom-spring/issues/42)) |
-| Bounded outbound queue | `none` | A pipelining client that never reads accumulates unbounded buffer — 5.7 MB queued out for 888 bytes in, measured ([#88](https://github.com/azholdaspaev/netty-loom-spring/issues/88)). The 60s write-stall timeout above bounds this in time, not in space |
+| Bounded outbound queue | `none` | A pipelining client that never reads accumulates unbounded buffer — 5.7 MB queued out for 888 bytes in, measured ([#88](https://github.com/azholdaspaev/netty-loom-spring/issues/88)). The write-stall timeout above bounds this in time, not in space |
 | Handler execution deadline | `none` | A handler that never returns holds its connection until shutdown ([#43](https://github.com/azholdaspaev/netty-loom-spring/issues/43)) |
 | Connection cap / admission control | `none` | [#45](https://github.com/azholdaspaev/netty-loom-spring/issues/45), [#47](https://github.com/azholdaspaev/netty-loom-spring/issues/47) |
 | TLS | `fails startup` | [#16](https://github.com/azholdaspaev/netty-loom-spring/issues/16) |

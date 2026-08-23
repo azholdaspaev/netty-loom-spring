@@ -76,6 +76,8 @@ class HttpRequestHandlerTest {
     /** Generous: it bounds a spin on another thread's progress, not the progress itself. */
     private static final Duration PARK_LIMIT = Duration.ofSeconds(5);
 
+    private static final Duration UNREACHED_WRITE_STALL_TIMEOUT = Duration.ofSeconds(60);
+
     private final HttpConnectionRegistry connectionRegistry =
         new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE));
 
@@ -86,7 +88,7 @@ class HttpRequestHandlerTest {
             HttpResponseStatus.OK,
             Unpooled.EMPTY_BUFFER);
         EmbeddedChannel channel = new EmbeddedChannel(
-            new HttpRequestHandler((_, _, writer) -> writer.write(canned), DIRECT, connectionRegistry));
+            new HttpRequestHandler((_, _, writer) -> writer.write(canned), DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
         channel.writeInbound(new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
@@ -108,7 +110,7 @@ class HttpRequestHandlerTest {
                 writer.write(new DefaultHttpContent(Unpooled.copiedBuffer("two", StandardCharsets.UTF_8)));
                 writer.write(LastHttpContent.EMPTY_LAST_CONTENT);
             },
-            DIRECT, connectionRegistry));
+            DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
         channel.writeInbound(new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
@@ -130,7 +132,7 @@ class HttpRequestHandlerTest {
                 writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
                 writer.write(LastHttpContent.EMPTY_LAST_CONTENT);
             },
-            DIRECT, connectionRegistry));
+            DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
         channel.writeInbound(new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
@@ -152,7 +154,7 @@ class HttpRequestHandlerTest {
                 writer.write(new DefaultHttpContent(Unpooled.copiedBuffer("abc", StandardCharsets.UTF_8)));
                 writer.write(LastHttpContent.EMPTY_LAST_CONTENT);
             },
-            DIRECT, connectionRegistry));
+            DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
         channel.writeInbound(new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
@@ -205,7 +207,7 @@ class HttpRequestHandlerTest {
                         failure.set(caught);
                     }
                 },
-                task -> worker.set(startQuietly(task)), connectionRegistry),
+                task -> worker.set(startQuietly(task)), connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT),
             capture);
 
         channel.writeInbound(new DefaultFullHttpRequest(
@@ -235,7 +237,7 @@ class HttpRequestHandlerTest {
                 writer.write(LastHttpContent.EMPTY_LAST_CONTENT);
                 responseFinished.countDown();
             },
-            task -> worker.set(startQuietly(task)), connectionRegistry))) {
+            task -> worker.set(startQuietly(task)), connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT))) {
 
             connection.dispatch();
 
@@ -277,6 +279,41 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    void shouldWaitWithoutBoundWhenTheWriteStallTimeoutIsDisabled() throws Exception {
+        CountDownLatch responseFinished = new CountDownLatch(1);
+        AtomicReference<Thread> worker = new AtomicReference<>();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        try (StalledConnection connection = new StalledConnection(new HttpRequestHandler(
+            (_, _, writer) -> {
+                try {
+                    writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
+                    writer.write(LastHttpContent.EMPTY_LAST_CONTENT);
+                    responseFinished.countDown();
+                } catch (Throwable caught) {
+                    failure.set(caught);
+                }
+            },
+            task -> worker.set(startQuietly(task)), connectionRegistry, Duration.ZERO))) {
+
+            connection.dispatch();
+
+            // WAITING rather than TIMED_WAITING is the whole of the difference: SpinWait.untilParked
+            // would pass against a bound that still expires, which is what this test denies.
+            SpinWait.until(() -> {
+                Thread parked = worker.get();
+                return parked != null && parked.getState() == Thread.State.WAITING;
+            }, PARK_LIMIT, "a disabled bound must park the dispatch thread with no deadline at all");
+            assertNull(failure.get(), "a disabled bound must not give up on a connection that stays unwritable");
+            assertTrue(connection.channel.isOpen(), "a disabled bound must leave the connection open");
+
+            connection.drain();
+            SpinWait.until(() -> responseFinished.getCount() == 0, PARK_LIMIT,
+                "the dispatch must resume once the connection has taken what it was given");
+        }
+    }
+
+    @Test
     void shouldCloseInsteadOfFiringExceptionCaughtWhenTheDispatcherFailsAfterCommitting() {
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         EmbeddedChannel channel = new EmbeddedChannel(
@@ -285,7 +322,7 @@ class HttpRequestHandlerTest {
                     writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
                     throw new IllegalStateException("halfway through the body");
                 },
-                DIRECT, connectionRegistry),
+                DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT),
             capture);
 
         channel.writeInbound(new DefaultFullHttpRequest(
@@ -303,7 +340,7 @@ class HttpRequestHandlerTest {
     void shouldFailAnExchangeTheDispatcherLeftUnanswered() {
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         EmbeddedChannel channel = new EmbeddedChannel(
-            new HttpRequestHandler((_, _, _) -> { }, DIRECT, connectionRegistry),
+            new HttpRequestHandler((_, _, _) -> { }, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT),
             capture);
 
         channel.writeInbound(new DefaultFullHttpRequest(
@@ -319,7 +356,7 @@ class HttpRequestHandlerTest {
     void shouldCloseAnExchangeTheDispatcherLeftHalfWritten() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
             (_, _, writer) -> writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK)),
-            DIRECT, connectionRegistry));
+            DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
         channel.writeInbound(new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
@@ -396,7 +433,7 @@ class HttpRequestHandlerTest {
                 connectionClosed.await();
                 writer.write(new DefaultHttpContent(Unpooled.copiedBuffer("more", StandardCharsets.UTF_8)));
             },
-            task -> worker.set(startQuietly(task)), connectionRegistry));
+            task -> worker.set(startQuietly(task)), connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
         channel.writeInbound(new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.GET, "/download"));
@@ -427,7 +464,7 @@ class HttpRequestHandlerTest {
                 writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(status)));
                 writer.write(LastHttpContent.EMPTY_LAST_CONTENT);
             },
-            DIRECT, connectionRegistry));
+            DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
         channel.writeInbound(new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
@@ -451,7 +488,7 @@ class HttpRequestHandlerTest {
     @Test
     void shouldPassThroughTheIncomingRequestToDispatcher() {
         CapturingDispatcher dispatcher = new CapturingDispatcher();
-        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry));
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
         FullHttpRequest request = new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.POST, "/submit");
 
@@ -469,7 +506,7 @@ class HttpRequestHandlerTest {
     @Test
     void passesHttpConnectionMetadataToDispatcher() {
         CapturingDispatcher dispatcher = new CapturingDispatcher();
-        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry));
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
         channel.writeInbound(new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
@@ -486,7 +523,7 @@ class HttpRequestHandlerTest {
     @Test
     void shouldInvokeDispatcherOncePerRequest() {
         CapturingDispatcher dispatcher = new CapturingDispatcher();
-        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry));
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
         channel.writeInbound(new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.GET, "/a"));
@@ -511,7 +548,7 @@ class HttpRequestHandlerTest {
         RuntimeException boom = new RuntimeException("boom");
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         EmbeddedChannel channel = new EmbeddedChannel(
-            new HttpRequestHandler((_, _, _) -> { throw boom; }, DIRECT, connectionRegistry),
+            new HttpRequestHandler((_, _, _) -> { throw boom; }, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT),
             capture);
 
         channel.writeInbound(new DefaultFullHttpRequest(
@@ -528,7 +565,7 @@ class HttpRequestHandlerTest {
     @Test
     void shouldReleaseRequestAfterDispatch() {
         CapturingDispatcher dispatcher = new CapturingDispatcher();
-        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry));
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
         FullHttpRequest request = new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.GET, "/");
 
@@ -548,7 +585,7 @@ class HttpRequestHandlerTest {
     void shouldCountADispatchThatIsSubmittedButNotYetRunning() throws InterruptedException {
         CompletableFuture<Runnable> submitted = new CompletableFuture<>();
         EmbeddedChannel channel = new EmbeddedChannel(
-            new HttpRequestHandler((_, _, writer) -> writer.write(emptyOkResponse()), submitted::complete, connectionRegistry));
+            new HttpRequestHandler((_, _, writer) -> writer.write(emptyOkResponse()), submitted::complete, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
         channel.writeInbound(new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
@@ -575,7 +612,7 @@ class HttpRequestHandlerTest {
                 request.release(request.refCnt());
                 writer.write(emptyOkResponse());
             },
-            task -> worker.set(startQuietly(task)), connectionRegistry));
+            task -> worker.set(startQuietly(task)), connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
         channel.writeInbound(new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
@@ -593,7 +630,7 @@ class HttpRequestHandlerTest {
                 request.release(request.refCnt());
                 writer.write(emptyOkResponse());
             },
-            DIRECT, connectionRegistry));
+            DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
         assertThrows(IllegalReferenceCountException.class, () -> channel.writeInbound(
             new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/")));
@@ -606,7 +643,7 @@ class HttpRequestHandlerTest {
     @Test
     void shouldContainACleanupFailureThatIsNotAnOverRelease() throws Exception {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
-            (_, _, writer) -> writer.write(emptyOkResponse()), DIRECT, connectionRegistry));
+            (_, _, writer) -> writer.write(emptyOkResponse()), DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
         assertThrows(IllegalStateException.class,
             () -> channel.writeInbound(new CleanupFailingRequest()));
@@ -647,7 +684,7 @@ class HttpRequestHandlerTest {
         Executor rejecting = _ -> { throw rejection; };
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         EmbeddedChannel channel = new EmbeddedChannel(
-            new HttpRequestHandler((_, _, _) -> { throw new AssertionError("dispatcher must not run"); }, rejecting, connectionRegistry),
+            new HttpRequestHandler((_, _, _) -> { throw new AssertionError("dispatcher must not run"); }, rejecting, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT),
             capture);
         FullHttpRequest request = new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.GET, "/");
@@ -679,7 +716,7 @@ class HttpRequestHandlerTest {
                     eventLoopTerminated.await();
                     throw new IllegalStateException("The servlet context has been closed");
                 },
-                task -> dispatch.complete(startQuietly(task)), connectionRegistry));
+                task -> dispatch.complete(startQuietly(task)), connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
             connection.pipeline().fireChannelRead(new DefaultFullHttpRequest(
                 HttpVersion.HTTP_1_1, HttpMethod.GET, "/work"));
@@ -813,7 +850,7 @@ class HttpRequestHandlerTest {
     private EmbeddedChannel keepAliveChannel(HttpRequestDispatcher dispatcher) {
         return new EmbeddedChannel(
             new HttpServerKeepAliveHandler(),
-            new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry));
+            new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
     }
 
     private static FullHttpResponse emptyOkResponse() {
