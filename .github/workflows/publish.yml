@@ -125,14 +125,23 @@ jobs:
           grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md" \
             || { echo "::error::CHANGELOG.md has no notes under '## [${VERSION}]'"; exit 1; }
 
-      # `build` first: the test suite is the last gate before an upload that cannot be taken back.
+      # Two invocations rather than one `./gradlew build publishAllPublicationsToStagingRepository`,
+      # so the signing key never enters a test JVM: build.gradle.kts sets no `environment` on
+      # `tasks.withType<Test>`, so a forked test process inherits the daemon's, and the daemon takes
+      # the client's environment on every build. The task sets are disjoint -- `build` schedules no
+      # sign or publish task, and the staging publish schedules no test.
+      #
+      # -Pversion on both, or the jars staged and signed are not the ones the tests ran against.
+      - name: Build
+        run: ./gradlew build -Pversion="$VERSION"
+
       # Publishing goes to the local staging directory, because the Portal's release endpoint is a
       # multipart POST of a zipped bundle rather than a Maven repository -- see the next two steps.
-      - name: Build and stage
+      - name: Stage
         env:
           MAVEN_GPG_PRIVATE_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
-        run: ./gradlew build publishAllPublicationsToStagingRepository -Pversion="$VERSION"
+        run: ./gradlew publishAllPublicationsToStagingRepository -Pversion="$VERSION"
 
       # maven-metadata.xml is stripped: Gradle writes one per artifactId for any repository it does
       # not consider local -- a file: URL included -- and the Portal does not recognise a bundle
