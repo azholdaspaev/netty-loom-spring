@@ -106,6 +106,25 @@ jobs:
             || { echo "::error::Tag ${GITHUB_REF_NAME} does not match gradle.properties version=${declared}"; exit 1; }
           echo "VERSION=$version" >> "$GITHUB_ENV"
 
+      # Ahead of the build rather than beside the `gh release create` that consumes it: past the
+      # Portal upload nothing can be taken back, so a CHANGELOG mistake has to fail before it.
+      # `grep -q '[^[:space:]]'` rather than `[ -s ]`, which a section with an empty body passes on
+      # the strength of the newline awk prints for it.
+      #
+      # index($0, h) == 1 matches the literal heading prefix and stops there, so the em dash, the
+      # date and the word "unreleased" that may follow it are all irrelevant -- and the version's
+      # dots need no escaping into a regex. There is no commits-since-last-tag fallback on purpose:
+      # a CHANGELOG with no section for this version is an error, and a commit dump would hide it.
+      - name: Extract the release notes
+        run: |
+          set -euo pipefail
+          awk -v h="## [$VERSION]" '
+            index($0, h) == 1                 { section = 1; next }
+            section && index($0, "## [") == 1 { exit }
+            section' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md" \
+            || { echo "::error::CHANGELOG.md has no notes under '## [${VERSION}]'"; exit 1; }
+
       # `build` first: the test suite is the last gate before an upload that cannot be taken back.
       # Publishing goes to the local staging directory, because the Portal's release endpoint is a
       # multipart POST of a zipped bundle rather than a Maven repository -- see the next two steps.
@@ -173,21 +192,11 @@ jobs:
           echo "::error::Deployment ${id} is still ${state} after 10 minutes"
           exit 1
 
-      # index($0, h) == 1 matches the literal heading prefix and stops there, so the em dash, the
-      # date and the word "unreleased" that may follow it are all irrelevant -- and the version's
-      # dots need no escaping into a regex. There is no commits-since-last-tag fallback on purpose:
-      # a CHANGELOG with no section for this version is an error, and a commit dump would hide it.
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          awk -v h="## [$VERSION]" '
-            index($0, h) == 1                 { section = 1; next }
-            section && index($0, "## [") == 1 { exit }
-            section' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
-          [ -s "$RUNNER_TEMP/notes.md" ] \
-            || { echo "::error::CHANGELOG.md has no '## [${VERSION}]' section"; exit 1; }
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
             --notes-file "$RUNNER_TEMP/notes.md"
