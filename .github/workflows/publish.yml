@@ -50,7 +50,12 @@ jobs:
           ORG_GRADLE_PROJECT_centralSnapshotsPassword: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Both halves are load-bearing. Without the event check, a workflow_dispatch against tag v0.1.0
+    # satisfies startsWith as well -- GITHUB_REF for a dispatch is the branch or tag that received
+    # it -- so rehearsing the snapshot path against a tag would cut the release alongside it.
+    # Without the ref check, restoring the push-to-main trigger #31 asked for would release on
+    # every merge.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
 
     runs-on: ubuntu-latest
 
