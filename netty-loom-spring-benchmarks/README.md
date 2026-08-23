@@ -223,9 +223,13 @@ overridable with `--env USERNAME=... --env PASSWORD=...`).
   Tomcat targets, and raises `threads.max` to match on the **virtual** target (its executor isn't
   pool-bounded, but this forecloses the "you throttled the VT path" objection). The **platform** target
   keeps `threads.max=200` — the bounded thread-per-request pool *is* the architecture under test. The
-  OS backlog (`accept-count=100`) is left at its default, ≈ Netty core's hardcoded `SO_BACKLOG=128`, and
-  isn't the bottleneck under the 15s gradual ramp. Whatever gap survives this is architecture; the
-  earlier default-config snapshot is in git history (commit `c4f4270`) for a before/after comparison.
+  OS backlog (`accept-count=100`) is left at its default, ≈ Netty core's hardcoded `SO_BACKLOG=128`,
+  and isn't the bottleneck under the 15s gradual ramp **on loopback** — near-zero RTT drains the accept
+  queue between arrivals. It is emphatically the bottleneck off-box: over a 77ms link the same ramp
+  produced 17,643 `connection refused` and 11.16% failures while the server sat 95% idle
+  ([2026-08-23](../docs/benchmarks/2026-08-23/COMPARISON.md) §8). Whatever gap survives this is
+  architecture; the earlier default-config snapshot is in git history (commit `c4f4270`) for a
+  before/after comparison.
 - **Memory per connection is noise-dominated at low VU counts.** With `-Xmx2g` and no `-Xms`, G1 commits
   heap lazily, so RSS jumps ~100MB from GC/JIT regardless of connections. The metric only separates the
   targets once connections vastly outnumber the ~200-thread pool. The snapshot uses the steady-state

@@ -18,7 +18,6 @@ RESULTS="${1:?usage: collect-env.sh <results_dir> [repo_root]}"
 REPO_ROOT="${2:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 mkdir -p "$RESULTS"
 
-
 case "$(uname -s)" in
   Linux)
     cpu=$(awk -F': ' '/^model name/{print $2; exit}' /proc/cpuinfo)
