@@ -149,6 +149,15 @@ Nothing in the workflow catches this. `main` stays on `x.y.z-SNAPSHOT` by design
 compares the tag against `${declared%-SNAPSHOT}` so the suffix never trips it, and the notes guard
 only fires on a section that is missing or blank.
 
+### If the release job fails after the upload
+
+The deployment exists on the Portal from the moment the upload step's POST returns — the id goes to
+the job summary — and nothing after that can take it back: a status poll that errors, the ten-minute
+timeout, and the GitHub release step all leave it pending. Re-running the job restarts it from the
+first step, so it builds, stages and uploads a *second* bundle for the same coordinate. Drop the
+pending one first — the `DELETE` above, or *Drop* on
+[the deployments page](https://central.sonatype.com/publishing/deployments) — then re-run.
+
 ## Not done yet
 
 The namespace, the signing key and the workflow are done. Two out-of-band items remain, and no pull
