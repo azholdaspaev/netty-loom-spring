@@ -55,6 +55,8 @@ class NettyServerPipeliningTest {
      */
     private static final Duration OVERTAKE_WINDOW = Duration.ofSeconds(1);
 
+    private static final Duration UNREACHED_WRITE_STALL_TIMEOUT = Duration.ofSeconds(60);
+
     private final CountDownLatch secondResponded = new CountDownLatch(1);
 
     private NettyServer nettyServer;
@@ -118,7 +120,7 @@ class NettyServerPipeliningTest {
             new NamedChannelHandler("aggregator", () -> new HttpObjectAggregator(MAX_HTTP_REQUEST_BODY_BYTES)),
             new NamedChannelHandler("pipelining", HttpPipeliningHandler::new),
             new NamedChannelHandler("dispatcher",
-                () -> new HttpRequestHandler(overtakingDispatcher(), dispatchExecutor, connectionRegistry))));
+                () -> new HttpRequestHandler(overtakingDispatcher(), dispatchExecutor, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT))));
     }
 
     private static FullHttpResponse textResponse(String body) {

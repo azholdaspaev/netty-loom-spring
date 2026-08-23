@@ -19,6 +19,7 @@ The rule for which namespace a knob belongs to — Spring Boot's `server.*` vers
 | `server.netty.tcp-keep-alive` | `boolean` | `true` | Socket-level `SO_KEEPALIVE` on accepted channels. Unrelated to HTTP keep-alive, which is protocol behaviour and always on |
 | `server.netty.shutdown-grace-period` | `Duration` | `30s` | How long graceful shutdown waits for in-flight requests before force-closing. See [Graceful shutdown](#graceful-shutdown) |
 | `server.netty.read-timeout` | `Duration` | `30s` | Client-progress deadline. See [The read timeout](#the-read-timeout). `0` or negative disables it |
+| `server.netty.write-stall-timeout` | `Duration` | `60s` | How long a response may sit unsent against a client that has stopped reading. The clock starts only once the connection is unwritable — the outbound buffer past its high-water mark — not on every write, so a slow but progressing client is never cut off. On expiry the connection is closed mid-response. `0` or negative disables it, leaving a stalled dispatch waiting indefinitely |
 
 `NettyLoomProperties` is a `@ConfigurationProperties` record, which binds with
 `ignoreUnknownFields = true`. A misspelled or obsolete key under `server.netty.*` is therefore
@@ -90,7 +91,6 @@ Not configurable ([#42](https://github.com/azholdaspaev/netty-loom-spring/issues
 | Max chunk size | 10,000 bytes | — |
 | Max aggregated body | 1 MiB | `413` |
 | Listen backlog (`SO_BACKLOG`) | 128 | — |
-| Write-stall timeout | 60s | Connection closed when a client stops reading mid-response |
 
 These are 10,000 decimal bytes, not 10 KiB.
 

@@ -175,8 +175,9 @@ issue. The contrast with the list above is the point.
 - **Filters and servlets are initialized but never destroyed** ([#103](https://github.com/azholdaspaev/netty-loom-spring/issues/103)).
 - **No bound on queued responses** — a client that pipelines while never reading has been measured
   queuing ~5.7 MB out for ~900 bytes in
-  ([#88](https://github.com/azholdaspaev/netty-loom-spring/issues/88)). A fixed 60s write-stall
-  timeout bounds this in time, not in space. Nothing bounds handler execution at all
+  ([#88](https://github.com/azholdaspaev/netty-loom-spring/issues/88)). The write-stall timeout
+  (`server.netty.write-stall-timeout`, 60s by default) bounds this in time, not in space. Nothing
+  bounds handler execution at all
   ([#43](https://github.com/azholdaspaev/netty-loom-spring/issues/43)).
 
 ## Configuration
@@ -184,7 +185,7 @@ issue. The contrast with the list above is the point.
 Standard knobs bind under Spring Boot's `server.*` namespace; Netty-only tuning lives under
 `server.netty.*`. The rule for which is which, and why, is [ADR 0001](docs/adr/0001-server-properties-namespace.md).
 
-Six Netty-only properties. Types, defaults and exact semantics are in
+Seven Netty-only properties. Types, defaults and exact semantics are in
 **[docs/configuration.md](docs/configuration.md#servernetty)**, which is where they are maintained:
 
 | Property | Controls |
@@ -195,6 +196,7 @@ Six Netty-only properties. Types, defaults and exact semantics are in
 | `server.netty.tcp-keep-alive` | Socket-level `SO_KEEPALIVE` |
 | `server.netty.shutdown-grace-period` | How long graceful shutdown drains before force-closing |
 | `server.netty.read-timeout` | The slow-loris deadline, measured on the client rather than on your handler |
+| `server.netty.write-stall-timeout` | How long a response waits on a client that has stopped reading it |
 
 Honoured from the standard namespace: `server.port`, `server.address`,
 `server.servlet.context-path`, `server.servlet.session.timeout`,

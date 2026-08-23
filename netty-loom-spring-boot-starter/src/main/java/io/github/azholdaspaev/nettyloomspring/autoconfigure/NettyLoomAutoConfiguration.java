@@ -114,7 +114,8 @@ public class NettyLoomAutoConfiguration {
             // aggregator's own 413 does (issue #78). Nothing is lost by rejecting this late: the decoder
             // discards every byte after a bad message, so no request can be queued behind one.
             NamedChannelHandler.shared("decoderFailure", new HttpDecoderFailureHandler()),
-            new NamedChannelHandler("dispatcher", () -> new HttpRequestHandler(httpRequestDispatcher, nettyLoomDispatchExecutor, httpConnectionRegistry)),
+            new NamedChannelHandler("dispatcher", () -> new HttpRequestHandler(httpRequestDispatcher, nettyLoomDispatchExecutor,
+                httpConnectionRegistry, properties.writeStallTimeout())),
             NamedChannelHandler.shared("exceptionHandler", new HttpExceptionHandler())
         ));
     }
