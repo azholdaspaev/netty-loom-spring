@@ -1,8 +1,0 @@
-- **Machine:** sd-166434 — Intel(R) Xeon(R) CPU E3-1230 v3 @ 3.30GHz, 31Gi RAM
-- **CPU:** 4 physical cores / 8 logical (SMT on), governor `performance`, turbo on
-- **OS:** Ubuntu 24.04.3 LTS, kernel 6.8.0-90-generic (x86_64)
-- **JDK:** openjdk 25.0.4.1 2026-08-18 LTS (25.0.4.1+1-LTS)
-- **k6:** k6 v1.4.2 (commit/5b725e8a6a, go1.25.4, linux/amd64)
-- **Commit:** `e020b12`
-- **Limits:** nofile 200000, ip_local_port_range `1024 65535`, tcp_tw_reuse 1
-- **Network:** eno1 1000Mb/s

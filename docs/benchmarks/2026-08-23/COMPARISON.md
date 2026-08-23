@@ -207,10 +207,12 @@ target-scenario pair — so no conclusion in this document rests on its exact va
 
 ## 9. Not tested in this sweep
 
-- **No two-host measurement.** `REMOTE_HOST` was added to `run-all.sh` and is exercised only by the
-  probe in §8, which failed for the reason recorded there. Every number in this document is single-
-  box loopback. The two-host configuration the README calls "the only fully defensible one" remains
-  unmeasured, and the §8 finding is why: it needs either a low-RTT peer or a deeper accept backlog.
+- **No two-host measurement.** Every number in this document is single-box loopback. `REMOTE_HOST`
+  was added to `run-all.sh` and verified end to end at 50 VUs — correct remote launch, teardown,
+  streamed memory sampling, reversed order, and provenance captured from the *server's* host rather
+  than the client's — but it was not used for this sweep, and at 10,000 VUs it fails for the reason
+  in §8. The two-host configuration the README calls "the only fully defensible one" therefore
+  remains unmeasured: it needs either a low-RTT peer or a deeper accept backlog.
 - **No open-model run.** Coordinated omission is uncorrected.
 - **No memory A/B** against the Security starter or NL-37's response buffering (#144).
 - **No comparison against the M1 sweeps**, deliberately. See §1.
