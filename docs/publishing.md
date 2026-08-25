@@ -4,7 +4,7 @@
 > Portal and on GitHub, neither of which is under version control. Editing it changes nothing —
 > check the Portal before trusting it.
 
-Read from the Portal on 2026-08-13.
+Read from the Portal on 2026-08-25.
 
 ## Namespace
 
@@ -14,7 +14,7 @@ Read from the Portal on 2026-08-13.
 | Status | Verified                               |
 | Org | Azholdaspaev                           |
 | Namespace ID | `9b29d13e-9976-49ba-af32-7ce6ed78bd68` |
-| SNAPSHOTs | not enabled                            |
+| SNAPSHOTs | enabled                                |
 
 Nobody verified it by hand. Sonatype provisions `io.github.<username>` automatically for an account
 that signs in with GitHub, and this one does: the Portal reports **no verification history** for the
@@ -57,12 +57,12 @@ gh auth refresh -h github.com -r delete_repo
 
 The web UI does the same without widening the token.
 
-## SNAPSHOTs are off, and a failed deploy will not say so
+## SNAPSHOTs must be on, and a deploy without them will not say so
 
 Snapshots go to `https://central.sonatype.com/repository/maven-snapshots/`, and the namespace must
-have them switched on: namespace row → *More Actions…* → *Enable SNAPSHOTs* → Confirm. Until then a
-snapshot deploy **fails with an authorization error**, which reads as a bad token rather than as a
-missing setting. Snapshots are pruned after 90 days.
+have them switched on: namespace row → *More Actions…* → *Enable SNAPSHOTs* → Confirm. With the
+setting off, a snapshot deploy **fails with an authorization error**, which reads as a bad token
+rather than as a missing setting. Snapshots are pruned after 90 days.
 
 Sonatype validates nothing on a snapshot — no GPG signature, no sources jar, no javadoc jar — and
 the snapshot endpoint speaks the ordinary Maven deploy protocol. A release does not: the Portal
@@ -78,8 +78,8 @@ Portal credentials are a username/password pair generated at
 **The pair cannot be retrieved once its modal closes**, so rotating means generating a replacement
 rather than looking the old one up. No token is recorded here. The build reads the pair as the
 `centralSnapshots` repository's credentials and the release workflow passes it to the Portal upload,
-so both arrive from the `CENTRAL_PORTAL_USERNAME` / `CENTRAL_PORTAL_PASSWORD` Actions secrets.
-Minting the token and storing it is #175.
+so both arrive from the `CENTRAL_PORTAL_USERNAME` / `CENTRAL_PORTAL_PASSWORD` Actions secrets,
+added on 2026-08-25 (#175).
 
 ## Signing key
 
@@ -158,14 +158,16 @@ first step, so it builds, stages and uploads a *second* bundle for the same coor
 pending one first — the `DELETE` above, or *Drop* on
 [the deployments page](https://central.sonatype.com/publishing/deployments) — then re-run.
 
-## Not done yet
+## First snapshot
 
-The namespace, the signing key and the workflow are done. Two out-of-band items remain, and no pull
-request can do either: **enable SNAPSHOTs** on the namespace, and **mint a Portal user token** and
-store it as an Actions secret. Both need someone logged in to the Portal, and both are
-[#175](https://github.com/azholdaspaev/netty-loom-spring/issues/175). Nothing reaches Sonatype until
-they are.
+The workflow's first run,
+[32895087603](https://github.com/azholdaspaev/netty-loom-spring/actions/runs/32895087603) on
+2026-08-25, put `0.1.0-SNAPSHOT` of all three modules on Central Snapshots as build
+`20260825.202413-1`, from `0afd150`. The next day a scratch Gradle project with that repository
+added resolved the starter, every transitive carrying a version (#147) — the dry run
+[#31](https://github.com/azholdaspaev/netty-loom-spring/issues/31) deferred to
+[#175](https://github.com/azholdaspaev/netty-loom-spring/issues/175).
 
-[#28](https://github.com/azholdaspaev/netty-loom-spring/issues/28) also asked for a
-`publishToMavenCentral` snapshot dry run. No such task exists: that name belongs to the Vanniktech
-plugin, and #30 used Gradle's own `maven-publish`. The dry run moved to #175 along with the token.
+[#28](https://github.com/azholdaspaev/netty-loom-spring/issues/28) had asked for that dry run as a
+`publishToMavenCentral` task. No such task exists: that name belongs to the Vanniktech plugin, and
+#30 used Gradle's own `maven-publish`.

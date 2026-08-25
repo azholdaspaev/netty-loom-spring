@@ -8,9 +8,8 @@ in any minor release.
 
 ## [0.1.0] — unreleased
 
-First release. Not yet published to Maven Central: the release workflow is in place, but the
-Sonatype credentials it needs are still outstanding
-([#175](https://github.com/azholdaspaev/netty-loom-spring/issues/175)).
+First release. Not yet published to Maven Central; a `0.1.0-SNAPSHOT` is on
+[Central Snapshots](https://central.sonatype.com/repository/maven-snapshots/).
 
 ### Added
 
