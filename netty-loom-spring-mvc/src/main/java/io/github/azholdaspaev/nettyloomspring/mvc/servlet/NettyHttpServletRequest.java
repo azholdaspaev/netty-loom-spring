@@ -184,7 +184,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
         return address;
     }
 
-    private static Map<String, String[]> toParameterMap(Map<String, List<String>> parameters) {
+    static Map<String, String[]> toParameterMap(Map<String, List<String>> parameters) {
         Map<String, String[]> map = new LinkedHashMap<>(parameters.size());
         parameters.forEach((name, values) -> map.put(name, values.toArray(new String[0])));
         return Collections.unmodifiableMap(map);
@@ -655,7 +655,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public RequestDispatcher getRequestDispatcher(String path) {
-        return null;
+        return NettyRequestDispatcher.forRequestPath(servletContext, getServletPath(), path);
     }
 
     @Override

@@ -2,7 +2,9 @@ package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.Filter;
+import jakarta.servlet.FilterChain;
 import jakarta.servlet.FilterRegistration;
+import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.Servlet;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletRegistration;
@@ -54,6 +56,7 @@ public class DefaultNettyServletContext implements NettyServletContext {
     // server start, so the volatile field is sufficient for safe publication.
     private volatile List<RegisteredFilter> registeredFiltersSnapshot;
     private volatile String contextPath = ROOT_CONTEXT_PATH;
+    private volatile FilterChain terminalChain;
     private volatile NettyCookieSameSiteResolver cookieSameSiteResolver = NettyCookieSameSiteResolver.NO_OPINION;
     // Atomic because the transition, not the value, is what must happen once: close() is reachable from
     // both SessionStoreLifecycle.stop() and the bean-destruction backstop, and each event is owed exactly
@@ -286,6 +289,21 @@ public class DefaultNettyServletContext implements NettyServletContext {
     @Override
     public NettyCookieSameSiteResolver getCookieSameSiteResolver() {
         return cookieSameSiteResolver;
+    }
+
+    @Override
+    public void setTerminalChain(FilterChain terminal) {
+        this.terminalChain = terminal;
+    }
+
+    @Override
+    public FilterChain getTerminalChain() {
+        return terminalChain;
+    }
+
+    @Override
+    public RequestDispatcher getRequestDispatcher(String path) {
+        return NettyRequestDispatcher.forContextPath(this, path);
     }
 
     // --- Sessions: the manager is the single owner, this is pure delegation (issue #13) ---

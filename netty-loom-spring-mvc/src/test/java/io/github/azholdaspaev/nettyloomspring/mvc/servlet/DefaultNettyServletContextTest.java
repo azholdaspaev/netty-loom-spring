@@ -2,6 +2,7 @@ package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.Filter;
+import jakarta.servlet.FilterChain;
 import jakarta.servlet.FilterRegistration;
 import jakarta.servlet.Servlet;
 import jakarta.servlet.ServletContextAttributeEvent;
@@ -38,6 +39,30 @@ class DefaultNettyServletContextTest {
     @BeforeEach
     void setUp() {
         context = new DefaultNettyServletContext();
+    }
+
+    // --- Request dispatchers (issue #182) ---
+
+    @Test
+    void shouldReturnADispatcherForAContextAbsolutePath() {
+        assertNotNull(context.getRequestDispatcher("/target"));
+    }
+
+    @Test
+    void shouldReturnNullForARelativeDispatcherPath() {
+        assertNull(context.getRequestDispatcher("target"),
+            "ServletContext.getRequestDispatcher takes a context-absolute path; the request method is "
+                + "the one that resolves a relative path");
+    }
+
+    @Test
+    void shouldReturnNullForADispatcherPathThatEscapesTheContext() {
+        assertNull(context.getRequestDispatcher("/../outside"));
+    }
+
+    @Test
+    void shouldStillRejectNamedDispatchers() {
+        assertThrows(UnsupportedOperationException.class, () -> context.getNamedDispatcher("dispatcherServlet"));
     }
 
     // --- Attribute methods ---
@@ -862,6 +887,19 @@ class DefaultNettyServletContextTest {
 
         assertEquals(2, listener.initialized);
         assertEquals(1, listener.destroyed);
+    }
+
+    @Test
+    void shouldKeepTheTerminalChainAcrossACloseOpenCycle() {
+        FilterChain terminal = (request, response) -> {
+        };
+        context.setTerminalChain(terminal);
+
+        context.close();
+        context.open();
+
+        assertSame(terminal, context.getTerminalChain(),
+            "a stop/start cycle must leave forwarding wired, not unbind the terminal chain");
     }
 
     @Test

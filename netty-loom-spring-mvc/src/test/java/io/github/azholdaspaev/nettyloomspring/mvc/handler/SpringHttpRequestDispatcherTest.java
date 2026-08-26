@@ -10,6 +10,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
+import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletRequestEvent;
 import jakarta.servlet.ServletRequestListener;
@@ -365,5 +366,48 @@ class SpringHttpRequestDispatcherTest {
 
         assertEquals(3, written.size(), "head, body and terminator each reach the connection; got " + written);
         assertInstanceOf(LastHttpContent.class, written.get(2));
+    }
+
+    // --- Forward dispatch (issue #182) ---
+
+    /**
+     * A dispatcher whose servlet writes {@code source}, forwards to {@code /target}, and writes
+     * {@code target} on the way back in. Branching on the URI is what stops the re-entry recursing.
+     */
+    private SpringHttpRequestDispatcher forwardingDispatcher() {
+        return dispatcher((request, response) -> {
+            try {
+                if ("/target".equals(request.getRequestURI())) {
+                    events.add("target");
+                    response.getOutputStream().write("target".getBytes(StandardCharsets.UTF_8));
+                    return;
+                }
+                events.add("source");
+                response.getOutputStream().write("source".getBytes(StandardCharsets.UTF_8));
+                request.getRequestDispatcher("/target").forward(request, response);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            } catch (ServletException e) {
+                throw new IllegalStateException(e);
+            }
+        });
+    }
+
+    @Test
+    void aForwardedDispatchWritesExactlyOneResponse() throws Exception {
+        FullHttpResponse response = dispatch(forwardingDispatcher(), get("/source"));
+
+        assertEquals("target", response.content().toString(StandardCharsets.UTF_8),
+            "only the terminal dispatch completes the response, and the source's output is reset away");
+    }
+
+    @Test
+    void aForwardDoesNotRefireTheRequestListener() throws Exception {
+        recordRequests();
+
+        dispatch(forwardingDispatcher(), get("/source"));
+
+        assertEquals(List.of("initialized", "source", "target", "destroyed"), events,
+            "the listener pair brackets the request, not each dispatch");
     }
 }

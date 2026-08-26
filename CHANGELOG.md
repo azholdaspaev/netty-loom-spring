@@ -30,7 +30,8 @@ First release. Not yet published to Maven Central; a `0.1.0-SNAPSHOT` is on
   body outgrows the response buffer, with backpressure when the client reads more slowly than the
   handler writes, bounded by `server.netty.write-stall-timeout` so a client that stops reading
   altogether is given up on rather than waited on for ever.
-- **Servlet bridge** covering requests, responses, cookies, sessions, instance-registered filters
+- **Servlet bridge** covering requests, responses, cookies, sessions, instance-registered filters,
+  path-based `RequestDispatcher.forward` with its `FORWARD` dispatcher state,
   and all seven `addListener` listener types, over `NettyHttpServletRequest`,
   `NettyHttpServletResponse` and `DefaultNettyServletContext`.
 - **In-memory sessions** with the standard `server.servlet.session.*` cookie and timeout

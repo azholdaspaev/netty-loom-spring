@@ -7,23 +7,17 @@ import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyFilterChain;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyHttpServletRequest;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyHttpServletResponse;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
-import io.github.azholdaspaev.nettyloomspring.mvc.servlet.RegisteredFilter;
 import io.netty.handler.codec.http.FullHttpRequest;
-import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.servlet.DispatcherServlet;
-
-import java.util.List;
 
 public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
 
     private final NettyServletContext servletContext;
-    private final FilterChain terminal;
 
     public SpringHttpRequestDispatcher(DispatcherServlet dispatcherServlet, NettyServletContext servletContext) {
         this.servletContext = servletContext;
-        // Bound once here rather than re-creating the method reference per request.
-        this.terminal = dispatcherServlet::service;
+        servletContext.setTerminalChain(dispatcherServlet::service);
     }
 
     @Override
@@ -45,12 +39,6 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
             return;
         }
 
-        // Filter URL patterns are context-relative, so match on the in-context servlet path.
-        String servletPath = servletRequest.getServletPath();
-        List<RegisteredFilter> applicable = servletContext.getRegisteredFilters().stream()
-            .filter(filter -> filter.matches(servletPath, servletRequest.getDispatcherType()))
-            .toList();
-
         // Bracketing the chain, not the whole method: the out-of-context 404 above never enters this
         // context, so announcing it would report a request the application never saw. requestDestroyed is
         // in a finally because it is a release, not a notification -- RequestContextListener.requestDestroyed
@@ -60,8 +48,7 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
         // owed; fireRequestInitialized releases the prefix it notified before propagating.
         servletContext.getListenerRegistry().fireRequestInitialized(servletRequest);
         try {
-            NettyFilterChain chain = new NettyFilterChain(applicable, terminal);
-            chain.doFilter(servletRequest, servletResponse);
+            NettyFilterChain.forDispatch(servletContext, servletRequest).doFilter(servletRequest, servletResponse);
         } finally {
             servletContext.getListenerRegistry().fireRequestDestroyed(servletRequest);
         }
