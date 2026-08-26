@@ -29,7 +29,7 @@ What the servlet bridge implements, method by method. Verified against the sourc
 | Spring Security | `works` | It is a servlet `Filter` with its own `SecurityContext`; it does not depend on the container auth methods, which are stubs |
 | Actuator | `untested` | No compatibility test module yet ([#25](https://github.com/azholdaspaev/netty-loom-spring/issues/25)) |
 | `@Async` MVC, `Callable` return values | `none` | Routes through `startAsync()` |
-| Welcome page (`index.html`) | `none` | Boot's `forward:index.html` needs a `RequestDispatcher`, which is `null`; returns 500 with a static `index.html` present ([#59](https://github.com/azholdaspaev/netty-loom-spring/issues/59)), 404 without one |
+| Welcome page (`index.html`) | `none` | Still 500 with a static `index.html` present ([#59](https://github.com/azholdaspaev/netty-loom-spring/issues/59)), 404 without one — but no longer for want of a `RequestDispatcher`. The forward now runs and `ResourceHttpRequestHandler` finds the resource; it then calls `ServletContext.getMimeType`, which throws |
 
 ## Errors
 
@@ -59,7 +59,7 @@ What the servlet bridge implements, method by method. Verified against the sourc
 | Query-string charset | `partial` | Always decoded as UTF-8, independent of the request encoding |
 | Request body size | `partial` | Buffered whole in memory, capped at 1 MiB; over-limit is answered 413 ([#51](https://github.com/azholdaspaev/netty-loom-spring/issues/51)) |
 | `getLocale*` | `works` | Full `Accept-Language` q-value parsing |
-| `getRequestDispatcher(path)` | `none` | Returns **`null`**, so callers NPE at their own call site |
+| `getRequestDispatcher(path)` | `partial` | Path-based `forward` only. A `/`-prefixed path is context-relative, anything else resolves against the current request's directory; the result is canonicalised, and `null` comes back for a `null` path or one that canonicalises out of the context. Canonicalisation is `StringUtils.cleanPath`, which also turns `\` into `/` and does **not** URL-decode |
 | `getPathInfo()`, `getPathTranslated()` | `none` | Always `null`; `getServletPath()` returns the whole context-relative path |
 | `getParts()`, `getPart(name)` | `none` | Always empty / `null` ([#14](https://github.com/azholdaspaev/netty-loom-spring/issues/14)) |
 | `startAsync()` | `none` | Returns **`null`** where the spec requires `IllegalStateException` ([#18](https://github.com/azholdaspaev/netty-loom-spring/issues/18)) |
@@ -70,7 +70,7 @@ What the servlet bridge implements, method by method. Verified against the sourc
 | `getRequestId()` | `none` | Always `""`, so every request shares one id where the spec requires a unique one ([#116](https://github.com/azholdaspaev/netty-loom-spring/issues/116)) |
 | `getProtocolRequestId()` | `works` | `""`, which is what the spec prescribes for HTTP/1.x |
 | `getServletConnection()` | `none` | Returns **`null`**, for which the spec defines no case, so callers NPE at their own call site ([#116](https://github.com/azholdaspaev/netty-loom-spring/issues/116)) |
-| `getDispatcherType()` | `partial` | Always `REQUEST` |
+| `getDispatcherType()` | `partial` | `REQUEST` for the initial dispatch and `FORWARD` during a forward. `INCLUDE`, `ERROR` and `ASYNC` are unreachable |
 
 ## Response
 
@@ -92,6 +92,20 @@ What the servlet bridge implements, method by method. Verified against the sourc
 | `setCharacterEncoding(null)` | `partial` | Throws `IllegalArgumentException`; Servlet 6.1 says it should reset to the default |
 | `setWriteListener` | `ignored` | No-op, so `onWritePossible()` never fires and a `WriteListener`-based writer stalls rather than failing fast |
 | `setReadListener` | `none` | Throws `UnsupportedOperationException` |
+
+## Request dispatch
+
+Path-based `forward` only ([#182](https://github.com/azholdaspaev/netty-loom-spring/issues/182)).
+
+| Feature | Status | Notes |
+| --- | --- | --- |
+| `forward(request, response)` | `partial` | Re-enters the filter chain and `DispatcherServlet` with the target path. Throws `IllegalStateException` once the response is committed, and clears an uncommitted buffer first. No dispatch-loop guard, so a servlet forwarding to its own path recurses until the stack runs out — as it does on Tomcat |
+| Committing the response on return | `none` | The spec has the container commit and close the response before `forward` returns; here it stays buffered so the reply keeps its `Content-Length` instead of turning into a chunked one. The cost is that output written *after* `forward` returns is appended rather than discarded |
+| `include(request, response)` | `none` | Throws `UnsupportedOperationException` → **501**. Note that Spring's `forward:` view checks `isCommitted()` first and takes the *include* branch on a committed response, so that case 501s rather than reporting the commit |
+| Named dispatch (`getNamedDispatcher`) | `none` | Throws. `addServlet` keeps only the class name and `DispatcherServlet` is never registered, so there is nothing to resolve a name against |
+| `jakarta.servlet.forward.*` attributes | `partial` | `request_uri`, `context_path`, `servlet_path` and `query_string` (the last only when the original request carried one). `forward.path_info` is never set, since `getPathInfo()` is always `null`; `forward.mapping` is never set, since `HttpServletMapping` is unimplemented. A nested forward reports the values of the request the client sent, not the previous hop |
+| Forwarded parameters | `works` | A query string on the dispatch path takes precedence over the original's and is added to it, for the duration of the forward only. Decoded as UTF-8, like every other query string here |
+| `ServletRequestListener` on a forward | `works` | Fires once per request, not once per dispatch |
 
 ## Sessions
 
@@ -148,7 +162,7 @@ fired on an object bound into a session, and passing one to `addListener` throws
 | `addFilter(name, Class)` / `addFilter(name, String className)` | `ignored` | Registration is recorded and **silently skipped at request time** — the filter is never instantiated and never runs |
 | Filter URL-pattern mappings | `works` | Servlet-spec §12.2 matching (exact, `/*`, `/prefix/*`, `*.ext`) against the context-relative path |
 | Filter servlet-name mappings | `warns` | Logged at WARN and discarded — unlike the `Class` overload above, which is silent |
-| Filter dispatcher types | `partial` | Recorded and checked, but `getDispatcherType()` is always `REQUEST`, so `FORWARD` / `INCLUDE` / `ERROR` / `ASYNC` mappings can never match |
+| Filter dispatcher types | `partial` | `FORWARD` mappings match, against the **target** path of the forward; `INCLUDE` / `ERROR` / `ASYNC` remain unreachable. Note that Boot registers every `OncePerRequestFilter` for all dispatcher types, so its own filters (`CharacterEncodingFilter`, `FormContentFilter`, `RequestContextFilter`, `ServerHttpObservationFilter`) are re-entered on a forward and skip themselves via their already-filtered request attribute |
 | Filter ordering | `works` | Registration order, which is Boot's `@Order` resolution |
 | `FilterConfig` init parameters | `none` | `setInitParameter` records them; `getInitParameter` always returns `null` |
 | `Filter.destroy()`, `Servlet.destroy()` | `none` | Never called at shutdown ([#103](https://github.com/azholdaspaev/netty-loom-spring/issues/103)) |
@@ -162,7 +176,8 @@ fired on an object bound into a session, and passing one to `addListener` throws
 | --- | --- | --- |
 | `getContextPath`, `getAttribute*`, `getInitParameter` | `works` | `setInitParameter` is put-if-absent and returns `false` on a duplicate |
 | `getResource`, `getResourceAsStream`, `getResourcePaths`, `getRealPath` | `none` | All return `null` ([#15](https://github.com/azholdaspaev/netty-loom-spring/issues/15)). `getResourcePaths` returns `null` rather than an empty set |
-| `getMimeType`, `getRequestDispatcher`, `getNamedDispatcher`, `getContext`, `addJspFile`, `createServlet`, `createFilter`, `getJspConfigDescriptor`, `declareRoles`, `getVirtualServerName`, `get/setRequestCharacterEncoding`, `get/setResponseCharacterEncoding` | `none` | Throw `UnsupportedOperationException`, which surfaces as **501** if it reaches the pipeline unwrapped, or 500 once Spring wraps it |
+| `getRequestDispatcher` | `partial` | Same resolution as the request method above, except that the path must be context-absolute: a relative one returns `null` |
+| `getMimeType`, `getNamedDispatcher`, `getContext`, `addJspFile`, `createServlet`, `createFilter`, `getJspConfigDescriptor`, `declareRoles`, `getVirtualServerName`, `get/setRequestCharacterEncoding`, `get/setResponseCharacterEncoding` | `none` | Throw `UnsupportedOperationException`, which surfaces as **501** if it reaches the pipeline unwrapped, or 500 once Spring wraps it |
 | `getServletContextName()` | `ignored` | Hardcoded, so `server.servlet.application-display-name` has no effect ([#86](https://github.com/azholdaspaev/netty-loom-spring/issues/86)) |
 | `getServerInfo()` | `works` | Returns `Netty-Loom` |
 | `getMajorVersion` / `getMinorVersion` | `works` | Reports Servlet 6.0 |
