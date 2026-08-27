@@ -6,7 +6,9 @@ import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.http.HttpServletRequest;
 
 import org.springframework.util.StringUtils;
+import org.springframework.web.util.UrlPathHelper;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -60,9 +62,24 @@ public class NettyDispatchFactory {
         String targetPath = queryStart < 0 ? path : path.substring(0, queryStart);
         String queryString = queryStart < 0 ? null : path.substring(queryStart + 1);
         String normalized = StringUtils.cleanPath(targetPath);
-        if (!normalized.startsWith("/") || normalized.equals("/..") || normalized.startsWith("/../")) {
+        if (escapesContext(normalized)) {
             return null;
         }
         return new NettyRequestDispatcher(this, normalized, queryString);
+    }
+
+    // Decided on the form the consumer sees rather than on the dispatched path, because Spring's
+    // DefaultPathContainer strips ';' parameters and percent-decodes each segment: a guard reading
+    // the raw path would call "..;" and "%2e%2e" ordinary segments where Spring calls them "..".
+    // The dispatched path stays undecoded, since getRequestURI() must report the URI as sent.
+    private static boolean escapesContext(String normalized) {
+        String canonical;
+        try {
+            canonical = StringUtils.cleanPath(StringUtils.uriDecode(
+                UrlPathHelper.defaultInstance.removeSemicolonContent(normalized), StandardCharsets.UTF_8));
+        } catch (IllegalArgumentException undecodable) {
+            return true;
+        }
+        return !canonical.startsWith("/") || canonical.equals("/..") || canonical.startsWith("/../");
     }
 }

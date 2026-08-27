@@ -412,6 +412,40 @@ class NettyRequestDispatcherTest {
     }
 
     @Test
+    void aPathParameterHidingADotSegmentResolvesToNoDispatcher() {
+        context.setContextPath("/app");
+        var request = requestFor("/app/a", new NettyHttpServletResponse());
+
+        assertNull(request.getRequestDispatcher("/..;/outside"),
+            "a ';' parameter must not hide a dot segment from the escape guard");
+    }
+
+    @Test
+    void aPercentEncodedDotSegmentResolvesToNoDispatcher() {
+        context.setContextPath("/app");
+        var request = requestFor("/app/a", new NettyHttpServletResponse());
+
+        assertNull(request.getRequestDispatcher("/%2e%2e/outside"),
+            "a percent-encoded dot segment must not hide from the escape guard");
+    }
+
+    @Test
+    void aMalformedEscapeResolvesToNoDispatcher() {
+        var request = requestFor("/src", new NettyHttpServletResponse());
+
+        assertNull(request.getRequestDispatcher("/a%zz"),
+            "a path that cannot be decoded cannot be shown not to escape");
+    }
+
+    @Test
+    void aPercentEncodedPathWithinTheContextStillResolves() {
+        var request = requestFor("/src", new NettyHttpServletResponse());
+
+        assertNotNull(request.getRequestDispatcher("/a%20b"),
+            "decoding is for the escape decision only; an encoded path inside the context resolves");
+    }
+
+    @Test
     void aNullPathResolvesToNoDispatcher() {
         var request = requestFor("/src", new NettyHttpServletResponse());
 
