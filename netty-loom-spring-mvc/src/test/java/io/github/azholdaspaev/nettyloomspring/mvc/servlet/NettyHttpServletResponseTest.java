@@ -38,6 +38,22 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
+    void resetBufferClearsStaleContentLengthHeader() throws Exception {
+        var response = new NettyHttpServletResponse();
+        response.setContentLength(9);
+        response.getOutputStream().write("discarded".getBytes(StandardCharsets.UTF_8));
+
+        response.resetBuffer();
+        response.getOutputStream().write("target".getBytes(StandardCharsets.UTF_8));
+
+        FullHttpResponse httpResponse = response.toFullHttpResponse();
+        assertEquals(6, httpResponse.content().readableBytes());
+        assertEquals("6", httpResponse.headers().get(HttpHeaderNames.CONTENT_LENGTH),
+            "a length describing the discarded body would leave the client waiting for bytes that "
+                + "never arrive");
+    }
+
+    @Test
     void sendErrorClearsStaleContentLengthHeader() throws Exception {
         var response = new NettyHttpServletResponse();
         response.setContentLength(100);

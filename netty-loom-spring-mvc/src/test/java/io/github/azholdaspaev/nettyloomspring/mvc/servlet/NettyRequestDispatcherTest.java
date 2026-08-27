@@ -3,6 +3,7 @@ package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionMetadata;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.HttpContent;
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
@@ -432,5 +433,22 @@ class NettyRequestDispatcherTest {
 
         assertEquals("/app/x/z", reached.getFirst().getRequestURI(),
             "a relative path inside a forward resolves against the forwarded URI, not the original");
+    }
+
+    @Test
+    void aContentLengthSetBeforeTheForwardDoesNotSurviveIt() throws Exception {
+        context.setTerminalChain((request, res) ->
+            res.getOutputStream().write("target".getBytes(StandardCharsets.UTF_8)));
+        var response = new NettyHttpServletResponse();
+        var request = requestFor("/src", response);
+        response.setContentLength(9);
+        response.getOutputStream().write("discarded".getBytes(StandardCharsets.UTF_8));
+
+        new NettyRequestDispatcher(context, "/t", null).forward(request, response);
+
+        var httpResponse = response.toFullHttpResponse();
+        assertEquals(6, httpResponse.content().readableBytes());
+        assertEquals("6", httpResponse.headers().get(HttpHeaderNames.CONTENT_LENGTH),
+            "the forward cleared the body, so the length describing it must go too");
     }
 }

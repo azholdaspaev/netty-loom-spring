@@ -175,25 +175,16 @@ public class NettyHttpServletResponse implements HttpServletResponse {
 
     @Override
     public void sendError(int sc, String msg) throws IOException {
-        discardBody();
+        resetBuffer();
         this.status = sc;
         this.committed = true;
     }
 
     @Override
     public void sendError(int sc) throws IOException {
-        discardBody();
+        resetBuffer();
         this.status = sc;
         this.committed = true;
-    }
-
-    private void discardBody() {
-        // Per the Servlet spec, sendError clears the response buffer (but not other headers/status).
-        resetBuffer();
-        // The body is now empty, so a previously-set Content-Length would mis-frame the response
-        // (client hangs waiting for bytes that never arrive); drop it and let toFullHttpResponse
-        // recompute Content-Length: 0.
-        headers.remove(HttpHeaders.CONTENT_LENGTH);
     }
 
     @Override
@@ -393,6 +384,10 @@ public class NettyHttpServletResponse implements HttpServletResponse {
         // whose unflushed chars would otherwise be re-flushed into the body by toFullHttpResponse().
         writer = null;
         outputStream = null;
+        // And the length, deviating from the spec's "without clearing headers": the emptied body would
+        // otherwise ship behind a Content-Length describing what was discarded, leaving the client
+        // waiting for bytes that never arrive. toFullHttpResponse recomputes it whenever it is absent.
+        headers.remove(HttpHeaders.CONTENT_LENGTH);
     }
 
     @Override
