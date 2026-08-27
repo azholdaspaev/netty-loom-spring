@@ -11,11 +11,6 @@ import org.springframework.web.util.UrlPathHelper;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
-/**
- * Builds what a dispatch runs through: the {@link RequestDispatcher} a path resolves to, and the
- * {@link FilterChain} one dispatch traverses. It holds the terminal the chain ends in, and reaches the
- * registered filters and the context path through the context.
- */
 public class NettyDispatchFactory {
 
     private final NettyServletContext context;
