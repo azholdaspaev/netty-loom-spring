@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-class NettyForwardRequest extends HttpServletRequestWrapper {
+class NettyForwardRequestWrapper extends HttpServletRequestWrapper {
 
     private final NettyDispatchFactory factory;
     private final String targetPath;
@@ -24,7 +24,7 @@ class NettyForwardRequest extends HttpServletRequestWrapper {
     private final Map<String, Object> forwardAttributes;
     private Map<String, String[]> parameters;
 
-    NettyForwardRequest(NettyDispatchFactory factory, HttpServletRequest original,
+    NettyForwardRequestWrapper(NettyDispatchFactory factory, HttpServletRequest original,
                         String targetPath, String queryString) {
         super(original);
         this.factory = factory;
