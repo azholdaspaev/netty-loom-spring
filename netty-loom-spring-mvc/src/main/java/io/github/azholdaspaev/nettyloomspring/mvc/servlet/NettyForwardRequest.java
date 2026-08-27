@@ -18,16 +18,16 @@ import java.util.Set;
 
 class NettyForwardRequest extends HttpServletRequestWrapper {
 
-    private final NettyServletContext context;
+    private final NettyDispatchFactory factory;
     private final String targetPath;
     private final String queryString;
     private final Map<String, Object> forwardAttributes;
     private Map<String, String[]> parameters;
 
-    NettyForwardRequest(NettyServletContext context, HttpServletRequest original,
+    NettyForwardRequest(NettyDispatchFactory factory, HttpServletRequest original,
                         String targetPath, String queryString) {
         super(original);
-        this.context = context;
+        this.factory = factory;
         this.targetPath = targetPath;
         this.queryString = queryString;
         this.forwardAttributes = forwardAttributesOf(original);
@@ -61,7 +61,7 @@ class NettyForwardRequest extends HttpServletRequestWrapper {
 
     @Override
     public RequestDispatcher getRequestDispatcher(String path) {
-        return NettyRequestDispatcher.forRequestPath(context, targetPath, path);
+        return factory.forRequestPath(targetPath, path);
     }
 
     @Override

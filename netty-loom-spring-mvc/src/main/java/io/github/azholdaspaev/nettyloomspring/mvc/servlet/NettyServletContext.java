@@ -1,7 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
 import jakarta.servlet.Filter;
-import jakarta.servlet.FilterChain;
 import jakarta.servlet.FilterRegistration;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.Servlet;
@@ -52,14 +51,14 @@ public interface NettyServletContext extends ServletContext, AutoCloseable {
     NettyCookieSameSiteResolver getCookieSameSiteResolver();
 
     /**
-     * Binds the {@link FilterChain} every dispatch terminates in, which is {@code DispatcherServlet}.
-     * Published here rather than kept by the dispatcher that owns it because
-     * {@link #getRequestDispatcher(String)} is answered from this package, with no request in hand to
-     * carry it, and unwrapping one at forward time would only find whatever wrapper a filter installed.
+     * Binds what a dispatch runs through. Published here rather than kept by the dispatcher that builds
+     * it because {@link #getRequestDispatcher(String)} is answered from this package, with no request in
+     * hand to carry it, and unwrapping one at forward time would only find whatever wrapper a filter
+     * installed.
      */
-    void setTerminalChain(FilterChain terminal);
+    void setDispatchFactory(NettyDispatchFactory dispatchFactory);
 
-    FilterChain getTerminalChain();
+    NettyDispatchFactory getDispatchFactory();
 
     /**
      * The store backing {@code HttpServletRequest.getSession(...)}: the servlet API exposes only session

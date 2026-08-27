@@ -655,7 +655,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public RequestDispatcher getRequestDispatcher(String path) {
-        return NettyRequestDispatcher.forRequestPath(servletContext, getServletPath(), path);
+        return servletContext.getDispatchFactory().forRequestPath(getServletPath(), path);
     }
 
     @Override

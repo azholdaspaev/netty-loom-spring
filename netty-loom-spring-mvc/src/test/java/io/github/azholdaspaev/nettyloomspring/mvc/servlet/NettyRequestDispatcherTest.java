@@ -9,6 +9,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.Filter;
+import jakarta.servlet.FilterChain;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -34,6 +35,7 @@ class NettyRequestDispatcherTest {
         new HttpConnectionMetadata("198.51.100.2", 1234, "198.51.100.9", 8080, false);
 
     private DefaultNettyServletContext context;
+    private NettyDispatchFactory factory;
     private List<HttpServletRequest> reached;
     private List<String> trace;
 
@@ -42,6 +44,14 @@ class NettyRequestDispatcherTest {
         context = new DefaultNettyServletContext();
         reached = new ArrayList<>();
         trace = new ArrayList<>();
+        terminalIs((request, response) -> {
+        });
+    }
+
+    /** Installs the terminal a dispatch ends in, and the factory built over it. */
+    private void terminalIs(FilterChain terminal) {
+        factory = new NettyDispatchFactory(context, terminal);
+        context.setDispatchFactory(factory);
     }
 
     /** Registers a pass-through filter that records that it ran. */
@@ -55,7 +65,7 @@ class NettyRequestDispatcherTest {
 
     /** Records every request the terminal chain is handed, so a dispatch can be asserted on. */
     private void recordTerminal() {
-        context.setTerminalChain((request, response) -> reached.add((HttpServletRequest) request));
+        terminalIs((request, response) -> reached.add((HttpServletRequest) request));
     }
 
     private NettyHttpServletRequest requestFor(String uri, NettyHttpServletResponse response) {
@@ -70,7 +80,7 @@ class NettyRequestDispatcherTest {
         var response = new NettyHttpServletResponse();
         var request = requestFor(uri, response);
 
-        new NettyRequestDispatcher(context, targetPath, queryString).forward(request, response);
+        new NettyRequestDispatcher(factory, targetPath, queryString).forward(request, response);
 
         return reached.getFirst();
     }
@@ -92,7 +102,7 @@ class NettyRequestDispatcherTest {
         var response = new NettyHttpServletResponse();
         var request = requestFor("/source", response);
 
-        new NettyRequestDispatcher(context, "/target", null).forward(request, response);
+        new NettyRequestDispatcher(factory, "/target", null).forward(request, response);
 
         assertEquals(1, reached.size(), "a forward runs the terminal chain exactly once; got " + reached);
     }
@@ -133,7 +143,7 @@ class NettyRequestDispatcherTest {
         var response = new NettyHttpServletResponse();
         var request = requestFor("/src", response);
 
-        new NettyRequestDispatcher(context, "/t", null).forward(request, response);
+        new NettyRequestDispatcher(factory, "/t", null).forward(request, response);
 
         assertEquals(DispatcherType.REQUEST, request.getDispatcherType(),
             "a forward wraps the request; it must not re-path or re-type the original");
@@ -179,18 +189,18 @@ class NettyRequestDispatcherTest {
     @Test
     void aNestedForwardKeepsTheOutermostOriginalValues() throws Exception {
         context.setContextPath("/app");
-        context.setTerminalChain((inner, res) -> {
+        terminalIs((inner, res) -> {
             var current = (HttpServletRequest) inner;
             if ("/c".equals(current.getServletPath())) {
                 reached.add(current);
             } else {
-                new NettyRequestDispatcher(context, "/c", null).forward(current, res);
+                new NettyRequestDispatcher(factory, "/c", null).forward(current, res);
             }
         });
         var response = new NettyHttpServletResponse();
         var request = requestFor("/app/a", response);
 
-        new NettyRequestDispatcher(context, "/b", null).forward(request, response);
+        new NettyRequestDispatcher(factory, "/b", null).forward(request, response);
 
         assertEquals("/app/a", reached.getFirst().getAttribute(RequestDispatcher.FORWARD_REQUEST_URI),
             "a nested forward reports the request the client sent, not the previous hop");
@@ -199,11 +209,11 @@ class NettyRequestDispatcherTest {
 
     @Test
     void attributesSetDuringTheForwardAreVisibleToTheForwarder() throws Exception {
-        context.setTerminalChain((inner, res) -> inner.setAttribute("marker", "set-by-target"));
+        terminalIs((inner, res) -> inner.setAttribute("marker", "set-by-target"));
         var response = new NettyHttpServletResponse();
         var request = requestFor("/src", response);
 
-        new NettyRequestDispatcher(context, "/t", null).forward(request, response);
+        new NettyRequestDispatcher(factory, "/t", null).forward(request, response);
 
         assertEquals("set-by-target", request.getAttribute("marker"),
             "the wrapper shares the original's attribute map, which OncePerRequestFilter's "
@@ -252,7 +262,7 @@ class NettyRequestDispatcherTest {
         var response = new NettyHttpServletResponse();
         var request = requestFor("/src?a=1", response);
 
-        new NettyRequestDispatcher(context, "/t", "a=2&b=3").forward(request, response);
+        new NettyRequestDispatcher(factory, "/t", "a=2&b=3").forward(request, response);
 
         assertEquals("1", request.getParameter("a"), "the target's parameters live only for the forward");
         assertNull(request.getParameter("b"));
@@ -297,7 +307,7 @@ class NettyRequestDispatcherTest {
         var request = requestFor("/src", response);
         response.flushBuffer();
 
-        var dispatcher = new NettyRequestDispatcher(context, "/t", null);
+        var dispatcher = new NettyRequestDispatcher(factory, "/t", null);
 
         assertThrows(IllegalStateException.class, () -> dispatcher.forward(request, response));
     }
@@ -309,7 +319,7 @@ class NettyRequestDispatcherTest {
         var request = requestFor("/src", response);
         response.sendError(404);
 
-        var dispatcher = new NettyRequestDispatcher(context, "/t", null);
+        var dispatcher = new NettyRequestDispatcher(factory, "/t", null);
 
         assertThrows(IllegalStateException.class, () -> dispatcher.forward(request, response),
             "sendError commits without writing the head, so guarding on resetBuffer alone lets this through");
@@ -321,7 +331,7 @@ class NettyRequestDispatcherTest {
         var response = new NettyHttpServletResponse();
         var request = requestFor("/src", response);
         response.sendError(404);
-        var dispatcher = new NettyRequestDispatcher(context, "/t", null);
+        var dispatcher = new NettyRequestDispatcher(factory, "/t", null);
 
         assertThrows(IllegalStateException.class, () -> dispatcher.forward(request, response));
 
@@ -330,14 +340,14 @@ class NettyRequestDispatcherTest {
 
     @Test
     void anUncommittedBufferIsClearedBeforeTheTargetRuns() throws Exception {
-        context.setTerminalChain((request, res) ->
+        terminalIs((request, res) ->
             res.getOutputStream().write("after".getBytes(StandardCharsets.UTF_8)));
         List<HttpObject> parts = new ArrayList<>();
         var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, parts::add);
         var request = requestFor("/src", response);
         response.getOutputStream().write("before".getBytes(StandardCharsets.UTF_8));
 
-        new NettyRequestDispatcher(context, "/t", null).forward(request, response);
+        new NettyRequestDispatcher(factory, "/t", null).forward(request, response);
         response.complete();
 
         assertEquals(1, parts.size(), "the forward must not complete the response; got " + parts);
@@ -349,7 +359,7 @@ class NettyRequestDispatcherTest {
     void includeIsNotSupported() {
         var response = new NettyHttpServletResponse();
         var request = requestFor("/src", response);
-        var dispatcher = new NettyRequestDispatcher(context, "/t", null);
+        var dispatcher = new NettyRequestDispatcher(factory, "/t", null);
 
         assertThrows(UnsupportedOperationException.class, () -> dispatcher.include(request, response));
     }
@@ -418,7 +428,7 @@ class NettyRequestDispatcherTest {
     @Test
     void aForwardTargetResolvesRelativePathsAgainstTheForwardedUri() throws Exception {
         context.setContextPath("/app");
-        context.setTerminalChain((inner, res) -> {
+        terminalIs((inner, res) -> {
             var current = (HttpServletRequest) inner;
             if ("/x/z".equals(current.getServletPath())) {
                 reached.add(current);
@@ -429,7 +439,7 @@ class NettyRequestDispatcherTest {
         var response = new NettyHttpServletResponse();
         var request = requestFor("/app/src", response);
 
-        new NettyRequestDispatcher(context, "/x/y", null).forward(request, response);
+        new NettyRequestDispatcher(factory, "/x/y", null).forward(request, response);
 
         assertEquals("/app/x/z", reached.getFirst().getRequestURI(),
             "a relative path inside a forward resolves against the forwarded URI, not the original");
@@ -437,14 +447,14 @@ class NettyRequestDispatcherTest {
 
     @Test
     void aContentLengthSetBeforeTheForwardDoesNotSurviveIt() throws Exception {
-        context.setTerminalChain((request, res) ->
+        terminalIs((request, res) ->
             res.getOutputStream().write("target".getBytes(StandardCharsets.UTF_8)));
         var response = new NettyHttpServletResponse();
         var request = requestFor("/src", response);
         response.setContentLength(9);
         response.getOutputStream().write("discarded".getBytes(StandardCharsets.UTF_8));
 
-        new NettyRequestDispatcher(context, "/t", null).forward(request, response);
+        new NettyRequestDispatcher(factory, "/t", null).forward(request, response);
 
         var httpResponse = response.toFullHttpResponse();
         assertEquals(6, httpResponse.content().readableBytes());
