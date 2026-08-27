@@ -37,7 +37,7 @@ class NettyForwardRequestWrapper extends HttpServletRequestWrapper {
     // wrapper, so the outermost request's path elements survive any depth (Servlet 6.1 section 9.4.2).
     private static Map<String, Object> forwardAttributesOf(HttpServletRequest original) {
         if (original.getAttribute(RequestDispatcher.FORWARD_REQUEST_URI) != null) {
-            return Map.of();
+            return Collections.emptyMap();
         }
         Map<String, Object> attributes = new LinkedHashMap<>();
         attributes.put(RequestDispatcher.FORWARD_REQUEST_URI, original.getRequestURI());

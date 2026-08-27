@@ -208,6 +208,27 @@ class NettyRequestDispatcherTest {
     }
 
     @Test
+    void getAttributeAnswersNullForANullNameAtEveryForwardDepth() throws Exception {
+        terminalIs((inner, res) -> {
+            var current = (HttpServletRequest) inner;
+            if ("/c".equals(current.getServletPath())) {
+                reached.add(current);
+            } else {
+                reached.add(current);
+                new NettyRequestDispatcher(factory, "/c", null).forward(current, res);
+            }
+        });
+        var response = new NettyHttpServletResponse();
+        var request = requestFor("/a", response);
+
+        new NettyRequestDispatcher(factory, "/b", null).forward(request, response);
+
+        assertNull(request.getAttribute(null), "unwrapped request");
+        assertNull(reached.get(0).getAttribute(null), "one forward deep");
+        assertNull(reached.get(1).getAttribute(null), "two forwards deep");
+    }
+
+    @Test
     void attributesSetDuringTheForwardAreVisibleToTheForwarder() throws Exception {
         terminalIs((inner, res) -> inner.setAttribute("marker", "set-by-target"));
         var response = new NettyHttpServletResponse();
