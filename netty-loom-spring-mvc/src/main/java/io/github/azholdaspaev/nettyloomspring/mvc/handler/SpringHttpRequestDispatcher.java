@@ -3,7 +3,7 @@ package io.github.azholdaspaev.nettyloomspring.mvc.handler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionMetadata;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestDispatcher;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpResponseWriter;
-import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyFilterChain;
+import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyDispatchFactory;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyHttpServletRequest;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyHttpServletResponse;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
@@ -17,7 +17,7 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
 
     public SpringHttpRequestDispatcher(DispatcherServlet dispatcherServlet, NettyServletContext servletContext) {
         this.servletContext = servletContext;
-        servletContext.setTerminalChain(dispatcherServlet::service);
+        servletContext.setDispatchFactory(new NettyDispatchFactory(servletContext, dispatcherServlet::service));
     }
 
     @Override
@@ -48,7 +48,7 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
         // owed; fireRequestInitialized releases the prefix it notified before propagating.
         servletContext.getListenerRegistry().fireRequestInitialized(servletRequest);
         try {
-            NettyFilterChain.forDispatch(servletContext, servletRequest).doFilter(servletRequest, servletResponse);
+            servletContext.getDispatchFactory().chainFor(servletRequest).doFilter(servletRequest, servletResponse);
         } finally {
             servletContext.getListenerRegistry().fireRequestDestroyed(servletRequest);
         }

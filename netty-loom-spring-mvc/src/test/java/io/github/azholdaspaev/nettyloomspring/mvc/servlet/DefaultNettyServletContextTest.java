@@ -2,7 +2,6 @@ package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.Filter;
-import jakarta.servlet.FilterChain;
 import jakarta.servlet.FilterRegistration;
 import jakarta.servlet.Servlet;
 import jakarta.servlet.ServletContextAttributeEvent;
@@ -39,6 +38,8 @@ class DefaultNettyServletContextTest {
     @BeforeEach
     void setUp() {
         context = new DefaultNettyServletContext();
+        context.setDispatchFactory(new NettyDispatchFactory(context, (request, response) -> {
+        }));
     }
 
     // --- Request dispatchers (issue #182) ---
@@ -890,16 +891,14 @@ class DefaultNettyServletContextTest {
     }
 
     @Test
-    void shouldKeepTheTerminalChainAcrossACloseOpenCycle() {
-        FilterChain terminal = (request, response) -> {
-        };
-        context.setTerminalChain(terminal);
+    void shouldKeepTheDispatchFactoryAcrossACloseOpenCycle() {
+        var dispatchFactory = context.getDispatchFactory();
 
         context.close();
         context.open();
 
-        assertSame(terminal, context.getTerminalChain(),
-            "a stop/start cycle must leave forwarding wired, not unbind the terminal chain");
+        assertSame(dispatchFactory, context.getDispatchFactory(),
+            "a stop/start cycle must leave forwarding wired, not unbind the dispatch factory");
     }
 
     @Test

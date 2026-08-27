@@ -1,11 +1,9 @@
 package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
-import jakarta.servlet.DispatcherType;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletResponse;
-import jakarta.servlet.http.HttpServletRequest;
 
 import java.io.IOException;
 import java.util.List;
@@ -26,16 +24,6 @@ public class NettyFilterChain implements FilterChain {
     public NettyFilterChain(List<RegisteredFilter> filters, FilterChain terminal) {
         this.filters = filters;
         this.terminal = terminal;
-    }
-
-    /** Filter URL patterns are context-relative, so registrations match on the servlet path. */
-    public static NettyFilterChain forDispatch(NettyServletContext context, HttpServletRequest request) {
-        String servletPath = request.getServletPath();
-        DispatcherType dispatcherType = request.getDispatcherType();
-        List<RegisteredFilter> applicable = context.getRegisteredFilters().stream()
-            .filter(filter -> filter.matches(servletPath, dispatcherType))
-            .toList();
-        return new NettyFilterChain(applicable, context.getTerminalChain());
     }
 
     @Override
