@@ -29,7 +29,7 @@ class NettyRequestDispatcher implements RequestDispatcher {
         }
         response.resetBuffer();
 
-        var forwarded = new NettyForwardRequest(factory, (HttpServletRequest) request, targetPath, queryString);
+        var forwarded = new NettyForwardRequestWrapper(factory, (HttpServletRequest) request, targetPath, queryString);
         factory.chainFor(forwarded).doFilter(forwarded, response);
     }
 
