@@ -370,13 +370,11 @@ class SpringHttpRequestDispatcherTest {
 
     // --- Forward dispatch (issue #182) ---
 
-    /**
-     * A dispatcher whose servlet writes {@code source}, forwards to {@code /target}, and writes
-     * {@code target} on the way back in. Branching on the URI is what stops the re-entry recursing.
-     */
     private SpringHttpRequestDispatcher forwardingDispatcher() {
         return dispatcher((request, response) -> {
             try {
+                // The servlet is re-entered by its own forward; branching on the URI is what stops
+                // the second pass forwarding again.
                 if ("/target".equals(request.getRequestURI())) {
                     events.add("target");
                     response.getOutputStream().write("target".getBytes(StandardCharsets.UTF_8));

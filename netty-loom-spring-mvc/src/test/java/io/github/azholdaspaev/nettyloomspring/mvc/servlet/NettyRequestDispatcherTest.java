@@ -48,13 +48,11 @@ class NettyRequestDispatcherTest {
         });
     }
 
-    /** Installs the terminal a dispatch ends in, and the factory built over it. */
     private void terminalIs(FilterChain terminal) {
         factory = new NettyDispatchFactory(context, terminal);
         context.setDispatchFactory(factory);
     }
 
-    /** Registers a pass-through filter that records that it ran. */
     private void registerFilter(String name, String pattern, EnumSet<DispatcherType> dispatcherTypes) {
         Filter filter = (request, response, chain) -> {
             trace.add(name);
@@ -63,7 +61,6 @@ class NettyRequestDispatcherTest {
         context.addFilter(name, filter).addMappingForUrlPatterns(dispatcherTypes, false, pattern);
     }
 
-    /** Records every request the terminal chain is handed, so a dispatch can be asserted on. */
     private void recordTerminal() {
         terminalIs((request, response) -> reached.add((HttpServletRequest) request));
     }
@@ -74,7 +71,6 @@ class NettyRequestDispatcherTest {
             CONNECTION, context, response);
     }
 
-    /** Forwards {@code uri} to {@code targetPath} and returns the request the terminal chain saw. */
     private HttpServletRequest forward(String uri, String targetPath, String queryString) throws Exception {
         recordTerminal();
         var response = new NettyHttpServletResponse();
@@ -85,7 +81,6 @@ class NettyRequestDispatcherTest {
         return reached.getFirst();
     }
 
-    /** Resolves {@code path} from a request for {@code uri}, forwards, and returns what the target saw. */
     private HttpServletRequest forwardVia(String uri, String path) throws Exception {
         recordTerminal();
         var response = new NettyHttpServletResponse();
