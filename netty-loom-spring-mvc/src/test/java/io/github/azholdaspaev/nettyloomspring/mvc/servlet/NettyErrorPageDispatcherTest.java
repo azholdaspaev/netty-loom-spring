@@ -15,6 +15,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.channels.ClosedChannelException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -68,6 +71,25 @@ class NettyErrorPageDispatcherTest {
         return new NettyHttpServletRequest(
             new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, method, uri),
             CONNECTION, context, response);
+    }
+
+    private String reportOnAStreamedResponse(Throwable failure) throws Exception {
+        pageIs("/error");
+        List<HttpObject> written = new ArrayList<>();
+        var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, written::add);
+        var request = requestFor("/download", response);
+        response.setBufferSize(1);
+        response.getOutputStream().write("streamed".getBytes(StandardCharsets.UTF_8));
+
+        ByteArrayOutputStream captured = new ByteArrayOutputStream();
+        PrintStream standardError = System.err;
+        System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
+        try {
+            assertFalse(errorPages.report(request, response, failure));
+        } finally {
+            System.setErr(standardError);
+        }
+        return captured.toString(StandardCharsets.UTF_8);
     }
 
     @Test
@@ -299,6 +321,22 @@ class NettyErrorPageDispatcherTest {
         assertFalse(errorPages.report(request, response, new IllegalStateException("bang")),
             "the client is already reading the response; there is nothing left to replace it with");
         assertTrue(reached.isEmpty());
+    }
+
+    @Test
+    void aClientThatLeftMidResponseIsNotWarnedAbout() throws Exception {
+        String logged = reportOnAStreamedResponse(new ClosedChannelException());
+
+        assertFalse(logged.contains("WARN"),
+            "a client that hung up mid-download is not a fault this server owns; log was: " + logged);
+    }
+
+    @Test
+    void aServerFaultMidResponseIsStillWarnedAbout() throws Exception {
+        String logged = reportOnAStreamedResponse(new IllegalStateException("bang"));
+
+        assertTrue(logged.contains("WARN"),
+            "a page the server owed and cannot send is worth saying so; log was: " + logged);
     }
 
     @Test
