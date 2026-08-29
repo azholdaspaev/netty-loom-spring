@@ -173,7 +173,10 @@ Two headers Tomcat always sends are never emitted here: `Date` and `Server`.
 disconnects (`ClosedChannelException`, `PrematureChannelClosureException`, and `IOException`s whose
 message names a reset, broken pipe or forcible close) close the connection with **no response**.
 Everything else maps to a status, is logged (`5xx` at error, below that at warn), and is answered
-with a plain-text body equal to the reason phrase plus `Connection: close`.
+with a plain-text body equal to the reason phrase plus `Connection: close`. A failure from the
+servlet chain reaches this handler only as a fallback: with an error page registered — and Boot
+registers `/error` — the same mapped status is answered by that page instead, on a connection that
+stays open.
 
 | Cause | Status |
 | --- | --- |
