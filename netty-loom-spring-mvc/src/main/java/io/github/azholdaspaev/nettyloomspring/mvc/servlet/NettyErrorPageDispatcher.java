@@ -35,11 +35,12 @@ public class NettyErrorPageDispatcher {
         if (failure == null && !response.isErrorSent()) {
             return false;
         }
+        // The two throwables answer different questions, so both are passed on. The wrapper
+        // FrameworkServlet adds tells a controller failure from a filter's, and only the latter keeps
+        // the pipeline's mapped status -- taken over whatever the response already held, as Tomcat's
+        // StandardWrapperValve.exception does. The root cause is what an application registers a page
+        // for, which is why StandardHostValve.throwable unwraps too.
         Throwable rootCause = rootCauseOf(failure);
-        // The failure as thrown rather than its root cause: FrameworkServlet wraps whatever a handler
-        // threw, so the wrapper is what tells a controller failure from a filter's, and only the latter
-        // keeps the pipeline's mapped status. Whatever the response already held is not consulted --
-        // Tomcat's StandardWrapperValve.exception likewise sets 500 over it before a page is resolved.
         int status = statusFor(response, failure);
         String path = context.getErrorPageResolver().resolve(status, failure, rootCause);
         if (path == null) {
@@ -69,8 +70,6 @@ public class NettyErrorPageDispatcher {
         return true;
     }
 
-    // DispatcherServlet wraps what a handler throws, so the wrapper is never what an application
-    // registered a page for; Tomcat's StandardHostValve.throwable unwraps for the same reason.
     private static Throwable rootCauseOf(Throwable failure) {
         if (failure instanceof ServletException wrapper && wrapper.getRootCause() != null) {
             return wrapper.getRootCause();
