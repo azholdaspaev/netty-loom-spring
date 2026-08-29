@@ -51,6 +51,9 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
         // owed; fireRequestInitialized releases the prefix it notified before propagating.
         servletContext.getListenerRegistry().fireRequestInitialized(servletRequest);
         try {
+            // Inside the bracket, because the error page is still part of the request: announcing the
+            // request destroyed first would run every @RequestScope destruction callback before the
+            // page that may depend on them, as Tomcat's StandardHostValve avoids.
             serveWithErrorPages(servletRequest, servletResponse);
         } finally {
             servletContext.getListenerRegistry().fireRequestDestroyed(servletRequest);
@@ -61,9 +64,6 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
         servletResponse.complete();
     }
 
-    // Inside the requestInitialized/requestDestroyed bracket, because the error page is still part of
-    // the request: announcing the request destroyed first would run every @RequestScope destruction
-    // callback before the page that may depend on them, as Tomcat's StandardHostValve avoids.
     private void serveWithErrorPages(NettyHttpServletRequest request, NettyHttpServletResponse response)
         throws Exception {
         try {
