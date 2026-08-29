@@ -76,8 +76,11 @@ Everything below is set on the factory and never read again — **no warning, no
 | `server.netty.port` | Removed; use `server.port` | |
 | `server.tomcat.*`, `server.jetty.*`, `server.undertow.*` | Those containers are not on the classpath | |
 
-In Spring Boot 4 the error properties moved from `server.error.*` to `spring.web.error.*`. Neither
-is honoured here.
+In Spring Boot 4 the error properties moved from `server.error.*` to `spring.web.error.*`; Boot
+itself removed the old namespace, and nothing here rebinds it. The new one *is* honoured: `path`
+selects the page a failed request is dispatched to, and `include-message`, `include-stacktrace`,
+`include-binding-errors` and `whitelabel.enabled` are Boot's own and reach the client along with
+the body.
 
 ## Fixed limits
 
