@@ -400,16 +400,10 @@ public class NettyHttpServletResponse implements HttpServletResponse {
 
     @Override
     public void reset() {
-        resetBuffer();
+        reopenForErrorPage();
         headers.clear();
         status = HttpServletResponse.SC_OK;
         characterEncoding = StandardCharsets.ISO_8859_1;
-        // Reachable only while nothing has shipped: resetBuffer above refuses once the head is on the
-        // wire, so this un-commits a sendError or sendRedirect -- which commit without sending -- and
-        // never a response the client has already begun reading.
-        committed = false;
-        errorSent = false;
-        errorMessage = null;
     }
 
     boolean isErrorSent() {
@@ -425,12 +419,16 @@ public class NettyHttpServletResponse implements HttpServletResponse {
     }
 
     /**
-     * Hands an errored response back to the container so an error page can write the real body.
+     * Hands an errored response back to the container so an error page can write the real body. The
+     * half of {@link #reset()} that keeps the headers: dropping them would lose the {@code Set-Cookie}
+     * of a session created before the failure, and every header a filter had written. Tomcat's
+     * {@code StandardHostValve} splits the same way, via {@code resetBuffer(true)} and
+     * {@code setAppCommitted(false)}.
      */
     void reopenForErrorPage() {
-        // resetBuffer and un-commit rather than reset(), which also clears the headers: that would drop
-        // the Set-Cookie of a session created before the failure, and every header a filter had written.
-        // Tomcat's StandardHostValve does the same, via resetBuffer(true) and setAppCommitted(false).
+        // Reachable only while nothing has shipped: resetBuffer refuses once the head is on the wire,
+        // so this un-commits a sendError or sendRedirect -- which commit without sending -- and never a
+        // response the client has already begun reading.
         resetBuffer();
         committed = false;
         errorSent = false;
