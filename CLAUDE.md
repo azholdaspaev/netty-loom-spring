@@ -70,6 +70,8 @@ All source code changes must strictly follow TDD (Test-Driven Development): writ
 
 Tests use JUnit 6 (`org.junit.jupiter.api`, via `org.junit.jupiter:junit-jupiter`) on JUnit Platform. All test tasks are configured with `useJUnitPlatform()` and run with `--enable-native-access=ALL-UNNAMED`.
 
+`AGENTS.md` names the commit, pull request and issue templates, and is normative for their use.
+
 ## CI
 
 GitHub Actions (`.github/workflows/build.yml`): builds on push to main and PRs, uses Temurin JDK 25.
