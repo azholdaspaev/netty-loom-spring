@@ -69,10 +69,20 @@ Subject line: `NL-<issue number> <imperative summary>`, e.g.
 NL-148 Put the servlet types consumers compile against on the api surface
 ```
 
-The body is where the work is. Explain **why** the change is right, name the alternative you
-rejected and why, and state what you verified and how — including the mutation you tried and what
-it broke. Bodies here are typically several paragraphs; a one-line commit for a non-trivial change
-reads as work that has not been thought through.
+**The whole message is 500 characters or fewer** — subject, body and `Closes #NN` together — and
+the body is a short description of what the change makes true. Why the change is right, the
+alternative you rejected and the mutations you ran belong in the pull request body, which is the
+artefact reviewers actually read. Commits carry no trailers: no session links from any agent, no
+`Co-authored-by` bot lines, no generated-by footers.
+
+[`.gitmessage`](.gitmessage) has the full shape. Load it once with:
+
+```bash
+git config commit.template .gitmessage
+```
+
+Git fills the editor from it on a bare `git commit`. `git commit -m` bypasses it, so the file is
+written to be read directly as well.
 
 Branch names follow the same key: `NL-<issue number>-<short-slug>`.
 
