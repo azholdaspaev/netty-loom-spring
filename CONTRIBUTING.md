@@ -91,17 +91,13 @@ belongs in a different commit — that rule is applied literally.
 
 ## Pull requests
 
-Before opening:
+[`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md) is the body shape, and it
+carries the checklist to work through before opening. GitHub fills the compose box from it, as
+does a bare `gh pr create`; `gh pr create --body` bypasses it, so read the file directly.
 
-- [ ] `./gradlew build` passes locally
-- [ ] Every production change has a test that fails without it, and you have confirmed that by
-      mutation
-- [ ] Every comment you added fires a trigger from `CLAUDE.md` rule 5, and you can name which one
-- [ ] Every changed line traces to the issue
-- [ ] Documentation that the change falsifies is rewritten, not appended to — including
-      [`README.md`](README.md), [`docs/compatibility-matrix.md`](docs/compatibility-matrix.md) and
-      [`docs/configuration.md`](docs/configuration.md) when behaviour or a property changes
-- [ ] A user-visible change has a [`CHANGELOG.md`](CHANGELOG.md) entry
+Because commits are capped at 500 characters, the pull request body is where the reasoning lives —
+why the change is right, the alternative you rejected, and the mutations you ran with what each
+one broke.
 
 CI runs `./gradlew build` on both Linux and macOS so that epoll and kqueue are each exercised.
 **Both matrix cells must pass to merge.**
