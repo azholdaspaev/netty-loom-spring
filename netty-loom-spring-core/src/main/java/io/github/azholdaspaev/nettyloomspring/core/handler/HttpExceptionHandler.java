@@ -54,7 +54,7 @@ public class HttpExceptionHandler extends ChannelInboundHandlerAdapter {
             .addListener(ChannelFutureListener.CLOSE);
     }
 
-    private static HttpResponseStatus statusFor(Throwable cause) {
+    public static HttpResponseStatus statusFor(Throwable cause) {
         Throwable unwrapped = cause instanceof DecoderException && cause.getCause() != null
             ? cause.getCause()
             : cause;
