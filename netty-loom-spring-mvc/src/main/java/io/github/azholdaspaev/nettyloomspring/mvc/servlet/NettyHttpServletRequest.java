@@ -1,10 +1,9 @@
 package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionMetadata;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.DateFormatter;
-import io.netty.handler.codec.http.FullHttpRequest;
+import io.netty.handler.codec.TooLongFrameException;
+import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpUtil;
@@ -13,7 +12,6 @@ import io.netty.handler.codec.http.cookie.ServerCookieDecoder;
 import io.netty.util.AsciiString;
 import jakarta.servlet.AsyncContext;
 import jakarta.servlet.DispatcherType;
-import jakarta.servlet.ReadListener;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletConnection;
 import jakarta.servlet.ServletContext;
@@ -30,6 +28,8 @@ import jakarta.servlet.http.Part;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
 import java.net.InetSocketAddress;
@@ -53,7 +53,11 @@ import org.springframework.http.HttpHeaders;
 
 public class NettyHttpServletRequest implements HttpServletRequest {
 
-    private final FullHttpRequest nettyRequest;
+    /** Tomcat's {@code maxPostSize} default. */
+    private static final int MAX_FORM_BODY_BYTES = 2 * 1024 * 1024;
+
+    private final HttpRequest nettyRequest;
+    private final InputStream body;
     private final HttpConnectionMetadata connection;
     private final NettyServletContext servletContext;
     // Held so a session created mid-request can emit its Set-Cookie immediately. Deferring that to the
@@ -80,11 +84,13 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     private String requestedSessionId;
     private boolean requestedSessionIdResolved;
 
-    public NettyHttpServletRequest(FullHttpRequest nettyRequest,
+    public NettyHttpServletRequest(HttpRequest nettyRequest,
+                                   InputStream body,
                                    HttpConnectionMetadata connection,
                                    NettyServletContext servletContext,
                                    NettyHttpServletResponse response) {
         this.nettyRequest = nettyRequest;
+        this.body = body;
         this.connection = connection;
         this.servletContext = servletContext;
         this.response = response;
@@ -146,14 +152,30 @@ public class NettyHttpServletRequest implements HttpServletRequest {
             || !AsciiString.contentEqualsIgnoreCase(mimeType, HttpHeaderValues.APPLICATION_X_WWW_FORM_URLENCODED)) {
             return;
         }
-        String body = nettyRequest.content().toString(charset);
-        if (body.isEmpty()) {
+        String form = readFormBody(charset);
+        if (form.isEmpty()) {
             return;
         }
         Map<String, List<String>> formParams =
-            new QueryStringDecoder(body, charset, false).parameters();
+            new QueryStringDecoder(form, charset, false).parameters();
         formParams.forEach((name, values) ->
             target.computeIfAbsent(name, k -> new ArrayList<>()).addAll(values));
+    }
+
+    /**
+     * Bounded on its own, since the body it reads is no longer bounded by having been buffered whole:
+     * Tomcat's {@code maxPostSize} default, so a form too large to hold is refused rather than held.
+     */
+    private String readFormBody(Charset charset) {
+        try {
+            byte[] form = body.readNBytes(MAX_FORM_BODY_BYTES + 1);
+            if (form.length > MAX_FORM_BODY_BYTES) {
+                throw new TooLongFrameException("Form body exceeded " + MAX_FORM_BODY_BYTES + " bytes");
+            }
+            return new String(form, charset);
+        } catch (IOException stopped) {
+            throw new UncheckedIOException(stopped);
+        }
     }
 
     private int defaultPort() {
@@ -485,34 +507,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
             throw new IllegalStateException("getReader() has already been called on this request");
         }
         if (inputStream == null) {
-            ByteBuf buffer = nettyRequest.content().duplicate();
-            ByteBufInputStream stream = new ByteBufInputStream(buffer);
-            inputStream = new ServletInputStream() {
-                @Override
-                public boolean isFinished() {
-                    return buffer.readableBytes() == 0;
-                }
-
-                @Override
-                public boolean isReady() {
-                    return true;
-                }
-
-                @Override
-                public void setReadListener(ReadListener readListener) {
-                    throw new UnsupportedOperationException("Async read not supported");
-                }
-
-                @Override
-                public int read() throws IOException {
-                    return stream.read();
-                }
-
-                @Override
-                public int read(byte[] b, int off, int len) throws IOException {
-                    return stream.read(b, off, len);
-                }
-            };
+            inputStream = new NettyServletInputStream(body);
         }
         return inputStream;
     }
@@ -572,8 +567,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
         }
         if (reader == null) {
             Charset charset = characterEncoding != null ? characterEncoding : StandardCharsets.UTF_8;
-            ByteBufInputStream stream = new ByteBufInputStream(nettyRequest.content().duplicate());
-            reader = new BufferedReader(new InputStreamReader(stream, charset));
+            reader = new BufferedReader(new InputStreamReader(body, charset));
         }
         return reader;
     }

@@ -38,4 +38,21 @@ public final class RawHttpClient {
         out.write(request.toString().getBytes(StandardCharsets.US_ASCII));
         out.flush();
     }
+
+    /** Sends body bytes on their own, so a test can dribble a request the way a slow client does. */
+    public static void sendBody(Socket socket, String body) throws IOException {
+        OutputStream out = socket.getOutputStream();
+        out.write(body.getBytes(StandardCharsets.US_ASCII));
+        out.flush();
+    }
+
+    /** One chunk of a {@code Transfer-Encoding: chunked} request body. */
+    public static void sendChunk(Socket socket, String chunk) throws IOException {
+        sendBody(socket, Integer.toHexString(chunk.length()) + "\r\n" + chunk + "\r\n");
+    }
+
+    /** The zero-length chunk that ends a chunked request body. */
+    public static void endChunks(Socket socket) throws IOException {
+        sendBody(socket, "0\r\n\r\n");
+    }
 }

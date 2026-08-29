@@ -17,23 +17,27 @@ import io.netty.channel.local.LocalAddress;
 import io.netty.channel.local.LocalChannel;
 import io.netty.channel.local.LocalIoHandler;
 import io.netty.channel.local.LocalServerChannel;
-import io.netty.handler.codec.http.DefaultFullHttpRequest;
+import io.netty.handler.codec.TooLongFrameException;
+import io.netty.channel.Channel;
+import io.github.azholdaspaev.nettyloomspring.core.support.RecordingReads;
+import io.netty.handler.codec.http.DefaultHttpRequest;
+import io.netty.handler.codec.http.DefaultLastHttpContent;
+import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.DefaultHttpContent;
 import io.netty.handler.codec.http.DefaultHttpResponse;
-import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpServerKeepAliveHandler;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
-import io.netty.util.IllegalReferenceCountException;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import org.junit.jupiter.api.Test;
@@ -43,6 +47,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintStream;
 import java.nio.channels.ClosedChannelException;
 import java.nio.charset.StandardCharsets;
@@ -66,12 +71,14 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HttpRequestHandlerTest {
 
     private static final Executor DIRECT = Runnable::run;
+
+    /** Holds the dispatch off, so nothing drains the body while the valve is under test. */
+    private static final Executor NEVER_RUN = _ -> { };
 
     /** Generous: it bounds a spin on another thread's progress, not the progress itself. */
     private static final Duration PARK_LIMIT = Duration.ofSeconds(5);
@@ -81,6 +88,29 @@ class HttpRequestHandlerTest {
     private final HttpConnectionRegistry connectionRegistry =
         new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE));
 
+    private static HttpContent bodyPart(String text) {
+        return new DefaultHttpContent(Unpooled.copiedBuffer(text, StandardCharsets.UTF_8));
+    }
+
+    private static void receive(EmbeddedChannel channel, HttpMethod method, String uri) {
+        receive(channel, new DefaultHttpRequest(HttpVersion.HTTP_1_1, method, uri));
+    }
+
+    /**
+     * Through the pipeline rather than {@code writeInbound}, which records a ClosedChannelException
+     * when the response to the head has already closed the connection.
+     */
+    private static void receive(EmbeddedChannel channel, HttpRequest request) {
+        channel.pipeline().fireChannelRead(request);
+        channel.pipeline().fireChannelRead(LastHttpContent.EMPTY_LAST_CONTENT);
+        channel.runPendingTasks();
+    }
+
+    private static void fire(Channel channel, HttpMethod method, String uri) {
+        channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, method, uri));
+        channel.pipeline().fireChannelRead(LastHttpContent.EMPTY_LAST_CONTENT);
+    }
+
     @Test
     void shouldWriteDispatcherResponseToChannel() {
         FullHttpResponse canned = new DefaultFullHttpResponse(
@@ -88,10 +118,9 @@ class HttpRequestHandlerTest {
             HttpResponseStatus.OK,
             Unpooled.EMPTY_BUFFER);
         EmbeddedChannel channel = new EmbeddedChannel(
-            new HttpRequestHandler((_, _, writer) -> writer.write(canned), DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+            new HttpRequestHandler((_, _, _, writer) -> writer.write(canned), DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
-        channel.writeInbound(new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
+        receive(channel, HttpMethod.GET, "/");
         channel.runPendingTasks();
 
         FullHttpResponse out = channel.readOutbound();
@@ -103,8 +132,7 @@ class HttpRequestHandlerTest {
     @Test
     void shouldWriteAStreamedResponseAsHeadChunksAndLastContent() {
         HttpResponse head = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
-        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
-            (_, _, writer) -> {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
                 writer.write(head);
                 writer.write(new DefaultHttpContent(Unpooled.copiedBuffer("one", StandardCharsets.UTF_8)));
                 writer.write(new DefaultHttpContent(Unpooled.copiedBuffer("two", StandardCharsets.UTF_8)));
@@ -112,8 +140,7 @@ class HttpRequestHandlerTest {
             },
             DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
-        channel.writeInbound(new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
+        receive(channel, HttpMethod.GET, "/");
         channel.runPendingTasks();
 
         assertSame(head, channel.readOutbound(), "the head must reach the wire first");
@@ -127,15 +154,13 @@ class HttpRequestHandlerTest {
 
     @Test
     void shouldFrameAnUnframedStreamingHeadAsChunkedForHttp11() {
-        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
-            (_, _, writer) -> {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
                 writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
                 writer.write(LastHttpContent.EMPTY_LAST_CONTENT);
             },
             DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
-        channel.writeInbound(new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
+        receive(channel, HttpMethod.GET, "/");
         channel.runPendingTasks();
 
         HttpResponse head = channel.readOutbound();
@@ -146,8 +171,7 @@ class HttpRequestHandlerTest {
 
     @Test
     void shouldNotReframeAHeadThatAlreadySetContentLength() {
-        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
-            (_, _, writer) -> {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
                 HttpResponse head = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
                 head.headers().setInt(HttpHeaderNames.CONTENT_LENGTH, 3);
                 writer.write(head);
@@ -156,8 +180,7 @@ class HttpRequestHandlerTest {
             },
             DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
-        channel.writeInbound(new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
+        receive(channel, HttpMethod.GET, "/");
         channel.runPendingTasks();
 
         HttpResponse head = channel.readOutbound();
@@ -170,15 +193,14 @@ class HttpRequestHandlerTest {
 
     @Test
     void shouldLeaveAnHttp10StreamingHeadUnframedSoTheConnectionDelimitsIt() {
-        EmbeddedChannel channel = keepAliveChannel((_, _, writer) -> {
+        EmbeddedChannel channel = keepAliveChannel((_, _, _, writer) -> {
             writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
             writer.write(LastHttpContent.EMPTY_LAST_CONTENT);
         });
-        FullHttpRequest request = new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_0, HttpMethod.GET, "/");
+        HttpRequest request = new DefaultHttpRequest(HttpVersion.HTTP_1_0, HttpMethod.GET, "/");
         request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
 
-        channel.writeInbound(request);
+        receive(channel, request);
         channel.runPendingTasks();
 
         HttpResponse head = channel.readOutbound();
@@ -198,8 +220,7 @@ class HttpRequestHandlerTest {
         AtomicReference<Throwable> failure = new AtomicReference<>();
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         EmbeddedChannel channel = new EmbeddedChannel(
-            new HttpRequestHandler(
-                (_, _, writer) -> {
+            new HttpRequestHandler((_, _, _, writer) -> {
                     connectionClosed.await();
                     try {
                         writer.write(new DefaultHttpContent(orphan));
@@ -210,8 +231,7 @@ class HttpRequestHandlerTest {
                 task -> worker.set(startQuietly(task)), connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT),
             capture);
 
-        channel.writeInbound(new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
+        receive(channel, HttpMethod.GET, "/");
         channel.close();
         connectionClosed.countDown();
         worker.get().join();
@@ -231,8 +251,7 @@ class HttpRequestHandlerTest {
         // On a real loop rather than an EmbeddedChannel, whose loop reports inEventLoop()
         // unconditionally true: a wait inside the writer would be refused there as a deadlock
         // instead of parking, and this test would pass against a writer that never waits.
-        try (StalledConnection connection = new StalledConnection(new HttpRequestHandler(
-            (_, _, writer) -> {
+        try (StalledConnection connection = new StalledConnection(new HttpRequestHandler((_, _, _, writer) -> {
                 writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
                 writer.write(LastHttpContent.EMPTY_LAST_CONTENT);
                 responseFinished.countDown();
@@ -257,8 +276,7 @@ class HttpRequestHandlerTest {
     void shouldGiveUpOnAConnectionThatStaysUnwritable() throws Exception {
         AtomicReference<Thread> worker = new AtomicReference<>();
         AtomicReference<Throwable> failure = new AtomicReference<>();
-        try (StalledConnection connection = new StalledConnection(new HttpRequestHandler(
-            (_, _, writer) -> {
+        try (StalledConnection connection = new StalledConnection(new HttpRequestHandler((_, _, _, writer) -> {
                 try {
                     writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
                 } catch (Throwable caught) {
@@ -284,8 +302,7 @@ class HttpRequestHandlerTest {
         CountDownLatch responseFinished = new CountDownLatch(1);
         AtomicReference<Thread> worker = new AtomicReference<>();
         AtomicReference<Throwable> failure = new AtomicReference<>();
-        try (StalledConnection connection = new StalledConnection(new HttpRequestHandler(
-            (_, _, writer) -> {
+        try (StalledConnection connection = new StalledConnection(new HttpRequestHandler((_, _, _, writer) -> {
                 try {
                     writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
                     writer.write(LastHttpContent.EMPTY_LAST_CONTENT);
@@ -317,16 +334,14 @@ class HttpRequestHandlerTest {
     void shouldCloseInsteadOfFiringExceptionCaughtWhenTheDispatcherFailsAfterCommitting() {
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         EmbeddedChannel channel = new EmbeddedChannel(
-            new HttpRequestHandler(
-                (_, _, writer) -> {
+            new HttpRequestHandler((_, _, _, writer) -> {
                     writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
                     throw new IllegalStateException("halfway through the body");
                 },
                 DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT),
             capture);
 
-        channel.writeInbound(new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
+        receive(channel, HttpMethod.GET, "/");
         channel.runPendingTasks();
 
         assertNotNull(channel.readOutbound(), "the head that was already written stands");
@@ -340,11 +355,10 @@ class HttpRequestHandlerTest {
     void shouldFailAnExchangeTheDispatcherLeftUnanswered() {
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         EmbeddedChannel channel = new EmbeddedChannel(
-            new HttpRequestHandler((_, _, _) -> { }, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT),
+            new HttpRequestHandler((_, _, _, _) -> { }, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT),
             capture);
 
-        channel.writeInbound(new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
+        receive(channel, HttpMethod.GET, "/");
         channel.runPendingTasks();
 
         assertInstanceOf(IllegalStateException.class, capture.captured,
@@ -354,12 +368,10 @@ class HttpRequestHandlerTest {
 
     @Test
     void shouldCloseAnExchangeTheDispatcherLeftHalfWritten() {
-        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
-            (_, _, writer) -> writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK)),
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK)),
             DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
-        channel.writeInbound(new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
+        receive(channel, HttpMethod.GET, "/");
         channel.runPendingTasks();
 
         assertFalse(channel.isOpen(),
@@ -402,8 +414,7 @@ class HttpRequestHandlerTest {
         }
 
         void dispatch() {
-            channel.pipeline().fireChannelRead(new DefaultFullHttpRequest(
-                HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
+            fire(channel, HttpMethod.GET, "/");
         }
 
         void drain() throws Exception {
@@ -427,16 +438,14 @@ class HttpRequestHandlerTest {
     void shouldNotRecordAClientDisconnectMidResponseAsAFailure() throws Exception {
         CountDownLatch connectionClosed = new CountDownLatch(1);
         AtomicReference<Thread> worker = new AtomicReference<>();
-        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
-            (_, _, writer) -> {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
                 writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
                 connectionClosed.await();
                 writer.write(new DefaultHttpContent(Unpooled.copiedBuffer("more", StandardCharsets.UTF_8)));
             },
             task -> worker.set(startQuietly(task)), connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
-        channel.writeInbound(new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.GET, "/download"));
+        receive(channel, HttpMethod.GET, "/download");
         SpinWait.until(() -> channel.readOutbound() != null, PARK_LIMIT,
             "the head must reach the wire before the client leaves");
         channel.close();
@@ -459,15 +468,13 @@ class HttpRequestHandlerTest {
     @ParameterizedTest
     @ValueSource(ints = {100, 204, 205, 304})
     void shouldLeaveAStatusThatCanNeverCarryABodyUnframed(int status) {
-        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
-            (_, _, writer) -> {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
                 writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(status)));
                 writer.write(LastHttpContent.EMPTY_LAST_CONTENT);
             },
             DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
-        channel.writeInbound(new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
+        receive(channel, HttpMethod.GET, "/");
         channel.runPendingTasks();
 
         HttpResponse head = channel.readOutbound();
@@ -489,10 +496,9 @@ class HttpRequestHandlerTest {
     void shouldPassThroughTheIncomingRequestToDispatcher() {
         CapturingDispatcher dispatcher = new CapturingDispatcher();
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
-        FullHttpRequest request = new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.POST, "/submit");
+        HttpRequest request = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/submit");
 
-        channel.writeInbound(request);
+        receive(channel, request);
         channel.runPendingTasks();
 
         assertSame(request, dispatcher.lastRequest,
@@ -508,8 +514,7 @@ class HttpRequestHandlerTest {
         CapturingDispatcher dispatcher = new CapturingDispatcher();
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
-        channel.writeInbound(new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
+        receive(channel, HttpMethod.GET, "/");
         channel.runPendingTasks();
 
         assertEquals(new HttpConnectionMetadata("", 0, "", 0, false), dispatcher.lastConnection,
@@ -525,10 +530,8 @@ class HttpRequestHandlerTest {
         CapturingDispatcher dispatcher = new CapturingDispatcher();
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
-        channel.writeInbound(new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.GET, "/a"));
-        channel.writeInbound(new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.GET, "/b"));
+        receive(channel, HttpMethod.GET, "/a");
+        receive(channel, HttpMethod.GET, "/b");
         channel.runPendingTasks();
 
         assertEquals(2, dispatcher.callCount);
@@ -548,11 +551,10 @@ class HttpRequestHandlerTest {
         RuntimeException boom = new RuntimeException("boom");
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         EmbeddedChannel channel = new EmbeddedChannel(
-            new HttpRequestHandler((_, _, _) -> { throw boom; }, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT),
+            new HttpRequestHandler((_, _, _, _) -> { throw boom; }, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT),
             capture);
 
-        channel.writeInbound(new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
+        receive(channel, HttpMethod.GET, "/");
         channel.runPendingTasks();
 
         assertSame(boom, capture.captured,
@@ -563,18 +565,19 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldReleaseRequestAfterDispatch() {
+    void shouldReleaseEveryPartOfABodyNobodyRead() {
         CapturingDispatcher dispatcher = new CapturingDispatcher();
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
-        FullHttpRequest request = new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.GET, "/");
+        HttpContent unread = bodyPart("ignored");
+        HttpContent terminator = new DefaultLastHttpContent();
 
-        channel.writeInbound(request);
+        channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/"));
+        channel.writeInbound(unread);
+        channel.writeInbound(terminator);
         channel.runPendingTasks();
 
-        assertEquals(0, request.refCnt(),
-            "handler must balance retain()/release() so the request is freed after dispatch");
-
+        assertEquals(0, unread.refCnt(), "a body the dispatcher never read is freed by the dispatch that owned it");
+        assertEquals(0, terminator.refCnt());
         FullHttpResponse out = channel.readOutbound();
         assertNotNull(out);
         out.release();
@@ -582,13 +585,111 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    void shouldCloseRatherThanAnswerAFailureOnceTheResponseHasGoneOut() {
+        ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
+        CompletableFuture<Runnable> submitted = new CompletableFuture<>();
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            (_, _, _, writer) -> writer.write(emptyOkResponse()), submitted::complete, connectionRegistry,
+            UNREACHED_WRITE_STALL_TIMEOUT), capture);
+        channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/"));
+        submitted.join().run();
+
+        channel.pipeline().fireExceptionCaught(new TooLongFrameException("body past the limit"));
+
+        assertNull(capture.captured,
+            "a status written for the failure would encode as more of the body already sent");
+        assertFalse(channel.isOpen(), "there is no way left to report it, so the connection goes");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void shouldStopReadingWhileTheHandlerIsBehindOnTheBody() {
+        RecordingReads reads = new RecordingReads();
+        EmbeddedChannel channel = new EmbeddedChannel(reads, new HttpRequestHandler(
+            (_, _, _, writer) -> writer.write(emptyOkResponse()), NEVER_RUN, connectionRegistry,
+            UNREACHED_WRITE_STALL_TIMEOUT));
+        // As NettyServer configures an accepted connection: nothing reads unless a handler asks.
+        channel.config().setAutoRead(false);
+        channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/"));
+        channel.pipeline().fireChannelRead(bodyPart("x".repeat(HttpRequestBodyStream.HIGH_WATERMARK_BYTES)));
+        reads.count = 0;
+
+        channel.pipeline().fireChannelReadComplete();
+
+        assertEquals(0, reads.count,
+            "reading on while nothing is draining the body would pile it up in heap, which is the "
+                + "buffering this replaced");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void shouldKeepReadingWhileTheHandlerIsKeepingUp() {
+        RecordingReads reads = new RecordingReads();
+        EmbeddedChannel channel = new EmbeddedChannel(reads, new HttpRequestHandler(
+            (_, _, _, writer) -> writer.write(emptyOkResponse()), NEVER_RUN, connectionRegistry,
+            UNREACHED_WRITE_STALL_TIMEOUT));
+        channel.config().setAutoRead(false);
+        channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/"));
+        reads.count = 0;
+
+        channel.pipeline().fireChannelReadComplete();
+
+        assertEquals(1, reads.count, "a body under the bound must keep the connection reading");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void shouldReleaseAQueuedBodyWhenTheDispatcherThrows() {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            (_, _, _, _) -> { throw new IllegalStateException("handler failed"); },
+            DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT),
+            new ExceptionCapturingHandler());
+        HttpContent queued = bodyPart("never read");
+
+        channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/"));
+        channel.pipeline().fireChannelRead(queued);
+
+        assertEquals(0, queued.refCnt(), "a body outliving a failed dispatch is freed by nothing else");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void shouldReleaseAQueuedBodyWhenTheConnectionDies() {
+        CompletableFuture<Runnable> submitted = new CompletableFuture<>();
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            (_, _, _, writer) -> writer.write(emptyOkResponse()), submitted::complete, connectionRegistry,
+            UNREACHED_WRITE_STALL_TIMEOUT));
+        HttpContent queued = bodyPart("half an upload");
+        channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/"));
+        channel.pipeline().fireChannelRead(queued);
+
+        channel.pipeline().fireChannelInactive();
+
+        assertEquals(0, queued.refCnt(), "a body the client abandoned must not outlive the connection");
+    }
+
+    @Test
+    void shouldReleaseBodyPartsThatArriveAfterTheDispatchIsOver() {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            (_, _, _, writer) -> writer.write(emptyOkResponse()), DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+        channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/"));
+        channel.runPendingTasks();
+        HttpContent late = bodyPart("still uploading");
+
+        channel.writeInbound(late);
+
+        assertEquals(0, late.refCnt(),
+            "the rest of an answered request must be drained, or the connection stalls holding it");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
     void shouldCountADispatchThatIsSubmittedButNotYetRunning() throws InterruptedException {
         CompletableFuture<Runnable> submitted = new CompletableFuture<>();
         EmbeddedChannel channel = new EmbeddedChannel(
-            new HttpRequestHandler((_, _, writer) -> writer.write(emptyOkResponse()), submitted::complete, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+            new HttpRequestHandler((_, _, _, writer) -> writer.write(emptyOkResponse()), submitted::complete, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
-        channel.writeInbound(new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
+        receive(channel, HttpMethod.GET, "/");
 
         assertFalse(connectionRegistry.awaitDispatchesFinished(0),
             "a dispatch queued but not yet started must still hold the drain open");
@@ -603,63 +704,31 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldNotLeaveADispatchCountedWhenReleasingTheRequestThrows() throws Exception {
-        CountDownLatch pipelineDroppedItsReference = new CountDownLatch(1);
-        AtomicReference<Thread> worker = new AtomicReference<>();
+    void shouldCountADispatchOutExactlyOnceWhenCleaningUpItsBodyThrows() throws Exception {
+        CompletableFuture<Runnable> submitted = new CompletableFuture<>();
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
-            (request, _, writer) -> {
-                pipelineDroppedItsReference.await();
-                request.release(request.refCnt());
-                writer.write(emptyOkResponse());
-            },
-            task -> worker.set(startQuietly(task)), connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+            (_, _, _, writer) -> writer.write(emptyOkResponse()), submitted::complete, connectionRegistry,
+            UNREACHED_WRITE_STALL_TIMEOUT));
 
-        channel.writeInbound(new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
-        pipelineDroppedItsReference.countDown();
-        worker.get().join();
+        channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/"));
+        channel.pipeline().fireChannelRead(new CleanupFailingContent());
+        submitted.join().run();
 
         assertTrue(connectionRegistry.awaitDispatchesFinished(0),
-            "a dispatch whose release() threw must still have been counted out");
-    }
-
-    @Test
-    void shouldNotCountADispatchOutTwiceWhenItsCleanupThrowsOnAnInlineExecutor() throws Exception {
-        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
-            (request, _, writer) -> {
-                request.release(request.refCnt());
-                writer.write(emptyOkResponse());
-            },
-            DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
-
-        assertThrows(IllegalReferenceCountException.class, () -> channel.writeInbound(
-            new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/")));
+            "a dispatch whose body cleanup threw must still have been counted out");
         connectionRegistry.dispatchStarted();
-
         assertFalse(connectionRegistry.awaitDispatchesFinished(0),
-            "a live dispatch must still hold the drain open after an earlier task threw");
-    }
-
-    @Test
-    void shouldContainACleanupFailureThatIsNotAnOverRelease() throws Exception {
-        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
-            (_, _, writer) -> writer.write(emptyOkResponse()), DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
-
-        assertThrows(IllegalStateException.class,
-            () -> channel.writeInbound(new CleanupFailingRequest()));
-        connectionRegistry.dispatchStarted();
-
-        assertFalse(connectionRegistry.awaitDispatchesFinished(0),
-            "a live dispatch must still hold the drain open after an earlier cleanup threw");
+            "and must not have been counted out a second time");
+        channel.finishAndReleaseAll();
     }
 
     /**
      * Fails its own release with something the reference count cannot explain.
      */
-    private static final class CleanupFailingRequest extends DefaultFullHttpRequest {
+    private static final class CleanupFailingContent extends DefaultHttpContent {
 
-        CleanupFailingRequest() {
-            super(HttpVersion.HTTP_1_1, HttpMethod.GET, "/");
+        CleanupFailingContent() {
+            super(Unpooled.copiedBuffer("x", StandardCharsets.UTF_8));
         }
 
         @Override
@@ -679,20 +748,20 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldReleaseRequestAndPropagateWhenExecutorRejects() throws InterruptedException {
+    void shouldReleaseTheBodyAndPropagateWhenExecutorRejects() throws InterruptedException {
         RejectedExecutionException rejection = new RejectedExecutionException("shutting down");
         Executor rejecting = _ -> { throw rejection; };
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         EmbeddedChannel channel = new EmbeddedChannel(
-            new HttpRequestHandler((_, _, _) -> { throw new AssertionError("dispatcher must not run"); }, rejecting, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT),
+            new HttpRequestHandler((_, _, _, _) -> { throw new AssertionError("dispatcher must not run"); }, rejecting, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT),
             capture);
-        FullHttpRequest request = new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.GET, "/");
+        HttpContent orphaned = bodyPart("body of a request nobody took");
 
-        channel.writeInbound(request);
+        channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/"));
+        channel.writeInbound(orphaned);
 
-        assertEquals(0, request.refCnt(),
-            "handler must release the retained request when the executor rejects the task");
+        assertEquals(0, orphaned.refCnt(),
+            "a body whose dispatch was never submitted must be freed rather than queued for ever");
         assertSame(rejection, capture.captured,
             "rejection must propagate via exceptionCaught so the pipeline can respond");
         assertNull(channel.readOutbound());
@@ -711,15 +780,13 @@ class HttpRequestHandlerTest {
 
             CountDownLatch eventLoopTerminated = new CountDownLatch(1);
             CompletableFuture<Thread> dispatch = new CompletableFuture<>();
-            connection.pipeline().addLast(new HttpRequestHandler(
-                (_, _, _) -> {
+            connection.pipeline().addLast(new HttpRequestHandler((_, _, _, _) -> {
                     eventLoopTerminated.await();
                     throw new IllegalStateException("The servlet context has been closed");
                 },
                 task -> dispatch.complete(startQuietly(task)), connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
-            connection.pipeline().fireChannelRead(new DefaultFullHttpRequest(
-                HttpVersion.HTTP_1_1, HttpMethod.GET, "/work"));
+            fire(connection, HttpMethod.GET, "/work");
             Thread worker = dispatch.join();
             group.shutdownGracefully(0, 0, TimeUnit.NANOSECONDS).sync();
 
@@ -747,10 +814,9 @@ class HttpRequestHandlerTest {
 
     @Test
     void http11WithoutConnectionHeaderKeepsChannelOpen() {
-        EmbeddedChannel channel = keepAliveChannel((_, _, writer) -> writer.write(emptyOkResponse()));
+        EmbeddedChannel channel = keepAliveChannel((_, _, _, writer) -> writer.write(emptyOkResponse()));
 
-        channel.writeInbound(new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
+        receive(channel, HttpMethod.GET, "/");
         channel.runPendingTasks();
 
         FullHttpResponse out = channel.readOutbound();
@@ -763,12 +829,11 @@ class HttpRequestHandlerTest {
 
     @Test
     void http11ConnectionCloseEchoesCloseAndClosesChannel() {
-        EmbeddedChannel channel = keepAliveChannel((_, _, writer) -> writer.write(emptyOkResponse()));
-        FullHttpRequest request = new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.GET, "/");
+        EmbeddedChannel channel = keepAliveChannel((_, _, _, writer) -> writer.write(emptyOkResponse()));
+        HttpRequest request = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/");
         request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
 
-        channel.writeInbound(request);
+        receive(channel, request);
         channel.runPendingTasks();
 
         FullHttpResponse out = channel.readOutbound();
@@ -781,10 +846,9 @@ class HttpRequestHandlerTest {
 
     @Test
     void http10WithoutConnectionHeaderClosesChannel() {
-        EmbeddedChannel channel = keepAliveChannel((_, _, writer) -> writer.write(emptyOkResponse()));
+        EmbeddedChannel channel = keepAliveChannel((_, _, _, writer) -> writer.write(emptyOkResponse()));
 
-        channel.writeInbound(new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_0, HttpMethod.GET, "/"));
+        receive(channel, new DefaultHttpRequest(HttpVersion.HTTP_1_0, HttpMethod.GET, "/"));
         channel.runPendingTasks();
 
         FullHttpResponse out = channel.readOutbound();
@@ -797,12 +861,11 @@ class HttpRequestHandlerTest {
 
     @Test
     void http10WithKeepAliveEchoesKeepAliveAndKeepsChannelOpen() {
-        EmbeddedChannel channel = keepAliveChannel((_, _, writer) -> writer.write(emptyOkResponse()));
-        FullHttpRequest request = new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_0, HttpMethod.GET, "/");
+        EmbeddedChannel channel = keepAliveChannel((_, _, _, writer) -> writer.write(emptyOkResponse()));
+        HttpRequest request = new DefaultHttpRequest(HttpVersion.HTTP_1_0, HttpMethod.GET, "/");
         request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
 
-        channel.writeInbound(request);
+        receive(channel, request);
         channel.runPendingTasks();
 
         FullHttpResponse out = channel.readOutbound();
@@ -815,10 +878,9 @@ class HttpRequestHandlerTest {
 
     @Test
     void dispatcherConnectionCloseWinsOverKeepAliveRequest() {
-        EmbeddedChannel channel = keepAliveChannel((_, _, writer) -> writer.write(closingResponse()));
+        EmbeddedChannel channel = keepAliveChannel((_, _, _, writer) -> writer.write(closingResponse()));
 
-        channel.writeInbound(new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
+        receive(channel, HttpMethod.GET, "/");
         channel.runPendingTasks();
 
         FullHttpResponse out = channel.readOutbound();
@@ -831,12 +893,11 @@ class HttpRequestHandlerTest {
 
     @Test
     void dispatcherConnectionCloseWinsOverHttp10KeepAliveRequest() {
-        EmbeddedChannel channel = keepAliveChannel((_, _, writer) -> writer.write(closingResponse()));
-        FullHttpRequest request = new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_0, HttpMethod.GET, "/");
+        EmbeddedChannel channel = keepAliveChannel((_, _, _, writer) -> writer.write(closingResponse()));
+        HttpRequest request = new DefaultHttpRequest(HttpVersion.HTTP_1_0, HttpMethod.GET, "/");
         request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
 
-        channel.writeInbound(request);
+        receive(channel, request);
         channel.runPendingTasks();
 
         FullHttpResponse out = channel.readOutbound();
@@ -870,12 +931,12 @@ class HttpRequestHandlerTest {
 
     private static final class CapturingDispatcher implements HttpRequestDispatcher {
 
-        FullHttpRequest lastRequest;
+        HttpRequest lastRequest;
         HttpConnectionMetadata lastConnection;
         int callCount;
 
         @Override
-        public void handle(FullHttpRequest request, HttpConnectionMetadata connection,
+        public void handle(HttpRequest request, InputStream body, HttpConnectionMetadata connection,
                            HttpResponseWriter writer) throws IOException {
             this.lastRequest = request;
             this.lastConnection = connection;

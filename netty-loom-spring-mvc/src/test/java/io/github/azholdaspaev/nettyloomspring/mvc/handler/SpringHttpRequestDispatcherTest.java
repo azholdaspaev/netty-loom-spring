@@ -2,6 +2,7 @@ package io.github.azholdaspaev.nettyloomspring.mvc.handler;
 
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionMetadata;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.DefaultNettyServletContext;
+import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -27,6 +28,7 @@ import org.springframework.web.servlet.DispatcherServlet;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiConsumer;
@@ -92,7 +94,7 @@ class SpringHttpRequestDispatcherTest {
     private static FullHttpResponse dispatch(SpringHttpRequestDispatcher dispatcher, FullHttpRequest request)
         throws Exception {
         List<HttpObject> written = new ArrayList<>();
-        dispatcher.handle(request, CONNECTION, written::add);
+        dispatcher.handle(request, new ByteBufInputStream(request.content()), CONNECTION, written::add);
         assertEquals(1, written.size(), "a response that fits the buffer is one part; got " + written);
         return (FullHttpResponse) written.get(0);
     }
@@ -485,7 +487,7 @@ class SpringHttpRequestDispatcherTest {
         });
         List<HttpObject> written = new ArrayList<>();
 
-        dispatcher.handle(get("/api/stream"), CONNECTION, written::add);
+        dispatcher.handle(get("/api/stream"), InputStream.nullInputStream(), CONNECTION, written::add);
 
         assertEquals(3, written.size(), "head, body and terminator each reach the connection; got " + written);
         assertInstanceOf(LastHttpContent.class, written.get(2));

@@ -10,6 +10,7 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
+import io.netty.handler.codec.http.DefaultHttpRequest;
 import io.netty.handler.codec.http.DefaultHttpResponse;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -222,6 +223,30 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
+    void shouldCloseAConnectionWhoseRequestBodyStopsArriving() {
+        EmbeddedChannel channel = newChannel();
+        receiveRequestHead(channel);
+
+        elapse(channel, TIMEOUT_MILLIS);
+
+        assertFalse(channel.isOpen(),
+            "a body that stops part way is the client going quiet, not the server owing a response");
+    }
+
+    @Test
+    void shouldNotCountAnInterimResponseAsTheAnswerToARequest() {
+        EmbeddedChannel channel = newChannel();
+        receiveRequest(channel);
+
+        channel.writeOutbound(continueResponse());
+        channel.releaseOutbound();
+
+        elapse(channel, TIMEOUT_MILLIS * 5);
+        assertTrue(channel.isOpen(),
+            "an invitation to send the body is not an answer, so the exchange is still ours to finish");
+    }
+
+    @Test
     void shouldNotLeaveATimerArmedAfterItIsRemovedFromThePipeline() {
         EmbeddedChannel channel = newChannel();
 
@@ -251,9 +276,21 @@ class HttpReadTimeoutHandlerTest {
     }
 
     private static void receiveRequest(EmbeddedChannel channel) {
-        channel.writeInbound(new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
-        FullHttpRequest received = channel.readInbound();
-        received.release();
+        channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
+        channel.writeInbound(LastHttpContent.EMPTY_LAST_CONTENT);
+        channel.releaseInbound();
+    }
+
+    private static void receiveRequestHead(EmbeddedChannel channel) {
+        channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/upload"));
+        channel.releaseInbound();
+    }
+
+    private static FullHttpResponse continueResponse() {
+        FullHttpResponse response = new DefaultFullHttpResponse(
+            HttpVersion.HTTP_1_1, HttpResponseStatus.CONTINUE, Unpooled.EMPTY_BUFFER);
+        response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH, 0);
+        return response;
     }
 
     private static void respond(EmbeddedChannel channel) {

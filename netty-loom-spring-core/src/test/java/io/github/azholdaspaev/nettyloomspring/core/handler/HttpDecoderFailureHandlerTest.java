@@ -9,7 +9,6 @@ import io.netty.handler.codec.DecoderResult;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpMethod;
-import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpServerCodec;
@@ -38,7 +37,6 @@ class HttpDecoderFailureHandlerTest {
     private static final int MAX_INITIAL_LINE_LENGTH = 128;
     private static final int MAX_HEADER_SIZE = 256;
     private static final int MAX_CHUNK_SIZE = 256;
-    private static final int MAX_BODY_BYTES = 1024;
 
     @Test
     void shouldRejectAHeaderOverTheLimitWith431() {
@@ -100,7 +98,6 @@ class HttpDecoderFailureHandlerTest {
     private static EmbeddedChannel newChannel(DispatchProbe probe) {
         return new EmbeddedChannel(
             new HttpServerCodec(MAX_INITIAL_LINE_LENGTH, MAX_HEADER_SIZE, MAX_CHUNK_SIZE),
-            new HttpObjectAggregator(MAX_BODY_BYTES),
             new HttpDecoderFailureHandler(),
             probe,
             new HttpExceptionHandler());

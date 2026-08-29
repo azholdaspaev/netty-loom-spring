@@ -134,7 +134,11 @@ public class NettyServer {
             .channel(ioHandlerFactory.getServerChannelClass())
             .childHandler(channelInitializer)
             .option(ChannelOption.SO_BACKLOG, 128)
-            .childOption(ChannelOption.SO_KEEPALIVE, configuration.tcpKeepAlive());
+            .childOption(ChannelOption.SO_KEEPALIVE, configuration.tcpKeepAlive())
+            // The inbound valve: with this on, a request body would arrive as fast as the client sent
+            // it and queue in heap. Every read is now asked for by HttpRequestHandler as its consumer
+            // drains, and withheld by HttpPipeliningHandler while requests are queued (issue #51).
+            .childOption(ChannelOption.AUTO_READ, false);
         InetSocketAddress address = new InetSocketAddress(configuration.address(), configuration.port());
         ChannelFuture future = bootstrap.bind(address).await();
         if (!future.isSuccess()) {

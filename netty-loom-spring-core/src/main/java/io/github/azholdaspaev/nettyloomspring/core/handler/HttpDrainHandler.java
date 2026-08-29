@@ -5,16 +5,15 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
-import io.netty.handler.codec.http.HttpStatusClass;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.LastHttpContent;
 
 /**
  * Marks a connection busy while it is serving an HTTP exchange, so graceful shutdown can tell a
  * connection that owes a response from one merely being held open (issue #67). Sits above the
- * aggregator, so a connection counts as busy from the head of a request: a body arriving in a later
- * TCP segment would otherwise leave it looking idle, and a drain starting in that window would reset
- * the request it is meant to protect. While draining, only the last response owed carries
+ * codec, so a connection counts as busy from the head of a request: a body arriving in a later TCP
+ * segment would otherwise leave it looking idle, and a drain starting in that window would reset the
+ * request it is meant to protect. While draining, only the last response owed carries
  * {@code Connection: close} — {@code HttpServerKeepAliveHandler} closes on the first non-keep-alive
  * response it sees, which on a pipelined connection would strand everything queued behind it. One
  * whose head already left carries none; the close at zero in-flight is the mechanism either way.
@@ -37,11 +36,9 @@ public class HttpDrainHandler extends ChannelDuplexHandler {
 
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
-        // A 1xx is an interim answer, not the end of an exchange. The aggregator answers
-        // Expect: 100-continue with a FullHttpResponse -- both an HttpResponse and a LastHttpContent
-        // -- so without this the exchange would end before the body was sent, stamping
-        // Connection: close on the very invitation to send it.
-        if (isInformational(msg)) {
+        // Without this the exchange would end before the body was sent, stamping Connection: close on
+        // the very invitation to send it.
+        if (HttpResponses.isInformational(msg)) {
             ctx.write(msg, promise);
             return;
         }
@@ -61,11 +58,6 @@ public class HttpDrainHandler extends ChannelDuplexHandler {
             writePromise.addListener(_ -> connectionRegistry.exchangeFinished(ctx.channel()));
         }
         ctx.write(msg, writePromise);
-    }
-
-    private static boolean isInformational(Object msg) {
-        return msg instanceof HttpResponse response
-            && response.status().codeClass() == HttpStatusClass.INFORMATIONAL;
     }
 
     private boolean isLastResponseOwedWhileDraining(ChannelHandlerContext ctx) {

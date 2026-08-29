@@ -91,7 +91,9 @@ Not configurable ([#42](https://github.com/azholdaspaev/netty-loom-spring/issues
 | Max initial line | 10,000 bytes | `414`, connection closed |
 | Max header block | 10,000 bytes | `431`, connection closed |
 | Max chunk size | 10,000 bytes | — |
-| Max aggregated body | 1 MiB | `413` |
+| Max request body | 1 MiB | `413` |
+| Max form body (`getParameter`) | 2 MiB | `413` |
+| Undrained request body per exchange | 64 KiB | — (reads are withheld) |
 | Listen backlog (`SO_BACKLOG`) | 128 | — |
 
 These are 10,000 decimal bytes, not 10 KiB.
@@ -162,8 +164,11 @@ running the same endpoints on `netty-loom-spring-example-tomcat`.
 
 Responses stream. Writing to `HttpServletResponse.getOutputStream()` flushes incrementally once the
 body outgrows the 8 KB response buffer (`setBufferSize`) or the handler calls `flushBuffer()`, and a
-handler producing faster than the client reads is made to wait. Requests, by contrast, are buffered
-whole ([#51](https://github.com/azholdaspaev/netty-loom-spring/issues/51)).
+handler producing faster than the client reads is made to wait.
+
+Requests stream too. `getInputStream()` blocks the request's virtual thread until the next part
+arrives, and the connection reads on only as that stream drains, so a client sending faster than the
+handler reads is made to wait in the socket rather than in heap.
 
 Two headers Tomcat always sends are never emitted here: `Date` and `Server`.
 

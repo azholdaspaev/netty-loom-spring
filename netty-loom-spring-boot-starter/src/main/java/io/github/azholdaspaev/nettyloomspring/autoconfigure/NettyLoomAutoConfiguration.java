@@ -9,6 +9,7 @@ import io.github.azholdaspaev.nettyloomspring.core.handler.HttpDrainHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpExceptionHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpPipeliningHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpReadTimeoutHandler;
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestBodyLimitHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestDispatcher;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestHandler;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.DefaultNettyPipelineConfigurer;
@@ -20,7 +21,6 @@ import io.github.azholdaspaev.nettyloomspring.mvc.handler.SpringHttpRequestDispa
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.DefaultNettyServletContext;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
 import io.netty.channel.group.DefaultChannelGroup;
-import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.HttpServerKeepAliveHandler;
 import io.netty.util.concurrent.GlobalEventExecutor;
@@ -95,25 +95,24 @@ public class NettyLoomAutoConfiguration {
         return new DefaultNettyPipelineConfigurer(List.of(
             new NamedChannelHandler("httpCodec", () -> new HttpServerCodec(MAX_HTTP_INITIAL_LINE_LENGTH, MAX_HTTP_HEADER_SIZE, MAX_HTTP_CHUNK_SIZE)),
             new NamedChannelHandler("httpKeepAlive", HttpServerKeepAliveHandler::new),
-            // Above the aggregator so a connection counts as busy from the head of a request, before
+            // Directly below the codec so a connection counts as busy from the head of a request, before
             // its body has finished arriving; outbound of httpKeepAlive so it can stamp
             // Connection: close before that handler decides whether to close.
             new NamedChannelHandler("drain", () -> new HttpDrainHandler(httpConnectionRegistry)),
-            new NamedChannelHandler("aggregator", () -> new HttpObjectAggregator(MAX_HTTP_REQUEST_BODY_BYTES)),
-            // Below the aggregator so the timeout measures whole requests rather than bytes -- at the head
-            // it saw none of the exchange and so counted dispatch time, closing a slow handler's connection
-            // mid-request. Above the pipelining gate so its count stays a property of what the client has
-            // delivered rather than of what that handler has released; correctness holds on either side.
+            // Above the pipelining gate so its count stays a property of what the client has delivered
+            // rather than of what that handler has released; correctness holds on either side.
             new NamedChannelHandler("readTimeout", () -> new HttpReadTimeoutHandler(readTimeoutNanos, TimeUnit.NANOSECONDS)),
-            // Below the aggregator so it gates whole requests, and so the aggregator's 100 Continue --
-            // written from that handler's own context, towards the head -- never reaches it; above the
-            // dispatcher so requests are gated before dispatch while responses still pass back through.
+            // Above the dispatcher so requests are gated before dispatch while responses still pass back
+            // through, and above bodyLimit so that handler's 100 Continue and 413 are sequenced rather
+            // than travelling towards the head unsequenced (issue #78).
             new NamedChannelHandler("pipelining", HttpPipeliningHandler::new),
             // Below the gate so the rejection is sequenced behind an earlier pipelined response and releases
-            // the gate on its way out, rather than travelling towards the head unsequenced as the
-            // aggregator's own 413 does (issue #78). Nothing is lost by rejecting this late: the decoder
-            // discards every byte after a bad message, so no request can be queued behind one.
+            // the gate on its way out. Nothing is lost by rejecting this late: the decoder discards every
+            // byte after a bad message, so no request can be queued behind one.
             NamedChannelHandler.shared("decoderFailure", new HttpDecoderFailureHandler()),
+            // Below decoderFailure so it counts only what decoded, and above the dispatcher so a body it
+            // refuses never reaches one.
+            new NamedChannelHandler("bodyLimit", () -> new HttpRequestBodyLimitHandler(MAX_HTTP_REQUEST_BODY_BYTES)),
             new NamedChannelHandler("dispatcher", () -> new HttpRequestHandler(httpRequestDispatcher, nettyLoomDispatchExecutor,
                 httpConnectionRegistry, properties.writeStallTimeout())),
             NamedChannelHandler.shared("exceptionHandler", new HttpExceptionHandler())

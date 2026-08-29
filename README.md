@@ -166,7 +166,6 @@ issue. The contrast with the list above is the point.
   cover this: it fixes the *request* via Boot's `ForwardedHeaderFilter`, not the cookie.
 - **No container auth.** `getUserPrincipal()` → `null`, `isUserInRole()` → `false`; `login` and
   `logout` are silent no-ops that report no failure.
-- **Requests are buffered whole**, capped at 1 MiB ([#51](https://github.com/azholdaspaev/netty-loom-spring/issues/51)). Responses do stream.
 - **Filters and servlets are initialized but never destroyed** ([#103](https://github.com/azholdaspaev/netty-loom-spring/issues/103)).
 - **No bound on queued responses** — a client that pipelines while never reading has been measured
   queuing ~5.7 MB out for ~900 bytes in
@@ -233,14 +232,15 @@ TCP accept (boss loop)
       httpCodec          HttpServerCodec(10_000, 10_000, 10_000)
       httpKeepAlive      HttpServerKeepAliveHandler
       drain              HttpDrainHandler          # counts the exchange for graceful shutdown
-      aggregator         HttpObjectAggregator(1 MiB)
       readTimeout        HttpReadTimeoutHandler    # client deadline; suspended while dispatching
-      pipelining         HttpPipeliningHandler     # responses leave in request order
+      pipelining         HttpPipeliningHandler     # responses leave in request order; withholds reads
       decoderFailure     HttpDecoderFailureHandler # @Sharable
+      bodyLimit          HttpRequestBodyLimitHandler # 1 MiB cap, 100 Continue / 417 / 413
       dispatcher         HttpRequestHandler
           → virtual thread (Executors.newVirtualThreadPerTaskExecutor)
               → SpringHttpRequestDispatcher
                   → filter chain → DispatcherServlet.service()   # blocking is fine
+          → request body parts read back off a bounded queue, AUTO_READ off
           ← response parts streamed back through HttpResponseWriter
       exceptionHandler   HttpExceptionHandler      # @Sharable; maps errors to status
 ```
@@ -254,7 +254,7 @@ virtual thread, so the loop stays free to keep accepting.
   pipeline. The default implementation walks a `List<NamedChannelHandler>` that is assembled in the
   **starter**, not in core, so supplying your own replaces the entire list — frame limits and read
   timeout included.
-- **`HttpRequestDispatcher`** — `void handle(FullHttpRequest, HttpConnectionMetadata, HttpResponseWriter) throws Exception`.
+- **`HttpRequestDispatcher`** — `void handle(HttpRequest, InputStream, HttpConnectionMetadata, HttpResponseWriter) throws Exception`.
   The seam between the Netty pipeline and any higher-layer router; keeps `core` free of Spring. A
   dispatcher that returns without having written a complete response is treated as a failure.
 - **`HttpResponseWriter`** — `void write(HttpObject) throws IOException`. How a dispatcher emits a

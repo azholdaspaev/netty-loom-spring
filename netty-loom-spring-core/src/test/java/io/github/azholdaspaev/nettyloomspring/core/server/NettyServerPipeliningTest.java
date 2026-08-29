@@ -3,6 +3,7 @@ package io.github.azholdaspaev.nettyloomspring.core.server;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpDrainHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpPipeliningHandler;
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestBodyLimitHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestDispatcher;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestHandler;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NamedChannelHandler;
@@ -12,7 +13,6 @@ import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
-import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.HttpServerKeepAliveHandler;
@@ -50,6 +50,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class NettyServerPipeliningTest {
 
     private static final int MAX_HTTP_REQUEST_BODY_BYTES = 64 * 1024;
+
     /**
      * How long the first request yields to the second before giving up on being overtaken.
      */
@@ -93,12 +94,31 @@ class NettyServerPipeliningTest {
         }
     }
 
+    @Test
+    void shouldSequenceAnInterimResponseBehindAnEarlierPipelinedResponse() throws Exception {
+        // issue #78
+        try (Socket client = connect()) {
+            send(client, "GET /first HTTP/1.1\r\nHost: localhost\r\n\r\n"
+                + "POST /second HTTP/1.1\r\nHost: localhost\r\n"
+                + "Content-Length: 5\r\nExpect: 100-continue\r\n\r\n");
+
+            BufferedReader reader = reader(client);
+            assertEquals("/first", readResponseBody(reader),
+                "the invitation to send the second body must not overtake the answer to the first");
+
+            assertEquals("HTTP/1.1 100 Continue", readHeaderBlock(reader).getFirst(),
+                "the invitation must still be sent, once the exchange before it is done");
+            send(client, "hello");
+            assertEquals("/second", readResponseBody(reader));
+        }
+    }
+
     /**
      * The first request yields to the second, so with nothing sequencing the writes the second
      * response wins deterministically rather than by a sleep race.
      */
     private HttpRequestDispatcher overtakingDispatcher() {
-        return (request, _, writer) -> {
+        return (request, _, _, writer) -> {
             if ("/first".equals(request.uri())) {
                 secondResponded.await(OVERTAKE_WINDOW.toMillis(), TimeUnit.MILLISECONDS);
             } else {
@@ -117,8 +137,8 @@ class NettyServerPipeliningTest {
             new NamedChannelHandler("httpCodec", HttpServerCodec::new),
             new NamedChannelHandler("httpKeepAlive", HttpServerKeepAliveHandler::new),
             new NamedChannelHandler("drain", () -> new HttpDrainHandler(connectionRegistry)),
-            new NamedChannelHandler("aggregator", () -> new HttpObjectAggregator(MAX_HTTP_REQUEST_BODY_BYTES)),
             new NamedChannelHandler("pipelining", HttpPipeliningHandler::new),
+            new NamedChannelHandler("bodyLimit", () -> new HttpRequestBodyLimitHandler(MAX_HTTP_REQUEST_BODY_BYTES)),
             new NamedChannelHandler("dispatcher",
                 () -> new HttpRequestHandler(overtakingDispatcher(), dispatchExecutor, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT))));
     }
