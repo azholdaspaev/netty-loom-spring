@@ -31,7 +31,15 @@ class RegisteredErrorPageResolver implements NettyErrorPageResolver {
     }
 
     @Override
-    public String resolve(int status, Throwable failure) {
+    public String resolve(int status, Throwable failure, Throwable rootCause) {
+        String path = byException(failure);
+        if (path == null) {
+            path = byException(rootCause);
+        }
+        return path != null ? path : byStatus.getOrDefault(status, global);
+    }
+
+    private String byException(Throwable failure) {
         for (Class<?> type = failure == null ? null : failure.getClass();
              type != null && type != Object.class;
              type = type.getSuperclass()) {
@@ -40,6 +48,6 @@ class RegisteredErrorPageResolver implements NettyErrorPageResolver {
                 return path;
             }
         }
-        return byStatus.getOrDefault(status, global);
+        return null;
     }
 }

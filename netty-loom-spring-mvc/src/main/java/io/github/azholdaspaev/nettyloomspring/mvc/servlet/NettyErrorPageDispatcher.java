@@ -37,7 +37,7 @@ public class NettyErrorPageDispatcher {
         }
         Throwable rootCause = rootCauseOf(failure);
         int status = statusFor(response, failure);
-        String path = context.getErrorPageResolver().resolve(status, rootCause);
+        String path = context.getErrorPageResolver().resolve(status, failure, rootCause);
         if (path == null) {
             return false;
         }

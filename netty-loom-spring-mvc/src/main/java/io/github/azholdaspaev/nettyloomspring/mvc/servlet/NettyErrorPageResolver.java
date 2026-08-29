@@ -9,12 +9,14 @@ package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 public interface NettyErrorPageResolver {
 
     /** No error pages registered, so every failure is answered by its bare status. */
-    NettyErrorPageResolver NO_PAGES = (status, failure) -> null;
+    NettyErrorPageResolver NO_PAGES = (status, failure, rootCause) -> null;
 
     /**
-     * The context-relative path of the page answering a failure, or {@code null} for none. {@code failure}
-     * is already unwrapped to its root cause, and {@code status} is already the one the response will
-     * carry.
+     * The context-relative path of the page answering a failure, or {@code null} for none. A page
+     * registered for {@code failure} as thrown wins over one registered for its {@code rootCause}, and
+     * both over {@code status} -- the order Tomcat's {@code StandardHostValve.throwable} resolves in.
+     * The two throwables are the same object where nothing wrapped the failure, and both are
+     * {@code null} where there was none. {@code status} is already the one the response will carry.
      */
-    String resolve(int status, Throwable failure);
+    String resolve(int status, Throwable failure, Throwable rootCause);
 }
