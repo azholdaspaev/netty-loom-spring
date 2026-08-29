@@ -177,6 +177,19 @@ class NettyErrorPageDispatcherTest {
     }
 
     @Test
+    void thePageIsResolvedFromTheFailureAsThrownBeforeItsRootCause() throws Exception {
+        context.setErrorPageResolver((status, failure, rootCause) ->
+            failure instanceof ServletException ? "/wrapper" : "/root");
+        var response = new NettyHttpServletResponse();
+        var request = requestFor("/boom", response);
+
+        errorPages.report(request, response, new ServletException(new IllegalStateException("bang")));
+
+        assertEquals("/wrapper", reached.getFirst().getServletPath(),
+            "the outer throwable is the first candidate, so it has to arrive in the failure position");
+    }
+
+    @Test
     void aFailureOnAnOkResponseIsReportedAsFiveHundred() throws Exception {
         pageIs("/error");
         var response = new NettyHttpServletResponse();
