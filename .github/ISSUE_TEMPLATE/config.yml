@@ -1,0 +1,3 @@
+# Decision and chore issues (Problem / Options / Context) have no template by
+# design, so the blank form has to stay reachable.
+blank_issues_enabled: true
