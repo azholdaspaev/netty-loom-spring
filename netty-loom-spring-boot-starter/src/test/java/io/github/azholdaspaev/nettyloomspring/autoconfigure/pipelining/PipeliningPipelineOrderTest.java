@@ -16,14 +16,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * The pipelining handler's correctness rests entirely on where it sits, and that position is decided by
  * the auto-configuration rather than by the pipelines the core tests hand-build: moving "pipelining"
- * above "aggregator" or below "dispatcher" would silently stop it serializing exchanges (issue #63)
+ * below "bodyLimit" or below "dispatcher" would silently stop it serializing exchanges (issues #63, #78)
  * without failing a hand-built one.
  */
 @Timeout(value = 60, unit = TimeUnit.SECONDS)
 class PipeliningPipelineOrderTest {
 
     @Test
-    void shouldPlaceThePipeliningHandlerBelowTheAggregatorAndAboveTheDispatcher() {
+    void shouldPlaceThePipeliningHandlerAboveTheBodyLimitAndTheDispatcher() {
         try (ConfigurableApplicationContext context = new SpringApplicationBuilder(SmokeNettyLoomApplication.class)
             .properties("server.port=0")
             .run()) {
@@ -34,9 +34,9 @@ class PipeliningPipelineOrderTest {
 
             assertTrue(names.contains("pipelining"),
                 "the auto-configured pipeline must install the pipelining handler");
-            assertTrue(names.indexOf("aggregator") < names.indexOf("pipelining"),
-                "pipelining must sit below the aggregator so it gates whole requests, and so the "
-                    + "aggregator's 100 Continue never reaches it; got " + names);
+            assertTrue(names.indexOf("pipelining") < names.indexOf("bodyLimit"),
+                "pipelining must sit above bodyLimit so that handler's 100 Continue and 413 are sequenced "
+                    + "rather than travelling towards the head unsequenced (issue #78); got " + names);
             assertTrue(names.indexOf("pipelining") < names.indexOf("dispatcher"),
                 "pipelining must sit above the dispatcher so requests are gated before dispatch while "
                     + "responses still pass back through it; got " + names);

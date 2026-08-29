@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ReadTimeoutPipelineOrderTest {
 
     @Test
-    void shouldPlaceTheReadTimeoutBelowTheAggregatorAndAboveThePipeliningGate() {
+    void shouldPlaceTheReadTimeoutAboveThePipeliningGateAndTheBodyLimit() {
         try (ConfigurableApplicationContext context = new SpringApplicationBuilder(SmokeNettyLoomApplication.class)
             .properties("server.port=0")
             .run()) {
@@ -33,9 +33,9 @@ class ReadTimeoutPipelineOrderTest {
 
             assertTrue(names.contains("readTimeout"),
                 "the auto-configured pipeline must install the read timeout");
-            assertTrue(names.indexOf("aggregator") < names.indexOf("readTimeout"),
-                "readTimeout must sit below the aggregator so it measures whole requests rather than "
-                    + "bytes, and so the aggregator's own interim responses never reach it; got " + names);
+            assertTrue(names.indexOf("readTimeout") < names.indexOf("bodyLimit"),
+                "readTimeout must sit above bodyLimit so that handler's 100 Continue passes through it and "
+                    + "is exempted, rather than counting the exchange answered; got " + names);
             assertTrue(names.indexOf("readTimeout") < names.indexOf("pipelining"),
                 "readTimeout must sit above the pipelining gate so its count stays a property of what the "
                     + "client has delivered rather than of what that gate has released; got " + names);

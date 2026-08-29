@@ -4,6 +4,8 @@ import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionMetadat
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
+import java.io.InputStream;
+
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.Filter;
 import jakarta.servlet.FilterChain;
@@ -92,7 +94,7 @@ class NettyFilterChainTest {
     @Test
     void propagatesRequestAndResponseWrappersToDownstreamFilterAndTerminal() throws Exception {
         var original = new NettyHttpServletRequest(
-            new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/x"),
+            new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/x"), InputStream.nullInputStream(),
             new HttpConnectionMetadata("", 0, "", 0, false),
             new DefaultNettyServletContext(),
             new NettyHttpServletResponse());

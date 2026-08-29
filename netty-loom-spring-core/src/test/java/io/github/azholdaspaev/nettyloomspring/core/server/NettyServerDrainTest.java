@@ -3,6 +3,7 @@ package io.github.azholdaspaev.nettyloomspring.core.server;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpDrainHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestDispatcher;
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestBodyLimitHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestHandler;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NamedChannelHandler;
 import io.github.azholdaspaev.nettyloomspring.core.support.NettyServerFixture;
@@ -13,7 +14,6 @@ import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
-import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.HttpServerKeepAliveHandler;
@@ -213,7 +213,7 @@ class NettyServerDrainTest {
             new NamedChannelHandler("httpCodec", HttpServerCodec::new),
             new NamedChannelHandler("httpKeepAlive", HttpServerKeepAliveHandler::new),
             new NamedChannelHandler("drain", () -> new HttpDrainHandler(connectionRegistry)),
-            new NamedChannelHandler("aggregator", () -> new HttpObjectAggregator(MAX_HTTP_REQUEST_BODY_BYTES)),
+            new NamedChannelHandler("bodyLimit", () -> new HttpRequestBodyLimitHandler(MAX_HTTP_REQUEST_BODY_BYTES)),
             new NamedChannelHandler("dispatcher",
                 () -> new HttpRequestHandler(blockingDispatcher(), dispatchExecutor, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT))));
     }
@@ -222,7 +222,7 @@ class NettyServerDrainTest {
      * Holds the request open until the test releases it, so shutdown is guaranteed to race it.
      */
     private HttpRequestDispatcher blockingDispatcher() {
-        return (_, _, writer) -> {
+        return (_, _, _, writer) -> {
             dispatcherEntered.countDown();
             if (!releaseDispatcher.await(20, TimeUnit.SECONDS)) {
                 throw new IllegalStateException("dispatcher was never released");

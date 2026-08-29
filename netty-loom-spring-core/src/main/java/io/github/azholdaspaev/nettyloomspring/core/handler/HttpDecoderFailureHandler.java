@@ -9,8 +9,8 @@ import io.netty.util.ReferenceCountUtil;
 /**
  * Rejects a message the codec could not parse (issue #138). {@code HttpObjectDecoder.invalidMessage}
  * does not throw on an over-limit initial line or header block: it marks the message with a failed
- * {@code DecoderResult} and forwards it, and {@code HttpObjectAggregator} passes that mark on. Without
- * this the request reaches the application with the oversized header simply missing.
+ * {@code DecoderResult} and forwards it. Without this the request reaches the application with the
+ * oversized header simply missing.
  */
 @Sharable
 public class HttpDecoderFailureHandler extends ChannelInboundHandlerAdapter {

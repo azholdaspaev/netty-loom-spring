@@ -3,7 +3,6 @@ package io.github.azholdaspaev.nettyloomspring.core.handler;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
-import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.timeout.ReadTimeoutException;
 import io.netty.util.concurrent.Future;
@@ -16,9 +15,9 @@ import java.util.concurrent.TimeUnit;
  * answering it (issue #76): one interval, measured from the previous response or from the accept.
  * Netty's {@link io.netty.handler.timeout.ReadTimeoutHandler} cannot express that — it stamps its
  * clock in {@code IdleStateHandler#channelReadComplete}, which fires before the dispatch has begun.
- * Sits below the aggregator so the interval measures whole requests rather than bytes, and above
- * the pipelining gate so the count stays a property of what the client has delivered. A timeout of
- * zero or less disables it, as it did the stock handler.
+ * Counts a request in at its terminator rather than at its head, so a body that stops part way
+ * still expires; above the pipelining gate, so the count stays a property of what the client has
+ * delivered. A timeout of zero or less disables it, as it did the stock handler.
  */
 public class HttpReadTimeoutHandler extends ChannelDuplexHandler {
 
@@ -84,7 +83,7 @@ public class HttpReadTimeoutHandler extends ChannelDuplexHandler {
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
-        if (msg instanceof FullHttpRequest) {
+        if (msg instanceof LastHttpContent) {
             unansweredRequests++;
         }
         ctx.fireChannelRead(msg);
@@ -96,7 +95,7 @@ public class HttpReadTimeoutHandler extends ChannelDuplexHandler {
         // never completes it, so the clock would suspend for ever and the connection become immortal.
         // LastHttpContent rather than the dispatcher's return value keeps a response written in parts
         // restarting the clock at its end.
-        if (msg instanceof LastHttpContent) {
+        if (msg instanceof LastHttpContent && !HttpResponses.isInformational(msg)) {
             requestAnswered();
         }
         ctx.write(msg, promise);

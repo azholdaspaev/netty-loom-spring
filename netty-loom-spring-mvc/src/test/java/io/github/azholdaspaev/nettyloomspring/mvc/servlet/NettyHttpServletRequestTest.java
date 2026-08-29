@@ -7,6 +7,9 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+
 import jakarta.servlet.ServletRequestAttributeEvent;
 import jakarta.servlet.ServletRequestAttributeListener;
 import jakarta.servlet.http.Cookie;
@@ -40,7 +43,7 @@ class NettyHttpServletRequestTest {
 
     private static NettyHttpServletRequest request(HttpConnectionMetadata connection, NettyServletContext context) {
         return new NettyHttpServletRequest(
-            new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/x"),
+            new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/x"), InputStream.nullInputStream(),
             connection,
             context,
             new NettyHttpServletResponse());
@@ -52,7 +55,7 @@ class NettyHttpServletRequestTest {
             nettyRequest.headers().set(HttpHeaderNames.HOST, host);
         }
         return new NettyHttpServletRequest(
-            nettyRequest, connection, new DefaultNettyServletContext(), new NettyHttpServletResponse());
+            nettyRequest, InputStream.nullInputStream(), connection, new DefaultNettyServletContext(), new NettyHttpServletResponse());
     }
 
     private static NettyHttpServletRequest formRequest(String uri, byte[] body, HttpConnectionMetadata connection) {
@@ -60,21 +63,22 @@ class NettyHttpServletRequestTest {
             HttpVersion.HTTP_1_1, HttpMethod.POST, uri, Unpooled.wrappedBuffer(body));
         nettyRequest.headers().set(HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.APPLICATION_X_WWW_FORM_URLENCODED);
         return new NettyHttpServletRequest(
-            nettyRequest, connection, new DefaultNettyServletContext(), new NettyHttpServletResponse());
+            nettyRequest, new ByteArrayInputStream(body), connection, new DefaultNettyServletContext(),
+            new NettyHttpServletResponse());
     }
 
     private static NettyHttpServletRequest requestWithAcceptLanguage(String acceptLanguage, HttpConnectionMetadata connection) {
         var nettyRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/x");
         nettyRequest.headers().set(HttpHeaderNames.ACCEPT_LANGUAGE, acceptLanguage);
         return new NettyHttpServletRequest(
-            nettyRequest, connection, new DefaultNettyServletContext(), new NettyHttpServletResponse());
+            nettyRequest, InputStream.nullInputStream(), connection, new DefaultNettyServletContext(), new NettyHttpServletResponse());
     }
 
     private static NettyHttpServletRequest requestWithContext(String uri, String contextPath) {
         var context = new DefaultNettyServletContext();
         context.setContextPath(contextPath);
         return new NettyHttpServletRequest(
-            new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri),
+            new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri), InputStream.nullInputStream(),
             new HttpConnectionMetadata("", 0, "", 0, false),
             context,
             new NettyHttpServletResponse());
@@ -279,7 +283,7 @@ class NettyHttpServletRequestTest {
         var nettyRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/x");
         nettyRequest.headers().set(HttpHeaderNames.ACCEPT_LANGUAGE, "da, en-gb;q=0.8, en;q=0.7");
         var request = new NettyHttpServletRequest(
-            nettyRequest, insecure, new DefaultNettyServletContext(), new NettyHttpServletResponse());
+            nettyRequest, InputStream.nullInputStream(), insecure, new DefaultNettyServletContext(), new NettyHttpServletResponse());
 
         assertEquals(Locale.forLanguageTag("da"), request.getLocale());
         List<Locale> first = Collections.list(request.getLocales());
@@ -386,7 +390,7 @@ class NettyHttpServletRequestTest {
             nettyRequest.headers().add(HttpHeaderNames.COOKIE, header);
         }
         return new NettyHttpServletRequest(
-            nettyRequest,
+            nettyRequest, InputStream.nullInputStream(),
             new HttpConnectionMetadata("", 0, "", 0, false),
             new DefaultNettyServletContext(),
             new NettyHttpServletResponse());
@@ -520,7 +524,7 @@ class NettyHttpServletRequestTest {
             nettyRequest.headers().set(HttpHeaderNames.COOKIE, cookieHeader);
         }
         var response = new NettyHttpServletResponse();
-        return new Exchange(new NettyHttpServletRequest(nettyRequest, connection, context, response), response);
+        return new Exchange(new NettyHttpServletRequest(nettyRequest, InputStream.nullInputStream(), connection, context, response), response);
     }
 
     private Exchange exchange(DefaultNettyServletContext context) {

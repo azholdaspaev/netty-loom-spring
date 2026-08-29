@@ -4,6 +4,7 @@ import io.github.azholdaspaev.nettyloomspring.core.exception.NettyServerExceptio
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NamedChannelHandler;
 import io.github.azholdaspaev.nettyloomspring.core.support.NettyServerFixture;
+import io.github.azholdaspaev.nettyloomspring.core.support.SpinWait;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.group.DefaultChannelGroup;
@@ -39,6 +40,23 @@ class NettyServerTest {
     @BeforeEach
     void setup() {
         nettyServer = newServer(null);
+    }
+
+    @Test
+    void shouldLeaveEveryReadOfAnAcceptedConnectionToItsHandlers() throws Exception {
+        DefaultChannelGroup connections = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
+        nettyServer = NettyServerFixture.newServer(
+            new NettyServerConfiguration(0, null, 1, 1, true),
+            new HttpConnectionRegistry(connections), List.of());
+        nettyServer.start();
+
+        try (Socket client = new Socket()) {
+            client.connect(new InetSocketAddress("127.0.0.1", nettyServer.getPort()), 1_000);
+            SpinWait.until(() -> !connections.isEmpty(), Duration.ofSeconds(5), "connection was never accepted");
+
+            assertFalse(connections.iterator().next().config().isAutoRead(),
+                "reads must be asked for as the body is consumed, or the queue bound cannot hold");
+        }
     }
 
     private static NettyServer newServer(InetAddress address) {

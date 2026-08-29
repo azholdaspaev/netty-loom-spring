@@ -2,9 +2,10 @@ package io.github.azholdaspaev.nettyloomspring.core.handler;
 
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.handler.codec.http.FullHttpRequest;
+import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpObject;
+import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpStatusClass;
@@ -22,7 +23,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
-public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
+public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
 
     private static final Logger log = LoggerFactory.getLogger(HttpRequestHandler.class);
 
@@ -30,6 +31,15 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
     private final Executor dispatchExecutor;
     private final HttpConnectionRegistry connectionRegistry;
     private final long writeStallTimeoutNanos;
+
+    /**
+     * The body of the exchange being dispatched, or null when none is. Event loop only; the dispatch
+     * thread reaches it only through the stream's own lock.
+     */
+    private HttpRequestBodyStream body;
+
+    /** The writer of the exchange being dispatched, read from the event loop to see how far it has got. */
+    private HttpChannelResponseWriter writer;
 
     public HttpRequestHandler(HttpRequestDispatcher requestDispatcher,
                               Executor dispatchExecutor,
@@ -41,20 +51,85 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
         this.writeStallTimeoutNanos = writeStallTimeout.toNanos();
     }
 
+    /** Nothing is read until it is asked for, so the first request needs an opening ask. */
     @Override
-    protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest request) {
-        request.retain();
-        HttpConnectionMetadata connection = HttpConnectionMetadata.from(ctx);
-        dispatch(ctx, request, connection);
+    public void channelActive(ChannelHandlerContext ctx) {
+        ctx.read();
+        ctx.fireChannelActive();
     }
 
-    private void dispatch(ChannelHandlerContext ctx, FullHttpRequest request, HttpConnectionMetadata connection) {
+    @Override
+    public void channelRead(ChannelHandlerContext ctx, Object msg) {
+        if (msg instanceof HttpRequest request) {
+            body = new HttpRequestBodyStream(() -> requestRead(ctx));
+            writer = new HttpChannelResponseWriter(ctx, request);
+            dispatch(ctx, request, HttpConnectionMetadata.from(ctx), body, writer);
+            return;
+        }
+        if (msg instanceof HttpContent content) {
+            if (body == null) {
+                // No dispatch owns this: the exchange was answered without reading its body, so the
+                // rest of it is drained here rather than left to stall the connection.
+                content.release();
+                return;
+            }
+            body.offer(content);
+            return;
+        }
+        ReferenceCountUtil.release(msg);
+    }
+
+    /** The valve: more is read only while the consumer is keeping up with what has arrived. */
+    @Override
+    public void channelReadComplete(ChannelHandlerContext ctx) {
+        if (body == null || body.hasRoom()) {
+            ctx.read();
+        }
+        ctx.fireChannelReadComplete();
+    }
+
+    @Override
+    public void channelInactive(ChannelHandlerContext ctx) {
+        failBody(new ClosedChannelException());
+        ctx.fireChannelInactive();
+    }
+
+    /**
+     * Wakes whoever is reading the body before letting the failure travel on, so a refused upload does
+     * not leave the dispatch blocked on a body that will never arrive. Once the response has started,
+     * a status written for the failure would encode as more of that body, so the connection is closed
+     * instead. Safe to decide here: this runs on the event loop, so a write the dispatch thread issues
+     * concurrently is scheduled behind the close.
+     */
+    @Override
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+        boolean midResponse = writer != null && writer.state != ResponseState.NOT_STARTED;
+        failBody(cause);
+        if (midResponse) {
+            ctx.close();
+            return;
+        }
+        ctx.fireExceptionCaught(cause);
+    }
+
+    private void failBody(Throwable cause) {
+        if (body != null) {
+            body.fail(cause);
+            body = null;
+        }
+    }
+
+    private void requestRead(ChannelHandlerContext ctx) {
+        ctx.executor().execute(ctx::read);
+    }
+
+    private void dispatch(ChannelHandlerContext ctx, HttpRequest request, HttpConnectionMetadata connection,
+                          HttpRequestBodyStream requestBody, HttpChannelResponseWriter writer) {
         connectionRegistry.dispatchStarted();
         try {
             dispatchExecutor.execute(() -> {
-                HttpChannelResponseWriter writer = new HttpChannelResponseWriter(ctx, request);
                 try {
-                    requestDispatcher.handle(request, connection, writer);
+                    requestDispatcher.handle(request, requestBody, connection, writer);
                     if (writer.state != ResponseState.ENDED && ctx.channel().isActive()) {
                         // The SPI's return no longer carries the response, so a dispatcher can leave the
                         // exchange hanging by returning. Worth saying only while the connection is still
@@ -70,7 +145,8 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
                     // depend on a call that can fail.
                     connectionRegistry.dispatchFinished();
                     try {
-                        request.release();
+                        requestBody.close();
+                        forget(ctx, requestBody);
                     } catch (Throwable ignored) {
                         // Nothing may escape the task, fatal errors included. Deliberately not paired
                         // with a rethrowIfFatal: on an Executor that runs tasks inline, rethrowing
@@ -81,16 +157,29 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
             });
         } catch (Throwable cause) {
             connectionRegistry.dispatchFinished();
-            request.release();
+            requestBody.close();
+            body = null;
             ctx.fireExceptionCaught(cause);
         }
+    }
+
+    /**
+     * By identity, because the gate may already have started the next exchange by the time this runs:
+     * clearing unconditionally would orphan its body and hang it.
+     */
+    private void forget(ChannelHandlerContext ctx, HttpRequestBodyStream finished) {
+        ctx.executor().execute(() -> {
+            if (body == finished) {
+                body = null;
+            }
+        });
     }
 
     /**
      * Closes once any response bytes are on the wire, since the tail handler's error would encode as
      * more of the body being read; otherwise hops onto the loop so a terminated one rejects here (#109).
      */
-    private static void reportDispatchFailure(ChannelHandlerContext ctx, FullHttpRequest request,
+    private static void reportDispatchFailure(ChannelHandlerContext ctx, HttpRequest request,
                                               HttpChannelResponseWriter writer, Throwable cause) {
         if (writer.state != ResponseState.NOT_STARTED) {
             // A client that hung up mid-download ends the stream the ordinary way, so only a fault the
@@ -119,7 +208,7 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
      * An HTTP/1.0 client closes unless told {@code Connection: keep-alive}, and Netty's
      * {@code HttpServerKeepAliveHandler} only ever writes {@code Connection: close}.
      */
-    private static void echoHttp10KeepAlive(FullHttpRequest request, HttpResponse response) {
+    private static void echoHttp10KeepAlive(HttpRequest request, HttpResponse response) {
         if (HttpVersion.HTTP_1_0.equals(request.protocolVersion())
             && HttpUtil.isKeepAlive(request)
             && HttpUtil.isKeepAlive(response)) {
@@ -136,11 +225,15 @@ public class HttpRequestHandler extends SimpleChannelInboundHandler<FullHttpRequ
     private final class HttpChannelResponseWriter implements HttpResponseWriter {
 
         private final ChannelHandlerContext ctx;
-        private final FullHttpRequest request;
+        private final HttpRequest request;
 
-        private ResponseState state = ResponseState.NOT_STARTED;
+        /**
+         * Written by the dispatch thread that owns this, read by the event loop deciding whether a
+         * failure can still be answered.
+         */
+        private volatile ResponseState state = ResponseState.NOT_STARTED;
 
-        HttpChannelResponseWriter(ChannelHandlerContext ctx, FullHttpRequest request) {
+        HttpChannelResponseWriter(ChannelHandlerContext ctx, HttpRequest request) {
             this.ctx = ctx;
             this.request = request;
         }

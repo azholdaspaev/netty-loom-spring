@@ -4,6 +4,8 @@ import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionMetadat
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
+import java.io.InputStream;
+
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.Filter;
 import jakarta.servlet.FilterChain;
@@ -56,7 +58,7 @@ abstract class DispatchFixture {
 
     final NettyHttpServletRequest requestFor(HttpMethod method, String uri, NettyHttpServletResponse response) {
         return new NettyHttpServletRequest(
-            new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, method, uri),
+            new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, method, uri), InputStream.nullInputStream(),
             CONNECTION, context, response);
     }
 }

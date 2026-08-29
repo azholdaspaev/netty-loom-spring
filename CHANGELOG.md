@@ -30,6 +30,10 @@ First release. Not yet published to Maven Central; a `0.1.0-SNAPSHOT` is on
   body outgrows the response buffer, with backpressure when the client reads more slowly than the
   handler writes, bounded by `server.netty.write-stall-timeout` so a client that stops reading
   altogether is given up on rather than waited on for ever.
+- **Streaming requests** — the body reaches `getInputStream()` a part at a time as it decodes, never
+  held whole, with reads withheld while the handler is behind so a fast client waits in the socket
+  rather than in heap. `Expect: 100-continue`, `417` and the `413` for an over-large body are
+  answered by the pipeline.
 - **Servlet bridge** covering requests, responses, cookies, sessions, instance-registered filters,
   path-based `RequestDispatcher.forward` with its `FORWARD` dispatcher state,
   error-page dispatch to Boot's `/error` with its `ERROR` dispatcher state,
