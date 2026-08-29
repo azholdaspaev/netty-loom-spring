@@ -4,6 +4,7 @@ import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionMetadat
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestDispatcher;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpResponseWriter;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyDispatchFactory;
+import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyErrorPageDispatcher;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyHttpServletRequest;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyHttpServletResponse;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
@@ -14,9 +15,11 @@ import org.springframework.web.servlet.DispatcherServlet;
 public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
 
     private final NettyServletContext servletContext;
+    private final NettyErrorPageDispatcher errorPages;
 
     public SpringHttpRequestDispatcher(DispatcherServlet dispatcherServlet, NettyServletContext servletContext) {
         this.servletContext = servletContext;
+        this.errorPages = new NettyErrorPageDispatcher(servletContext);
         servletContext.setDispatchFactory(new NettyDispatchFactory(servletContext, dispatcherServlet::service));
     }
 
@@ -48,7 +51,7 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
         // owed; fireRequestInitialized releases the prefix it notified before propagating.
         servletContext.getListenerRegistry().fireRequestInitialized(servletRequest);
         try {
-            servletContext.getDispatchFactory().chainFor(servletRequest).doFilter(servletRequest, servletResponse);
+            serveWithErrorPages(servletRequest, servletResponse);
         } finally {
             servletContext.getListenerRegistry().fireRequestDestroyed(servletRequest);
         }
@@ -56,5 +59,24 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
         // Outside the try: a dispatch that threw has an incoherent response to send, and finishing it
         // here would answer the request with it instead of letting the failure reach the connection.
         servletResponse.complete();
+    }
+
+    // Inside the requestInitialized/requestDestroyed bracket, because the error page is still part of
+    // the request: announcing the request destroyed first would run every @RequestScope destruction
+    // callback before the page that may depend on them, as Tomcat's StandardHostValve avoids.
+    private void serveWithErrorPages(NettyHttpServletRequest request, NettyHttpServletResponse response)
+        throws Exception {
+        try {
+            servletContext.getDispatchFactory().chainFor(request).doFilter(request, response);
+        } catch (Exception failure) {
+            // Not Throwable: an Error says the JVM is in no state to render a page, and reaching the
+            // connection unanswered is the more honest outcome.
+            if (!errorPages.report(request, response, failure)) {
+                throw failure;
+            }
+            return;
+        }
+        // Only once: a page that errors again is the whole answer, the report having already been made.
+        errorPages.report(request, response, null);
     }
 }

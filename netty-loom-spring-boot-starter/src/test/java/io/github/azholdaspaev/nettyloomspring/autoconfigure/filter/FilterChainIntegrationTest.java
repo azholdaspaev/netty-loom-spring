@@ -41,7 +41,9 @@ class FilterChainIntegrationTest {
         restTestClient.get().uri("/secure/data")
             .exchange()
             .expectStatus().isForbidden()
-            .expectBody().isEmpty();
+            .expectBody()
+            .jsonPath("$.status").isEqualTo(403)
+            .jsonPath("$.path").isEqualTo("/secure/data");
     }
 
     @Test

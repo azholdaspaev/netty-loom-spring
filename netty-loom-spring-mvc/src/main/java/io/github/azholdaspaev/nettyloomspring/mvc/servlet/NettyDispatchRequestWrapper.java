@@ -16,27 +16,32 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-class NettyForwardRequestWrapper extends HttpServletRequestWrapper {
+class NettyDispatchRequestWrapper extends HttpServletRequestWrapper {
 
     private final NettyDispatchFactory factory;
     private final String targetPath;
     private final String queryString;
+    private final DispatcherType dispatcherType;
     private final Map<String, Object> forwardAttributes;
     private Map<String, String[]> parameters;
 
-    NettyForwardRequestWrapper(NettyDispatchFactory factory, HttpServletRequest original,
-                        String targetPath, String queryString) {
+    NettyDispatchRequestWrapper(NettyDispatchFactory factory, HttpServletRequest original,
+                        String targetPath, String queryString, DispatcherType dispatcherType) {
         super(original);
         this.factory = factory;
         this.targetPath = targetPath;
         this.queryString = queryString;
-        this.forwardAttributes = forwardAttributesOf(original);
+        this.dispatcherType = dispatcherType;
+        this.forwardAttributes = forwardAttributesOf(original, dispatcherType);
     }
 
     // The delegate's value wins where it has one: on a nested forward that delegate is the previous
     // wrapper, so the outermost request's path elements survive any depth (Servlet 6.1 section 9.4.2).
-    private static Map<String, Object> forwardAttributesOf(HttpServletRequest original) {
-        if (original.getAttribute(RequestDispatcher.FORWARD_REQUEST_URI) != null) {
+    // An ERROR dispatch sets none of them (Servlet 6.1 section 9.9); the container sets the
+    // jakarta.servlet.error.* set on the request itself instead.
+    private static Map<String, Object> forwardAttributesOf(HttpServletRequest original, DispatcherType type) {
+        if (type != DispatcherType.FORWARD
+            || original.getAttribute(RequestDispatcher.FORWARD_REQUEST_URI) != null) {
             return Collections.emptyMap();
         }
         Map<String, Object> attributes = new LinkedHashMap<>();
@@ -66,7 +71,7 @@ class NettyForwardRequestWrapper extends HttpServletRequestWrapper {
 
     @Override
     public DispatcherType getDispatcherType() {
-        return DispatcherType.FORWARD;
+        return dispatcherType;
     }
 
     @Override

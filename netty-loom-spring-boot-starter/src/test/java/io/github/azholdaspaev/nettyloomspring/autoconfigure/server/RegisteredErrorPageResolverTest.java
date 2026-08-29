@@ -1,0 +1,71 @@
+package io.github.azholdaspaev.nettyloomspring.autoconfigure.server;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.web.error.ErrorPage;
+import org.springframework.http.HttpStatus;
+
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
+/**
+ * The fold from Boot's {@link ErrorPage} registrations onto the single lookup the servlet bridge reads
+ * (issue #38). The precedence mirrored here is Tomcat's {@code StandardHostValve}, which is what the
+ * same registrations would produce on a Tomcat deployment.
+ */
+class RegisteredErrorPageResolverTest {
+
+    @Test
+    void theGlobalPageAnswersAnyStatus() {
+        var resolver = new RegisteredErrorPageResolver(List.of(new ErrorPage("/error")));
+
+        assertEquals("/error", resolver.resolve(404, null));
+        assertEquals("/error", resolver.resolve(500, new IllegalStateException()));
+    }
+
+    @Test
+    void aStatusSpecificPageBeatsTheGlobalOne() {
+        var resolver = new RegisteredErrorPageResolver(List.of(
+            new ErrorPage("/error"),
+            new ErrorPage(HttpStatus.NOT_FOUND, "/404")));
+
+        assertEquals("/404", resolver.resolve(404, null));
+        assertEquals("/error", resolver.resolve(500, null));
+    }
+
+    @Test
+    void anExceptionPageIsFoundByWalkingSuperclasses() {
+        var resolver = new RegisteredErrorPageResolver(List.of(new ErrorPage(IOException.class, "/io")));
+
+        assertEquals("/io", resolver.resolve(500, new FileNotFoundException()));
+    }
+
+    @Test
+    void anExceptionPageBeatsTheStatusPageForTheSameFailure() {
+        var resolver = new RegisteredErrorPageResolver(List.of(
+            new ErrorPage(HttpStatus.INTERNAL_SERVER_ERROR, "/500"),
+            new ErrorPage(IllegalStateException.class, "/ise")));
+
+        assertEquals("/ise", resolver.resolve(500, new IllegalStateException()));
+    }
+
+    @Test
+    void anExceptionWithNoPageOfItsOwnFallsBackToTheStatusPage() {
+        var resolver = new RegisteredErrorPageResolver(List.of(
+            new ErrorPage(HttpStatus.INTERNAL_SERVER_ERROR, "/500"),
+            new ErrorPage(IOException.class, "/io")));
+
+        assertEquals("/500", resolver.resolve(500, new IllegalStateException()));
+    }
+
+    @Test
+    void noRegisteredPagesResolvesToNothing() {
+        var resolver = new RegisteredErrorPageResolver(List.of());
+
+        assertNull(resolver.resolve(404, null));
+        assertNull(resolver.resolve(500, new IllegalStateException()));
+    }
+}

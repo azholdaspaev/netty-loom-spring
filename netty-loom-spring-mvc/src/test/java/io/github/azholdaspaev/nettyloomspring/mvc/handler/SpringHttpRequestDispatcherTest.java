@@ -159,6 +159,129 @@ class SpringHttpRequestDispatcherTest {
         assertTrue(setCookie.contains("SameSite=Strict"), "Actual: " + setCookie);
     }
 
+    // --- Error pages (issue #38) ---
+
+    private void errorPageIs(String path) {
+        servletContext.setErrorPageResolver((status, failure) -> path);
+    }
+
+    private static void write(HttpServletResponse response, String body) {
+        try {
+            response.getOutputStream().write(body.getBytes(StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    @Test
+    void sendErrorIsAnsweredByTheErrorPage() throws Exception {
+        errorPageIs("/error");
+        var dispatcher = dispatcher((request, response) -> {
+            if (request.getServletPath().equals("/error")) {
+                write(response, "the error page");
+                return;
+            }
+            assertDoesNotThrow(() -> response.sendError(HttpServletResponse.SC_NOT_FOUND));
+        });
+
+        FullHttpResponse response = dispatch(dispatcher, get("/api/missing"));
+
+        assertEquals(HttpServletResponse.SC_NOT_FOUND, response.status().code());
+        assertEquals("the error page", response.content().toString(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void aHandlerExceptionWithAnErrorPageIsAnsweredInsteadOfPropagating() throws Exception {
+        errorPageIs("/error");
+        var dispatcher = dispatcher((request, response) -> {
+            if (request.getServletPath().equals("/error")) {
+                write(response, "the error page");
+                return;
+            }
+            throw new IllegalStateException("boom");
+        });
+
+        FullHttpResponse response = dispatch(dispatcher, get("/api/ping"));
+
+        assertEquals(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, response.status().code());
+        assertEquals("the error page", response.content().toString(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void aHandlerExceptionWithNoErrorPageStillPropagates() {
+        var dispatcher = dispatcher((request, response) -> {
+            throw new IllegalStateException("boom");
+        });
+
+        assertThrows(IllegalStateException.class, () -> dispatch(dispatcher, get("/api/ping")),
+            "with no page registered the failure still has to reach the connection");
+    }
+
+    @Test
+    void theErrorPageRunsBeforeTheRequestListenerIsToldTheRequestEnded() throws Exception {
+        errorPageIs("/error");
+        recordRequests();
+        var dispatcher = dispatcher((request, response) -> {
+            if (request.getServletPath().equals("/error")) {
+                events.add("error-page");
+                return;
+            }
+            events.add("service");
+            assertDoesNotThrow(() -> response.sendError(HttpServletResponse.SC_NOT_FOUND));
+        });
+
+        dispatch(dispatcher, get("/api/missing"));
+
+        assertEquals(List.of("initialized", "service", "error-page", "destroyed"), events,
+            "requestDestroyed runs every @RequestScope destruction callback, so the error page cannot "
+                + "run after it");
+    }
+
+    @Test
+    void theErrorPageIsDispatchedOnlyOnceWhenItAlsoCallsSendError() throws Exception {
+        errorPageIs("/error");
+        var dispatched = new int[1];
+        var dispatcher = dispatcher((request, response) -> {
+            if (request.getServletPath().equals("/error")) {
+                dispatched[0]++;
+                assertDoesNotThrow(() -> response.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE));
+                return;
+            }
+            assertDoesNotThrow(() -> response.sendError(HttpServletResponse.SC_NOT_FOUND));
+        });
+
+        FullHttpResponse response = dispatch(dispatcher, get("/api/missing"));
+
+        assertEquals(1, dispatched[0], "an error page that errors again must not loop");
+        assertEquals(HttpServletResponse.SC_SERVICE_UNAVAILABLE, response.status().code());
+    }
+
+    @Test
+    void anErrorPageThatThrowsPropagatesRatherThanAnsweringTwice() {
+        errorPageIs("/error");
+        var dispatcher = dispatcher((request, response) -> {
+            if (request.getServletPath().equals("/error")) {
+                throw new IllegalArgumentException("the error page itself is broken");
+            }
+            throw new IllegalStateException("boom");
+        });
+
+        assertThrows(IllegalArgumentException.class, () -> dispatch(dispatcher, get("/api/ping")));
+    }
+
+    @Test
+    void theOutOfContextFourOhFourNeverReachesAnErrorPage() throws Exception {
+        servletContext.setContextPath("/app");
+        errorPageIs("/error");
+        var dispatcher = dispatcher((request, response) -> write(response, "the error page"));
+
+        FullHttpResponse response = dispatch(dispatcher, get("/elsewhere"));
+
+        assertEquals(HttpServletResponse.SC_NOT_FOUND, response.status().code());
+        assertEquals("", response.content().toString(StandardCharsets.UTF_8),
+            "the request never entered the context, so it is owed no page from it");
+    }
+
     @Test
     void anOutOfContextRequestNeverEntersTheContext() throws Exception {
         // A URI outside server.servlet.context-path is rejected with a bare 404 before filters or the

@@ -51,6 +51,14 @@ public interface NettyServletContext extends ServletContext, AutoCloseable {
     NettyCookieSameSiteResolver getCookieSameSiteResolver();
 
     /**
+     * Sets the error pages a failed request is answered with (issue #38): the route Boot's
+     * {@code ErrorPage} registrations take to the dispatch, since no servlet API carries them.
+     */
+    void setErrorPageResolver(NettyErrorPageResolver resolver);
+
+    NettyErrorPageResolver getErrorPageResolver();
+
+    /**
      * Binds what a dispatch runs through. Published here rather than kept by the dispatcher that builds
      * it because {@link #getRequestDispatcher(String)} is answered from this package, with no request in
      * hand to carry it, and unwrapping one at forward time would only find whatever wrapper a filter

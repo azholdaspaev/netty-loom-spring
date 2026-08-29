@@ -52,7 +52,7 @@ public class NettyDispatchFactory {
 
     // Context-relative throughout, so a path canonicalising out of the context yields no dispatcher at
     // all; the query splits off first so a ".." inside it is never normalised (Servlet 6.0, 3.5.2).
-    private RequestDispatcher resolve(String path) {
+    NettyRequestDispatcher resolve(String path) {
         int queryStart = path.indexOf('?');
         String targetPath = queryStart < 0 ? path : path.substring(0, queryStart);
         String queryString = queryStart < 0 ? null : path.substring(queryStart + 1);

@@ -64,7 +64,6 @@ Everything below is set on the factory and never read again — **no warning, no
 | `server.shutdown=immediate` | Boot 4 registers the graceful-shutdown lifecycle for every factory; this one never reads `getShutdown()` to opt out, so it always drains | [#87](https://github.com/azholdaspaev/netty-loom-spring/issues/87) |
 | `server.server-header` | Never written to a response | |
 | `server.max-http-request-header-size` | Superseded by the fixed 10,000-byte header limit | [#42](https://github.com/azholdaspaev/netty-loom-spring/issues/42) |
-| `spring.web.error.*` and error-page registrations | `getErrorPages()` is never read; there is no `ERROR` dispatch | [#38](https://github.com/azholdaspaev/netty-loom-spring/issues/38) |
 | `server.mime-mappings.*` | Never read; `ServletContext.getMimeType` throws | |
 | `server.servlet.application-display-name` | `getServletContextName()` is hardcoded | [#86](https://github.com/azholdaspaev/netty-loom-spring/issues/86) |
 | `server.servlet.register-default-servlet` | Only the `DispatcherServlet` is ever initialized | |
