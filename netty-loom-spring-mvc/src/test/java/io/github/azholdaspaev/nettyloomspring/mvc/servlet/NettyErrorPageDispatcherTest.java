@@ -61,8 +61,12 @@ class NettyErrorPageDispatcherTest {
     }
 
     private NettyHttpServletRequest requestFor(String uri, NettyHttpServletResponse response) {
+        return requestFor(HttpMethod.GET, uri, response);
+    }
+
+    private NettyHttpServletRequest requestFor(HttpMethod method, String uri, NettyHttpServletResponse response) {
         return new NettyHttpServletRequest(
-            new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri),
+            new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, method, uri),
             CONNECTION, context, response);
     }
 
@@ -129,6 +133,20 @@ class NettyErrorPageDispatcherTest {
 
         assertEquals("", reached.getFirst().getAttribute(RequestDispatcher.ERROR_MESSAGE),
             "setAttribute(name, null) removes the attribute, so a null message would leave it absent");
+    }
+
+    @Test
+    void theErrorPageIsDispatchedAsAGetCarryingTheOriginalMethod() throws Exception {
+        pageIs("/error");
+        var response = new NettyHttpServletResponse();
+        var request = requestFor(HttpMethod.POST, "/boom", response);
+        response.sendError(HttpResponseStatus.NOT_FOUND.code());
+
+        errorPages.report(request, response, null);
+
+        HttpServletRequest page = reached.getFirst();
+        assertEquals("GET", page.getMethod(), "an error page mapped to GET has to be reachable from a failed POST");
+        assertEquals("POST", page.getAttribute(RequestDispatcher.ERROR_METHOD));
     }
 
     @Test

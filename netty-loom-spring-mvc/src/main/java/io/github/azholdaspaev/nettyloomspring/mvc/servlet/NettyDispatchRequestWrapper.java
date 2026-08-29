@@ -1,5 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
+import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.RequestDispatcher;
@@ -72,6 +73,14 @@ class NettyDispatchRequestWrapper extends HttpServletRequestWrapper {
     @Override
     public DispatcherType getDispatcherType() {
         return dispatcherType;
+    }
+
+    // Every ERROR dispatch runs as a GET, the original method surviving only as
+    // jakarta.servlet.error.method (Servlet 6.1 section 9.9; Tomcat's ApplicationDispatcher.forward
+    // does the same, gated on that attribute rather than on the type because JSP does not set one).
+    @Override
+    public String getMethod() {
+        return dispatcherType == DispatcherType.ERROR ? HttpMethod.GET.name() : super.getMethod();
     }
 
     @Override
