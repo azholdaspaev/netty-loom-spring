@@ -1,0 +1,23 @@
+
+# NL-<issue> <Imperative summary>
+#   <= 72 chars. Capital after the key. No colon after it. No trailing period.
+#   NL-01 is the catch-all key for work that has no issue.
+#
+# Blank line, then a SHORT description of what the change makes true.
+#
+# HARD LIMIT: the whole message -- subject, body and Closes line together -- is
+# 500 characters or fewer. Roughly five lines at 78 columns. Why the change is
+# right, the alternative you rejected and the mutations you ran belong in the
+# pull request body, not here.
+#
+# ASCII only: -- for an em dash, -> for an arrow.
+#
+# Review-response commit: first body line is
+#   Closes #NN review thread <threadId>.
+# Otherwise: Closes #NN as the last body line.
+#
+# NO trailers. No session links (claude.ai, Codex, Cursor or any other), no
+# Co-authored-by bot lines, no generated-by footers.
+#
+# One idea per commit. A changed line that does not trace to the issue in the
+# subject belongs in a different commit.
