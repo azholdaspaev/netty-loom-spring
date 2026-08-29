@@ -43,7 +43,7 @@ What the servlet bridge implements, method by method. Verified against the sourc
 | Error page for an `Error` rather than an `Exception` | `none` | Only `Exception` is caught; an `Error` reaches the connection as the plain-text 500 below, on the view that a JVM in that state should not be rendering pages |
 | Error page for an out-of-context URI | `none` | The bare pre-filter 404 below never enters the context, so no page of that context answers it |
 | `spring.web.error.*` | `works` | `path` selects the page Boot registers; `include-message`, `include-stacktrace`, `include-binding-errors` and `whitelabel.enabled` are Boot's own and now reach the client |
-| Uncaught controller exception | `works` | Re-dispatched to the error page as 500, or as the 4xx the handler had already set. With no page registered — or once bytes have been streamed — it falls back to a plain-text `Internal Server Error` with `Connection: close` |
+| Uncaught controller exception | `works` | Re-dispatched to the error page with the status the [exception mapping](configuration.md#exception-to-status-mapping) gives the failure as thrown, so a controller's arrives wrapped in `ServletException` as 500 and a filter's unwrapped as whatever its type maps to. Any status the handler had already set is overridden, as on Tomcat. With no page registered — or once bytes have been streamed — it falls back to a plain-text `Internal Server Error` with `Connection: close` |
 | Out-of-context URI (with a context path set) | `partial` | A bare 404 returned before the filter chain — no filter, listener or Security rule sees it. Deliberate; see [ADR 0001](adr/0001-server-properties-namespace.md) |
 
 ## Request

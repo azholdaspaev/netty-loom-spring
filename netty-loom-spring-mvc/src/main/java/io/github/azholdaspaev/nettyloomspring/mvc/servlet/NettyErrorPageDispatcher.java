@@ -1,10 +1,10 @@
 package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpExceptionHandler;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -72,13 +72,12 @@ public class NettyErrorPageDispatcher {
         return failure;
     }
 
-    // A 4xx the handler already chose says more than a blanket 500, so only a success status is
-    // overridden -- as Tomcat's StandardHostValve.throwable does.
+    // The failure as thrown rather than its root cause: FrameworkServlet wraps whatever a handler
+    // threw, so the wrapper is what tells a controller failure from a filter's, and only the latter
+    // keeps the pipeline's mapped status. Whatever the response already held is not consulted --
+    // Tomcat's StandardWrapperValve.exception likewise sets 500 over it before a page is resolved.
     private static int statusFor(NettyHttpServletResponse response, Throwable failure) {
-        if (failure == null || response.getStatus() >= HttpServletResponse.SC_BAD_REQUEST) {
-            return response.getStatus();
-        }
-        return HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
+        return failure == null ? response.getStatus() : HttpExceptionHandler.statusFor(failure).code();
     }
 
     private static void setErrorAttributes(HttpServletRequest request, int status, String message,

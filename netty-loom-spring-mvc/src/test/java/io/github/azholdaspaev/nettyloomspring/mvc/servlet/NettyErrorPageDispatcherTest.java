@@ -171,7 +171,7 @@ class NettyErrorPageDispatcherTest {
     }
 
     @Test
-    void aFailureKeepsAnErrorStatusTheHandlerAlreadySet() throws Exception {
+    void aFailureOverridesTheStatusTheHandlerAlreadySet() throws Exception {
         pageIs("/error");
         var response = new NettyHttpServletResponse();
         var request = requestFor("/boom", response);
@@ -179,7 +179,46 @@ class NettyErrorPageDispatcherTest {
 
         errorPages.report(request, response, new IllegalStateException("bang"));
 
-        assertEquals(409, response.getStatus(), "a 4xx the handler chose is more specific than a blanket 500");
+        assertEquals(500, response.getStatus(),
+            "an uncaught failure is what the status describes, as Tomcat's StandardWrapperValve.exception has it");
+    }
+
+    @Test
+    void aFailureIsReportedWithTheStatusItsTypeMeans() throws Exception {
+        pageIs("/error");
+        var response = new NettyHttpServletResponse();
+        var request = requestFor("/boom", response);
+
+        errorPages.report(request, response, new IllegalArgumentException("bad"));
+
+        assertEquals(400, response.getStatus());
+        assertEquals(400, reached.getFirst().getAttribute(RequestDispatcher.ERROR_STATUS_CODE));
+    }
+
+    @Test
+    void anUnsupportedOperationIsReportedAsNotImplemented() throws Exception {
+        pageIs("/error");
+        var response = new NettyHttpServletResponse();
+        var request = requestFor("/boom", response);
+
+        errorPages.report(request, response, new UnsupportedOperationException("nope"));
+
+        assertEquals(501, response.getStatus());
+        assertEquals(501, reached.getFirst().getAttribute(RequestDispatcher.ERROR_STATUS_CODE));
+    }
+
+    @Test
+    void aWrappedFailureIsReportedAsFiveHundredWhileItsRootCauseReachesThePage() throws Exception {
+        pageIs("/error");
+        var response = new NettyHttpServletResponse();
+        var request = requestFor("/boom", response);
+        var rootCause = new IllegalArgumentException("bad");
+
+        errorPages.report(request, response, new ServletException("Request processing failed", rootCause));
+
+        assertEquals(500, response.getStatus(),
+            "the wrapper is the failure the container saw; only a filter throws one of these unwrapped");
+        assertEquals(rootCause, reached.getFirst().getAttribute(RequestDispatcher.ERROR_EXCEPTION));
     }
 
     @Test
