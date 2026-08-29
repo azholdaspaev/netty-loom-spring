@@ -35,7 +35,7 @@ NOTES:
 - `isOutdated` means the anchor moved, not that the finding was fixed — confirm it against the code like any other
 - post through `gh api repos/{owner}/{repo}/pulls/<N>/reviews --method POST`, one review rather than N loose comments: it lands atomically, so a rate limit cannot leave three of seven findings posted with nothing to signal the rest. The body carries `event: COMMENT`, a `comments` array of path, line, side and body, and `commit_id` set to the `headRefOid` you already read
 - `event: COMMENT` only, never APPROVE or REQUEST_CHANGES — an automated pass should not be able to block or unblock a merge
-- new issues match the format of the existing ones (`gh issue view 97`, `gh issue view 99`)
+- new issues follow `.github/ISSUE_TEMPLATE/task.md` or `bug.md`
 
 The bar a finding must clear before you post it is the "Code Review" section of the
 repository's root `CLAUDE.md`; § Architecture is what a module-boundary finding cites. Read
