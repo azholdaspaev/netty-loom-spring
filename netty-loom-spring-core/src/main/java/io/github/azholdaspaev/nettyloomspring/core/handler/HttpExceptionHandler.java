@@ -87,7 +87,7 @@ public class HttpExceptionHandler extends ChannelInboundHandlerAdapter {
         return response;
     }
 
-    private static boolean isClientDisconnect(Throwable cause) {
+    public static boolean isClientDisconnect(Throwable cause) {
         if (cause instanceof ClosedChannelException || cause instanceof PrematureChannelClosureException) {
             return true;
         }

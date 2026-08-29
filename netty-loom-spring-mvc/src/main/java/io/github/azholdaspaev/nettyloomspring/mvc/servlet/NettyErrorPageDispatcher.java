@@ -46,8 +46,10 @@ public class NettyErrorPageDispatcher {
             return false;
         }
         if (response.isHeadWritten()) {
-            log.warn("Cannot answer {} with error page {}: the response is already on the wire",
-                request.getRequestURI(), path, rootCause);
+            if (!HttpExceptionHandler.isClientDisconnect(rootCause)) {
+                log.warn("Cannot answer {} with error page {}: the response is already on the wire",
+                    request.getRequestURI(), path, rootCause);
+            }
             return false;
         }
         NettyRequestDispatcher page = context.getDispatchFactory().resolve(path);
