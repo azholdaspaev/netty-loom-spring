@@ -1,19 +1,12 @@
 package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
-import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionMetadata;
-import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpObject;
-import io.netty.handler.codec.http.HttpMethod;
-import io.netty.handler.codec.http.HttpVersion;
 import jakarta.servlet.DispatcherType;
-import jakarta.servlet.Filter;
-import jakarta.servlet.FilterChain;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.http.HttpServletRequest;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -29,47 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class NettyRequestDispatcherTest {
-
-    private static final HttpConnectionMetadata CONNECTION =
-        new HttpConnectionMetadata("198.51.100.2", 1234, "198.51.100.9", 8080, false);
-
-    private DefaultNettyServletContext context;
-    private NettyDispatchFactory factory;
-    private List<HttpServletRequest> reached;
-    private List<String> trace;
-
-    @BeforeEach
-    void setUp() {
-        context = new DefaultNettyServletContext();
-        reached = new ArrayList<>();
-        trace = new ArrayList<>();
-        terminalIs((request, response) -> {
-        });
-    }
-
-    private void terminalIs(FilterChain terminal) {
-        factory = new NettyDispatchFactory(context, terminal);
-        context.setDispatchFactory(factory);
-    }
-
-    private void registerFilter(String name, String pattern, EnumSet<DispatcherType> dispatcherTypes) {
-        Filter filter = (request, response, chain) -> {
-            trace.add(name);
-            chain.doFilter(request, response);
-        };
-        context.addFilter(name, filter).addMappingForUrlPatterns(dispatcherTypes, false, pattern);
-    }
-
-    private void recordTerminal() {
-        terminalIs((request, response) -> reached.add((HttpServletRequest) request));
-    }
-
-    private NettyHttpServletRequest requestFor(String uri, NettyHttpServletResponse response) {
-        return new NettyHttpServletRequest(
-            new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri),
-            CONNECTION, context, response);
-    }
+class NettyRequestDispatcherTest extends DispatchFixture {
 
     private HttpServletRequest forward(String uri, String targetPath, String queryString) throws Exception {
         recordTerminal();
