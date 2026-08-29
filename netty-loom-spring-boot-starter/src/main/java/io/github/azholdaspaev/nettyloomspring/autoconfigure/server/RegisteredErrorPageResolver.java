@@ -8,9 +8,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * The application's {@link ErrorPage} registrations, folded into the single lookup the servlet bridge
- * reads. The precedence is Tomcat's -- exception before status, both before the global page -- so that
- * the same registrations behave the same way here as they would on Tomcat.
+ * The application's {@link ErrorPage} registrations, folded into the single lookup
+ * {@link NettyErrorPageResolver#resolve} specifies.
  */
 class RegisteredErrorPageResolver implements NettyErrorPageResolver {
 
