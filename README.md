@@ -152,9 +152,9 @@ issue. The contrast with the list above is the point.
   `getResource*` and `getRealPath` return `null`. `GET /` with an `index.html` present still
   returns 500 ([#59](https://github.com/azholdaspaev/netty-loom-spring/issues/59)): the forward to
   it now works and the resource is found, but `ServletContext.getMimeType` then throws.
-- **`RequestDispatcher` does `forward` and nothing else
+- **`RequestDispatcher` does `forward` and the container's own error dispatch, nothing else
   ([#182](https://github.com/azholdaspaev/netty-loom-spring/issues/182)).** `include` and named
-  dispatch throw; filters mapped to `INCLUDE`, `ERROR` or `ASYNC` still never match. A forward
+  dispatch throw; filters mapped to `INCLUDE` or `ASYNC` still never match. A forward
   leaves the response uncommitted where the spec would close it.
 - **No TLS ([#16](https://github.com/azholdaspaev/netty-loom-spring/issues/16)), HTTP/2
   ([#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23)), compression
