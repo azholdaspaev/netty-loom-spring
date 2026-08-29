@@ -12,11 +12,6 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-/**
- * The fold from Boot's {@link ErrorPage} registrations onto the single lookup the servlet bridge reads
- * (issue #38). The precedence mirrored here is Tomcat's {@code StandardHostValve}, which is what the
- * same registrations would produce on a Tomcat deployment.
- */
 class RegisteredErrorPageResolverTest {
 
     @Test
