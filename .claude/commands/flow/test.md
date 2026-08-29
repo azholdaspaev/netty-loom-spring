@@ -27,7 +27,7 @@ NOTES:
 - there is no coverage tool in this build — no jacoco, no pitest. Mutation is how coverage is measured here, so do not go looking for a report
 - run the touched modules' tests first, then `./gradlew build`. The dependency flow is one-directional, so a change in `core` can break `mvc` and `starter` downstream, never the reverse
 - the mutation must be one the change is about — invert the condition, drop the call, return the other branch. Deleting a whole method body proves only that the code is reachable
-- tickets match the format of the existing ones; `gh issue view 99` is the precedent, carrying the mutation applied and the command that reproduces it. Label with `bug` for a defect, a `priority/P*`, and the `area/*` of the code under test — there is no testing area label
+- tickets follow `.github/ISSUE_TEMPLATE/bug.md`, carrying the mutation applied and the command that reproduces it under `## TDD entry point`. Label with `bug` for a defect, a `priority/P*`, and the `area/*` of the code under test — there is no testing area label
 - report what was proven, not what was run: name the tests that failed against mutated code, and name every production path where none did
 - use sub-agents to gather context and to probe the change from different angles
 

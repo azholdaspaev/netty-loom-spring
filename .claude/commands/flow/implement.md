@@ -19,7 +19,7 @@ ORDER OF WORK:
 
 NOTES:
 - use sub-agents to gather context and understand the source code
-- if you find unrelated issues, do not fix them here — list them and ask before creating anything (match the format of the existing issues)
+- if you find unrelated issues, do not fix them here — list them and ask before creating anything (use `.github/ISSUE_TEMPLATE/task.md` or `bug.md`)
 
 The rules for how to make it live in the repository's root `CLAUDE.md` — § Architecture for
 where the change belongs, § Development Workflow for the TDD rule, § Guidelines for the bar
