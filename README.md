@@ -143,7 +143,7 @@ issue. The contrast with the list above is the point.
   returns `null` rather than throwing, so `SseEmitter`, `DeferredResult`, `StreamingResponseBody`
   and `Callable` return values fail — usually as an NPE at Spring's call site.
 - **No multipart ([#14](https://github.com/azholdaspaev/netty-loom-spring/issues/14)).** `getParts()`
-  is always empty; `@RequestParam MultipartFile` fails with a 400 and an empty body.
+  is always empty; `@RequestParam MultipartFile` fails with a 400.
 - **Extra servlets never run.** `addServlet(name, instance)` discards the instance and the chain
   terminates at `DispatcherServlet`, so a `ServletRegistrationBean` registers and is never invoked.
 - **Filters registered by class never run.** `addFilter(name, Filter)` works; the `Class` and
