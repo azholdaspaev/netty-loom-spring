@@ -1,14 +1,9 @@
 package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
-import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionMetadata;
-import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import io.netty.handler.codec.http.HttpVersion;
 import jakarta.servlet.DispatcherType;
-import jakarta.servlet.Filter;
-import jakarta.servlet.FilterChain;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -28,49 +23,18 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class NettyErrorPageDispatcherTest {
+class NettyErrorPageDispatcherTest extends DispatchFixture {
 
-    private static final HttpConnectionMetadata CONNECTION =
-        new HttpConnectionMetadata("198.51.100.2", 1234, "198.51.100.9", 8080, false);
-
-    private DefaultNettyServletContext context;
     private NettyErrorPageDispatcher errorPages;
-    private List<HttpServletRequest> reached;
-    private List<String> trace;
 
     @BeforeEach
     void setUp() {
-        context = new DefaultNettyServletContext();
-        reached = new ArrayList<>();
-        trace = new ArrayList<>();
-        terminalIs((request, response) -> reached.add((HttpServletRequest) request));
+        recordTerminal();
         errorPages = new NettyErrorPageDispatcher(context);
-    }
-
-    private void terminalIs(FilterChain terminal) {
-        context.setDispatchFactory(new NettyDispatchFactory(context, terminal));
     }
 
     private void pageIs(String path) {
         context.setErrorPageResolver((status, failure, rootCause) -> path);
-    }
-
-    private void registerFilter(String name, EnumSet<DispatcherType> dispatcherTypes) {
-        Filter filter = (request, response, chain) -> {
-            trace.add(name);
-            chain.doFilter(request, response);
-        };
-        context.addFilter(name, filter).addMappingForUrlPatterns(dispatcherTypes, false, "/*");
-    }
-
-    private NettyHttpServletRequest requestFor(String uri, NettyHttpServletResponse response) {
-        return requestFor(HttpMethod.GET, uri, response);
-    }
-
-    private NettyHttpServletRequest requestFor(HttpMethod method, String uri, NettyHttpServletResponse response) {
-        return new NettyHttpServletRequest(
-            new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, method, uri),
-            CONNECTION, context, response);
     }
 
     private String reportOnAStreamedResponse(Throwable failure) throws Exception {
@@ -355,8 +319,8 @@ class NettyErrorPageDispatcherTest {
     @Test
     void filtersMappedToTheErrorDispatchRunAndRequestOnlyFiltersDoNot() throws Exception {
         pageIs("/error");
-        registerFilter("error-filter", EnumSet.of(DispatcherType.ERROR));
-        registerFilter("request-filter", EnumSet.of(DispatcherType.REQUEST));
+        registerFilter("error-filter", "/*", EnumSet.of(DispatcherType.ERROR));
+        registerFilter("request-filter", "/*", EnumSet.of(DispatcherType.REQUEST));
         var response = new NettyHttpServletResponse();
         var request = requestFor("/boom", response);
         response.sendError(HttpResponseStatus.NOT_FOUND.code());
