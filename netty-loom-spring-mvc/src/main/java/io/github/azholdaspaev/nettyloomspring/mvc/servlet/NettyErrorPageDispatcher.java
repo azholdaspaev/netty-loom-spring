@@ -36,6 +36,10 @@ public class NettyErrorPageDispatcher {
             return false;
         }
         Throwable rootCause = rootCauseOf(failure);
+        // The failure as thrown rather than its root cause: FrameworkServlet wraps whatever a handler
+        // threw, so the wrapper is what tells a controller failure from a filter's, and only the latter
+        // keeps the pipeline's mapped status. Whatever the response already held is not consulted --
+        // Tomcat's StandardWrapperValve.exception likewise sets 500 over it before a page is resolved.
         int status = statusFor(response, failure);
         String path = context.getErrorPageResolver().resolve(status, failure, rootCause);
         if (path == null) {
@@ -72,10 +76,6 @@ public class NettyErrorPageDispatcher {
         return failure;
     }
 
-    // The failure as thrown rather than its root cause: FrameworkServlet wraps whatever a handler
-    // threw, so the wrapper is what tells a controller failure from a filter's, and only the latter
-    // keeps the pipeline's mapped status. Whatever the response already held is not consulted --
-    // Tomcat's StandardWrapperValve.exception likewise sets 500 over it before a page is resolved.
     private static int statusFor(NettyHttpServletResponse response, Throwable failure) {
         return failure == null ? response.getStatus() : HttpExceptionHandler.statusFor(failure).code();
     }
