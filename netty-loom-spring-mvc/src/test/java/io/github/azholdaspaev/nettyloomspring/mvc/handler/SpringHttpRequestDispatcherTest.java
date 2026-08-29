@@ -162,7 +162,7 @@ class SpringHttpRequestDispatcherTest {
     // --- Error pages (issue #38) ---
 
     private void errorPageIs(String path) {
-        servletContext.setErrorPageResolver((status, failure) -> path);
+        servletContext.setErrorPageResolver((status, failure, rootCause) -> path);
     }
 
     private static void write(HttpServletResponse response, String body) {

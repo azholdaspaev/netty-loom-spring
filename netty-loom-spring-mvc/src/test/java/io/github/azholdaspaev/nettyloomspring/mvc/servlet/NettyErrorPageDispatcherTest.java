@@ -49,7 +49,7 @@ class NettyErrorPageDispatcherTest {
     }
 
     private void pageIs(String path) {
-        context.setErrorPageResolver((status, failure) -> path);
+        context.setErrorPageResolver((status, failure, rootCause) -> path);
     }
 
     private void registerFilter(String name, EnumSet<DispatcherType> dispatcherTypes) {
