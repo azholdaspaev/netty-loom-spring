@@ -212,6 +212,19 @@ class NettyErrorPageDispatcherTest {
     }
 
     @Test
+    void aPageRegisteredForTheRootCauseAloneIsFoundUnderItsWrapper() throws Exception {
+        context.setErrorPageResolver((status, failure, rootCause) ->
+            rootCause instanceof IllegalStateException ? "/root" : null);
+        var response = new NettyHttpServletResponse();
+        var request = requestFor("/boom", response);
+
+        errorPages.report(request, response, new ServletException(new IllegalStateException("bang")));
+
+        assertEquals("/root", reached.getFirst().getServletPath(),
+            "the root cause reaches the resolver unwrapped, or a page registered for it never matches");
+    }
+
+    @Test
     void aFailureOnAnOkResponseIsReportedAsFiveHundred() throws Exception {
         pageIs("/error");
         var response = new NettyHttpServletResponse();
