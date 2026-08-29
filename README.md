@@ -52,7 +52,6 @@ Methodology, every sweep, and the reproduce recipe:
   implemented; TLS fails startup, the other two are ignored.
 - You use **SSE, `StreamingResponseBody`, `DeferredResult`, or file upload**. Servlet async and
   multipart are both absent.
-- You rely on **Spring Boot's `/error` JSON body**. Error responses here have an empty body.
 - Your traffic is **below roughly 2,000 concurrent connections** — there is no measured gain, and at
   low concurrency this is the slowest of the three servers benchmarked.
 
@@ -124,7 +123,6 @@ that cost the most:
 - `server.compression.*` — responses are never compressed ([#22](https://github.com/azholdaspaev/netty-loom-spring/issues/22))
 - `server.http2.*` — HTTP/1.1 only ([#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23))
 - `server.shutdown=immediate` — the server drains anyway ([#87](https://github.com/azholdaspaev/netty-loom-spring/issues/87))
-- `spring.web.error.*` and error-page registrations — never read; there is no `ERROR` dispatch
 
 The [full list](docs/configuration.md#properties-that-are-silently-ignored) covers the rest,
 including `server.server-header`, `server.mime-mappings.*` and `spring.mvc.servlet.path`.
@@ -141,12 +139,6 @@ issue. The contrast with the list above is the point.
 
 ### 3. Unimplemented servlet features
 
-- **No `/error` dispatch ([#38](https://github.com/azholdaspaev/netty-loom-spring/issues/38)).**
-  `sendError` sets the status, discards the message and empties the body; `BasicErrorController` is
-  never invoked. **Every** Spring-generated 400/404/405/415 reaches the client as a status line with
-  `Content-Length: 0` and no body, where Tomcat returns `{"timestamp":…,"status":…,"path":…}`. An uncaught
-  controller exception yields `500` with a plain-text body and a closed connection. This is the
-  first thing most people hit.
 - **No async ([#18](https://github.com/azholdaspaev/netty-loom-spring/issues/18)).** `startAsync()`
   returns `null` rather than throwing, so `SseEmitter`, `DeferredResult`, `StreamingResponseBody`
   and `Callable` return values fail — usually as an NPE at Spring's call site.

@@ -1,5 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletRequest;
@@ -28,9 +29,13 @@ class NettyRequestDispatcher implements RequestDispatcher {
             throw new IllegalStateException("Cannot forward after the response has been committed");
         }
         response.resetBuffer();
+        dispatch((HttpServletRequest) request, response, DispatcherType.FORWARD);
+    }
 
-        var forwarded = new NettyForwardRequestWrapper(factory, (HttpServletRequest) request, targetPath, queryString);
-        factory.chainFor(forwarded).doFilter(forwarded, response);
+    void dispatch(HttpServletRequest request, ServletResponse response, DispatcherType dispatcherType)
+        throws ServletException, IOException {
+        var dispatched = new NettyDispatchRequestWrapper(factory, request, targetPath, queryString, dispatcherType);
+        factory.chainFor(dispatched).doFilter(dispatched, response);
     }
 
     @Override

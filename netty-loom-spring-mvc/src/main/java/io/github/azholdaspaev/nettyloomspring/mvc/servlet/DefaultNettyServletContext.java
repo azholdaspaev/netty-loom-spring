@@ -57,6 +57,7 @@ public class DefaultNettyServletContext implements NettyServletContext {
     private volatile String contextPath = ROOT_CONTEXT_PATH;
     private volatile NettyDispatchFactory dispatchFactory;
     private volatile NettyCookieSameSiteResolver cookieSameSiteResolver = NettyCookieSameSiteResolver.NO_OPINION;
+    private volatile NettyErrorPageResolver errorPageResolver = NettyErrorPageResolver.NO_PAGES;
     // Atomic because the transition, not the value, is what must happen once: close() is reachable from
     // both SessionStoreLifecycle.stop() and the bean-destruction backstop, and each event is owed exactly
     // one delivery. Same idiom as NettyHttpSession.markInvalidated.
@@ -288,6 +289,16 @@ public class DefaultNettyServletContext implements NettyServletContext {
     @Override
     public NettyCookieSameSiteResolver getCookieSameSiteResolver() {
         return cookieSameSiteResolver;
+    }
+
+    @Override
+    public void setErrorPageResolver(NettyErrorPageResolver resolver) {
+        this.errorPageResolver = resolver;
+    }
+
+    @Override
+    public NettyErrorPageResolver getErrorPageResolver() {
+        return errorPageResolver;
     }
 
     @Override

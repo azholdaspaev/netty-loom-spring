@@ -58,6 +58,9 @@ public class NettyHttpServletResponse implements HttpServletResponse {
     // The narrower half: bytes have actually left. sendError and sendRedirect commit without sending
     // anything, and taking such a response back is honest, so reset and its kin refuse on this instead.
     private boolean headWritten;
+    // Which of those two it was: only an error is owed a page.
+    private boolean errorSent;
+    private String errorMessage;
 
     private final NettyCookieSameSiteResolver sameSiteResolver;
     private final HttpResponseWriter responseWriter;
@@ -178,13 +181,13 @@ public class NettyHttpServletResponse implements HttpServletResponse {
         resetBuffer();
         this.status = sc;
         this.committed = true;
+        this.errorSent = true;
+        this.errorMessage = msg;
     }
 
     @Override
     public void sendError(int sc) throws IOException {
-        resetBuffer();
-        this.status = sc;
-        this.committed = true;
+        sendError(sc, null);
     }
 
     @Override
@@ -405,6 +408,33 @@ public class NettyHttpServletResponse implements HttpServletResponse {
         // wire, so this un-commits a sendError or sendRedirect -- which commit without sending -- and
         // never a response the client has already begun reading.
         committed = false;
+        errorSent = false;
+        errorMessage = null;
+    }
+
+    boolean isErrorSent() {
+        return errorSent;
+    }
+
+    String getErrorMessage() {
+        return errorMessage;
+    }
+
+    boolean isHeadWritten() {
+        return headWritten;
+    }
+
+    /**
+     * Hands an errored response back to the container so an error page can write the real body.
+     */
+    void reopenForErrorPage() {
+        // resetBuffer and un-commit rather than reset(), which also clears the headers: that would drop
+        // the Set-Cookie of a session created before the failure, and every header a filter had written.
+        // Tomcat's StandardHostValve does the same, via resetBuffer(true) and setAppCommitted(false).
+        resetBuffer();
+        committed = false;
+        errorSent = false;
+        errorMessage = null;
     }
 
     @Override

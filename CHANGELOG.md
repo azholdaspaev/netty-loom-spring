@@ -32,6 +32,7 @@ First release. Not yet published to Maven Central; a `0.1.0-SNAPSHOT` is on
   altogether is given up on rather than waited on for ever.
 - **Servlet bridge** covering requests, responses, cookies, sessions, instance-registered filters,
   path-based `RequestDispatcher.forward` with its `FORWARD` dispatcher state,
+  error-page dispatch to Boot's `/error` with its `ERROR` dispatcher state,
   and all seven `addListener` listener types, over `NettyHttpServletRequest`,
   `NettyHttpServletResponse` and `DefaultNettyServletContext`.
 - **In-memory sessions** with the standard `server.servlet.session.*` cookie and timeout
@@ -46,8 +47,8 @@ First release. Not yet published to Maven Central; a `0.1.0-SNAPSHOT` is on
 This release is deliberately partial, and several standard Spring Boot settings are accepted and
 then silently ignored. Read [What works, what doesn't](README.md#what-works-what-doesnt) and the
 [compatibility matrix](docs/compatibility-matrix.md) before adopting it. The largest gaps: no
-`/error` page dispatch, no servlet async (so no SSE or `StreamingResponseBody`), no multipart, no
-static resources, no TLS, no HTTP/2 and no response compression.
+servlet async (so no SSE or `StreamingResponseBody`), no multipart, no static resources, no TLS, no
+HTTP/2 and no response compression.
 
 ### Migration notes
 

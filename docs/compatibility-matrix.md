@@ -35,11 +35,15 @@ What the servlet bridge implements, method by method. Verified against the sourc
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| `sendError(int)` | `partial` | Sets the status, clears the body and drops any handler-set `Content-Length`. The client gets the status line and `Content-Length: 0` — no body, no error page |
-| `sendError(int, String)` | `partial` | Identical to the single-argument form — **the message is discarded** |
-| Error-page dispatch to `/error` | `none` | `getErrorPages()` is never read and there is no `ERROR` dispatch, so `BasicErrorController` never runs for a failed request. Every Spring-generated 400/404/405/415 has an empty body ([#38](https://github.com/azholdaspaev/netty-loom-spring/issues/38)). A direct `GET /error` still works, being an ordinary mapping |
-| `spring.web.error.*` | `ignored` | Boot 4 moved these from `server.error.*`; neither is honoured |
-| Uncaught controller exception | `partial` | 500 with a plain-text `Internal Server Error` body and `Connection: close`. If bytes were already streamed, the connection is closed with no response |
+| `sendError(int)` | `works` | Sets the status, clears the body and drops any handler-set `Content-Length`, then hands the response to the registered error page |
+| `sendError(int, String)` | `works` | As the single-argument form, and the message reaches the error page as `jakarta.servlet.error.message` |
+| Error-page dispatch to `/error` | `partial` | `getErrorPages()` is read at startup and a failed request is re-dispatched to the matching page with `DispatcherType.ERROR`, so `BasicErrorController` renders Spring-generated 4xx/5xx as it does on Tomcat. Global, status-specific and exception-specific registrations all match, exception pages by walking the class hierarchy. Gaps below |
+| `jakarta.servlet.error.servlet_name` | `none` | Never set: this container registers one servlet and keeps no name registry. Nothing in Boot's error handling reads it |
+| Error page for a response already on the wire | `none` | Declined with a warning. Tomcat falls back to `include()` on the partial response, which the `RequestDispatcher` row below shows this container does not implement |
+| Error page for an `Error` rather than an `Exception` | `none` | Only `Exception` is caught; an `Error` reaches the connection as the plain-text 500 below, on the view that a JVM in that state should not be rendering pages |
+| Error page for an out-of-context URI | `none` | The bare pre-filter 404 below never enters the context, so no page of that context answers it |
+| `spring.web.error.*` | `works` | `path` selects the page Boot registers; `include-message`, `include-stacktrace`, `include-binding-errors` and `whitelabel.enabled` are Boot's own and now reach the client |
+| Uncaught controller exception | `works` | Re-dispatched to the error page as 500, or as the 4xx the handler had already set. With no page registered — or once bytes have been streamed — it falls back to a plain-text `Internal Server Error` with `Connection: close` |
 | Out-of-context URI (with a context path set) | `partial` | A bare 404 returned before the filter chain — no filter, listener or Security rule sees it. Deliberate; see [ADR 0001](adr/0001-server-properties-namespace.md) |
 
 ## Request
@@ -70,7 +74,7 @@ What the servlet bridge implements, method by method. Verified against the sourc
 | `getRequestId()` | `none` | Always `""`, so every request shares one id where the spec requires a unique one ([#116](https://github.com/azholdaspaev/netty-loom-spring/issues/116)) |
 | `getProtocolRequestId()` | `works` | `""`, which is what the spec prescribes for HTTP/1.x |
 | `getServletConnection()` | `none` | Returns **`null`**, for which the spec defines no case, so callers NPE at their own call site ([#116](https://github.com/azholdaspaev/netty-loom-spring/issues/116)) |
-| `getDispatcherType()` | `partial` | `REQUEST` for the initial dispatch and `FORWARD` during a forward. `INCLUDE`, `ERROR` and `ASYNC` are unreachable |
+| `getDispatcherType()` | `partial` | `REQUEST` for the initial dispatch, `FORWARD` during a forward and `ERROR` during an error-page dispatch. `INCLUDE` and `ASYNC` are unreachable |
 
 ## Response
 
@@ -162,7 +166,7 @@ fired on an object bound into a session, and passing one to `addListener` throws
 | `addFilter(name, Class)` / `addFilter(name, String className)` | `ignored` | Registration is recorded and **silently skipped at request time** — the filter is never instantiated and never runs |
 | Filter URL-pattern mappings | `works` | Servlet-spec §12.2 matching (exact, `/*`, `/prefix/*`, `*.ext`) against the context-relative path |
 | Filter servlet-name mappings | `warns` | Logged at WARN and discarded — unlike the `Class` overload above, which is silent |
-| Filter dispatcher types | `partial` | `FORWARD` mappings match, against the **target** path of the forward; `INCLUDE` / `ERROR` / `ASYNC` remain unreachable. Note that Boot registers every `OncePerRequestFilter` for all dispatcher types, so its own filters (`CharacterEncodingFilter`, `FormContentFilter`, `RequestContextFilter`, `ServerHttpObservationFilter`) are re-entered on a forward and skip themselves via their already-filtered request attribute |
+| Filter dispatcher types | `partial` | `FORWARD` and `ERROR` mappings match, against the **target** path of the dispatch; `INCLUDE` / `ASYNC` remain unreachable. Note that Boot registers every `OncePerRequestFilter` for all dispatcher types, so its own filters (`CharacterEncodingFilter`, `FormContentFilter`, `RequestContextFilter`, `ServerHttpObservationFilter`) are re-entered and skip themselves — on a forward via their already-filtered request attribute, on an error dispatch via `jakarta.servlet.error.request_uri`, which is why that attribute is set before the dispatch runs. Spring Security's chain is registered for `ERROR` and does re-run, as on Tomcat |
 | Filter ordering | `works` | Registration order, which is Boot's `@Order` resolution |
 | `FilterConfig` init parameters | `none` | `setInitParameter` records them; `getInitParameter` always returns `null` |
 | `Filter.destroy()`, `Servlet.destroy()` | `none` | Never called at shutdown ([#103](https://github.com/azholdaspaev/netty-loom-spring/issues/103)) |

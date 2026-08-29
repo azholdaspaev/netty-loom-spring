@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -66,6 +67,71 @@ class NettyHttpServletResponseTest {
         // make the client hang waiting for bytes that never arrive.
         assertEquals(0, httpResponse.content().readableBytes());
         assertEquals("0", httpResponse.headers().get(HttpHeaderNames.CONTENT_LENGTH));
+    }
+
+    @Test
+    void sendErrorRecordsTheStatusAndTheMessageItWasGiven() throws Exception {
+        var response = new NettyHttpServletResponse();
+
+        response.sendError(HttpResponseStatus.FORBIDDEN.code(), "no entry");
+
+        assertTrue(response.isErrorSent(), "the container has to be able to tell an error from a plain commit");
+        assertEquals("no entry", response.getErrorMessage());
+    }
+
+    @Test
+    void sendErrorWithoutAMessageRecordsNone() throws Exception {
+        var response = new NettyHttpServletResponse();
+
+        response.sendError(HttpResponseStatus.NOT_FOUND.code());
+
+        assertTrue(response.isErrorSent());
+        assertNull(response.getErrorMessage());
+    }
+
+    @Test
+    void resetTakesBackTheErrorState() throws Exception {
+        var response = new NettyHttpServletResponse();
+        response.sendError(HttpResponseStatus.FORBIDDEN.code(), "no entry");
+
+        response.reset();
+
+        assertFalse(response.isErrorSent());
+        assertNull(response.getErrorMessage());
+    }
+
+    @Test
+    void reopeningForAnErrorPageKeepsTheHeadersAlreadyWritten() throws Exception {
+        var response = new NettyHttpServletResponse();
+        response.addCookie(new Cookie("JSESSIONID", "abc"));
+        response.getWriter().write("half a page written before the failure");
+        response.sendError(HttpResponseStatus.INTERNAL_SERVER_ERROR.code());
+
+        response.reopenForErrorPage();
+
+        assertFalse(response.isCommitted(), "the error page has to be able to set its own status and content type");
+        assertFalse(response.isErrorSent(), "the error has been taken up, so nothing is left to report");
+        assertEquals(HttpResponseStatus.INTERNAL_SERVER_ERROR.code(), response.getStatus(),
+            "the status the failure produced is what the error page answers with");
+        response.setContentType("application/json");
+        response.getOutputStream().write("{}".getBytes(StandardCharsets.UTF_8));
+
+        FullHttpResponse httpResponse = response.toFullHttpResponse();
+        assertEquals("{}", httpResponse.content().toString(StandardCharsets.UTF_8));
+        assertTrue(httpResponse.headers().contains(HttpHeaderNames.SET_COOKIE),
+            "a session created before the failure would never reach the client if reopening cleared headers");
+        assertEquals("application/json", httpResponse.headers().get(HttpHeaderNames.CONTENT_TYPE));
+    }
+
+    @Test
+    void reopeningForAnErrorPageIsRefusedOnceTheHeadIsOnTheWire() throws Exception {
+        List<HttpObject> written = new ArrayList<>();
+        var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, written::add);
+        response.setBufferSize(1);
+        response.getOutputStream().write("streamed".getBytes(StandardCharsets.UTF_8));
+
+        assertTrue(response.isHeadWritten());
+        assertThrows(IllegalStateException.class, response::reopenForErrorPage);
     }
 
     @Test

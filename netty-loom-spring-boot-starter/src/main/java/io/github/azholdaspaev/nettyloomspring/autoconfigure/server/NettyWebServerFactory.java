@@ -68,6 +68,7 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
         servletContext.setContextPath(getContextPath());
         configureSessions();
         configureCookieSameSite();
+        configureErrorPages();
         initializeServletContext(initializers);
         // Before filters and servlets; see fireContextInitialized's javadoc for why that order is fixed.
         servletContext.fireContextInitialized();
@@ -122,6 +123,10 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
         if (!suppliers.isEmpty()) {
             servletContext.setCookieSameSiteResolver(new SuppliedCookieSameSiteResolver(suppliers));
         }
+    }
+
+    private void configureErrorPages() {
+        servletContext.setErrorPageResolver(new RegisteredErrorPageResolver(getErrorPages()));
     }
 
     private void verifySessionPersistenceNotConfigured(Session session) {
