@@ -22,6 +22,7 @@ import java.time.Duration;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
 
@@ -125,10 +126,7 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
         HttpChannelResponseWriter answering = writer;
-        boolean midResponse = answering != null && answering.state != ResponseState.NOT_STARTED;
-        if (answering != null) {
-            answering.preempted = true;
-        }
+        boolean midResponse = answering != null && !answering.preempt();
         failBody(cause);
         if (midResponse) {
             ctx.close();
@@ -155,7 +153,7 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
             dispatchExecutor.execute(() -> {
                 try {
                     requestDispatcher.handle(request, requestBody, connection, writer);
-                    if (writer.state != ResponseState.ENDED && ctx.channel().isActive()) {
+                    if (writer.state.get() != ResponseState.ENDED && ctx.channel().isActive()) {
                         // The SPI's return no longer carries the response, so a dispatcher can leave the
                         // exchange hanging by returning. Worth saying only while the connection is still
                         // there: a departed client is the ordinary reason a response stops early.
@@ -217,7 +215,7 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
      * and a status for that refusal once the response is out would be a second one to a request (#78).
      */
     private void forgetWriterIfSettled() {
-        if (writer != null && requestOffWire && writer.state == ResponseState.ENDED) {
+        if (writer != null && requestOffWire && writer.state.get() == ResponseState.ENDED) {
             writer = null;
         }
     }
@@ -233,7 +231,7 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
             // put a second status on the same request.
             return;
         }
-        if (writer.state != ResponseState.NOT_STARTED) {
+        if (writer.state.get() != ResponseState.NOT_STARTED) {
             // A client that hung up mid-download ends the stream the ordinary way, so only a fault the
             // server owns is worth a warning. Both are still closes -- there is no response left to
             // send either way -- so the log is the whole of the difference.
@@ -268,7 +266,7 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
         }
     }
 
-    private enum ResponseState { NOT_STARTED, STARTED, ENDED }
+    private enum ResponseState { NOT_STARTED, STARTED, ENDED, PREEMPTED }
 
     /**
      * Bound to one exchange and touched only on the dispatch thread that owns it. A response written in
@@ -280,14 +278,15 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
         private final HttpRequest request;
 
         /**
-         * Written by the dispatch thread that owns this, read by the event loop deciding whether a
-         * failure can still be answered.
+         * Where the dispatch and the event loop contend: whichever settles the exchange first takes it,
+         * so a preemption and a response head can never both reach the wire (#78).
          */
-        private volatile ResponseState state = ResponseState.NOT_STARTED;
+        private final AtomicReference<ResponseState> state =
+            new AtomicReference<>(ResponseState.NOT_STARTED);
 
         /**
-         * The exchange was answered from the event loop, which sets this before waking the dispatch
-         * thread that reads it.
+         * The pipeline has taken the exchange over, set for both outcomes of {@link #preempt} so a
+         * handler still streaming a started response stops as well.
          */
         private volatile boolean preempted;
 
@@ -302,7 +301,9 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
             // would otherwise produce for ever, and the part is released here because the writer still
             // owns it. ClosedChannelException, not a plain IOException: the type is what
             // HttpExceptionHandler classifies a departed client by.
-            if (preempted || !ctx.channel().isActive()) {
+            ResponseState settled = part instanceof LastHttpContent
+                ? ResponseState.ENDED : ResponseState.STARTED;
+            if (preempted || !ctx.channel().isActive() || !claim(settled)) {
                 ReferenceCountUtil.release(part);
                 throw new ClosedChannelException();
             }
@@ -310,8 +311,19 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
                 frameStreamedBody(response);
                 echoHttp10KeepAlive(request, response);
             }
-            state = part instanceof LastHttpContent ? ResponseState.ENDED : ResponseState.STARTED;
             awaitAccepted(ctx.writeAndFlush(part));
+        }
+
+        /** Reports whether the exchange was still unanswered, having taken it either way. */
+        private boolean preempt() {
+            preempted = true;
+            return state.compareAndSet(ResponseState.NOT_STARTED, ResponseState.PREEMPTED);
+        }
+
+        /** Loses to a preemption rather than overwriting it; nothing else writes {@link #state}. */
+        private boolean claim(ResponseState settled) {
+            ResponseState current = state.get();
+            return current != ResponseState.PREEMPTED && state.compareAndSet(current, settled);
         }
 
         /**

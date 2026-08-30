@@ -31,6 +31,7 @@ import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
+import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
@@ -726,6 +727,27 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    void shouldNotAnswerAFailureThatLandsWhileTheDispatchIsWritingItsResponseHead() {
+        ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
+        AtomicReference<Runnable> preemption = new AtomicReference<>();
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            (_, _, _, writer) -> writer.write(new PreemptingResponse(preemption)), DIRECT,
+            connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT), capture);
+        // Between write()'s guard and the wire: the response is being framed, which is where the two
+        // threads interleave and where reading preempted and state separately cannot see the other.
+        preemption.set(() -> channel.pipeline()
+            .fireExceptionCaught(new TooLongFrameException("body past the limit")));
+
+        channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/upload"));
+
+        assertNull(capture.captured,
+            "the dispatch had already claimed the exchange, so a status mapped for the failure would "
+                + "be a second response to one request");
+        assertFalse(channel.isOpen(), "with no way left to report it, the connection goes instead");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
     void shouldCloseOnAFailureWhileTheAlreadyAnsweredRequestIsStillArriving() {
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         CompletableFuture<Runnable> submitted = new CompletableFuture<>();
@@ -1155,6 +1177,29 @@ class HttpRequestHandlerTest {
         @Override
         public boolean release() {
             throw new IllegalStateException("deallocator failed");
+        }
+    }
+
+    /**
+     * Answers the exchange from the pipeline while the dispatch is inside {@code write}, which is the
+     * interleaving two threads produce and a single one otherwise cannot reach.
+     */
+    private static final class PreemptingResponse extends DefaultHttpResponse {
+
+        private final AtomicReference<Runnable> preemption;
+
+        PreemptingResponse(AtomicReference<Runnable> preemption) {
+            super(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+            this.preemption = preemption;
+        }
+
+        @Override
+        public HttpHeaders headers() {
+            Runnable pending = preemption.getAndSet(null);
+            if (pending != null) {
+                pending.run();
+            }
+            return super.headers();
         }
     }
 
