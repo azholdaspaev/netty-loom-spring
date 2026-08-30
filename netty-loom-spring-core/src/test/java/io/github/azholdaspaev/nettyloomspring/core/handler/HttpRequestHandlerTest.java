@@ -624,6 +624,28 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    void shouldAskForAReadAgainOnceTheDispatchAbandonsAnUndrainedBody() {
+        RecordingReads reads = new RecordingReads();
+        CompletableFuture<Runnable> submitted = new CompletableFuture<>();
+        EmbeddedChannel channel = new EmbeddedChannel(reads, new HttpRequestHandler(
+            (_, _, _, writer) -> writer.write(emptyOkResponse()), submitted::complete, connectionRegistry,
+            UNREACHED_WRITE_STALL_TIMEOUT));
+        channel.config().setAutoRead(false);
+        channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/"));
+        channel.pipeline().fireChannelRead(bodyPart("x".repeat(HttpRequestBodyStream.HIGH_WATERMARK_BYTES)));
+        channel.pipeline().fireChannelReadComplete();
+        reads.count = 0;
+
+        submitted.join().run();
+        channel.runPendingTasks();
+
+        assertEquals(1, reads.count,
+            "the valve shut while the body queued and no other site reopens it, so the rest of the "
+                + "upload is never drained and the connection wedges until the read timeout");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
     void shouldKeepReadingWhileTheHandlerIsKeepingUp() {
         RecordingReads reads = new RecordingReads();
         EmbeddedChannel channel = new EmbeddedChannel(reads, new HttpRequestHandler(

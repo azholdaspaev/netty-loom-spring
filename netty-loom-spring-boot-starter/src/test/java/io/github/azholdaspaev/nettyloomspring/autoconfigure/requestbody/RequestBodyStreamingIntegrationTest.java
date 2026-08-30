@@ -154,6 +154,40 @@ class RequestBodyStreamingIntegrationTest {
         }
     }
 
+    @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    void shouldServeTheNextRequestOnAConnectionWhoseUndrainedBodyFilledTheQueue() throws Exception {
+        try (Socket socket = connect()) {
+            RawHttpClient.send(socket, "POST /upload/ignored HTTP/1.1",
+                "Host: localhost", "Content-Length: " + LARGE_BODY_BYTES);
+            // Off this thread: past the queue bound the server withholds reads, so the client blocks
+            // in the socket until whatever drains the abandoned body has run.
+            Thread sender = Thread.ofVirtual().start(() -> sendQuietly(socket, "x".repeat(LARGE_BODY_BYTES)));
+
+            RawHttpResponse first = RawHttpResponse.read(socket.getInputStream());
+            assertEquals(200, first.status());
+            first.readBody();
+            sender.join();
+
+            RawHttpClient.send(socket, "POST /upload/count HTTP/1.1", "Host: localhost", "Content-Length: 2");
+            RawHttpClient.sendBody(socket, "ok");
+
+            RawHttpResponse second = RawHttpResponse.read(socket.getInputStream());
+            assertEquals(200, second.status(),
+                "an abandoned body past the queue bound leaves the valve shut, and everything later on "
+                    + "the connection waits behind it");
+            assertEquals("read 2", second.readBody());
+        }
+    }
+
+    private static void sendQuietly(Socket socket, String body) {
+        try {
+            RawHttpClient.sendBody(socket, body);
+        } catch (IOException e) {
+            throw new IllegalStateException("the server stopped accepting the body it abandoned", e);
+        }
+    }
+
     /**
      * Writes until the server stops listening, which it does by closing behind the refusal — so a
      * broken pipe here is the outcome under test rather than a failure of it.
