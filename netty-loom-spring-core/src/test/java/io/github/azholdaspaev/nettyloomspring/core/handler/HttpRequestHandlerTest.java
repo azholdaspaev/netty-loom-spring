@@ -604,6 +604,47 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    void shouldStillAnswerAFailureArrivingBetweenExchangesOnAReusedConnection() {
+        ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            (_, _, _, writer) -> writer.write(emptyOkResponse()), DIRECT, connectionRegistry,
+            UNREACHED_WRITE_STALL_TIMEOUT), capture);
+        channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/ok"));
+        channel.pipeline().fireChannelRead(LastHttpContent.EMPTY_LAST_CONTENT);
+        channel.runPendingTasks();
+
+        channel.pipeline().fireExceptionCaught(new TooLongFrameException("header block past the limit"));
+
+        assertNotNull(capture.captured,
+            "the exchange before it is over, so the same failure that closes mid-response must still "
+                + "reach the handler that maps it to a status");
+        assertTrue(channel.isOpen(), "there is nothing on the wire a mapped status could corrupt");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void shouldCloseOnAFailureWhileTheAlreadyAnsweredRequestIsStillArriving() {
+        ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
+        CompletableFuture<Runnable> submitted = new CompletableFuture<>();
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            (_, _, _, writer) -> writer.write(emptyOkResponse()), submitted::complete, connectionRegistry,
+            UNREACHED_WRITE_STALL_TIMEOUT), capture);
+        channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/upload"));
+        submitted.join().run();
+        // The dispatch's own cleanup must have run: without it the writer is still held for the
+        // uninteresting reason, and the test would pass against a version that dropped it too early.
+        channel.runPendingTasks();
+
+        channel.pipeline().fireExceptionCaught(new TooLongFrameException("body past the limit"));
+
+        assertNull(capture.captured,
+            "the body is still arriving, so a status mapped for its refusal would be a second response "
+                + "to one request");
+        assertFalse(channel.isOpen(), "there is no way left to report it, so the connection goes");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
     void shouldStopReadingWhileTheHandlerIsBehindOnTheBody() {
         RecordingReads reads = new RecordingReads();
         EmbeddedChannel channel = new EmbeddedChannel(reads, new HttpRequestHandler(
