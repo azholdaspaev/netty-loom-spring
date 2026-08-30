@@ -92,7 +92,6 @@ Not configurable ([#42](https://github.com/azholdaspaev/netty-loom-spring/issues
 | Max header block | 10,000 bytes | `431`, connection closed |
 | Max chunk size | 10,000 bytes | — |
 | Max request body | 1 MiB | `413` |
-| Max form body (`getParameter`) | 2 MiB | `413` |
 | Undrained request body per exchange | 64 KiB | — (reads are withheld) |
 | Listen backlog (`SO_BACKLOG`) | 128 | — |
 
