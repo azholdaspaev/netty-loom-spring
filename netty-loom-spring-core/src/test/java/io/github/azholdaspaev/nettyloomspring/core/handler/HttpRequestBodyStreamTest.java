@@ -1,5 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.core.handler;
 
+import io.github.azholdaspaev.nettyloomspring.core.support.ReleaseFailingContent;
 import io.github.azholdaspaev.nettyloomspring.core.support.SpinWait;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -145,6 +146,33 @@ class HttpRequestBodyStreamTest {
         body.close();
 
         assertEquals(0, partlyRead.refCnt(), "the chunk being read is released by the reader that owns it");
+    }
+
+    @Test
+    void shouldReleaseTheRestOfTheQueueWhenOneChunkFailsItsRelease() {
+        HttpRequestBodyStream body = new HttpRequestBodyStream(() -> { });
+        body.offer(new ReleaseFailingContent());
+        HttpContent behindIt = content("still queued");
+        body.offer(behindIt);
+
+        assertThrows(IllegalStateException.class, body::close);
+
+        assertEquals(0, behindIt.refCnt(),
+            "close() is one-shot, so a chunk skipped by a failing release can never be freed by anyone");
+    }
+
+    @Test
+    void shouldReleaseTheChunkItWasPartWayThroughWhenTheQueueFailsItsRelease() throws Exception {
+        HttpRequestBodyStream body = new HttpRequestBodyStream(() -> { });
+        HttpContent partlyRead = content("abcd");
+        body.offer(partlyRead);
+        body.read();
+        body.offer(new ReleaseFailingContent());
+
+        assertThrows(IllegalStateException.class, body::close);
+
+        assertEquals(0, partlyRead.refCnt(),
+            "the chunk being read is the reader's to free, whatever the queue's cleanup did");
     }
 
     @Test

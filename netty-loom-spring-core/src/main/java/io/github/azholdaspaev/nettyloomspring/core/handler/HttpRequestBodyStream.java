@@ -129,19 +129,19 @@ class HttpRequestBodyStream extends InputStream {
 
     @Override
     public void close() {
-        lock.lock();
         try {
-            if (closed) {
-                return;
+            lock.lock();
+            try {
+                if (closed) {
+                    return;
+                }
+                closed = true;
+                discardAndSignal();
+            } finally {
+                lock.unlock();
             }
-            closed = true;
-            discardAndSignal();
         } finally {
-            lock.unlock();
-        }
-        if (reading != null) {
-            reading.release();
-            reading = null;
+            releaseReading();
         }
     }
 
@@ -196,10 +196,38 @@ class HttpRequestBodyStream extends InputStream {
         }
     }
 
+    /**
+     * Drained, not iterated, and the failure carried out last: close() is one-shot, so a chunk left
+     * behind here is never freed.
+     */
     private void discardQueued() {
-        queued.forEach(HttpContent::release);
-        queued.clear();
+        RuntimeException failed = null;
+        HttpContent part;
+        while ((part = queued.pollFirst()) != null) {
+            try {
+                part.release();
+            } catch (RuntimeException cause) {
+                if (failed == null) {
+                    failed = cause;
+                } else {
+                    failed.addSuppressed(cause);
+                }
+            }
+        }
         pendingBytes.set(0);
+        if (failed != null) {
+            throw failed;
+        }
+    }
+
+    /** Cleared before the release, so a deallocator that throws leaves nothing to release twice. */
+    private void releaseReading() {
+        ByteBuf chunk = reading;
+        if (chunk == null) {
+            return;
+        }
+        reading = null;
+        chunk.release();
     }
 
     private static IOException asIoFailure(Throwable cause) {

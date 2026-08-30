@@ -20,6 +20,7 @@ import io.netty.channel.local.LocalServerChannel;
 import io.netty.handler.codec.TooLongFrameException;
 import io.netty.channel.Channel;
 import io.github.azholdaspaev.nettyloomspring.core.support.RecordingReads;
+import io.github.azholdaspaev.nettyloomspring.core.support.ReleaseFailingContent;
 import io.netty.handler.codec.http.DefaultHttpRequest;
 import io.netty.handler.codec.http.DefaultLastHttpContent;
 import io.netty.handler.codec.http.HttpContent;
@@ -711,7 +712,7 @@ class HttpRequestHandlerTest {
             UNREACHED_WRITE_STALL_TIMEOUT));
 
         channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/"));
-        channel.pipeline().fireChannelRead(new CleanupFailingContent());
+        channel.pipeline().fireChannelRead(new ReleaseFailingContent());
         submitted.join().run();
 
         assertTrue(connectionRegistry.awaitDispatchesFinished(0),
@@ -720,21 +721,6 @@ class HttpRequestHandlerTest {
         assertFalse(connectionRegistry.awaitDispatchesFinished(0),
             "and must not have been counted out a second time");
         channel.finishAndReleaseAll();
-    }
-
-    /**
-     * Fails its own release with something the reference count cannot explain.
-     */
-    private static final class CleanupFailingContent extends DefaultHttpContent {
-
-        CleanupFailingContent() {
-            super(Unpooled.copiedBuffer("x", StandardCharsets.UTF_8));
-        }
-
-        @Override
-        public boolean release() {
-            throw new IllegalStateException("deallocator failed");
-        }
     }
 
     /**
