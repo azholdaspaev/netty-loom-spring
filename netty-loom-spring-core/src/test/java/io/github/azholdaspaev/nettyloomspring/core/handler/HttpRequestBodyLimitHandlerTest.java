@@ -74,6 +74,23 @@ class HttpRequestBodyLimitHandlerTest {
     }
 
     @Test
+    void shouldRejectADeclaredBodyOverTheLimitEvenWhenTheClientAsksNothing() {
+        EmbeddedChannel channel = newChannel();
+        HttpRequest declaredTooLarge = post();
+        declaredTooLarge.headers().setInt(HttpHeaderNames.CONTENT_LENGTH, MAX_BODY_BYTES + 1);
+
+        channel.writeInbound(declaredTooLarge);
+
+        FullHttpResponse rejection = channel.readOutbound();
+        assertEquals(HttpResponseStatus.REQUEST_ENTITY_TOO_LARGE, rejection.status(),
+            "the declared length settles it whether or not the client waits for an invitation");
+        rejection.release();
+        assertNull(channel.readInbound(),
+            "an endpoint that ignores the body could otherwise commit a 200 the running count can no "
+                + "longer replace");
+    }
+
+    @Test
     void shouldSayNothingToARequestThatExpectsNothing() {
         EmbeddedChannel channel = newChannel();
 
