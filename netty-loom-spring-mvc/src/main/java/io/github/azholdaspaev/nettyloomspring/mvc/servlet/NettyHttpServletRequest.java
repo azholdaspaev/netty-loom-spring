@@ -2,7 +2,6 @@ package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionMetadata;
 import io.netty.handler.codec.DateFormatter;
-import io.netty.handler.codec.TooLongFrameException;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
@@ -52,9 +51,6 @@ import java.util.Map;
 import org.springframework.http.HttpHeaders;
 
 public class NettyHttpServletRequest implements HttpServletRequest {
-
-    /** Tomcat's {@code maxPostSize} default. */
-    private static final int MAX_FORM_BODY_BYTES = 2 * 1024 * 1024;
 
     private final HttpRequest nettyRequest;
     private final InputStream body;
@@ -167,17 +163,9 @@ public class NettyHttpServletRequest implements HttpServletRequest {
             target.computeIfAbsent(name, k -> new ArrayList<>()).addAll(values));
     }
 
-    /**
-     * Bounded on its own, since the body it reads is no longer bounded by having been buffered whole:
-     * Tomcat's {@code maxPostSize} default, so a form too large to hold is refused rather than held.
-     */
     private String readFormBody(Charset charset) {
         try {
-            byte[] form = body.readNBytes(MAX_FORM_BODY_BYTES + 1);
-            if (form.length > MAX_FORM_BODY_BYTES) {
-                throw new TooLongFrameException("Form body exceeded " + MAX_FORM_BODY_BYTES + " bytes");
-            }
-            return new String(form, charset);
+            return new String(body.readAllBytes(), charset);
         } catch (IOException stopped) {
             throw new UncheckedIOException(stopped);
         }
