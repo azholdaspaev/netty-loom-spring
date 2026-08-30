@@ -9,6 +9,7 @@ import io.netty.handler.codec.http.DefaultLastHttpContent;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -166,6 +167,32 @@ class HttpRequestBodyLimitHandlerTest {
             assertNotNull(body, "request " + request + " is within the limit on its own");
             body.release();
         }
+    }
+
+    @Test
+    void shouldTellTheClientAboutTheCloseItsRefusalCarries() {
+        EmbeddedChannel channel = newChannel();
+
+        channel.writeInbound(expecting("something-else", 4));
+
+        FullHttpResponse rejection = channel.readOutbound();
+        assertEquals(HttpHeaderValues.CLOSE.toString(), rejection.headers().get(HttpHeaderNames.CONNECTION),
+            "a pooling client reuses a socket it was not told is going, and fails the next request on it");
+        rejection.release();
+    }
+
+    @Test
+    void shouldStillInviteTheBodyWithoutAskingForACloseItIsNotMaking() {
+        EmbeddedChannel channel = newChannel();
+
+        channel.writeInbound(expecting("100-continue", 4));
+
+        FullHttpResponse invitation = channel.readOutbound();
+        assertEquals(HttpResponseStatus.CONTINUE, invitation.status());
+        assertNull(invitation.headers().get(HttpHeaderNames.CONNECTION),
+            "an interim response that closed the connection would refuse the body it just asked for");
+        invitation.release();
+        channel.finishAndReleaseAll();
     }
 
     private static EmbeddedChannel newChannel() {
