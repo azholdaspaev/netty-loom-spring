@@ -263,6 +263,38 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
+    void shouldNotCloseWhileTheHandlerIsBehindOnARequestBodyStillArriving() {
+        EmbeddedChannel channel = new EmbeddedChannel(
+            new HttpReadTimeoutHandler(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS), new WithholdReads());
+        channel.freezeTime();
+        receiveRequestHead(channel);
+
+        elapse(channel, TIMEOUT_MILLIS * 5);
+
+        assertTrue(channel.isOpen(),
+            "the connection stopped asking because its handler is behind, which is not the client "
+                + "going quiet -- and the dispatch starts at the head now, so nothing else suspends it");
+    }
+
+    @Test
+    void shouldGiveTheClientAWholeIntervalOnceTheConnectionAsksAgain() {
+        WithholdReads valve = new WithholdReads();
+        EmbeddedChannel channel = new EmbeddedChannel(
+            new HttpReadTimeoutHandler(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS), valve);
+        channel.freezeTime();
+        receiveRequestHead(channel);
+        elapse(channel, TIMEOUT_MILLIS * 5);
+
+        valve.withheld = false;
+        channel.read();
+
+        elapse(channel, TIMEOUT_MILLIS - 1);
+        assertTrue(channel.isOpen(), "the interval runs from the moment the connection resumed asking");
+        elapse(channel, 1);
+        assertFalse(channel.isOpen(), "and it is the client's to spend, so it still expires");
+    }
+
+    @Test
     void shouldNotCountAnInterimResponseAsTheAnswerToARequest() {
         EmbeddedChannel channel = newChannel();
         receiveRequest(channel);
@@ -354,6 +386,22 @@ class HttpReadTimeoutHandlerTest {
         @Override
         protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest request) {
             ctx.writeAndFlush(okResponse());
+        }
+    }
+
+    /**
+     * Stands in for the read valve {@code HttpRequestHandler} and {@code HttpPipeliningHandler} close
+     * while the consumer is behind, which is below this handler in the pipeline.
+     */
+    private static final class WithholdReads extends ChannelOutboundHandlerAdapter {
+
+        boolean withheld = true;
+
+        @Override
+        public void read(ChannelHandlerContext ctx) {
+            if (!withheld) {
+                ctx.read();
+            }
         }
     }
 

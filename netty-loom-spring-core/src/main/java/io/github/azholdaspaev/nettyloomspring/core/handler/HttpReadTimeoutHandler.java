@@ -17,8 +17,10 @@ import java.util.concurrent.TimeUnit;
  * Netty's {@link io.netty.handler.timeout.ReadTimeoutHandler} cannot express that — it stamps its
  * clock in {@code IdleStateHandler#channelReadComplete}, which fires before the dispatch has begun.
  * Counts a request in at its terminator rather than at its head, so a body that stops part way
- * still expires; above the pipelining gate, so the count stays a property of what the client has
- * delivered. A timeout of zero or less disables it, as it did the stock handler.
+ * still expires — but only while the connection is asking for it, since a read withheld because the
+ * handler is behind is the server pausing rather than the client. Above the pipelining gate, so the
+ * count stays a property of what the client has delivered. A timeout of zero or less disables it,
+ * as it did the stock handler.
  */
 public class HttpReadTimeoutHandler extends ChannelDuplexHandler {
 
@@ -38,6 +40,12 @@ public class HttpReadTimeoutHandler extends ChannelDuplexHandler {
 
     /** A request head has passed with its terminator still to come. Event loop only. */
     private boolean requestArriving;
+
+    /** A read has been asked for and has not completed. Event loop only. */
+    private boolean readOutstanding;
+
+    /** {@link #run} has suspended the clock because that read was withheld. Event loop only. */
+    private boolean suspendedOnBody;
 
     /**
      * Both {@link #handlerAdded} and {@link #channelActive} reach {@link #initialize}; without this
@@ -81,6 +89,26 @@ public class HttpReadTimeoutHandler extends ChannelDuplexHandler {
     @Override
     public void handlerRemoved(ChannelHandlerContext ctx) {
         destroy();
+    }
+
+    @Override
+    public void channelReadComplete(ChannelHandlerContext ctx) {
+        readOutstanding = false;
+        ctx.fireChannelReadComplete();
+    }
+
+    /**
+     * Where the suspension ends, and the only place it can: the client is owed a whole interval from
+     * the moment the connection resumed asking, not from before it stopped.
+     */
+    @Override
+    public void read(ChannelHandlerContext ctx) {
+        readOutstanding = true;
+        if (suspendedOnBody) {
+            suspendedOnBody = false;
+            lastActivityNanos = ticker.nanoTime();
+        }
+        ctx.read();
     }
 
     @Override
@@ -148,6 +176,11 @@ public class HttpReadTimeoutHandler extends ChannelDuplexHandler {
             return;
         }
         if (unansweredRequests > 0) {
+            schedule(ctx, timeoutNanos);
+            return;
+        }
+        if (requestArriving && !readOutstanding) {
+            suspendedOnBody = true;
             schedule(ctx, timeoutNanos);
             return;
         }

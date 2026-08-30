@@ -121,7 +121,10 @@ client that connects and says nothing is closed one interval later — and resta
 response is written.
 
 The handler is exempt. The clock is suspended for as long as any request on the connection is
-outstanding, so however long a controller blocks, the connection is never closed out from under it.
+outstanding, and for as long as the connection has stopped asking for a body its handler is behind
+on, so however long a controller blocks, the connection is never closed out from under it. What it
+keeps measuring is the client: a body that stops arriving while the connection is still asking for
+it expires like any other silence.
 
 The design counts requests, not bytes. A byte-level clock would be refreshed by every byte, so a
 client dribbling a header one byte at a time would hold its connection forever; counting requests
@@ -132,6 +135,7 @@ The cost is that idle time and delivery share one budget. Nothing inbound advanc
 | Scenario (30s timeout) | Outcome |
 | --- | --- |
 | Slow handler, any duration | Answered — dispatch is exempt |
+| Slow handler with the upload still in flight | Answered — a read the server withheld is not the client going quiet |
 | Idle 5s, then a request arrives | Fine — 25s left to deliver it |
 | **Idle 29s, then a large upload begins** | **Closed 1s in, mid-upload** |
 | Header dribbled a byte at a time | Closed — the loris defence |
