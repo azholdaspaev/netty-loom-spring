@@ -715,6 +715,44 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    void shouldReopenTheReadValveWhenCleaningUpAnAbandonedBodyThrows() {
+        RecordingReads reads = new RecordingReads();
+        CompletableFuture<Runnable> submitted = new CompletableFuture<>();
+        EmbeddedChannel channel = new EmbeddedChannel(reads, new HttpRequestHandler(
+            (_, _, _, writer) -> writer.write(emptyOkResponse()), submitted::complete, connectionRegistry,
+            UNREACHED_WRITE_STALL_TIMEOUT));
+        channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/"));
+        channel.pipeline().fireChannelRead(bodyPart("x".repeat(HttpRequestBodyStream.HIGH_WATERMARK_BYTES)));
+        channel.pipeline().fireChannelRead(new ReleaseFailingContent());
+        channel.pipeline().fireChannelReadComplete();
+        reads.count = 0;
+
+        submitted.join().run();
+        channel.runPendingTasks();
+
+        assertEquals(1, reads.count,
+            "the body queue's cleanup throws by design, and letting that skip the one site that "
+                + "reopens the valve wedges the connection until the read timeout");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void shouldStillReportARejectedDispatchWhenCleaningUpItsBodyThrows() {
+        RejectedExecutionException rejection = new RejectedExecutionException("shutting down");
+        ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            (_, _, _, _) -> { throw new AssertionError("dispatcher must not run"); },
+            _ -> { throw rejection; }, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT),
+            capture);
+
+        channel.pipeline().fireChannelRead(new ReleaseFailingRequest());
+
+        assertSame(rejection, capture.captured,
+            "a release failure must not replace the reason the request was never dispatched");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
     void shouldKeepReadingWhileTheHandlerIsKeepingUp() {
         RecordingReads reads = new RecordingReads();
         EmbeddedChannel channel = new EmbeddedChannel(reads, new HttpRequestHandler(
@@ -1018,6 +1056,23 @@ class HttpRequestHandlerTest {
             this.lastConnection = connection;
             this.callCount++;
             writer.write(emptyOkResponse());
+        }
+    }
+
+    /**
+     * An aggregated request whose body cannot be freed, which only a replacement pipeline that still
+     * aggregates delivers.
+     */
+    private static final class ReleaseFailingRequest extends DefaultFullHttpRequest {
+
+        ReleaseFailingRequest() {
+            super(HttpVersion.HTTP_1_1, HttpMethod.POST, "/",
+                Unpooled.copiedBuffer("x", StandardCharsets.UTF_8));
+        }
+
+        @Override
+        public boolean release() {
+            throw new IllegalStateException("deallocator failed");
         }
     }
 
