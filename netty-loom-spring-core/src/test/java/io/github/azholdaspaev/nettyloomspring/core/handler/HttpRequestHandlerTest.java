@@ -679,6 +679,30 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    void shouldStillAnswerAFailureWhenTheDispatchOutlivesItsRequestTerminator() {
+        ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
+        CompletableFuture<Runnable> submitted = new CompletableFuture<>();
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            (_, _, _, writer) -> writer.write(emptyOkResponse()), submitted::complete, connectionRegistry,
+            UNREACHED_WRITE_STALL_TIMEOUT), capture);
+        channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/ok"));
+        channel.pipeline().fireChannelRead(LastHttpContent.EMPTY_LAST_CONTENT);
+        // The terminator arrives while the response has not started, which is the order a virtual
+        // thread takes and an inline executor never does: it leaves the dispatch's own cleanup as the
+        // only site that can let go of the writer.
+        submitted.join().run();
+        channel.runPendingTasks();
+
+        channel.pipeline().fireExceptionCaught(new TooLongFrameException("header block past the limit"));
+
+        assertNotNull(capture.captured,
+            "the exchange is over, so a failure on the connection must still reach the handler that "
+                + "maps it to a status");
+        assertTrue(channel.isOpen(), "there is nothing on the wire a mapped status could corrupt");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
     void shouldCloseOnAFailureWhileTheAlreadyAnsweredRequestIsStillArriving() {
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         CompletableFuture<Runnable> submitted = new CompletableFuture<>();
