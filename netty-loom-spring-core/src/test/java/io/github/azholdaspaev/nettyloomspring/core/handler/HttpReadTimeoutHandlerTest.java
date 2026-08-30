@@ -142,6 +142,21 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
+    void shouldNotCountAStrayAnswerAgainstTheNextRequest() {
+        EmbeddedChannel channel = newChannel();
+        receiveRequest(channel);
+        respond(channel);
+
+        respond(channel);
+        receiveRequest(channel);
+
+        elapse(channel, TIMEOUT_MILLIS * 5);
+        assertTrue(channel.isOpen(),
+            "a second answer to a finished exchange must not spend the suspension the request after "
+                + "it is owed");
+    }
+
+    @Test
     void shouldNotHoldOpenAConnectionAnsweredBeforeItsRequestBodyArrived() {
         EmbeddedChannel channel = newChannel();
         receiveRequestHead(channel);
