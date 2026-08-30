@@ -668,13 +668,21 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    void shouldTakeOverEveryReadOfTheConnectionItJoins() {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            new CapturingDispatcher(), NEVER_RUN, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+
+        assertFalse(channel.config().isAutoRead(),
+            "reads must be asked for as the body is consumed, or the queue bound cannot hold");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
     void shouldStopReadingWhileTheHandlerIsBehindOnTheBody() {
         RecordingReads reads = new RecordingReads();
         EmbeddedChannel channel = new EmbeddedChannel(reads, new HttpRequestHandler(
             (_, _, _, writer) -> writer.write(emptyOkResponse()), NEVER_RUN, connectionRegistry,
             UNREACHED_WRITE_STALL_TIMEOUT));
-        // As NettyServer configures an accepted connection: nothing reads unless a handler asks.
-        channel.config().setAutoRead(false);
         channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/"));
         channel.pipeline().fireChannelRead(bodyPart("x".repeat(HttpRequestBodyStream.HIGH_WATERMARK_BYTES)));
         reads.count = 0;
@@ -694,7 +702,6 @@ class HttpRequestHandlerTest {
         EmbeddedChannel channel = new EmbeddedChannel(reads, new HttpRequestHandler(
             (_, _, _, writer) -> writer.write(emptyOkResponse()), submitted::complete, connectionRegistry,
             UNREACHED_WRITE_STALL_TIMEOUT));
-        channel.config().setAutoRead(false);
         channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/"));
         channel.pipeline().fireChannelRead(bodyPart("x".repeat(HttpRequestBodyStream.HIGH_WATERMARK_BYTES)));
         channel.pipeline().fireChannelReadComplete();
@@ -715,7 +722,6 @@ class HttpRequestHandlerTest {
         EmbeddedChannel channel = new EmbeddedChannel(reads, new HttpRequestHandler(
             (_, _, _, writer) -> writer.write(emptyOkResponse()), NEVER_RUN, connectionRegistry,
             UNREACHED_WRITE_STALL_TIMEOUT));
-        channel.config().setAutoRead(false);
         channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/"));
         reads.count = 0;
 

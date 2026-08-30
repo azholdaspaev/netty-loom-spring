@@ -4,7 +4,7 @@ import io.github.azholdaspaev.nettyloomspring.core.exception.NettyServerExceptio
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NamedChannelHandler;
 import io.github.azholdaspaev.nettyloomspring.core.support.NettyServerFixture;
-import io.github.azholdaspaev.nettyloomspring.core.support.SpinWait;
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.group.DefaultChannelGroup;
@@ -20,9 +20,11 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -43,19 +45,29 @@ class NettyServerTest {
     }
 
     @Test
-    void shouldLeaveEveryReadOfAnAcceptedConnectionToItsHandlers() throws Exception {
-        DefaultChannelGroup connections = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
+    void shouldDeliverInboundBytesToAPipelineThatAsksForNoReadsItself() throws Exception {
+        CompletableFuture<String> received = new CompletableFuture<>();
         nettyServer = NettyServerFixture.newServer(
             new NettyServerConfiguration(0, null, 1, 1, true),
-            new HttpConnectionRegistry(connections), List.of());
+            new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)),
+            List.of(new NamedChannelHandler("capture", () -> new ChannelInboundHandlerAdapter() {
+                @Override
+                public void channelRead(ChannelHandlerContext ctx, Object msg) {
+                    ByteBuf inbound = (ByteBuf) msg;
+                    received.complete(inbound.toString(StandardCharsets.UTF_8));
+                    inbound.release();
+                }
+            })));
         nettyServer.start();
 
         try (Socket client = new Socket()) {
             client.connect(new InetSocketAddress("127.0.0.1", nettyServer.getPort()), 1_000);
-            SpinWait.until(() -> !connections.isEmpty(), Duration.ofSeconds(5), "connection was never accepted");
+            client.getOutputStream().write("ping".getBytes(StandardCharsets.UTF_8));
+            client.getOutputStream().flush();
 
-            assertFalse(connections.iterator().next().config().isAutoRead(),
-                "reads must be asked for as the body is consumed, or the queue bound cannot hold");
+            assertEquals("ping", received.get(5, TimeUnit.SECONDS),
+                "a configurer replacing the handler list keeps Netty's own read behaviour: manual reads "
+                    + "belong to the handlers that issue them");
         }
     }
 

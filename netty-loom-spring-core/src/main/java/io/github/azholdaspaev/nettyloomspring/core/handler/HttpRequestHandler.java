@@ -54,6 +54,16 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
         this.writeStallTimeoutNanos = writeStallTimeout.toNanos();
     }
 
+    /**
+     * The inbound valve, taken over here rather than set on the accepted connection: with auto-read on
+     * a request body arrives as fast as the client sends it and queues in heap, and a replacement
+     * NettyPipelineConfigurer that issues no reads of its own would never be handed a byte (issue #51).
+     */
+    @Override
+    public void handlerAdded(ChannelHandlerContext ctx) {
+        ctx.channel().config().setAutoRead(false);
+    }
+
     /** Nothing is read until it is asked for, so the first request needs an opening ask. */
     @Override
     public void channelActive(ChannelHandlerContext ctx) {
