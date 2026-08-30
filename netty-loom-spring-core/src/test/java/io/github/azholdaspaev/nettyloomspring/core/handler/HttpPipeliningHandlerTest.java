@@ -149,7 +149,6 @@ class HttpPipeliningHandlerTest {
         channel.writeInbound(head("/upload"));
         assertEquals("/upload", ((HttpRequest) channel.readInbound()).uri());
 
-        // Answered before the body finished arriving, which is what a 404 to a POST does.
         channel.writeOutbound(okResponse());
         channel.runPendingTasks();
 
