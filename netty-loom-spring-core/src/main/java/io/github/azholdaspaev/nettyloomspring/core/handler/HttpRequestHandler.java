@@ -213,9 +213,8 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
     }
 
     /**
-     * Both conditions the gate uses, not the response alone: while a body is still arriving the
-     * pipeline can still refuse it, and a status written for that refusal once the response has gone
-     * out would be a second response to one request (#78).
+     * Both conditions the gate uses: while a body is still arriving the pipeline can still refuse it,
+     * and a status for that refusal once the response is out would be a second one to a request (#78).
      */
     private void forgetWriterIfSettled() {
         if (writer != null && requestOffWire && writer.state == ResponseState.ENDED) {

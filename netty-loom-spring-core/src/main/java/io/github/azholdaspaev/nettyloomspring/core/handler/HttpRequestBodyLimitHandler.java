@@ -99,9 +99,8 @@ public class HttpRequestBodyLimitHandler extends ChannelInboundHandlerAdapter {
     }
 
     /**
-     * {@code HttpUtil.isUnsupportedExpectation} is package-private to Netty, so its rule is restated:
-     * any {@code Expect} other than {@code 100-continue}, and only on HTTP/1.1 or later, since RFC 9110
-     * §10.1.1 has a server ignore the expectation in an HTTP/1.0 request.
+     * {@code HttpUtil.isUnsupportedExpectation} is package-private to Netty: any {@code Expect} other
+     * than {@code 100-continue}, and only on HTTP/1.1 or later (RFC 9110 §10.1.1).
      */
     private static boolean isUnsupportedExpectation(HttpRequest request) {
         if (request.protocolVersion().compareTo(HttpVersion.HTTP_1_1) < 0) {
