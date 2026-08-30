@@ -19,8 +19,9 @@ import io.netty.util.ReferenceCountUtil;
 /**
  * Bounds the request body, and answers the expectation that negotiates it — {@code 100 Continue},
  * {@code 417} and the {@code 413} a declared length already settles (issues #51, #46). Both were
- * {@code HttpObjectAggregator}'s, and the ordering it uses in {@code continueResponse} is kept: an
- * unsupported expectation is refused before a supported one is measured.
+ * {@code HttpObjectAggregator}'s, and its ordering is kept: {@code continueResponse} refuses an
+ * unsupported expectation first, and {@code MessageAggregator.channelRead} measures the declared
+ * length on every start message rather than only on one carrying an expectation.
  *
  * <p>Closes on a refused expectation where the aggregator left the connection open to discard the
  * body: with nothing aggregating, no handler below would consume bytes the client sends anyway.
@@ -43,7 +44,7 @@ public class HttpRequestBodyLimitHandler extends ChannelInboundHandlerAdapter {
         if (msg instanceof HttpRequest request) {
             received = 0;
             refused = false;
-            if (answerExpectation(ctx, request)) {
+            if (refuseOrNegotiate(ctx, request)) {
                 return;
             }
             ctx.fireChannelRead(msg);
@@ -68,16 +69,16 @@ public class HttpRequestBodyLimitHandler extends ChannelInboundHandlerAdapter {
         ctx.fireChannelRead(msg);
     }
 
-    /** Answers {@code request}'s {@code Expect} header, reporting whether that ends the exchange. */
-    private boolean answerExpectation(ChannelHandlerContext ctx, HttpRequest request) {
+    /** Refuses what cannot be served and answers {@code Expect}, reporting whether that ends the exchange. */
+    private boolean refuseOrNegotiate(ChannelHandlerContext ctx, HttpRequest request) {
         if (isUnsupportedExpectation(request)) {
             return refuse(ctx, request, HttpResponseStatus.EXPECTATION_FAILED);
         }
-        if (!HttpUtil.is100ContinueExpected(request)) {
-            return false;
-        }
         if (HttpUtil.getContentLength(request, -1L) > maxBodyBytes) {
             return refuse(ctx, request, HttpResponseStatus.REQUEST_ENTITY_TOO_LARGE);
+        }
+        if (!HttpUtil.is100ContinueExpected(request)) {
+            return false;
         }
         request.headers().remove(HttpHeaderNames.EXPECT);
         ctx.writeAndFlush(emptyResponse(HttpResponseStatus.CONTINUE));

@@ -107,6 +107,20 @@ class RequestBodyStreamingIntegrationTest {
 
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
+    void shouldRefuseADeclaredBodyTooLargeToAcceptEvenWhenNothingIsExpected() throws Exception {
+        try (Socket socket = connect()) {
+            RawHttpClient.send(socket, "POST /upload/ignored HTTP/1.1",
+                "Host: localhost", "Content-Length: " + UNACCEPTABLE_CONTENT_LENGTH);
+
+            RawHttpResponse response = RawHttpResponse.read(socket.getInputStream());
+            assertEquals(413, response.status(),
+                "the declared length settles it, so a handler that ignores the body must not get to "
+                    + "answer 200 first");
+        }
+    }
+
+    @Test
+    @Timeout(value = 20, unit = TimeUnit.SECONDS)
     void shouldRefuseAnExpectationItCannotMeet() throws Exception {
         try (Socket socket = connect()) {
             RawHttpClient.send(socket, "POST /upload/count HTTP/1.1",
