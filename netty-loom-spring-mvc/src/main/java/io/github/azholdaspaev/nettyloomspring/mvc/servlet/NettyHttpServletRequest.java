@@ -5,6 +5,7 @@ import io.netty.handler.codec.DateFormatter;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
+import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.cookie.ServerCookieDecoder;
@@ -143,9 +144,11 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     }
 
     private void mergeFormBodyParameters(Map<String, List<String>> target, Charset charset) {
-        // Tomcat's Request.doParseParameters returns here when usingInputStream || usingReader: the
-        // body is single-pass, so parsing it would drain what the caller already claimed.
-        if (inputStream != null || reader != null) {
+        // Tomcat parses a form body only for Connector.parseBodyMethods -- POST alone by default,
+        // which is why Spring ships FormContentFilter for the others -- and Request.doParseParameters
+        // then returns when usingInputStream || usingReader. The body is single-pass, so either parse
+        // would drain what its owner is about to read.
+        if (!HttpMethod.POST.equals(nettyRequest.method()) || inputStream != null || reader != null) {
             return;
         }
         CharSequence mimeType = HttpUtil.getMimeType(nettyRequest);

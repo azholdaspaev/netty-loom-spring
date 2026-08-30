@@ -61,8 +61,13 @@ class NettyHttpServletRequestTest {
     }
 
     private static NettyHttpServletRequest formRequest(String uri, byte[] body, HttpConnectionMetadata connection) {
+        return formRequest(HttpMethod.POST, uri, body, connection);
+    }
+
+    private static NettyHttpServletRequest formRequest(HttpMethod method, String uri, byte[] body,
+                                                       HttpConnectionMetadata connection) {
         var nettyRequest = new DefaultFullHttpRequest(
-            HttpVersion.HTTP_1_1, HttpMethod.POST, uri, Unpooled.wrappedBuffer(body));
+            HttpVersion.HTTP_1_1, method, uri, Unpooled.wrappedBuffer(body));
         nettyRequest.headers().set(HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.APPLICATION_X_WWW_FORM_URLENCODED);
         return new NettyHttpServletRequest(
             nettyRequest, new ByteArrayInputStream(body), connection, new DefaultNettyServletContext(),
@@ -324,6 +329,19 @@ class NettyHttpServletRequestTest {
         assertEquals("2", request.getParameter("b"));
         assertEquals(2, request.getParameterMap().size());
         assertSame(request.getParameterMap(), request.getParameterMap());
+    }
+
+    @Test
+    void formParametersAreNotParsedForAMethodTomcatWouldNotParse() throws Exception {
+        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false);
+        var request = formRequest(HttpMethod.PUT, "/x?a=1", "b=2".getBytes(StandardCharsets.UTF_8), insecure);
+
+        assertEquals("1", request.getParameter("a"), "the query string is parsed on every method");
+        assertNull(request.getParameter("b"),
+            "Connector.parseBodyMethods is POST alone, which is why Spring ships FormContentFilter "
+                + "for the rest; parsing here drains a body the handler is about to read");
+        assertEquals("b=2", new String(request.getInputStream().readAllBytes(), StandardCharsets.UTF_8),
+            "a PUT body belongs to whoever reads it, not to the parameter map");
     }
 
     @Test
