@@ -147,6 +147,11 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     }
 
     private void mergeFormBodyParameters(Map<String, List<String>> target, Charset charset) {
+        // Tomcat's Request.doParseParameters returns here when usingInputStream || usingReader: the
+        // body is single-pass, so parsing it would drain what the caller already claimed.
+        if (inputStream != null || reader != null) {
+            return;
+        }
         CharSequence mimeType = HttpUtil.getMimeType(nettyRequest);
         if (mimeType == null
             || !AsciiString.contentEqualsIgnoreCase(mimeType, HttpHeaderValues.APPLICATION_X_WWW_FORM_URLENCODED)) {
