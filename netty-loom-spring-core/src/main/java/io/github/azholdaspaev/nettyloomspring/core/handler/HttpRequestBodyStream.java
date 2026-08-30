@@ -1,6 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.core.handler;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.channel.WriteBufferWaterMark;
 import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.LastHttpContent;
 
@@ -22,10 +23,10 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 class HttpRequestBodyStream extends InputStream {
 
-    /** Netty's own default write high-water mark, so both directions stall at the same depth. */
-    static final int HIGH_WATERMARK_BYTES = 64 * 1024;
+    /** Netty's outbound defaults, so both directions stall at the same depth. */
+    static final int HIGH_WATERMARK_BYTES = WriteBufferWaterMark.DEFAULT.high();
 
-    static final int LOW_WATERMARK_BYTES = 32 * 1024;
+    static final int LOW_WATERMARK_BYTES = WriteBufferWaterMark.DEFAULT.low();
 
     private final Runnable readRequester;
 
