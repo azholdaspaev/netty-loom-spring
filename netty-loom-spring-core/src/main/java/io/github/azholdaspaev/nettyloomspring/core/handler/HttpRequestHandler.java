@@ -66,7 +66,12 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
         if (msg instanceof HttpRequest request) {
             body = new HttpRequestBodyStream(() -> requestRead(ctx));
             writer = new HttpChannelResponseWriter(ctx, request);
-            requestOffWire = false;
+            requestOffWire = msg instanceof LastHttpContent;
+            if (msg instanceof HttpContent aggregated) {
+                // A FullHttpRequest is head, body and terminator at once, which is what a pipeline
+                // that still aggregates delivers; offered before the dispatch, which may run inline.
+                body.offer(aggregated);
+            }
             dispatch(ctx, request, HttpConnectionMetadata.from(ctx), body, writer);
             return;
         }

@@ -25,8 +25,10 @@ import io.netty.handler.codec.http.DefaultHttpRequest;
 import io.netty.handler.codec.http.DefaultLastHttpContent;
 import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
+import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.DefaultHttpContent;
 import io.netty.handler.codec.http.DefaultHttpResponse;
+import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -563,6 +565,27 @@ class HttpRequestHandlerTest {
         assertNull(channel.readOutbound(),
             "handler must not write a response when the dispatcher fails");
         channel.finish();
+    }
+
+    @Test
+    void shouldHandOnTheBodyOfAnAggregatedRequestRatherThanLoseIt() {
+        CompletableFuture<String> read = new CompletableFuture<>();
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            (_, body, _, writer) -> {
+                read.complete(new String(body.readNBytes(body.available()), StandardCharsets.UTF_8));
+                writer.write(emptyOkResponse());
+            }, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+        FullHttpRequest aggregated = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/",
+            Unpooled.copiedBuffer("aggregated body", StandardCharsets.UTF_8));
+
+        channel.pipeline().fireChannelRead(aggregated);
+        channel.runPendingTasks();
+
+        assertEquals("aggregated body", read.getNow(null),
+            "a pipeline that still aggregates carries the body inside the head, and a dispatcher "
+                + "reading the stream would otherwise wait for content that no later message brings");
+        assertEquals(0, aggregated.refCnt(), "nothing below auto-releases it, so the body owns its release");
+        channel.finishAndReleaseAll();
     }
 
     @Test
