@@ -7,9 +7,11 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 
+import jakarta.servlet.ServletInputStream;
 import jakarta.servlet.ServletRequestAttributeEvent;
 import jakarta.servlet.ServletRequestAttributeListener;
 import jakarta.servlet.http.Cookie;
@@ -325,6 +327,32 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
+    void formParametersAreNotParsedOnceGetInputStreamHasClaimedTheBody() throws Exception {
+        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false);
+        var request = formRequest("/x?a=1", "b=2".getBytes(StandardCharsets.UTF_8), insecure);
+        ServletInputStream body = request.getInputStream();
+        assertEquals('b', body.read());
+
+        assertEquals("1", request.getParameter("a"), "the query string is parsed either way");
+        assertNull(request.getParameter("b"),
+            "Tomcat's doParseParameters returns once usingInputStream is set; parsing the tail would "
+                + "invent a parameter from \"=2\" and leave the caller's stream at EOF");
+        assertEquals('=', body.read(), "the claimed stream must still be where its owner left it");
+    }
+
+    @Test
+    void formParametersAreNotParsedOnceGetReaderHasClaimedTheBody() throws Exception {
+        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false);
+        var request = formRequest("/x?a=1", "b=2".getBytes(StandardCharsets.UTF_8), insecure);
+        BufferedReader reader = request.getReader();
+
+        assertNull(request.getParameter("b"),
+            "the body belongs to the reader that claimed it");
+        assertEquals("b=2", reader.readLine(),
+            "parsing behind the reader's back would hand it a body already drained");
+    }
+
+    @Test
     void queryStringDecodedAsUtf8IndependentOfBodyEncoding() throws Exception {
         var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false);
         // %C3%A9 is the UTF-8 encoding of "é". The query must always decode as UTF-8, while the
@@ -381,7 +409,6 @@ class NettyHttpServletRequestTest {
         viaStream.getInputStream();
         viaStream.setCharacterEncoding("ISO-8859-1");
         assertEquals("ISO-8859-1", viaStream.getCharacterEncoding());
-        assertEquals("é", viaStream.getParameter("name"));
     }
 
     private static NettyHttpServletRequest cookieRequest(String... cookieHeaders) {
