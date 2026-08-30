@@ -703,6 +703,29 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    void shouldStillAnswerAFailureWhenTheRequestTerminatorOutlivesItsDispatch() {
+        ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
+        CompletableFuture<Runnable> submitted = new CompletableFuture<>();
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            (_, _, _, writer) -> writer.write(emptyOkResponse()), submitted::complete, connectionRegistry,
+            UNREACHED_WRITE_STALL_TIMEOUT), capture);
+        channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/upload"));
+        submitted.join().run();
+        // The dispatch's own cleanup must run while the body is still arriving, or its writer-clearing
+        // site does the work and the test passes against a version that has only that one.
+        channel.runPendingTasks();
+
+        channel.pipeline().fireChannelRead(LastHttpContent.EMPTY_LAST_CONTENT);
+        channel.pipeline().fireExceptionCaught(new TooLongFrameException("header block past the limit"));
+
+        assertNotNull(capture.captured,
+            "the response ended before the request did, so only the terminator can settle the exchange "
+                + "-- and a failure after it must still reach the handler that maps it to a status");
+        assertTrue(channel.isOpen(), "there is nothing on the wire a mapped status could corrupt");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
     void shouldCloseOnAFailureWhileTheAlreadyAnsweredRequestIsStillArriving() {
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         CompletableFuture<Runnable> submitted = new CompletableFuture<>();
