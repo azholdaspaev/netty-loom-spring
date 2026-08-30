@@ -171,6 +171,9 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
         ctx.executor().execute(() -> {
             if (body == finished) {
                 body = null;
+                // Reopens the valve: channelReadComplete withheld the read while the abandoned body
+                // filled the queue, and no other site asks once that queue is gone.
+                ctx.read();
             }
         });
     }
