@@ -142,6 +142,20 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
+    void shouldNotHoldOpenAConnectionAnsweredBeforeItsRequestBodyArrived() {
+        EmbeddedChannel channel = newChannel();
+        receiveRequestHead(channel);
+
+        respond(channel);
+        channel.writeInbound(LastHttpContent.EMPTY_LAST_CONTENT);
+        channel.releaseInbound();
+
+        elapse(channel, TIMEOUT_MILLIS);
+        assertFalse(channel.isOpen(),
+            "the answer went out before the terminator, so the terminator is not a request still owed one");
+    }
+
+    @Test
     void shouldCloseWhenThePeerNeverAcceptsTheResponseBytes() {
         EmbeddedChannel channel = new EmbeddedChannel(
             new NeverCompletingWrite(),
