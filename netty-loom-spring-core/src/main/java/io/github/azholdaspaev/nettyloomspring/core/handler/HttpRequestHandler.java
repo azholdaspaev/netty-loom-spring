@@ -143,7 +143,12 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
     }
 
     private void requestRead(ChannelHandlerContext ctx) {
-        ctx.executor().execute(ctx::read);
+        try {
+            ctx.executor().execute(ctx::read);
+        } catch (RejectedExecutionException terminated) {
+            // Runs on the dispatch thread, inside read(): letting this out would break InputStream's
+            // promise of IOException, and there is no loop left to read the more it asks for (#109).
+        }
     }
 
     private void dispatch(ChannelHandlerContext ctx, HttpRequest request, HttpConnectionMetadata connection,

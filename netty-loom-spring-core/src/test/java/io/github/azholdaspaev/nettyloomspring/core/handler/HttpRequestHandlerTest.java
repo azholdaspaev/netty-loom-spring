@@ -1031,6 +1031,49 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    void shouldNotFailAReadWhoseAskForMoreOutlivesTheEventLoop() throws Exception {
+        MultiThreadIoEventLoopGroup group = new MultiThreadIoEventLoopGroup(1, LocalIoHandler.newFactory());
+        try {
+            LocalChannel connection = new LocalChannel();
+            group.register(connection).sync();
+
+            CountDownLatch eventLoopTerminated = new CountDownLatch(1);
+            CompletableFuture<Thread> dispatch = new CompletableFuture<>();
+            CompletableFuture<Throwable> read = new CompletableFuture<>();
+            connection.pipeline().addLast(new HttpRequestHandler((_, body, _, _) -> {
+                    eventLoopTerminated.await();
+                    try {
+                        body.read(new byte[HttpRequestBodyStream.LOW_WATERMARK_BYTES]);
+                        read.complete(null);
+                    } catch (Throwable failure) {
+                        read.complete(failure);
+                    }
+                },
+                task -> dispatch.complete(startQuietly(task)), connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+
+            connection.pipeline().fireChannelRead(
+                new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/upload"));
+            // Enough that draining it crosses the low watermark, which is the only thing that asks the
+            // connection for more -- and the ask is what the terminated loop rejects.
+            connection.pipeline().fireChannelRead(
+                bodyPart("x".repeat(HttpRequestBodyStream.LOW_WATERMARK_BYTES)));
+            Thread worker = dispatch.join();
+            group.shutdownGracefully(0, 0, TimeUnit.NANOSECONDS).sync();
+
+            eventLoopTerminated.countDown();
+            worker.join();
+
+            assertNull(read.join(),
+                "a read that has its bytes must not fail because the connection it would ask for more "
+                    + "cannot be asked; RejectedExecutionException is unchecked, so an application's "
+                    + "catch (IOException) around an upload never runs");
+        } finally {
+            group.shutdownGracefully(0, 0, TimeUnit.NANOSECONDS);
+        }
+    }
+
+    @Test
     void http11WithoutConnectionHeaderKeepsChannelOpen() {
         EmbeddedChannel channel = keepAliveChannel((_, _, _, writer) -> writer.write(emptyOkResponse()));
 
