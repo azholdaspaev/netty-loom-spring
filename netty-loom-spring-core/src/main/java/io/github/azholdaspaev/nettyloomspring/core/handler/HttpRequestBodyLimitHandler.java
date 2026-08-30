@@ -23,8 +23,9 @@ import io.netty.util.ReferenceCountUtil;
  * unsupported expectation first, and {@code MessageAggregator.channelRead} measures the declared
  * length on every start message rather than only on one carrying an expectation.
  *
- * <p>Closes on a refused expectation where the aggregator left the connection open to discard the
- * body: with nothing aggregating, no handler below would consume bytes the client sends anyway.
+ * <p>Both refusals close, where {@code MessageAggregator.handleOversizedMessage} closed only a full
+ * message, an auto-read-off channel or one already not keep-alive and otherwise discarded the body
+ * itself: with nothing aggregating, no handler below would consume what the client sends anyway.
  */
 public class HttpRequestBodyLimitHandler extends ChannelInboundHandlerAdapter {
 
@@ -32,7 +33,7 @@ public class HttpRequestBodyLimitHandler extends ChannelInboundHandlerAdapter {
 
     private long received;
 
-    /** Set from a refusal until the connection carrying the refused body is gone. Event loop only. */
+    /** The rest of this request's body is being dropped. Event loop only. */
     private boolean refused;
 
     public HttpRequestBodyLimitHandler(long maxBodyBytes) {
