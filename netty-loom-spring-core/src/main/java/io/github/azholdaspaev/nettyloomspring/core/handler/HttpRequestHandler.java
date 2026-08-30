@@ -41,6 +41,9 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
     /** The writer of the exchange being dispatched, read from the event loop to see how far it has got. */
     private HttpChannelResponseWriter writer;
 
+    /** The dispatched exchange's request has reached its terminator. Event loop only. */
+    private boolean requestOffWire;
+
     public HttpRequestHandler(HttpRequestDispatcher requestDispatcher,
                               Executor dispatchExecutor,
                               HttpConnectionRegistry connectionRegistry,
@@ -63,17 +66,20 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
         if (msg instanceof HttpRequest request) {
             body = new HttpRequestBodyStream(() -> requestRead(ctx));
             writer = new HttpChannelResponseWriter(ctx, request);
+            requestOffWire = false;
             dispatch(ctx, request, HttpConnectionMetadata.from(ctx), body, writer);
             return;
         }
         if (msg instanceof HttpContent content) {
+            requestOffWire |= content instanceof LastHttpContent;
             if (body == null) {
                 // No dispatch owns this: the exchange was answered without reading its body, so the
                 // rest of it is drained here rather than left to stall the connection.
                 content.release();
-                return;
+            } else {
+                body.offer(content);
             }
-            body.offer(content);
+            forgetWriterIfSettled();
             return;
         }
         ReferenceCountUtil.release(msg);
@@ -174,8 +180,20 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
                 // Reopens the valve: channelReadComplete withheld the read while the abandoned body
                 // filled the queue, and no other site asks once that queue is gone.
                 ctx.read();
+                forgetWriterIfSettled();
             }
         });
+    }
+
+    /**
+     * Both conditions the gate uses, not the response alone: while a body is still arriving the
+     * pipeline can still refuse it, and a status written for that refusal once the response has gone
+     * out would be a second response to one request (#78).
+     */
+    private void forgetWriterIfSettled() {
+        if (writer != null && requestOffWire && writer.state == ResponseState.ENDED) {
+            writer = null;
+        }
     }
 
     /**
