@@ -1,6 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.core.handler;
 
 import io.github.azholdaspaev.nettyloomspring.core.support.RecordingReads;
+import io.github.azholdaspaev.nettyloomspring.core.support.ReleaseFailingContent;
 
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
@@ -241,6 +242,21 @@ class HttpPipeliningHandlerTest {
 
         assertEquals(0, queued.refCnt(),
             "content queued behind an unanswered request is freed by nothing else");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void shouldReleaseTheQueuedContentBehindOneThatFailsItsRelease() {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpPipeliningHandler());
+        channel.writeInbound(request("/serving"));
+        channel.readInbound();
+        HttpContent behindTheFailure = content("never served");
+        channel.writeInbound(head("/queued"), new ReleaseFailingContent(), behindTheFailure);
+
+        channel.close();
+
+        assertEquals(0, behindTheFailure.refCnt(),
+            "a deallocator that throws must not strand every queued part behind it");
         channel.finishAndReleaseAll();
     }
 
