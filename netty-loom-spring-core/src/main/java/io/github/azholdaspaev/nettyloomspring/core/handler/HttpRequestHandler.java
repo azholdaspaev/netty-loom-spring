@@ -116,15 +116,19 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
     }
 
     /**
-     * Wakes whoever is reading the body before letting the failure travel on, so a refused upload does
-     * not leave the dispatch blocked on a body that will never arrive. Once the response has started,
-     * a status written for the failure would encode as more of that body, so the connection is closed
-     * instead. Safe to decide here: this runs on the event loop, so a write the dispatch thread issues
-     * concurrently is scheduled behind the close.
+     * Takes the exchange off its writer before waking whoever is reading the body, so the dispatch
+     * unwinding on that failure cannot race a second response onto one request (#78); waking it at all
+     * is what stops a refused upload leaving the dispatch blocked on a body that will never arrive.
+     * Once the response has started, a status written for the failure would encode as more of that
+     * body, so the connection is closed instead.
      */
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        boolean midResponse = writer != null && writer.state != ResponseState.NOT_STARTED;
+        HttpChannelResponseWriter answering = writer;
+        boolean midResponse = answering != null && answering.state != ResponseState.NOT_STARTED;
+        if (answering != null) {
+            answering.preempted = true;
+        }
         failBody(cause);
         if (midResponse) {
             ctx.close();
@@ -225,6 +229,11 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
      */
     private static void reportDispatchFailure(ChannelHandlerContext ctx, HttpRequest request,
                                               HttpChannelResponseWriter writer, Throwable cause) {
+        if (writer.preempted) {
+            // The pipeline has already answered this exchange; reporting the unwind it caused would
+            // put a second status on the same request.
+            return;
+        }
         if (writer.state != ResponseState.NOT_STARTED) {
             // A client that hung up mid-download ends the stream the ordinary way, so only a fault the
             // server owns is worth a warning. Both are still closes -- there is no response left to
@@ -277,6 +286,12 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
          */
         private volatile ResponseState state = ResponseState.NOT_STARTED;
 
+        /**
+         * The exchange was answered from the event loop, which sets this before waking the dispatch
+         * thread that reads it.
+         */
+        private volatile boolean preempted;
+
         HttpChannelResponseWriter(ChannelHandlerContext ctx, HttpRequest request) {
             this.ctx = ctx;
             this.request = request;
@@ -284,10 +299,11 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
 
         @Override
         public void write(HttpObject part) throws IOException {
-            // A handler streaming into a dead channel would otherwise produce for ever, and the part is
-            // released here because the writer still owns it. ClosedChannelException, not a plain
-            // IOException: the type is what HttpExceptionHandler classifies a departed client by.
-            if (!ctx.channel().isActive()) {
+            // A handler streaming into a dead channel, or into an exchange the pipeline has taken over,
+            // would otherwise produce for ever, and the part is released here because the writer still
+            // owns it. ClosedChannelException, not a plain IOException: the type is what
+            // HttpExceptionHandler classifies a departed client by.
+            if (preempted || !ctx.channel().isActive()) {
                 ReferenceCountUtil.release(part);
                 throw new ClosedChannelException();
             }
