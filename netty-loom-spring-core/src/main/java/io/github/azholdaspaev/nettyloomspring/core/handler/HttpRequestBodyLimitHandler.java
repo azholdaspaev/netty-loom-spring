@@ -89,7 +89,11 @@ public class HttpRequestBodyLimitHandler extends ChannelInboundHandlerAdapter {
     private boolean refuse(ChannelHandlerContext ctx, HttpRequest request, HttpResponseStatus status) {
         refused = true;
         ReferenceCountUtil.release(request);
-        ctx.writeAndFlush(emptyResponse(status)).addListener(ChannelFutureListener.CLOSE);
+        FullHttpResponse rejection = emptyResponse(status);
+        // Netty's HttpServerKeepAliveHandler stamps nothing on a response of self-defined length, so
+        // without this a pooling client reuses the socket the listener below closes (RFC 9112 §9.6).
+        rejection.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
+        ctx.writeAndFlush(rejection).addListener(ChannelFutureListener.CLOSE);
         return true;
     }
 
