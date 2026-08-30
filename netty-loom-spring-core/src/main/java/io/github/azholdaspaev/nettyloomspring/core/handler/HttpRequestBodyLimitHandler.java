@@ -19,9 +19,10 @@ import io.netty.util.ReferenceCountUtil;
 /**
  * Bounds the request body, and answers the expectation that negotiates it — {@code 100 Continue},
  * {@code 417} and the {@code 413} a declared length already settles (issues #51, #46). Both were
- * {@code HttpObjectAggregator}'s, and its ordering is kept: {@code continueResponse} refuses an
- * unsupported expectation first, and {@code MessageAggregator.channelRead} measures the declared
- * length on every start message rather than only on one carrying an expectation.
+ * {@code HttpObjectAggregator}'s, and its ordering is kept: an unsupported expectation is refused
+ * first, and a declared length over the limit is refused whatever the client expected — which Netty
+ * split across {@code HttpObjectAggregator.continueResponse} for a request carrying an expectation
+ * and the {@code isContentLengthInvalid} branch of {@code MessageAggregator.decode} for one without.
  *
  * <p>Both refusals close, where {@code MessageAggregator.handleOversizedMessage} closed only a full
  * message, an auto-read-off channel or one already not keep-alive and otherwise discarded the body
