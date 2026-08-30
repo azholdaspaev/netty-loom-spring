@@ -625,6 +625,41 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    void shouldNotLetADispatchAnswerAnExchangeThePipelineHasAlreadyRefused() throws Exception {
+        CompletableFuture<Runnable> submitted = new CompletableFuture<>();
+        CompletableFuture<IOException> refusedToAnswer = new CompletableFuture<>();
+        ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            (_, body, _, writer) -> {
+                try {
+                    body.readAllBytes();
+                } catch (IOException refused) {
+                    try {
+                        writer.write(emptyOkResponse());
+                        refusedToAnswer.complete(null);
+                    } catch (IOException blocked) {
+                        refusedToAnswer.complete(blocked);
+                    }
+                }
+            }, submitted::complete, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT), capture);
+        channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/"));
+        Thread dispatch = startQuietly(submitted.join());
+
+        channel.pipeline().fireExceptionCaught(new TooLongFrameException("body past the limit"));
+        dispatch.join();
+        channel.runPendingTasks();
+
+        assertInstanceOf(ClosedChannelException.class, refusedToAnswer.join(),
+            "the tail handler is answering this exchange, so a status the woken dispatch writes "
+                + "would be a second response to one request");
+        assertNull(channel.readOutbound(), "nothing the dispatch wrote may reach the wire");
+        assertInstanceOf(TooLongFrameException.class, capture.captured,
+            "and the dispatch unwinding on that refusal is its consequence, not a second failure "
+                + "to map to a status");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
     void shouldStillAnswerAFailureArrivingBetweenExchangesOnAReusedConnection() {
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
