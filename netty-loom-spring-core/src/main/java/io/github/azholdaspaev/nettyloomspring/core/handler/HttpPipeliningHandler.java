@@ -84,7 +84,7 @@ public class HttpPipeliningHandler extends ChannelDuplexHandler {
      */
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
-        pending.forEach(ReferenceCountUtil::release);
+        pending.forEach(ReferenceCountUtil::safeRelease);
         pending.clear();
         ctx.fireChannelInactive();
     }
