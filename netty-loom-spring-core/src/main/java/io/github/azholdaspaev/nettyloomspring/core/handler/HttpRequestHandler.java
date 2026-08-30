@@ -161,13 +161,17 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
                 } catch (Throwable cause) {
                     reportDispatchFailure(ctx, request, writer, cause);
                 } finally {
-                    // Ahead of release(), which throws if the dispatcher released the request it was
-                    // handed: the count is global and reset() does not clear it, so it must not
-                    // depend on a call that can fail.
+                    // Ahead of close(), which rethrows a queued part's failed release: the count is
+                    // global and reset() does not clear it, so it must not depend on a call that can
+                    // fail. forget() is in a finally for the same reason -- it is the only site that
+                    // reopens the read valve behind an abandoned body.
                     connectionRegistry.dispatchFinished();
                     try {
-                        requestBody.close();
-                        forget(ctx, requestBody);
+                        try {
+                            requestBody.close();
+                        } finally {
+                            forget(ctx, requestBody);
+                        }
                     } catch (Throwable ignored) {
                         // Nothing may escape the task, fatal errors included. Deliberately not paired
                         // with a rethrowIfFatal: on an Executor that runs tasks inline, rethrowing
@@ -178,8 +182,12 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
             });
         } catch (Throwable cause) {
             connectionRegistry.dispatchFinished();
-            requestBody.close();
             body = null;
+            try {
+                requestBody.close();
+            } catch (Throwable failedCleanup) {
+                cause.addSuppressed(failedCleanup);
+            }
             ctx.fireExceptionCaught(cause);
         }
     }
