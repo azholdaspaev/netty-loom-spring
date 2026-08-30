@@ -3,6 +3,7 @@ package io.github.azholdaspaev.nettyloomspring.core.handler;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
+import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.timeout.ReadTimeoutException;
 import io.netty.util.concurrent.Future;
@@ -32,10 +33,11 @@ public class HttpReadTimeoutHandler extends ChannelDuplexHandler {
 
     private long lastActivityNanos;
 
-    /**
-     * A count, not a flag, because requests pipeline. Event loop only.
-     */
+    /** A count, not a flag, because requests pipeline; negative while an answer outran its terminator. */
     private int unansweredRequests;
+
+    /** A request head has passed with its terminator still to come. Event loop only. */
+    private boolean requestArriving;
 
     /**
      * Both {@link #handlerAdded} and {@link #channelActive} reach {@link #initialize}; without this
@@ -83,7 +85,11 @@ public class HttpReadTimeoutHandler extends ChannelDuplexHandler {
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
+        if (msg instanceof HttpRequest) {
+            requestArriving = true;
+        }
         if (msg instanceof LastHttpContent) {
+            requestArriving = false;
             unansweredRequests++;
         }
         ctx.fireChannelRead(msg);
@@ -102,11 +108,11 @@ public class HttpReadTimeoutHandler extends ChannelDuplexHandler {
     }
 
     /**
-     * Ignores a response with nothing outstanding: a count below zero leaves a busy connection
-     * looking idle.
+     * Counts against the request still being delivered when the answer outran its terminator; one
+     * with nothing in flight at all is ignored, or a count below zero leaves a busy connection idle.
      */
     private void requestAnswered() {
-        if (unansweredRequests > 0) {
+        if (unansweredRequests > 0 || requestArriving) {
             unansweredRequests--;
         }
         lastActivityNanos = ticker.nanoTime();
