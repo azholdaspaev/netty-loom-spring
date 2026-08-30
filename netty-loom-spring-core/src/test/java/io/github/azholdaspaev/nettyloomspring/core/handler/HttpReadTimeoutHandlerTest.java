@@ -295,6 +295,28 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
+    void shouldMeasureTheResumedIntervalFromTheReadRatherThanFromTheTickBeforeIt() {
+        WithholdReads valve = new WithholdReads();
+        EmbeddedChannel channel = new EmbeddedChannel(
+            new HttpReadTimeoutHandler(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS), valve);
+        channel.freezeTime();
+        receiveRequestHead(channel);
+        elapse(channel, TIMEOUT_MILLIS);
+
+        // Strictly between two ticks: elapse() runs due tasks at the instant it advances to, so a
+        // resume there coincides with the suspending tick and the re-armed timer hides the reset.
+        channel.advanceTimeBy(TIMEOUT_MILLIS / 2, TimeUnit.MILLISECONDS);
+        valve.withheld = false;
+        channel.read();
+
+        elapse(channel, TIMEOUT_MILLIS / 2);
+        assertTrue(channel.isOpen(),
+            "half an interval has passed since the connection resumed asking, not a whole one");
+        elapse(channel, TIMEOUT_MILLIS / 2);
+        assertFalse(channel.isOpen(), "and a whole one from the resume still expires");
+    }
+
+    @Test
     void shouldNotCountAnInterimResponseAsTheAnswerToARequest() {
         EmbeddedChannel channel = newChannel();
         receiveRequest(channel);
