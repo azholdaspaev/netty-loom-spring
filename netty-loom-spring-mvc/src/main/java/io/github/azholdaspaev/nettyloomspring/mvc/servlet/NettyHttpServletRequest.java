@@ -64,6 +64,9 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     private final Map<String, Object> attributes = new HashMap<>();
     private final String requestURI;
+    // getRequestURI() reports the URI as sent (Servlet 6.0, 3.5), while Tomcat matches its mapper and
+    // filter registrations on the decoded path (CoyoteAdapter.postParseRequest) -- so the two differ.
+    private final String decodedPath;
     private final String queryString;
     private final QueryStringDecoder queryDecoder;
     private boolean hostResolved;
@@ -93,7 +96,8 @@ public class NettyHttpServletRequest implements HttpServletRequest {
         this.response = response;
 
         this.queryDecoder = new QueryStringDecoder(nettyRequest.uri());
-        this.requestURI = queryDecoder.path();
+        this.requestURI = queryDecoder.rawPath();
+        this.decodedPath = queryDecoder.path();
         String rawQuery = queryDecoder.rawQuery();
         this.queryString = rawQuery.isEmpty() ? null : rawQuery;
         this.characterEncoding = HttpUtil.getCharset(nettyRequest, null);
@@ -345,18 +349,18 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     public boolean isWithinContext() {
         String contextPath = servletContext.getContextPath();
         return NettyServletContext.ROOT_CONTEXT_PATH.equals(contextPath)
-            || requestURI.equals(contextPath)
-            || requestURI.startsWith(contextPath + "/");
+            || decodedPath.equals(contextPath)
+            || decodedPath.startsWith(contextPath + "/");
     }
 
     @Override
     public String getServletPath() {
         if (!isWithinContext()) {
             // Out-of-context URI: the context-relative path is undefined. Return "" rather than blindly
-            // stripping the prefix, which would throw when requestURI is shorter than the context path.
+            // stripping the prefix, which would throw when decodedPath is shorter than the context path.
             return "";
         }
-        return requestURI.substring(servletContext.getContextPath().length());
+        return decodedPath.substring(servletContext.getContextPath().length());
     }
 
     @Override

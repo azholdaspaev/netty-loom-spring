@@ -140,6 +140,33 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
+    void getRequestUriReportsThePathAsSent() {
+        var request = requestWithContext("/files/a%2Fb/%2541", "");
+
+        assertEquals("/files/a%2Fb/%2541", request.getRequestURI(),
+            "getRequestURI() reports the URI undecoded; percent-decoding it here makes Spring decode twice");
+    }
+
+    @Test
+    void getRequestUrlKeepsThePathAsSent() {
+        var request = request("/files/a%2Fb", "example.com", INSECURE);
+
+        assertEquals("http://example.com/files/a%2Fb", request.getRequestURL().toString(),
+            "getRequestURL() is getRequestURI() with an authority in front, so it is undecoded too");
+    }
+
+    @Test
+    void contextAndServletPathMatchOnTheDecodedPathWhileTheUriStaysRaw() {
+        var request = requestWithContext("/%61pp/a%2Fb", "/app");
+
+        assertEquals("/%61pp/a%2Fb", request.getRequestURI());
+        assertTrue(request.isWithinContext(),
+            "the context match reduces the path the way Spring does, so an encoded context path still mounts");
+        assertEquals("/a/b", request.getServletPath(),
+            "filter patterns match on this string, so it stays decoded even though the URI above does not");
+    }
+
+    @Test
     void pathInfoIsNullWhenTheRequestCarriesNoExtraPathInformation() {
         var inContext = requestWithContext("/app/hello", "/app");
         assertNull(inContext.getPathInfo());
