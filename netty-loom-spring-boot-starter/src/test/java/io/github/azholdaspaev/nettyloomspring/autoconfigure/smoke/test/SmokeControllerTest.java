@@ -4,19 +4,29 @@ import io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.app.SmokeContr
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.client.RestTestClient;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class SmokeControllerTest extends BaseIntegrationTest {
 
     @Autowired
     private RestTestClient restTestClient;
+
+    @LocalServerPort
+    private int port;
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
@@ -205,6 +215,23 @@ class SmokeControllerTest extends BaseIntegrationTest {
             .exchange()
             .expectStatus().isOk()
             .expectBody(Greeting.class).isEqualTo(new Greeting("deleted: foo"));
+    }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldResolvePathVariableContainingAnEncodedSlash() throws Exception {
+        // RestTestClient re-encodes the '%' of a URI template, sending "a%252Fb" -- which the unfixed
+        // server decodes twice back to "a/b", so the same test through it passes against the bug.
+        HttpResponse<String> response;
+        try (HttpClient client = HttpClient.newHttpClient()) {
+            response = client.send(
+                HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/greeting/a%2Fb")).build(),
+                HttpResponse.BodyHandlers.ofString());
+        }
+
+        assertEquals(200, response.statusCode(),
+            "an encoded slash is one segment, so it must not 404 against the single-segment mapping");
+        assertEquals("{\"message\":\"hello, a/b\"}", response.body());
     }
 
     @Test
