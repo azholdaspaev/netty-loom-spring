@@ -156,14 +156,21 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void contextAndServletPathMatchOnTheDecodedPathWhileTheUriStaysRaw() {
-        var request = requestWithContext("/%61pp/a%2Fb", "/app");
+    void theServletPathIsDecodedWhileTheUriStaysRaw() {
+        var request = requestWithContext("/app/a%2Fb", "/app");
 
-        assertEquals("/%61pp/a%2Fb", request.getRequestURI());
-        assertTrue(request.isWithinContext(),
-            "the context match reduces the path the way Spring does, so an encoded context path still mounts");
+        assertEquals("/app/a%2Fb", request.getRequestURI());
+        assertTrue(request.isWithinContext());
         assertEquals("/a/b", request.getServletPath(),
             "filter patterns match on this string, so it stays decoded even though the URI above does not");
+    }
+
+    @Test
+    void anEncodedContextPathPrefixIsOutOfContext() {
+        assertFalse(requestWithContext("/%61pp/hello", "/app").isWithinContext(),
+            "getContextPath() is the configured literal, so Spring would throw on a raw URI it does not prefix");
+        assertFalse(requestWithContext("/app%2Fx/hello", "/app").isWithinContext(),
+            "an encoded slash inside the prefix is not a segment boundary on the wire, so nothing mounts here");
     }
 
     @Test
