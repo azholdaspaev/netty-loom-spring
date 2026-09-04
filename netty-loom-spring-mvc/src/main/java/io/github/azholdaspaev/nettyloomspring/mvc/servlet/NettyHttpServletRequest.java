@@ -343,14 +343,19 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     }
 
     /**
-     * Whether the request URI falls within this server's context path -- it equals the context path or
-     * begins with {@code "{contextPath}/"}. Always {@code true} for the root context ({@code ""}).
+     * Whether the request falls within this server's context path -- the URI as sent and its decoded form
+     * both equal the context path or begin with {@code "{contextPath}/"}. Always {@code true} for the root
+     * context ({@code ""}). The raw half is what Spring's {@code DefaultRequestPath.validateContextPath}
+     * tests against {@link #getContextPath()}, and it throws where a mismatch here answers 404.
      */
     public boolean isWithinContext() {
         String contextPath = servletContext.getContextPath();
         return NettyServletContext.ROOT_CONTEXT_PATH.equals(contextPath)
-            || decodedPath.equals(contextPath)
-            || decodedPath.startsWith(contextPath + "/");
+            || (startsAtContextPath(requestURI, contextPath) && startsAtContextPath(decodedPath, contextPath));
+    }
+
+    private static boolean startsAtContextPath(String path, String contextPath) {
+        return path.equals(contextPath) || path.startsWith(contextPath + "/");
     }
 
     @Override

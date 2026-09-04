@@ -74,6 +74,15 @@ class ContextPathIntegrationTest {
             .expectHeader().valueEquals("X-Ctx-Filter", "yes");
     }
 
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void anEncodedContextPathPrefixIsOutOfContext() throws Exception {
+        assertEquals(404, get("http://localhost:" + port + "/%61pp/hello").statusCode(),
+            "getContextPath() is the configured literal, so a raw URI it does not prefix cannot enter");
+        assertEquals(404, get("http://localhost:" + port + "/app%2Fx/hello").statusCode(),
+            "an encoded slash inside the context prefix is not a segment boundary on the wire");
+    }
+
     private static HttpResponse<String> get(String uri) throws Exception {
         try (HttpClient client = HttpClient.newHttpClient()) {
             return client.send(

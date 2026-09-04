@@ -44,7 +44,7 @@ What the servlet bridge implements, method by method. Verified against the sourc
 | Error page for an out-of-context URI | `none` | The bare pre-filter 404 below never enters the context, so no page of that context answers it |
 | `spring.web.error.*` | `works` | `path` selects the page Boot registers; `include-message`, `include-stacktrace`, `include-binding-errors` and `whitelabel.enabled` are Boot's own and now reach the client |
 | Uncaught controller exception | `works` | Re-dispatched to the error page with the status the [exception mapping](configuration.md#exception-to-status-mapping) gives the failure as thrown, so a controller's arrives wrapped in `ServletException` as 500 and a filter's unwrapped as whatever its type maps to. Any status the handler had already set is overridden, as on Tomcat. With no page registered it falls back to a plain-text `Internal Server Error` with `Connection: close`; once bytes have been streamed the connection is closed with no response |
-| Out-of-context URI (with a context path set) | `partial` | A bare 404 returned before the filter chain — no filter, listener or Security rule sees it. Deliberate; see [ADR 0001](adr/0001-server-properties-namespace.md) |
+| Out-of-context URI (with a context path set) | `partial` | A bare 404 returned before the filter chain — no filter, listener or Security rule sees it. Deliberate; see [ADR 0001](adr/0001-server-properties-namespace.md). In context means the URI **as sent** starts at the context path, not only its decoded form, because `getContextPath()` is the configured literal that Spring's `RequestPath` tests the raw URI against — so `/%61pp/hello` is a 404 here where Tomcat mounts it, `Request.getContextPath()` there returning the raw prefix instead |
 
 ## Request
 
