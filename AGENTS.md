@@ -12,6 +12,9 @@ file holds no rules that already live elsewhere; it points at the files that do.
 Use the file. Do not reinvent the shape, and do not infer it from `git log` or `gh issue view` —
 history is not a specification.
 
+English only, whatever language the conversation with the agent is in: identifiers, comments,
+commit messages, issues, pull requests and review replies.
+
 | Artefact | Template |
 | --- | --- |
 | Commit message | [`.gitmessage`](.gitmessage) |
