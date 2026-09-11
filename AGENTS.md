@@ -4,7 +4,7 @@ For any coding agent working in this repository — Claude, Codex, Cursor, Copil
 file holds no rules that already live elsewhere; it points at the files that do.
 
 - [`CLAUDE.md`](CLAUDE.md) is normative for how changes are made: the test-first rule, the comment
-  budget, the module boundaries, the review lenses. Read it before changing source.
+  budget, the module boundaries. Read it before changing source.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) is the practical summary of the same ground.
 
 ## Authoring formats
