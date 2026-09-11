@@ -69,25 +69,19 @@ Subject line: `NL-<issue number> <imperative summary>`, e.g.
 NL-148 Put the servlet types consumers compile against on the api surface
 ```
 
-**The whole message is 500 characters or fewer** — subject, body and `Closes #NN` together — and
-the body is a short description of what the change makes true. Why the change is right, the
-alternative you rejected and the mutations you ran belong in the pull request body, which is the
-artefact reviewers actually read. Commits carry no trailers: no session links from any agent, no
-`Co-authored-by` bot lines, no generated-by footers.
-
-[`.gitmessage`](.gitmessage) has the full shape. Load it once with:
+[`.gitmessage`](.gitmessage) owns the full shape — the 500-character cap on the whole message,
+no trailers, one idea per commit — and [`.githooks/commit-msg`](.githooks/commit-msg) enforces
+it whichever way the message was written, `git commit -m` included. Load both once:
 
 ```bash
 git config commit.template .gitmessage
+git config core.hooksPath .githooks
 ```
 
-Git fills the editor from it on a bare `git commit`. `git commit -m` bypasses it, so the file is
-written to be read directly as well.
+Why the change is right, the alternative you rejected and the mutations you ran belong in the
+pull request body, which is the artefact reviewers actually read.
 
 Branch names follow the same key: `NL-<issue number>-<short-slug>`.
-
-Keep each commit to one idea. A changed line that does not trace to the issue in its subject
-belongs in a different commit — that rule is applied literally.
 
 ## Pull requests
 
