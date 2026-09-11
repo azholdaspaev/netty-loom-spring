@@ -105,9 +105,14 @@ a dedicated non-daemon thread, in-flight requests are awaited up to
 `server.netty.shutdown-grace-period`; anything still outstanding at the deadline is force-closed.
 While draining, the last response owed on each connection carries `Connection: close`.
 
+`spring.lifecycle.timeout-per-shutdown-phase` bounds the drain from the other side: when it expires
+first, Spring moves on to the stop phase, which cuts the drain short and force-closes what is left,
+as Tomcat does.
+
 **Set `server.netty.shutdown-grace-period` strictly below
-`spring.lifecycle.timeout-per-shutdown-phase`.** Both default to 30s in Spring Boot 4, so at the
-defaults a slow drain is not guaranteed to complete before Spring tears the session store down
+`spring.lifecycle.timeout-per-shutdown-phase`** if in-flight requests must finish before Spring
+tears the session store down. Both default to 30s in Spring Boot 4, so at the defaults a slow drain
+is cut short with the session store already gone
 ([#89](https://github.com/azholdaspaev/netty-loom-spring/issues/89)).
 
 `server.shutdown=immediate` does not disable any of this

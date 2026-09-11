@@ -15,6 +15,7 @@ import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 public class NettyServer {
@@ -27,6 +28,8 @@ public class NettyServer {
     private final HttpConnectionRegistry connectionRegistry;
 
     private volatile RunningState state;
+
+    private Shutdown shutdown;
 
     public NettyServer(NettyServerConfiguration configuration,
                        NettyServerChannelInitializer channelInitializer,
@@ -68,32 +71,33 @@ public class NettyServer {
         }
     }
 
+    /**
+     * The first caller owns the drain and holds {@code lock} only for the handover, never for the
+     * wait. A concurrent caller joins that drain, cuts it short once its own {@code timeout} is up
+     * and returns the owner's result.
+     */
     public NettyShutdownResult shutdown(Duration timeout) {
+        Deadline deadline = Deadline.in(timeout);
+        RunningState current;
+        Shutdown inProgress;
+        Shutdown owned = null;
         synchronized (lock) {
-            RunningState current = state;
+            current = state;
             if (current == null) {
                 return NettyShutdownResult.IDLE;
             }
-            state = null;
-            Deadline deadline = Deadline.in(timeout);
-            try {
-                current.serverChannel().close().sync();
-                boolean drained = drainOrForceClose(deadline);
-                stopEventLoops(deadline, current.bossGroup(), current.workerGroup());
-                return drained ? NettyShutdownResult.IDLE : NettyShutdownResult.REQUESTS_ACTIVE;
-            } catch (InterruptedException e) {
-                stopEventLoopsQuietly(current.bossGroup(), current.workerGroup());
-                Thread.currentThread().interrupt();
-                throw new NettyServerException("Server shutdown interrupted", e);
+            inProgress = shutdown;
+            if (inProgress == null) {
+                shutdown = owned = new Shutdown();
             }
         }
+        return owned != null ? drainAndStop(current, owned, deadline) : joinOrAbort(inProgress, deadline);
     }
 
     /**
-     * Closes the server socket so new connections are refused while keeping running state, allowing
-     * in-flight requests to drain; finish by calling {@link #shutdown(Duration)}, and note that
-     * {@link #isRunning()} stays true in this window. Idle connections are closed rather than waited
-     * on: with keep-alive they would otherwise sit open for the whole grace period.
+     * Closes the server socket so new connections are refused, and starts the drain so idle
+     * keep-alive connections close now rather than sit open for the whole grace period; finish by
+     * calling {@link #shutdown(Duration)}.
      */
     public void stopAcceptingConnections() {
         synchronized (lock) {
@@ -101,12 +105,7 @@ public class NettyServer {
             if (current == null) {
                 return;
             }
-            try {
-                current.serverChannel().close().sync();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new NettyServerException("Interrupted closing server channel", e);
-            }
+            closeServerChannel(current);
             connectionRegistry.beginDrain();
         }
     }
@@ -156,6 +155,43 @@ public class NettyServer {
         return cause;
     }
 
+    private NettyShutdownResult drainAndStop(RunningState current, Shutdown owned, Deadline deadline) {
+        try {
+            closeServerChannel(current);
+            boolean drained = drainOrForceClose(deadline);
+            stopEventLoops(deadline, current.bossGroup(), current.workerGroup());
+            owned.result = drained ? NettyShutdownResult.IDLE : NettyShutdownResult.REQUESTS_ACTIVE;
+            return owned.result;
+        } catch (InterruptedException e) {
+            stopEventLoopsQuietly(current.bossGroup(), current.workerGroup());
+            Thread.currentThread().interrupt();
+            throw new NettyServerException("Server shutdown interrupted", e);
+        } finally {
+            synchronized (lock) {
+                state = null;
+                shutdown = null;
+            }
+            owned.done.countDown();
+        }
+    }
+
+    private NettyShutdownResult joinOrAbort(Shutdown inProgress, Deadline deadline) {
+        try {
+            if (!inProgress.done.await(deadline.remainingMillis(), TimeUnit.MILLISECONDS)) {
+                connectionRegistry.abortDrain();
+                inProgress.done.await();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new NettyServerException("Server shutdown interrupted", e);
+        }
+        return inProgress.result;
+    }
+
+    private static void closeServerChannel(RunningState current) {
+        current.serverChannel().close().syncUninterruptibly();
+    }
+
     /**
      * Waits for in-flight requests, not open sockets, so this completes when the last request is
      * done rather than when a pooling client hangs up (issues #67, #108).
@@ -189,5 +225,13 @@ public class NettyServer {
     }
 
     private record RunningState(Channel serverChannel, EventLoopGroup bossGroup, EventLoopGroup workerGroup) {
+    }
+
+    private static final class Shutdown {
+
+        private final CountDownLatch done = new CountDownLatch(1);
+
+        // Stays REQUESTS_ACTIVE if the owner throws, so a joiner reads "not drained" rather than nothing.
+        private volatile NettyShutdownResult result = NettyShutdownResult.REQUESTS_ACTIVE;
     }
 }

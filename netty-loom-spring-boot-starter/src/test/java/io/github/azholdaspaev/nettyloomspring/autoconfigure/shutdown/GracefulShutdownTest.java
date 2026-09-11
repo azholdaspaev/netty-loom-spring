@@ -6,22 +6,27 @@ import org.junit.jupiter.api.Timeout;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.web.server.context.WebServerApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Issue #67 regression gate. Spring Boot defaults {@code server.shutdown} to {@code graceful}, so
- * every application on this starter drains on context close. Draining used to wait for open sockets,
- * which an HTTP/1.1 client pools and holds open by design — so shutdown burned the whole
- * {@code server.netty.shutdown-grace-period} on a server with nothing in flight. A pooling
- * {@link HttpClient} is essential here: it is what keeps the connection alive after the response.
+ * Shutdown on the real Boot lifecycle. Spring Boot defaults {@code server.shutdown} to
+ * {@code graceful}, so every application on this starter drains on context close. Draining used to
+ * wait for open sockets, which an HTTP/1.1 client pools and holds open by design — so shutdown
+ * burned the whole {@code server.netty.shutdown-grace-period} on a server with nothing in flight
+ * (#67). A pooling {@link HttpClient} is essential there: it is what keeps the connection alive
+ * after the response.
  */
 @Timeout(value = 60, unit = TimeUnit.SECONDS)
 class GracefulShutdownTest {
@@ -56,5 +61,62 @@ class GracefulShutdownTest {
         assertTrue(elapsedMillis < PROMPT_SHUTDOWN_MILLIS,
             "graceful shutdown must not wait out the grace period for an idle pooled connection, took "
                 + elapsedMillis + "ms");
+    }
+
+    @Test
+    void shouldCutOffARequestOnceTheLifecyclePhaseTimeoutExpires() throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+        ConfigurableApplicationContext context = new SpringApplicationBuilder(
+            SmokeNettyLoomApplication.class, HoldingController.class)
+            .properties("server.port=0",
+                "spring.lifecycle.timeout-per-shutdown-phase=1s",
+                "server.netty.shutdown-grace-period=30s")
+            .run();
+        HoldingController holding = context.getBean(HoldingController.class);
+
+        CompletableFuture<HttpResponse<String>> response;
+        CompletableFuture<Long> settledAfterMillis;
+        try {
+            int port = ((WebServerApplicationContext) context).getWebServer().getPort();
+            response = client.sendAsync(
+                HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/hold")).build(),
+                HttpResponse.BodyHandlers.ofString());
+            assertTrue(holding.entered.await(5, TimeUnit.SECONDS),
+                "the request must be inside the controller before shutdown begins");
+
+            // Judged from the client, not from how long close() takes: destroying the dispatch
+            // executor bean calls ExecutorService.close(), which waits for running tasks with no
+            // timeout, so close() lasts the controller's hold whether or not the drain was cut short.
+            // The same wait is why the controller must let go by itself rather than on a latch.
+            long startedAt = System.nanoTime();
+            settledAfterMillis = response.handle((_, _) -> (System.nanoTime() - startedAt) / 1_000_000L);
+            context.close();
+        } finally {
+            if (context.isActive()) {
+                context.close();
+            }
+        }
+
+        assertTrue(response.isCompletedExceptionally(),
+            "once Spring's phase timeout expires, stop() must cut the request off rather than wait "
+                + "out the grace period");
+        assertTrue(settledAfterMillis.get() < HoldingController.HOLD_MILLIS,
+            "the request must be cut off at the phase timeout, before the controller would have "
+                + "answered; it settled after " + settledAfterMillis.get() + "ms");
+    }
+
+    @RestController
+    static class HoldingController {
+
+        static final long HOLD_MILLIS = 3_000;
+
+        final CountDownLatch entered = new CountDownLatch(1);
+
+        @GetMapping("/hold")
+        String hold() throws InterruptedException {
+            entered.countDown();
+            Thread.sleep(HOLD_MILLIS);
+            return "released";
+        }
     }
 }

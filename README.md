@@ -199,8 +199,8 @@ Honoured from the standard namespace: `server.port`, `server.address`,
 the two lists above.
 
 Two things to know before tuning any of it. `server.netty.shutdown-grace-period` must be set
-strictly below `spring.lifecycle.timeout-per-shutdown-phase`, or a slow drain is not guaranteed to
-finish before Spring tears the session store down
+strictly below `spring.lifecycle.timeout-per-shutdown-phase`, or a slow drain is cut short at the
+phase timeout after Spring has already torn the session store down
 ([#89](https://github.com/azholdaspaev/netty-loom-spring/issues/89) —
 [why](docs/configuration.md#graceful-shutdown)). And the HTTP frame limits are fixed rather than
 configurable ([#42](https://github.com/azholdaspaev/netty-loom-spring/issues/42) —
