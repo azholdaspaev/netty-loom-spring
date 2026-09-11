@@ -1,6 +1,7 @@
 ---
 description: Verify a pull request's change by test, then report on the PR
 argument-hint: [PR number or URL]
+disable-model-invocation: true
 ---
 
 TASK: verify by test that the change on pull request $1 does what it claims
