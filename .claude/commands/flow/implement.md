@@ -1,6 +1,7 @@
 ---
 description: Confirm a GitHub issue's root cause, then implement the fix under the repo's TDD rule
 argument-hint: [issue number or URL]
+disable-model-invocation: true
 ---
 
 TASK: implement required changes for issue $1

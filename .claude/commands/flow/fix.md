@@ -1,6 +1,7 @@
 ---
 description: Address a pull request's review comments, then reply in each thread
 argument-hint: [PR number or URL]
+disable-model-invocation: true
 ---
 
 TASK: address the review comments on pull request $1

@@ -1,6 +1,7 @@
 ---
 description: Verify a pull request's prior findings, then post deduplicated inline comments
 argument-hint: [PR number or URL]
+disable-model-invocation: true
 ---
 
 TASK: review pull request $1 — settle what the last cycle found, then post inline comments for what survives
