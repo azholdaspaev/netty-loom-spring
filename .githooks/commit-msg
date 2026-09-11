@@ -16,7 +16,7 @@ subject=$(printf '%s\n' "$msg" | sed -n '/./{p;q;}')
 
 case "$subject" in
   fixup!\ *|squash!\ *) exit 0 ;;
-  Merge\ branch\ *|Merge\ pull\ request\ *|Merge\ remote-tracking\ branch\ *|Merge\ tag\ *) exit 0 ;;
+  Merge\ branch\ *|Merge\ pull\ request\ *|Merge\ remote-tracking\ branch\ *|Merge\ tag\ *|Revert\ \"*) exit 0 ;;
 esac
 
 fail() {
