@@ -52,5 +52,5 @@ sets the convention, the class that already owns the constant, the other file ho
 fact. A maintainability finding with no cited precedent in this repository is taste, not a
 finding: do not post it.
 
-Prefer silence to a weak finding. This pass runs on top of a review that already posted; every
-marginal comment spends a human's attention that the bug pass has first claim on.
+Prefer silence to a weak finding: every marginal comment spends a human's attention that the bug
+pass has first claim on.
