@@ -3,7 +3,14 @@
 #   git config core.hooksPath .githooks
 set -eu
 
-msg=$(grep -v '^#' "$1" | sed -e 's/[[:space:]]*$//' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')
+# git drops comment lines and the -v diff below the scissors only when an editor wrote the
+# message; on every other path it sets GIT_EDITOR=: for the hook (githooks(5)) and keeps them.
+if [ "${GIT_EDITOR-}" = : ]; then
+  msg=$(cat "$1")
+else
+  msg=$(sed -e '/^# -* >8 -*$/,$d' -e '/^#/d' "$1")
+fi
+msg=$(printf '%s\n' "$msg" | sed -e 's/[[:space:]]*$//' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')
 subject=$(printf '%s\n' "$msg" | sed -n '/./{p;q;}')
 
 case "$subject" in
