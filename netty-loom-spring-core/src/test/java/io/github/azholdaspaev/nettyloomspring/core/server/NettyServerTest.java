@@ -2,7 +2,7 @@ package io.github.azholdaspaev.nettyloomspring.core.server;
 
 import io.github.azholdaspaev.nettyloomspring.core.exception.NettyServerException;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
-import io.github.azholdaspaev.nettyloomspring.core.pipeline.NamedChannelHandler;
+import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineStep;
 import io.github.azholdaspaev.nettyloomspring.core.support.NettyServerFixture;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
@@ -50,7 +50,7 @@ class NettyServerTest {
         nettyServer = NettyServerFixture.newServer(
             new NettyServerConfiguration(0, null, 1, 1, true),
             new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)),
-            List.of(new NamedChannelHandler("capture", () -> new ChannelInboundHandlerAdapter() {
+            List.of(new NettyPipelineStep("capture", () -> new ChannelInboundHandlerAdapter() {
                 @Override
                 public void channelRead(ChannelHandlerContext ctx, Object msg) {
                     ByteBuf inbound = (ByteBuf) msg;
@@ -81,8 +81,8 @@ class NettyServerTest {
      */
     private static NettyServer newServer(InetAddress address, CountDownLatch accepted, int port) {
         NettyServerConfiguration configuration = new NettyServerConfiguration(port, address, 0, 0, false);
-        List<NamedChannelHandler> handlers = accepted == null ? List.of()
-            : List.of(new NamedChannelHandler("accepted", () -> new ChannelInboundHandlerAdapter() {
+        List<NettyPipelineStep> handlers = accepted == null ? List.of()
+            : List.of(new NettyPipelineStep("accepted", () -> new ChannelInboundHandlerAdapter() {
                 @Override
                 public void channelActive(ChannelHandlerContext ctx) {
                     accepted.countDown();

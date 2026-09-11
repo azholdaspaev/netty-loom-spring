@@ -6,7 +6,7 @@ import io.github.azholdaspaev.nettyloomspring.core.handler.HttpPipeliningHandler
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestBodyLimitHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestDispatcher;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestHandler;
-import io.github.azholdaspaev.nettyloomspring.core.pipeline.NamedChannelHandler;
+import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineStep;
 import io.github.azholdaspaev.nettyloomspring.core.support.NettyServerFixture;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.group.DefaultChannelGroup;
@@ -134,12 +134,12 @@ class NettyServerPipeliningTest {
         NettyServerConfiguration configuration = new NettyServerConfiguration(
             0, InetAddress.getLoopbackAddress(), 0, 0, false);
         return NettyServerFixture.newServer(configuration, connectionRegistry, List.of(
-            new NamedChannelHandler("httpCodec", HttpServerCodec::new),
-            new NamedChannelHandler("httpKeepAlive", HttpServerKeepAliveHandler::new),
-            new NamedChannelHandler("drain", () -> new HttpDrainHandler(connectionRegistry)),
-            new NamedChannelHandler("pipelining", HttpPipeliningHandler::new),
-            new NamedChannelHandler("bodyLimit", () -> new HttpRequestBodyLimitHandler(MAX_HTTP_REQUEST_BODY_BYTES)),
-            new NamedChannelHandler("dispatcher",
+            new NettyPipelineStep("httpCodec", HttpServerCodec::new),
+            new NettyPipelineStep("httpKeepAlive", HttpServerKeepAliveHandler::new),
+            new NettyPipelineStep("drain", () -> new HttpDrainHandler(connectionRegistry)),
+            new NettyPipelineStep("pipelining", HttpPipeliningHandler::new),
+            new NettyPipelineStep("bodyLimit", () -> new HttpRequestBodyLimitHandler(MAX_HTTP_REQUEST_BODY_BYTES)),
+            new NettyPipelineStep("dispatcher",
                 () -> new HttpRequestHandler(overtakingDispatcher(), dispatchExecutor, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT))));
     }
 

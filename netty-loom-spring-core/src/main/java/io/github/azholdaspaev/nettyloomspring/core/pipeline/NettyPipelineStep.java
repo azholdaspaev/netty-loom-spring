@@ -5,17 +5,17 @@ import io.netty.channel.ChannelHandler.Sharable;
 
 import java.util.function.Supplier;
 
-public record NamedChannelHandler(
+public record NettyPipelineStep(
     String name,
     Supplier<? extends ChannelHandler> factory
 ) {
 
-    public static NamedChannelHandler shared(String name, ChannelHandler handler) {
+    public static NettyPipelineStep shared(String name, ChannelHandler handler) {
         if (!handler.getClass().isAnnotationPresent(Sharable.class)) {
             throw new IllegalArgumentException(
                 "Handler " + handler.getClass().getName() + " is not @Sharable; cannot be reused across channels"
             );
         }
-        return new NamedChannelHandler(name, () -> handler);
+        return new NettyPipelineStep(name, () -> handler);
     }
 }

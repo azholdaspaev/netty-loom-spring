@@ -7,9 +7,9 @@ import java.util.Objects;
 
 public class NettyPipelineDefinition {
 
-    private final List<NamedChannelHandler> pipelineSteps;
+    private final List<NettyPipelineStep> pipelineSteps;
 
-    public NettyPipelineDefinition(List<NamedChannelHandler> pipelineSteps) {
+    public NettyPipelineDefinition(List<NettyPipelineStep> pipelineSteps) {
         this.pipelineSteps = List.copyOf(pipelineSteps);
     }
 
