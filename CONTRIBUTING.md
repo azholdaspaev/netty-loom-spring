@@ -70,8 +70,10 @@ NL-148 Put the servlet types consumers compile against on the api surface
 ```
 
 [`.gitmessage`](.gitmessage) owns the full shape — the 500-character cap on the whole message,
-no trailers, one idea per commit — and [`.githooks/commit-msg`](.githooks/commit-msg) enforces
-it whichever way the message was written, `git commit -m` included. Load both once:
+no trailers, one idea per commit. Once `core.hooksPath` points at it,
+[`.githooks/commit-msg`](.githooks/commit-msg) rejects the part a script can check — key, lengths,
+ASCII, trailers — whichever way the message was written, `git commit -m` included; one idea per
+commit stays with the author. Load both once:
 
 ```bash
 git config commit.template .gitmessage
