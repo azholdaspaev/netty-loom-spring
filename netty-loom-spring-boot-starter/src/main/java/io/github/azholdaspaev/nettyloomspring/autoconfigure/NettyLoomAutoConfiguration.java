@@ -13,7 +13,7 @@ import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestBodyLimitH
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestDispatcher;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestHandler;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NamedChannelHandler;
-import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineConfigurer;
+import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineDefinition;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyIoHandlerFactory;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyServerChannelInitializer;
 import io.github.azholdaspaev.nettyloomspring.mvc.handler.SpringHttpRequestDispatcher;
@@ -78,20 +78,20 @@ public class NettyLoomAutoConfiguration {
     }
 
     @Bean
-    public NettyServerChannelInitializer nettyServerChannelInitializer(NettyPipelineConfigurer nettyPipelineConfigurer,
+    public NettyServerChannelInitializer nettyServerChannelInitializer(NettyPipelineDefinition nettyPipelineDefinition,
                                                                        HttpConnectionRegistry httpConnectionRegistry) {
-        return new NettyServerChannelInitializer(nettyPipelineConfigurer, httpConnectionRegistry);
+        return new NettyServerChannelInitializer(nettyPipelineDefinition, httpConnectionRegistry);
     }
 
     @Bean
-    public NettyPipelineConfigurer nettyPipelineConfigurer(NettyLoomProperties properties,
+    public NettyPipelineDefinition nettyPipelineDefinition(NettyLoomProperties properties,
                                                            HttpRequestDispatcher httpRequestDispatcher,
                                                            ExecutorService nettyLoomDispatchExecutor,
                                                            HttpConnectionRegistry httpConnectionRegistry) {
         // Nanoseconds, not millis: toMillis() truncates, so a sub-millisecond read-timeout would arrive as
         // zero -- which the handler treats as "disabled", silently turning the slow-loris guard off.
         long readTimeoutNanos = properties.readTimeout().toNanos();
-        return new NettyPipelineConfigurer(List.of(
+        return new NettyPipelineDefinition(List.of(
             new NamedChannelHandler("httpCodec", () -> new HttpServerCodec(MAX_HTTP_INITIAL_LINE_LENGTH, MAX_HTTP_HEADER_SIZE, MAX_HTTP_CHUNK_SIZE)),
             new NamedChannelHandler("httpKeepAlive", HttpServerKeepAliveHandler::new),
             // Directly below the codec so a connection counts as busy from the head of a request, before

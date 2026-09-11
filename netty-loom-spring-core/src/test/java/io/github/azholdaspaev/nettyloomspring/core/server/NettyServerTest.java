@@ -66,7 +66,7 @@ class NettyServerTest {
             client.getOutputStream().flush();
 
             assertEquals("ping", received.get(5, TimeUnit.SECONDS),
-                "a configurer replacing the handler list keeps Netty's own read behaviour: manual reads "
+                "a definition replacing the handler list keeps Netty's own read behaviour: manual reads "
                     + "belong to the handlers that issue them");
         }
     }

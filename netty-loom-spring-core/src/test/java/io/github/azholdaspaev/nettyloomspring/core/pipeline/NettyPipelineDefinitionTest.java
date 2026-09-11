@@ -14,15 +14,15 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
-class NettyPipelineConfigurerTest {
+class NettyPipelineDefinitionTest {
 
     @Test
-    void shouldConfigureEmptyPipeline() {
-        var configurer = new NettyPipelineConfigurer(List.of());
+    void shouldApplyEmptyDefinitionToPipeline() {
+        var definition = new NettyPipelineDefinition(List.of());
         var channel = new EmbeddedChannel();
         ChannelPipeline pipeline = channel.pipeline();
 
-        configurer.configure(pipeline);
+        definition.applyTo(pipeline);
 
         assertNull(pipeline.get("nonexistent"));
     }
@@ -30,13 +30,13 @@ class NettyPipelineConfigurerTest {
     @Test
     void shouldAddSingleHandlerToPipeline() {
         var handler = new ChannelInboundHandlerAdapter();
-        var configurer = new NettyPipelineConfigurer(List.of(
+        var definition = new NettyPipelineDefinition(List.of(
                 new NamedChannelHandler("myHandler", () -> handler)
         ));
         var channel = new EmbeddedChannel();
         ChannelPipeline pipeline = channel.pipeline();
 
-        configurer.configure(pipeline);
+        definition.applyTo(pipeline);
 
         assertSame(handler, pipeline.get("myHandler"));
     }
@@ -46,7 +46,7 @@ class NettyPipelineConfigurerTest {
         var first = new ChannelInboundHandlerAdapter();
         var second = new ChannelInboundHandlerAdapter();
         var third = new ChannelInboundHandlerAdapter();
-        var configurer = new NettyPipelineConfigurer(List.of(
+        var definition = new NettyPipelineDefinition(List.of(
                 new NamedChannelHandler("first", () -> first),
                 new NamedChannelHandler("second", () -> second),
                 new NamedChannelHandler("third", () -> third)
@@ -54,7 +54,7 @@ class NettyPipelineConfigurerTest {
         var channel = new EmbeddedChannel();
         ChannelPipeline pipeline = channel.pipeline();
 
-        configurer.configure(pipeline);
+        definition.applyTo(pipeline);
 
         assertSame(first, pipeline.get("first"));
         assertSame(second, pipeline.get("second"));
@@ -74,27 +74,27 @@ class NettyPipelineConfigurerTest {
         var mutableList = new ArrayList<>(List.of(
                 new NamedChannelHandler("original", () -> handler)
         ));
-        var configurer = new NettyPipelineConfigurer(mutableList);
+        var definition = new NettyPipelineDefinition(mutableList);
 
         mutableList.clear();
 
         var channel = new EmbeddedChannel();
         ChannelPipeline pipeline = channel.pipeline();
-        configurer.configure(pipeline);
+        definition.applyTo(pipeline);
 
         assertSame(handler, pipeline.get("original"));
     }
 
     @Test
-    void shouldCreateFreshHandlerInstancePerConfigureCall() {
-        var configurer = new NettyPipelineConfigurer(List.of(
+    void shouldCreateFreshHandlerInstancePerApplyToCall() {
+        var definition = new NettyPipelineDefinition(List.of(
                 new NamedChannelHandler("perChannel", ChannelInboundHandlerAdapter::new)
         ));
 
         ChannelPipeline firstPipeline = new EmbeddedChannel().pipeline();
         ChannelPipeline secondPipeline = new EmbeddedChannel().pipeline();
-        configurer.configure(firstPipeline);
-        configurer.configure(secondPipeline);
+        definition.applyTo(firstPipeline);
+        definition.applyTo(secondPipeline);
 
         var firstHandler = firstPipeline.get("perChannel");
         var secondHandler = secondPipeline.get("perChannel");

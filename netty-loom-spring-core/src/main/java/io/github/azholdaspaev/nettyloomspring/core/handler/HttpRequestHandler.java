@@ -58,7 +58,7 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
     /**
      * The inbound valve, taken over here rather than set on the accepted connection: with auto-read on
      * a request body arrives as fast as the client sends it and queues in heap, and a replacement
-     * NettyPipelineConfigurer that issues no reads of its own would never be handed a byte (issue #51).
+     * NettyPipelineDefinition that issues no reads of its own would never be handed a byte (issue #51).
      */
     @Override
     public void handlerAdded(ChannelHandlerContext ctx) {
