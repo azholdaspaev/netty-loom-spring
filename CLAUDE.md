@@ -53,7 +53,7 @@ Tests use JUnit 6 (`org.junit.jupiter.api`, via `org.junit.jupiter:junit-jupiter
 
 ## CI
 
-`.github/workflows/build.yml` runs `./gradlew build` on ubuntu and macos; both matrix cells must pass to merge. Everything else about the workflows and rulesets loads from `.claude/rules/github-workflows.md` when a file under `.github/workflows/` or `.github/rulesets/` is read.
+`.github/workflows/build.yml` runs `./gradlew build` on ubuntu and macos; both matrix cells must pass to merge.
 
 ## Code Review
 
