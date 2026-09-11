@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Every comment on a pull request, projected to what deduplication and a reply need.
-# Read-only. Usage: .claude/scripts/pr-comments.sh <PR number>
+# Read-only. Usage: .claude/scripts/pr-comments.sh <PR number or URL>
 #
 # Three REST endpoints hold the three comment kinds, and `--paginate` emits one array per
 # page, hence the `jq -s add` fold. Thread ids and resolution state exist only in GraphQL.
 set -euo pipefail
 
-pr="${1:?usage: pr-comments.sh <PR number>}"
+pr=$(gh pr view "${1:?usage: pr-comments.sh <PR number or URL>}" --json number --jq .number)
 repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 owner=${repo%/*}
 name=${repo#*/}
