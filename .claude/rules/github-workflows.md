@@ -1,6 +1,7 @@
 ---
 paths:
-  - ".github/**"
+  - ".github/workflows/**"
+  - ".github/rulesets/**"
 ---
 
 # GitHub Actions and rulesets
