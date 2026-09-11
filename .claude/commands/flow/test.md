@@ -18,7 +18,7 @@ ORDER OF WORK:
 - exercise the plan from outside the change, the way the integration tests already do — a real server on a random port driven over HTTP, as `BaseIntegrationTest` sets up. Reach inside only where the public surface genuinely cannot observe the behaviour, and say in the report where you had to
 - check each scenario in the plan against the tests actually present, and name the test that covers it
 - prove those tests bind: break the production path each one covers, confirm that test fails, then restore the file exactly. A test that still passes against mutated code covers nothing, whatever the suite says
-- rerun the ROUNDS-based concurrency tests several times cleanly — one green run of a nondeterministic test is not a result
+- rerun the ROUNDS-based concurrency tests several times with `--rerun-tasks` — Gradle's up-to-date check hides them, and one green run of a nondeterministic test is not a result
 - restore everything before you report: `git status` must come back clean, and no mutation is ever committed or pushed
 - open one ticket listing every missing scenario, not one ticket each — a reviewer reads a coverage gap once
 - open a separate ticket for each unrelated defect you find along the way, and fix none of them here
@@ -27,6 +27,9 @@ ORDER OF WORK:
 NOTES:
 - there is no coverage tool in this build — no jacoco, no pitest. Mutation is how coverage is measured here, so do not go looking for a report
 - run the touched modules' tests first, then `./gradlew build`. The dependency flow is one-directional, so a change in `core` can break `mvc` and `starter` downstream, never the reverse
+- apply a mutation by copying the file aside, editing the copy's original in place, running the narrowest test task, and restoring from the copy
+- when a mutation spans modules, pass `--continue` and wipe `build/test-results` first: Gradle halts after the first failing test task, and the stale XML from the previous run reads as green, under-reporting which layers caught the mutation
+- never let parallel sub-agents mutate a shared worktree — they clobber each other's edits and run Gradle against each other's mutated sources. Fan out for reading and reasoning; do every mutation yourself, serially, on a clean tree
 - the mutation must be one the change is about — invert the condition, drop the call, return the other branch. Deleting a whole method body proves only that the code is reachable
 - tickets follow `.github/ISSUE_TEMPLATE/bug.md`, carrying the mutation applied and the command that reproduces it under `## TDD entry point`. Label with `bug` for a defect, a `priority/P*`, and the `area/*` of the code under test — there is no testing area label
 - report what was proven, not what was run: name the tests that failed against mutated code, and name every production path where none did
