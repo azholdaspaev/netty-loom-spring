@@ -21,13 +21,11 @@ commit messages, issues, pull requests and review replies.
 | Pull request | [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md) |
 | Issue | [`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE) — `task.md` or `bug.md` |
 
-## Two rules that survive the bypass
+## One rule that survives the bypass
 
-`git commit -m` ignores `commit.template`, and `gh pr create --body` ignores the pull request
-template. Both rules below hold on those paths too, where no template is loaded to state them:
+`.githooks/commit-msg` enforces `.gitmessage` on `git commit -m`, once `core.hooksPath` points at
+it (`CONTRIBUTING.md` § Commits). Nothing does the same for `gh pr create --body`, which ignores
+the pull request template, so one rule holds there with no template loaded to state it:
 
-- **A commit message is 500 characters or fewer** — subject, body and `Closes #NN` together — and
-  its body is a short description. Why the change is right, the alternative you rejected and the
-  mutations you ran go in the pull request body instead.
-- **No trailers on a commit or a pull request body.** No session or transcript link from any tool
+- **No trailers on a pull request body.** No session or transcript link from any tool
   (`claude.ai`, Codex, Cursor or another), no `Co-authored-by` bot line, no generated-by footer.
