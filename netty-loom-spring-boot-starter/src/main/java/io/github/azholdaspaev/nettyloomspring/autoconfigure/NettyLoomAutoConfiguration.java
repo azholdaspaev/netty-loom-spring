@@ -12,7 +12,6 @@ import io.github.azholdaspaev.nettyloomspring.core.handler.HttpReadTimeoutHandle
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestBodyLimitHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestDispatcher;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestHandler;
-import io.github.azholdaspaev.nettyloomspring.core.pipeline.DefaultNettyPipelineConfigurer;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NamedChannelHandler;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineConfigurer;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyIoHandlerFactory;
@@ -92,7 +91,7 @@ public class NettyLoomAutoConfiguration {
         // Nanoseconds, not millis: toMillis() truncates, so a sub-millisecond read-timeout would arrive as
         // zero -- which the handler treats as "disabled", silently turning the slow-loris guard off.
         long readTimeoutNanos = properties.readTimeout().toNanos();
-        return new DefaultNettyPipelineConfigurer(List.of(
+        return new NettyPipelineConfigurer(List.of(
             new NamedChannelHandler("httpCodec", () -> new HttpServerCodec(MAX_HTTP_INITIAL_LINE_LENGTH, MAX_HTTP_HEADER_SIZE, MAX_HTTP_CHUNK_SIZE)),
             new NamedChannelHandler("httpKeepAlive", HttpServerKeepAliveHandler::new),
             // Directly below the codec so a connection counts as busy from the head of a request, before

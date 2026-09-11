@@ -33,7 +33,7 @@ To run the server by hand:
 ## Where a change belongs
 
 The dependency flow is `starter → mvc → core`, and **`core` must not gain a Spring dependency**.
-`HttpRequestDispatcher` and `NettyPipelineConfigurer` are the seams that keep it that way; a change
+`HttpRequestDispatcher` is the seam that keeps it that way; a change
 that couples across a layer or routes around a seam will be sent back even if it compiles.
 `CLAUDE.md` § Architecture has the module map.
 

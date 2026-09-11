@@ -14,11 +14,11 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
-class DefaultNettyPipelineConfigurerTest {
+class NettyPipelineConfigurerTest {
 
     @Test
     void shouldConfigureEmptyPipeline() {
-        var configurer = new DefaultNettyPipelineConfigurer(List.of());
+        var configurer = new NettyPipelineConfigurer(List.of());
         var channel = new EmbeddedChannel();
         ChannelPipeline pipeline = channel.pipeline();
 
@@ -30,7 +30,7 @@ class DefaultNettyPipelineConfigurerTest {
     @Test
     void shouldAddSingleHandlerToPipeline() {
         var handler = new ChannelInboundHandlerAdapter();
-        var configurer = new DefaultNettyPipelineConfigurer(List.of(
+        var configurer = new NettyPipelineConfigurer(List.of(
                 new NamedChannelHandler("myHandler", () -> handler)
         ));
         var channel = new EmbeddedChannel();
@@ -46,7 +46,7 @@ class DefaultNettyPipelineConfigurerTest {
         var first = new ChannelInboundHandlerAdapter();
         var second = new ChannelInboundHandlerAdapter();
         var third = new ChannelInboundHandlerAdapter();
-        var configurer = new DefaultNettyPipelineConfigurer(List.of(
+        var configurer = new NettyPipelineConfigurer(List.of(
                 new NamedChannelHandler("first", () -> first),
                 new NamedChannelHandler("second", () -> second),
                 new NamedChannelHandler("third", () -> third)
@@ -74,7 +74,7 @@ class DefaultNettyPipelineConfigurerTest {
         var mutableList = new ArrayList<>(List.of(
                 new NamedChannelHandler("original", () -> handler)
         ));
-        var configurer = new DefaultNettyPipelineConfigurer(mutableList);
+        var configurer = new NettyPipelineConfigurer(mutableList);
 
         mutableList.clear();
 
@@ -87,7 +87,7 @@ class DefaultNettyPipelineConfigurerTest {
 
     @Test
     void shouldCreateFreshHandlerInstancePerConfigureCall() {
-        var configurer = new DefaultNettyPipelineConfigurer(List.of(
+        var configurer = new NettyPipelineConfigurer(List.of(
                 new NamedChannelHandler("perChannel", ChannelInboundHandlerAdapter::new)
         ));
 
