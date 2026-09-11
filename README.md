@@ -259,7 +259,7 @@ virtual thread, so the loop stays free to keep accepting.
   dispatcher.
 
 The channel pipeline itself is not a seam but a bean: `NettyPipelineDefinition` is the
-`List<NamedChannelHandler>` every new connection's pipeline is built from, assembled in the
+`List<NettyPipelineStep>` every new connection's pipeline is built from, assembled in the
 **starter**, not in core, so declaring your own replaces the entire list — frame limits and read
 timeout included.
 

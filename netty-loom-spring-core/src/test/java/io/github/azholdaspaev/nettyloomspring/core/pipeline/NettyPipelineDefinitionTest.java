@@ -31,7 +31,7 @@ class NettyPipelineDefinitionTest {
     void shouldAddSingleHandlerToPipeline() {
         var handler = new ChannelInboundHandlerAdapter();
         var definition = new NettyPipelineDefinition(List.of(
-                new NamedChannelHandler("myHandler", () -> handler)
+                new NettyPipelineStep("myHandler", () -> handler)
         ));
         var channel = new EmbeddedChannel();
         ChannelPipeline pipeline = channel.pipeline();
@@ -47,9 +47,9 @@ class NettyPipelineDefinitionTest {
         var second = new ChannelInboundHandlerAdapter();
         var third = new ChannelInboundHandlerAdapter();
         var definition = new NettyPipelineDefinition(List.of(
-                new NamedChannelHandler("first", () -> first),
-                new NamedChannelHandler("second", () -> second),
-                new NamedChannelHandler("third", () -> third)
+                new NettyPipelineStep("first", () -> first),
+                new NettyPipelineStep("second", () -> second),
+                new NettyPipelineStep("third", () -> third)
         ));
         var channel = new EmbeddedChannel();
         ChannelPipeline pipeline = channel.pipeline();
@@ -72,7 +72,7 @@ class NettyPipelineDefinitionTest {
     void shouldDefensivelyCopyHandlerList() {
         var handler = new ChannelInboundHandlerAdapter();
         var mutableList = new ArrayList<>(List.of(
-                new NamedChannelHandler("original", () -> handler)
+                new NettyPipelineStep("original", () -> handler)
         ));
         var definition = new NettyPipelineDefinition(mutableList);
 
@@ -88,7 +88,7 @@ class NettyPipelineDefinitionTest {
     @Test
     void shouldCreateFreshHandlerInstancePerApplyToCall() {
         var definition = new NettyPipelineDefinition(List.of(
-                new NamedChannelHandler("perChannel", ChannelInboundHandlerAdapter::new)
+                new NettyPipelineStep("perChannel", ChannelInboundHandlerAdapter::new)
         ));
 
         ChannelPipeline firstPipeline = new EmbeddedChannel().pipeline();
