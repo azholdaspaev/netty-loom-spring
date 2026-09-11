@@ -23,9 +23,11 @@ commit messages, issues, pull requests and review replies.
 
 ## One rule that survives the bypass
 
-`.githooks/commit-msg` enforces `.gitmessage` on `git commit -m`, once `core.hooksPath` points at
-it (`CONTRIBUTING.md` § Commits). Nothing does the same for `gh pr create --body`, which ignores
-the pull request template, so one rule holds there with no template loaded to state it:
+`git commit -m` never opens `.gitmessage`, and `gh pr create --body` ignores the pull request
+template. `.githooks/commit-msg` catches the first once `core.hooksPath` points at it
+(`CONTRIBUTING.md` § Commits); nothing catches the second. So one rule holds on both with no
+template loaded to state it:
 
-- **No trailers on a pull request body.** No session or transcript link from any tool
-  (`claude.ai`, Codex, Cursor or another), no `Co-authored-by` bot line, no generated-by footer.
+- **No trailers, on a commit or on a pull request body.** No session or transcript link from any
+  tool (`claude.ai`, Codex, Cursor or another), no `Co-authored-by` bot line, no generated-by
+  footer.
