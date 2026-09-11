@@ -80,9 +80,6 @@ git config commit.template .gitmessage
 git config core.hooksPath .githooks
 ```
 
-Why the change is right, the alternative you rejected and the mutations you ran belong in the
-pull request body, which is the artefact reviewers actually read.
-
 Branch names follow the same key: `NL-<issue number>-<short-slug>`.
 
 ## Pull requests
