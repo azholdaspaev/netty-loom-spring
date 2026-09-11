@@ -35,7 +35,5 @@ NOTES:
 - `event: COMMENT` only, never APPROVE or REQUEST_CHANGES — an automated pass should not be able to block or unblock a merge
 - new issues follow `.github/ISSUE_TEMPLATE/task.md` or `bug.md`
 
-The bug pass requires a concrete failure scenario per finding and discards style, quality and
-state-dependent findings, so its output can never contain the maintainability half. Run the
-`maintainability-pass` skill for that half; use its lenses and `CLAUDE.md` § Guidelines rule 6
-to drop weak findings, and cite § Architecture for a module-boundary finding.
+Run the `maintainability-pass` skill for the half the bug pass discards, and cite `CLAUDE.md`
+§ Architecture for a module-boundary finding.
