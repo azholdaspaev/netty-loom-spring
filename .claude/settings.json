@@ -5,5 +5,10 @@
   },
   "enabledPlugins": {
     "commit-commands@claude-plugins-official": true
+  },
+  "permissions": {
+    "deny": [
+      "mcp__idea__rename_refactoring"
+    ]
   }
 }
