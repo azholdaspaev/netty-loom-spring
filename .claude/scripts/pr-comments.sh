@@ -7,8 +7,10 @@
 # where `--paginate` needs the `$endCursor` variable and the `pageInfo` selection to work.
 set -euo pipefail
 
-pr=$(gh pr view "${1:?usage: pr-comments.sh <PR number or URL>}" --json number --jq .number)
-repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+url=$(gh pr view "${1:?usage: pr-comments.sh <PR number or URL>}" --json url --jq .url)
+pr=${url##*/}
+repo=${url#https://github.com/}
+repo=${repo%/pull/*}
 owner=${repo%/*}
 name=${repo#*/}
 
