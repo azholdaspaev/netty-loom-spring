@@ -36,6 +36,8 @@ public class HttpConnectionRegistry {
 
     private volatile boolean draining;
 
+    private volatile boolean aborted;
+
     public HttpConnectionRegistry(ChannelGroup connections) {
         this.connections = connections;
     }
@@ -125,7 +127,7 @@ public class HttpConnectionRegistry {
         dispatchLock.lock();
         try {
             while (dispatchesInFlight.get() > 0) {
-                if (remainingNanos <= 0) {
+                if (aborted || remainingNanos <= 0) {
                     return false;
                 }
                 remainingNanos = dispatchesIdle.awaitNanos(remainingNanos);
@@ -147,6 +149,21 @@ public class HttpConnectionRegistry {
         }
     }
 
+    /**
+     * Cuts a running {@link #awaitDrained(long)} short. A flag rather than an interrupt: the thread
+     * inside the wait belongs to the caller. Set before the signal so a waiter about to park sees it.
+     */
+    public void abortDrain() {
+        aborted = true;
+        connections.close();
+        dispatchLock.lock();
+        try {
+            dispatchesIdle.signalAll();
+        } finally {
+            dispatchLock.unlock();
+        }
+    }
+
     public ChannelGroupFuture closeAll() {
         return connections.close();
     }
@@ -158,6 +175,7 @@ public class HttpConnectionRegistry {
      */
     public void reset() {
         draining = false;
+        aborted = false;
     }
 
     private static void closeIfIdle(Channel connection) {

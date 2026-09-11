@@ -139,6 +139,40 @@ class HttpConnectionRegistryTest {
             "the drain must be woken by the dispatch, not released by its own timeout");
     }
 
+    @Test
+    void shouldStopWaitingForDispatchesWhenTheDrainIsAborted() throws Exception {
+        HttpConnectionRegistry registry = newRegistry();
+        registry.dispatchStarted();
+        registry.beginDrain();
+
+        Thread drain = Thread.currentThread();
+        long startNanos = System.nanoTime();
+        Thread.ofPlatform().start(() -> {
+            SpinWait.untilParked(() -> drain, Duration.ofSeconds(10), "the drain never parked");
+            registry.abortDrain();
+        });
+
+        assertFalse(registry.awaitDispatchesFinished(5_000),
+            "an aborted drain must report the dispatch as still running");
+        assertTrue(System.nanoTime() - startNanos < TimeUnit.SECONDS.toNanos(2),
+            "the drain must be woken by the abort, not released by its own timeout");
+    }
+
+    @Test
+    void shouldWaitForDispatchesAgainOnceResetFollowsAnAbort() throws Exception {
+        HttpConnectionRegistry registry = newRegistry();
+        registry.dispatchStarted();
+        registry.abortDrain();
+
+        registry.reset();
+
+        long startNanos = System.nanoTime();
+        assertFalse(registry.awaitDispatchesFinished(100),
+            "a running dispatch must hold the drain open until the deadline");
+        assertTrue(System.nanoTime() - startNanos >= TimeUnit.MILLISECONDS.toNanos(100),
+            "a restarted server must not inherit the previous shutdown's abort");
+    }
+
     private static HttpConnectionRegistry newRegistry() {
         return new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE));
     }

@@ -44,6 +44,7 @@ import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -184,6 +185,57 @@ class NettyServerDrainTest {
 
             assertEquals(NettyShutdownResult.REQUESTS_ACTIVE, result,
                 "a request still running at the deadline must be reported, not passed off as idle");
+        }
+    }
+
+    @Test
+    void shouldCutTheDrainShortWhenShutdownIsCalledAgainWithNoGrace() throws Exception {
+        try (Socket client = connect()) {
+            send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
+            assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
+            Future<NettyShutdownResult> graceful = shutdownInBackground();
+            assertStillDraining(graceful, "the first shutdown must own the drain before the second arrives");
+
+            long startedAt = System.nanoTime();
+            NettyShutdownResult immediate = nettyServer.shutdown(Duration.ZERO);
+            long elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000L;
+
+            assertTrue(elapsedMillis < 2_000,
+                "a zero-grace shutdown must cut the running drain short, not queue behind it; took "
+                    + elapsedMillis + "ms");
+            assertEquals(NettyShutdownResult.REQUESTS_ACTIVE, immediate,
+                "the request was still running when the drain was cut short");
+            assertEquals(NettyShutdownResult.REQUESTS_ACTIVE, graceful.get(5, TimeUnit.SECONDS),
+                "the graceful shutdown must report what the abort left behind");
+            assertFalse(nettyServer.isRunning());
+            assertNull(reader(client).readLine(),
+                "cutting the drain short must close the connection the request came in on");
+        }
+    }
+
+    @Test
+    void shouldGiveASecondShutdownItsOwnGraceBeforeAborting() throws Exception {
+        try (Socket client = connect()) {
+            send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
+            assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
+            Future<NettyShutdownResult> graceful = shutdownInBackground();
+            assertStillDraining(graceful, "the first shutdown must own the drain before the second arrives");
+
+            Thread.ofPlatform().start(() -> {
+                try {
+                    Thread.sleep(300);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                releaseDispatcher.countDown();
+            });
+            NettyShutdownResult second = nettyServer.shutdown(Duration.ofSeconds(5));
+
+            assertEquals(NettyShutdownResult.IDLE, second,
+                "a second shutdown with grace left must let the request finish, not abort on arrival");
+            assertEquals(NettyShutdownResult.IDLE, graceful.get(5, TimeUnit.SECONDS));
+            assertEquals("HTTP/1.1 200 OK", readHeaderBlock(reader(client)).getFirst(),
+                "the request must have been answered, not cut off");
         }
     }
 

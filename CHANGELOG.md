@@ -21,7 +21,8 @@ First release. Not yet published to Maven Central; a `0.1.0-SNAPSHOT` is on
   values failing startup when unavailable.
 - **Two-phase graceful shutdown** with a configurable drain deadline
   (`server.netty.shutdown-grace-period`). Idle keep-alive connections are closed rather than waited
-  on; in-flight requests are drained, then force-closed at the deadline.
+  on; in-flight requests are drained, then force-closed at the deadline — or earlier, when Spring's
+  `spring.lifecycle.timeout-per-shutdown-phase` expires first.
 - **Slow-loris protection** through a per-connection read timeout (`server.netty.read-timeout`)
   that measures client progress and exempts handler execution.
 - **Fixed HTTP frame-size limits** answering `414`, `431` and `413` rather than passing malformed
