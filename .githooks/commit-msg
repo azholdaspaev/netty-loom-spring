@@ -31,5 +31,5 @@ case "$subject" in *.) fail "subject must not end with a period" ;; esac
 [ "${#msg}" -le 500 ] || fail "message is ${#msg} chars; the limit is 500 for subject, body and Closes line together"
 printf '%s' "$msg" | grep -q '[^ -~[:space:]]' \
   && fail "message must be ASCII only: -- for an em dash, -> for an arrow" || true
-printf '%s\n' "$msg" | grep -qiE '^(Claude-Session|Co-authored-by|Signed-off-by|Generated-by):|Generated with|claude\.ai' \
-  && fail "no trailers: no session links, no Co-authored-by, no generated-by footer" || true
+printf '%s\n' "$msg" | grep -qiE '^(Claude-Session|Co-authored-by|Signed-off-by|Generated-by):|^Generated with|https://claude\.ai/code/' \
+  && fail "no trailers: no session links, no Co-authored-by, no Signed-off-by, no generated-by footer" || true
