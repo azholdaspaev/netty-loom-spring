@@ -28,15 +28,12 @@ files are a ceiling already set too high, never a target. That is why rule 5 ove
 
 ## Decision
 
-- The default is no comment and no javadoc. A comment is written only when one of rule 5's closed
-  list of triggers fires, within rule 5's line budgets.
-- The budgets are deliberately unchanged by the javadoc jar. Widening them is a separate decision
-  to be recorded here, not a consequence of #30.
-- Class javadoc that would exceed 20 lines is a design document: it goes under `docs/adr/` with a
-  one-line pointer left in the source.
+Rule 5 in `CLAUDE.md` § Guidelines is the decision: the no-comment default, the closed trigger list
+and the line budgets live there and only there. The javadoc jar leaves those budgets unchanged;
+widening them for the jar's readers is a separate decision, recorded here when it is taken, not a
+consequence of #30.
 
 ## Consequences
 
 - Reviewers quote the rule's triggers and budgets by number; a comment that fires no trigger, or
   exceeds a budget, is a finding.
-- `#NN` issue citations and `// --- Name ---` section banners are outside the rule: neither is prose.
