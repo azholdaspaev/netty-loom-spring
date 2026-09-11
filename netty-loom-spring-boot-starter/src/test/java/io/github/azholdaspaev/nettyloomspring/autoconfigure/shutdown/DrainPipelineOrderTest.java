@@ -1,7 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.shutdown;
 
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.app.SmokeNettyLoomApplication;
-import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineConfigurer;
+import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineDefinition;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -28,7 +28,7 @@ class DrainPipelineOrderTest {
             .run()) {
 
             EmbeddedChannel channel = new EmbeddedChannel();
-            context.getBean(NettyPipelineConfigurer.class).configure(channel.pipeline());
+            context.getBean(NettyPipelineDefinition.class).applyTo(channel.pipeline());
             List<String> names = channel.pipeline().names();
 
             assertTrue(names.contains("drain"), "the auto-configured pipeline must install the drain handler");

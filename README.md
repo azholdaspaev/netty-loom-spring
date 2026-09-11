@@ -258,11 +258,12 @@ virtual thread, so the loop stays free to keep accepting.
   duration of one `handle` call. The `IOException` is how a departed or stalled client reaches the
   dispatcher.
 
-The channel pipeline itself is not a seam but a bean: `NettyPipelineConfigurer` walks a
-`List<NamedChannelHandler>` that is assembled in the **starter**, not in core, so declaring your own
-replaces the entire list — frame limits and read timeout included.
+The channel pipeline itself is not a seam but a bean: `NettyPipelineDefinition` is the
+`List<NamedChannelHandler>` every new connection's pipeline is built from, assembled in the
+**starter**, not in core, so declaring your own replaces the entire list — frame limits and read
+timeout included.
 
-**Replacing `HttpRequestDispatcher` or `NettyPipelineConfigurer` needs `@Primary`.** Nothing in the
+**Replacing `HttpRequestDispatcher` or `NettyPipelineDefinition` needs `@Primary`.** Nothing in the
 starter is declared `@ConditionalOnMissingBean`, so your bean does not displace the auto-configured
 one. Omit `@Primary` and the context still starts while your bean is **never used** — Spring settles
 the ambiguity by matching the injection point's parameter name against the auto-configuration's bean
