@@ -35,11 +35,11 @@ the endpoint.
 
 ## Bodies
 
-A body -- a comment, a thread reply, a review's JSON -- is written with the `Write` tool to a
-file under `build/` and passed by path: `--body-file build/reply.md`, `-F body=@build/reply.md`,
-`--input build/review.json`. Never inline and never through a heredoc: a heredoc with a pipe
-after it is refused as a pipeline the harness cannot analyze, and an inline body breaks on the
-first quote in the text.
+A body -- a comment, a thread reply, a review's JSON, a pull request body -- is written with
+the `Write` tool to a file under `build/` and passed by path: `--body-file build/reply.md`,
+`-F body=@build/reply.md`, `--input build/review.json`. Never inline and never through a
+heredoc: a heredoc with a pipe after it is refused as a pipeline the harness cannot analyze, and
+an inline body breaks on the first quote in the text.
 
 ## Library behaviour
 

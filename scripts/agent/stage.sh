@@ -48,7 +48,7 @@ When the work is committed: \`git push -u origin $branch\`. Then write the pull 
 with the Write tool to \`build/pr-body.md\`, following \`.github/PULL_REQUEST_TEMPLATE.md\`
 section by section, and open it with
 \`gh pr create --draft --title \"NL-$N <the issue's title>\" --body-file build/pr-body.md\`.
-No label, never mark it ready for review, and never pass the body inline or through a heredoc."
+No label, and never mark it ready for review."
     ;;
   review) BUDGET=6; PROMPT="/flow:review $PR" ;;
   fix)    BUDGET=4; PROMPT="/flow:fix $PR" ;;
