@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Exercise scripts/agent/pipeline.sh against shims for stage.sh and gh.
+# Exercise scripts/agent/pipeline.sh against shims for stage.sh and gh in a scratch repository.
 # Usage: scripts/agent/test-pipeline.sh
 set -euo pipefail
 
@@ -7,31 +7,71 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 PR_URL="https://github.com/o/r/pull/7"
 failed=0
 
-# pipeline.sh finds stage.sh next to itself, so each case gets a copy beside a stage.sh shim.
+export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.invalid
+export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
+
+# pipeline.sh finds stage.sh and pr-comments.sh relative to itself, so each case gets a copy of
+# the tree's layout beside a stage.sh shim, a clone on NL-999-x, gh first on PATH and a fresh HOME.
+# The stage shim writes the result file pipeline.sh sums; the gh shim answers each GraphQL thread
+# query with the next count from SHIM_OPEN ("2,0" = two open threads after the first review,
+# none after the second).
 setup() {
   tmp=$(mktemp -d)
-  mkdir -p "$tmp/agent" "$tmp/bin"
-  cp "$HERE/pipeline.sh" "$tmp/agent/pipeline.sh"
-  cat > "$tmp/agent/stage.sh" <<'SHIM'
+  mkdir -p "$tmp/scripts/agent" "$tmp/.claude/scripts" "$tmp/bin" "$tmp/home" "$tmp/state"
+  cp "$HERE/pipeline.sh" "$tmp/scripts/agent/pipeline.sh"
+  cp "$HERE/../../.claude/scripts/pr-comments.sh" "$tmp/.claude/scripts/pr-comments.sh"
+  git init -q --bare -b main "$tmp/origin"
+  git clone -q "$tmp/origin" "$tmp/work" 2>/dev/null
+  echo root > "$tmp/work/src.txt"
+  git -C "$tmp/work" add src.txt
+  git -C "$tmp/work" commit -q -m "root"
+  git -C "$tmp/work" push -q origin HEAD:main
+  git -C "$tmp/work" checkout -q -b NL-999-x
+
+  cat > "$tmp/scripts/agent/stage.sh" <<'SHIM'
 #!/usr/bin/env bash
 echo "stage $*" >> "$SHIM_EVENTS"
-if [ "$SHIM_RC" = 0 ]; then echo "$SHIM_URL"; fi
-exit "$SHIM_RC"
+stage=$2; round=${4:-}
+if [ "$stage${round:+ $round}" = "${SHIM_FAIL:-}" ]; then
+  echo "stage.sh: NL-$1 $stage: claude ended with error_max_budget_usd" >&2; exit 1
+fi
+if [ "$stage" = implement ] && [ "${SHIM_IMPLEMENT_RC:-0}" != 0 ]; then exit "$SHIM_IMPLEMENT_RC"; fi
+mkdir -p "$HOME/.netty-loom-agent/logs/NL-$1"
+echo '{"subtype":"success","total_cost_usd":0.5,"duration_ms":60000}' \
+  > "$HOME/.netty-loom-agent/logs/NL-$1/$stage${round:+-$round}.json"
+case "$stage" in
+  implement) echo "$SHIM_URL" ;;
+  test) if [ -n "${SHIM_TEST_DIRTY:-}" ]; then echo mutated >> src.txt; fi ;;
+esac
 SHIM
   cat > "$tmp/bin/gh" <<'SHIM'
 #!/usr/bin/env bash
 echo "gh $*" >> "$SHIM_EVENTS"
+case "$*" in
+  "pr list --head NL-999-x "*) if [ -n "${SHIM_PR_URL:-}" ]; then echo "$SHIM_PR_URL"; fi ;;
+  "pr view "*" --json url "*) echo "$2" ;;
+  "api --paginate "*) echo "[]" ;;
+  "api graphql "*)
+    idx=$(cat "$SHIM_STATE/open-idx" 2>/dev/null || echo 0)
+    open=$(echo "$SHIM_OPEN" | cut -d, -f"$((idx + 1))")
+    [ -n "$open" ] || { echo "gh shim: SHIM_OPEN exhausted" >&2; exit 1; }
+    echo "$((idx + 1))" > "$SHIM_STATE/open-idx"
+    jq -n --argjson n "$open" '[range($n) | {id: "T\(.)", isResolved: false, isOutdated: false, firstCommentId: .}]' ;;
+  "issue comment 999 --body-file -") cat > "$SHIM_STATE/comment" ;;
+esac
 SHIM
-  chmod +x "$tmp/agent/stage.sh" "$tmp/bin/gh"
-  export SHIM_EVENTS="$tmp/events" SHIM_URL="$PR_URL"
+  chmod +x "$tmp/scripts/agent/stage.sh" "$tmp/bin/gh"
+  export SHIM_EVENTS="$tmp/events" SHIM_STATE="$tmp/state" SHIM_URL="$PR_URL"
 }
 
-# run <stage rc>; sets rc, out, err, events
+# run <open counts> <pr-url-or-empty>; sets rc, out, err, comment, stages
 run() {
   rc=0
-  out=$(SHIM_RC=$1 PATH="$tmp/bin:$PATH" "$tmp/agent/pipeline.sh" 999 2> "$tmp/stderr") || rc=$?
+  out=$(cd "$tmp/work" && SHIM_OPEN=$1 SHIM_PR_URL=$2 HOME=$tmp/home PATH="$tmp/bin:$PATH" \
+        "$tmp/scripts/agent/pipeline.sh" 999 2> "$tmp/stderr") || rc=$?
   err=$(cat "$tmp/stderr")
-  events=$(cat "$SHIM_EVENTS" 2>/dev/null || true)
+  comment=$(cat "$SHIM_STATE/comment" 2>/dev/null || true)
+  stages=$(grep '^stage \|^gh pr ready\|^gh issue' "$SHIM_EVENTS" 2>/dev/null | tr '\n' '|' || true)
 }
 
 check() {
@@ -39,31 +79,108 @@ check() {
   if [ "$cond" = 1 ]; then echo "ok $name"; else echo "FAIL $name: $detail"; failed=1; fi
 }
 
-# --- pull request ---
+contains() { case "$1" in *"$2"*) return 0 ;; *) return 1 ;; esac; }
+
+IMPLEMENT="stage 999 implement|"
+R1="stage 999 review $PR_URL 1|"; F1="stage 999 fix $PR_URL 1|"
+R2="stage 999 review $PR_URL 2|"; F2="stage 999 fix $PR_URL 2|"
+R3="stage 999 review $PR_URL 3|"; F3="stage 999 fix $PR_URL 3|"
+TEST="stage 999 test $PR_URL|"
+HANDOFF="gh pr ready $PR_URL|gh issue edit 999 --add-label agent/pr-ready|gh issue comment 999 --body-file -|"
+
+# --- converges at the second review ---
 setup
-run 0
-ok=1; why="rc=$rc stderr=$err events=$events"
-[ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] && [ "$events" = "stage 999 implement" ] || ok=0
-check pull-request "$ok" "$why"
+run 2,0 ""
+ok=1; why=""
+[ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
+[ "$out" = "$PR_URL" ] || { ok=0; why="stdout=$out"; }
+[ "$stages" = "$IMPLEMENT$R1$F1$R2$TEST$HANDOFF" ] || { ok=0; why="stages=$stages"; }
+for needle in "$PR_URL" "rounds: 2" "converged" "2.50 USD" "5 min"; do
+  contains "$comment" "$needle" || { ok=0; why="comment lacks '$needle': $comment"; }
+done
+contains "$comment" "did not converge" && { ok=0; why="comment says it did not converge"; }
+check converges "$ok" "$why"
 rm -rf "$tmp"
 
-# --- question ---
+# --- never converges ---
 setup
-run 3
-ok=1; why="rc=$rc stdout=$out stderr=$err events=$events"
+run 1,1,1 ""
+ok=1; why=""
+[ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
+[ "$stages" = "$IMPLEMENT$R1$F1$R2$F2$R3$F3$TEST$HANDOFF" ] || { ok=0; why="stages=$stages"; }
+for needle in "did not converge after 3 rounds; 1 thread open" "4.00 USD" "8 min"; do
+  contains "$comment" "$needle" || { ok=0; why="comment lacks '$needle': $comment"; }
+done
+check no-convergence "$ok" "$why"
+rm -rf "$tmp"
+
+# --- nothing to fix ---
+setup
+run 0 ""
+ok=1; why=""
+[ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
+[ "$stages" = "$IMPLEMENT$R1$TEST$HANDOFF" ] || { ok=0; why="stages=$stages"; }
+contains "$comment" "rounds: 1" || { ok=0; why="comment lacks 'rounds: 1': $comment"; }
+check clean-review "$ok" "$why"
+rm -rf "$tmp"
+
+# --- pull request already open: no implement stage ---
+setup
+run 0 "$PR_URL"
+ok=1; why=""
+[ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
+[ "$stages" = "$R1$TEST$HANDOFF" ] || { ok=0; why="stages=$stages"; }
+contains "$comment" "1.00 USD" || { ok=0; why="comment lacks '1.00 USD': $comment"; }
+check resumes "$ok" "$why"
+rm -rf "$tmp"
+
+# --- implement asked a question ---
+setup
+export SHIM_IMPLEMENT_RC=3
+run 0 ""
+unset SHIM_IMPLEMENT_RC
+ok=1; why="rc=$rc stdout=$out stderr=$err stages=$stages"
 [ "$rc" = 0 ] && [ -z "$out" ] \
-  && [ "$events" = $'stage 999 implement\ngh issue edit 999 --remove-label agent/running --add-label agent/needs-input' ] || ok=0
+  && [ "$stages" = "${IMPLEMENT}gh issue edit 999 --remove-label agent/running --add-label agent/needs-input|" ] || ok=0
 check question "$ok" "$why"
 rm -rf "$tmp"
 
-# --- failure and timeout pass through untouched ---
+# --- implement failed or timed out: the code passes through untouched ---
 for stage_rc in 1 124; do
   setup
-  run "$stage_rc"
-  ok=1; why="rc=$rc stdout=$out events=$events"
-  [ "$rc" = "$stage_rc" ] && [ -z "$out" ] && [ "$events" = "stage 999 implement" ] || ok=0
-  check "stage-exit-$stage_rc" "$ok" "$why"
+  export SHIM_IMPLEMENT_RC=$stage_rc
+  run 0 ""
+  unset SHIM_IMPLEMENT_RC
+  ok=1; why="rc=$rc stdout=$out stages=$stages"
+  [ "$rc" = "$stage_rc" ] && [ -z "$out" ] && [ "$stages" = "$IMPLEMENT" ] || ok=0
+  check "implement-exit-$stage_rc" "$ok" "$why"
   rm -rf "$tmp"
 done
+
+# --- a later stage fails: no hand-off ---
+setup
+export SHIM_FAIL="review 2"
+run 1,1 ""
+unset SHIM_FAIL
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 1 ] && contains "$err" "review: claude ended with error_max_budget_usd" || ok=0
+[ "$stages" = "$IMPLEMENT$R1$F1$R2" ] || { ok=0; why="stages=$stages"; }
+[ -z "$comment" ] || { ok=0; why="issue comment posted: $comment"; }
+check stage-failure "$ok" "$why"
+rm -rf "$tmp"
+
+# --- the test stage leaves the tree dirty ---
+setup
+export SHIM_TEST_DIRTY=1
+run 0 ""
+unset SHIM_TEST_DIRTY
+ok=1; why=""
+[ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
+[ -z "$(git -C "$tmp/work" status --porcelain)" ] || { ok=0; why="tree still dirty: $(git -C "$tmp/work" status --porcelain)"; }
+for needle in "git checkout -- ." " M src.txt"; do
+  contains "$comment" "$needle" || { ok=0; why="comment lacks '$needle': $comment"; }
+done
+check dirty-after-test "$ok" "$why"
+rm -rf "$tmp"
 
 exit "$failed"
