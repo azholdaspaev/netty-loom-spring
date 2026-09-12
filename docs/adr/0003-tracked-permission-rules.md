@@ -56,10 +56,12 @@ not (#231). The GET readback README names goes with it; the pipeline never reads
 the maintainer runs it in a terminal. `gh api graphql *RepositoryRuleset*` covers the mutations
 without denying `gh api graphql` wholesale, which resolving review threads needs.
 
-**The repository object: `gh repo` wholesale, and its REST root by path with a terminator.**
-README § Known gaps records that the repo-level `allow_merge_commit` flag alone holds linear
-history; `gh repo edit`, `gh repo archive` and `gh repo rename` all write to that object and
-nothing in the pipeline reads it, so the whole subcommand is denied rather than one verb at a time.
+**The repository object: the `gh repo` writers by name, and its REST root by path with a
+terminator.** README § Known gaps records that the repo-level `allow_merge_commit` flag alone
+holds linear history. `gh repo edit`, `delete`, `archive`, `unarchive` and `rename` write to that
+object and are denied by name rather than as `gh repo *`, because `view`, `list` and `clone` only
+read; a bare `gh repo edit` is interactive and cannot run under `-p`, so the ` *` tail costs
+nothing.
 The REST twin is `PATCH repos/<owner>/<repo>`, and the root is a prefix of every other path, so
 a bare `*repos/azholdaspaev/netty-loom-spring*` would deny `…/pulls/<N>/comments` with it. The rule instead ends
 where the path ends -- at the end of the command, at a space or at a `?`, since GitHub ignores an
