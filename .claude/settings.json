@@ -19,6 +19,7 @@
       "Bash(git push -f*)",
       "Bash(git push * -f*)",
       "Bash(git push * +*)",
+      "Bash(git push *--mirror*)",
       "Bash(git commit *--no-verify*)",
       "Bash(gh pr merge *)",
       "Bash(gh pr ready *)"
