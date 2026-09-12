@@ -10,9 +10,9 @@ import org.springframework.context.SmartLifecycle;
  * during {@code onRefresh()} and singletons are destroyed in reverse creation order, so it closes
  * after data sources have, leaving a {@code @SessionScope} bean's {@code @PreDestroy} to run against
  * a closed {@code DataSource}. Tomcat expires in {@code StandardManager.stopInternal()}, i.e. in this
- * phase, where the same callback succeeds. Set {@code server.netty.shutdown-grace-period} strictly
- * below {@code spring.lifecycle.timeout-per-shutdown-phase}, which {@code LifecycleGroup.stop()}
- * gives up after, or the drain may still be running here (issue #89).
+ * phase, where the same callback succeeds. The web server's stop phase has ended the drain before
+ * this runs; a handler thread it cut off has not stopped (issue #89, {@code docs/configuration.md}
+ * § Graceful shutdown).
  */
 public class SessionStoreLifecycle implements SmartLifecycle {
 
