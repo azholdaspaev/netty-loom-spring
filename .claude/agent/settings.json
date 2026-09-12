@@ -1,0 +1,47 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
+    "filesystem": {
+      "allowWrite": [
+        "~/.gradle",
+        "/var/folders"
+      ]
+    },
+    "network": {
+      "allowLocalBinding": true,
+      "strictAllowlist": true,
+      "allowedDomains": [
+        "github.com",
+        "api.github.com",
+        "repo.maven.apache.org",
+        "plugins.gradle.org",
+        "central.sonatype.com"
+      ]
+    }
+  },
+  "permissions": {
+    "deny": [
+      "Bash(gh pr merge *)",
+      "Bash(gh pr ready *)",
+      "Bash(gh pr close *)",
+      "Bash(gh issue close *)",
+      "Bash(gh pr edit *--add-label*)",
+      "Bash(gh pr edit *--remove-label*)",
+      "Bash(gh issue edit *--add-label*)",
+      "Bash(gh issue edit *--remove-label*)",
+      "Bash(gh pr create *--label*)",
+      "Bash(gh pr create *-l *)",
+      "Bash(gh pr create *-l=*)",
+      "Bash(gh issue create *--label*)",
+      "Bash(gh issue create *-l *)",
+      "Bash(gh issue create *-l=*)",
+      "Bash(gh api */labels*)",
+      "Bash(gh api graphql *markPullRequestReadyForReview*)",
+      "Bash(gh api graphql *mergePullRequest*)",
+      "Bash(gh api graphql *addLabelsToLabelable*)",
+      "Bash(gh api graphql *removeLabelsFromLabelable*)"
+    ]
+  }
+}
