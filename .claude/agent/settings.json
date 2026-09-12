@@ -17,6 +17,7 @@
         "api.github.com",
         "repo.maven.apache.org",
         "plugins.gradle.org",
+        "plugins-artifacts.gradle.org",
         "central.sonatype.com"
       ]
     }
