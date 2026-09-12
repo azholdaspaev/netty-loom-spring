@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=$(jq -r .tool_input.file_path); case \"$f\" in *.java) \"$CLAUDE_PROJECT_DIR\"/.claude/scripts/check-comments.sh \"$f\" || exit 2 ;; esac"
+            "command": "f=$(jq -r .tool_input.file_path) || exit 2; case \"$f\" in *.java) \"$CLAUDE_PROJECT_DIR\"/.claude/scripts/check-comments.sh \"$f\" || exit 2 ;; esac"
           }
         ]
       }
