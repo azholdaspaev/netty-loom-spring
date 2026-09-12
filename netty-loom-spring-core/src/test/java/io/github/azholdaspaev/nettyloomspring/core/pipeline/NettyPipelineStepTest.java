@@ -8,13 +8,13 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-class NamedChannelHandlerTest {
+class NettyPipelineStepTest {
 
     @Test
     void sharedShouldReturnSameInstanceOnEveryFactoryCall() {
         ChannelHandler handler = new SharableHandler();
 
-        NamedChannelHandler step = NamedChannelHandler.shared("name", handler);
+        NettyPipelineStep step = NettyPipelineStep.shared("name", handler);
 
         assertSame(handler, step.factory().get());
         assertSame(handler, step.factory().get());
@@ -25,7 +25,7 @@ class NamedChannelHandlerTest {
         ChannelHandler nonSharable = new ChannelInboundHandlerAdapter();
 
         assertThrows(IllegalArgumentException.class,
-            () -> NamedChannelHandler.shared("name", nonSharable));
+            () -> NettyPipelineStep.shared("name", nonSharable));
     }
 
     @Sharable

@@ -250,10 +250,6 @@ virtual thread, so the loop stays free to keep accepting.
 
 ### SPI seams
 
-- **`NettyPipelineConfigurer`** — `void configure(ChannelPipeline)`. Customizes the channel
-  pipeline. The default implementation walks a `List<NamedChannelHandler>` that is assembled in the
-  **starter**, not in core, so supplying your own replaces the entire list — frame limits and read
-  timeout included.
 - **`HttpRequestDispatcher`** — `void handle(HttpRequest, InputStream, HttpConnectionMetadata, HttpResponseWriter) throws Exception`.
   The seam between the Netty pipeline and any higher-layer router; keeps `core` free of Spring. A
   dispatcher that returns without having written a complete response is treated as a failure.
@@ -262,11 +258,16 @@ virtual thread, so the loop stays free to keep accepting.
   duration of one `handle` call. The `IOException` is how a departed or stalled client reaches the
   dispatcher.
 
-**Taking either of the first two seams needs `@Primary`.** Nothing in the starter is declared
-`@ConditionalOnMissingBean`, so your bean does not displace the auto-configured one. Omit `@Primary`
-and the context still starts while your bean is **never used** — Spring settles the ambiguity by
-matching the injection point's parameter name against the auto-configuration's bean name, and that
-one wins.
+The channel pipeline itself is not a seam but a bean: `NettyPipelineDefinition` is the
+`List<NettyPipelineStep>` every new connection's pipeline is built from, assembled in the
+**starter**, not in core, so declaring your own replaces the entire list — frame limits and read
+timeout included.
+
+**Replacing `HttpRequestDispatcher` or `NettyPipelineDefinition` needs `@Primary`.** Nothing in the
+starter is declared `@ConditionalOnMissingBean`, so your bean does not displace the auto-configured
+one. Omit `@Primary` and the context still starts while your bean is **never used** — Spring settles
+the ambiguity by matching the injection point's parameter name against the auto-configuration's bean
+name, and that one wins.
 
 The pipeline handler names above (`httpCodec`, `drain`, `dispatcher`, …) are the addressable handles
 for anyone reaching into the pipeline directly.

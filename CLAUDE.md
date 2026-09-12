@@ -19,13 +19,13 @@ A Spring Boot integration library that replaces Tomcat/Jetty with a Netty-based 
 
 | Module | Role |
 | --- | --- |
-| `netty-loom-spring-core` | Pure Netty, no Spring. `NettyServer` manages lifecycle; `NettyServerChannelInitializer` delegates pipeline setup to the `NettyPipelineConfigurer` SPI. Netty transport, codec-http, handler, native epoll/kqueue |
+| `netty-loom-spring-core` | Pure Netty, no Spring. `NettyServer` manages lifecycle; `NettyServerChannelInitializer` applies `NettyPipelineDefinition`, a list of `NettyPipelineStep`s, to each new channel's pipeline. Netty transport, codec-http, handler, native epoll/kqueue |
 | `netty-loom-spring-mvc` | Spring MVC servlet bridge. `NettyServletContext` (Jakarta `ServletContext` with default `UnsupportedOperationException` stubs) and `DefaultNettyServletContext`; `SpringHttpRequestDispatcher` wraps `DispatcherServlet` with `NettyHttpServletRequest` / `NettyHttpServletResponse` |
 | `netty-loom-spring-boot-starter` | Auto-configuration. `NettyWebServerFactory` implements the `ServletWebServerFactory` SPI, `NettyWebServer` implements `WebServer`; registered via `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` |
 | `netty-loom-spring-example-netty` / `-tomcat` | Runnable Boot apps (`bootRun`), each with a `BenchmarkController` (`/ping`, `/work`) and an e2e test; ports 18080 and 18081/18082 (`platform`/`virtual` profiles). Load targets for the benchmark harness; `-tomcat` is the baseline |
 | `netty-loom-spring-benchmarks` | k6 harness — **not a Gradle module** (no `src/`, absent from `settings.gradle.kts` by design). README.md § Benchmarks says how to run it and read the numbers |
 
-**Seams:** `core.handler.HttpRequestDispatcher` separates the Netty pipeline from any higher-layer dispatcher and keeps `core` free of Spring; `core.pipeline.NettyPipelineConfigurer` owns pipeline assembly. README.md § Architecture has the request flow and the pipeline handler names.
+**Seams:** `core.handler.HttpRequestDispatcher` separates the Netty pipeline from any higher-layer dispatcher and keeps `core` free of Spring. README.md § Architecture has the request flow and the pipeline handler names.
 
 **Package root:** `io.github.azholdaspaev.nettyloomspring`. **Maven coordinate:** `io.github.azholdaspaev:netty-loom-spring-boot-starter`.
 
