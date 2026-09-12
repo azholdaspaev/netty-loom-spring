@@ -3,9 +3,10 @@
 An issue labelled `agent/queued` becomes a pull request ready for review with no session opened
 by hand. A launchd job runs `scripts/agent/runner.sh` every five minutes; each tick takes the
 oldest queued issue to a worktree of its own under `../netty-loom-wt/` and runs
-`scripts/agent/pipeline.sh` there: implement, then review and fix until no thread is open (three
-rounds at most), then test. GitHub is the only state: labels say where an issue is, issue comments
-carry questions, the pull request carries the result. Scope and the decisions behind it: #211.
+`scripts/agent/pipeline.sh` there: implement, then review and fix until no thread is open or a
+round changed nothing (three rounds at most), then test. GitHub is the only state: labels say where
+an issue is, issue comments carry questions, the pull request carries the result. Scope and the
+decisions behind it: #211.
 
 ## Labels
 
@@ -51,8 +52,10 @@ request exists, the pipeline resumes at the review stage.
 
 `stage.sh` caps each `claude -p`: implement 16 USD, review 6, fix 4, test 6, 45 minutes each;
 `pipeline.sh` runs at most three review/fix rounds, so one issue is bounded by
-16 + 3 × (6 + 4) + 6 = 52 USD. A stage that hits its cap ends with `error_max_budget_usd` and the
-issue goes to `agent/failed`.
+16 + 3 × (6 + 4) + 6 = 52 USD, and stops early when a fix stage pushed no commit and the review
+after it posted no inline comment: the same model on the same code returns the same verdicts
+(#262). A stage that hits its cap ends with `error_max_budget_usd` and the issue goes to
+`agent/failed`.
 
 Baseline: #239, the first issue to go from `agent/queued` to a merged pull request (#249) with no
 session opened by hand, on 2026-09-13 with `main` at `a0eecdc`.
