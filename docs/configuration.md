@@ -179,7 +179,8 @@ Requests stream too. `getInputStream()` blocks the request's virtual thread unti
 arrives, and the connection reads on only as that stream drains, so a client sending faster than the
 handler reads is made to wait in the socket rather than in heap.
 
-Two headers Tomcat always sends are never emitted here: `Date` and `Server`.
+`Date`, which Tomcat always sends, is never emitted here. `Server` is written only when
+[`server.server-header`](#standard-server-properties-that-are-honoured) is set.
 
 ## Exception-to-status mapping
 
