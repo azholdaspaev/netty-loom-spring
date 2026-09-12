@@ -51,6 +51,8 @@ Tests use JUnit 6 (`org.junit.jupiter.api`, via `org.junit.jupiter:junit-jupiter
 
 `AGENTS.md` names the commit, pull request and issue templates, and is normative for their use. `.githooks/commit-msg` enforces the commit shape once `core.hooksPath` points at it (`CONTRIBUTING.md` § Commits); a clone without it has only the template.
 
+`.claude/settings.json` tracks the permission rules every session starts with; `docs/adr/0003-tracked-permission-rules.md` records why each rule has the shape it does, and which tidier spelling would strand the pipeline.
+
 ## CI
 
 `.github/workflows/build.yml` runs `./gradlew build` on ubuntu and macos; both matrix cells must pass to merge.
