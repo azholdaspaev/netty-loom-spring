@@ -29,7 +29,7 @@ state == 1 {
     next
 }
 state == 2 {
-    if ($0 ~ /^[[:space:]]*(\/\/.*)?$/) next
+    if ($0 ~ /^[[:space:]]*(\/\/.*|\/\*.*\*\/)?$/) next
     if (depth > 0 || $0 ~ /^[[:space:]]*@/) {
         if ($0 ~ /@(Test|ParameterizedTest)([^A-Za-z0-9_]|$)/) test = 1
         depth += gsub(/\(/, "(") - gsub(/\)/, ")")
