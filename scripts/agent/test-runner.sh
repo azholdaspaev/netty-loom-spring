@@ -53,6 +53,8 @@ echo "requeue" >> "$SHIM_EVENTS"
 SHIM
   : > "$tmp/events"
   echo '[]' > "$tmp/state/queued.json"
+  echo '[]' > "$tmp/state/fix-prs.json"
+  : > "$tmp/state/merged"
   cat > "$tmp/bin/gh" <<'SHIM'
 #!/usr/bin/env bash
 echo "gh $*" >> "$SHIM_EVENTS"
@@ -62,6 +64,11 @@ case "$*" in
   "issue view "*" --json "*" --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/issue-$3.json" ;;
   "issue edit "*) echo "https://github.com/o/r/issues/$3" ;;
   "issue comment "*" --body-file -") cat > "$SHIM_STATE/issue-comment-$3"; echo "https://github.com/o/r/issues/$3#issuecomment-1" ;;
+  "pr list --label agent/fix --state open --json url,headRefName --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/fix-prs.json" ;;
+  "pr list --head "*" --state merged --json number --jq "*)
+    if grep -qx "$4" "$SHIM_STATE/merged"; then echo '[{"number": 1}]'; else echo '[]'; fi | jq -r "$(jqarg "$@")" ;;
+  "pr edit "*) echo "$3" ;;
+  "pr comment "*" --body-file -") cat > "$SHIM_STATE/pr-comment"; echo "$3#issuecomment-1" ;;
 esac
 SHIM
   chmod +x "$tmp/main/scripts/agent/"*.sh "$tmp/bin/gh"
@@ -79,6 +86,15 @@ queue() {
   jq --argjson n "$1" '. + [{number: $n}]' "$tmp/state/queued.json" > "$tmp/state/queued.new"
   mv "$tmp/state/queued.new" "$tmp/state/queued.json"
 }
+
+# fixpr <url> <branch>: an open pull request labelled agent/fix; merged <branch>: its pull request is merged;
+# worktree <branch>: what a previous tick left in netty-loom-wt
+fixpr() {
+  jq --arg url "$1" --arg branch "$2" '. + [{url: $url, headRefName: $branch}]' "$tmp/state/fix-prs.json" > "$tmp/state/fix.new"
+  mv "$tmp/state/fix.new" "$tmp/state/fix-prs.json"
+}
+merged() { echo "$1" >> "$tmp/state/merged"; }
+worktree() { git -C "$tmp/main" worktree add -q "$tmp/netty-loom-wt/$1" -b "$1" origin/main; }
 
 # runs the tick from outside the clone; sets rc, out, err, actions (everything but reads, in order)
 run() {
@@ -145,7 +161,7 @@ rm -rf "$tmp"
 # --- the worktree already exists: reused as it is, HEAD untouched ---
 setup
 queue 7 "Fix the Thing: quickly!"
-git -C "$tmp/main" worktree add -q "$tmp/$WT7" -b NL-7-fix-the-thing origin/main
+worktree NL-7-fix-the-thing
 echo work > "$tmp/$WT7/work.txt"
 git -C "$tmp/$WT7" add work.txt
 git -C "$tmp/$WT7" commit -q -m "NL-7 Work"
@@ -174,6 +190,81 @@ contains "$comment" "pipeline stderr line 11" && contains "$comment" "pipeline s
 contains "$comment" "$log" || ok=0
 [ "$(grep -c 'pipeline stderr line' "$log" 2>/dev/null)" = 40 ] || { ok=0; why="$why log=$(wc -l < "$log" 2>&1 || true)"; }
 check failure "$ok" "$why"
+rm -rf "$tmp"
+
+# --- agent/fix on a pull request: one fix stage in its worktree, then the label comes off ---
+setup
+fixpr "$PR_URL" NL-7-fix-the-thing
+worktree NL-7-fix-the-thing
+run
+wt=$(cd "$tmp/$WT7" && pwd -P)
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" = 0 ] && [ "$actions" = "requeue|stage 7 fix $PR_URL in $wt|gh pr edit $PR_URL --remove-label agent/fix|" ] || ok=0
+check fix "$ok" "$why"
+rm -rf "$tmp"
+
+# --- the fix stage fails: agent/failed on the pull request, the stderr tail and the log path as a comment ---
+setup
+fixpr "$PR_URL" NL-7-fix-the-thing
+worktree NL-7-fix-the-thing
+export SHIM_STAGE_RC=1
+run
+unset SHIM_STAGE_RC
+comment=$(cat "$tmp/state/pr-comment" 2>/dev/null || true)
+log="$tmp/home/.netty-loom-agent/logs/NL-7/runner.log"
+ok=1; why="rc=$rc stderr=$err actions=$actions comment=$comment"
+[ "$rc" = 0 ] || ok=0
+contains "$actions" "gh pr edit $PR_URL --remove-label agent/fix --add-label agent/failed|gh pr comment $PR_URL --body-file -|" || ok=0
+contains "$comment" "stage stderr line 11" && contains "$comment" "stage stderr line 40" \
+  && ! contains "$comment" "stage stderr line 10" && contains "$comment" "$log" || ok=0
+check fix-failure "$ok" "$why"
+rm -rf "$tmp"
+
+# --- agent/fix on a pull request whose branch has no worktree yet: one is added from origin ---
+setup
+fixpr "$PR_URL" NL-7-fix-the-thing
+worktree NL-7-fix-the-thing
+echo work > "$tmp/$WT7/work.txt"
+git -C "$tmp/$WT7" add work.txt
+git -C "$tmp/$WT7" commit -q -m "NL-7 Work"
+git -C "$tmp/$WT7" push -q origin NL-7-fix-the-thing
+head=$(git -C "$tmp/$WT7" rev-parse HEAD)
+git -C "$tmp/main" worktree remove "$tmp/$WT7"
+git -C "$tmp/main" branch -q -D NL-7-fix-the-thing
+run
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" = 0 ] && contains "$actions" "stage 7 fix $PR_URL in " || ok=0
+[ "$(git -C "$tmp/$WT7" branch --show-current 2>/dev/null || true)" = NL-7-fix-the-thing ] || { ok=0; why="$why worktree missing or on another branch"; }
+[ "$(git -C "$tmp/$WT7" rev-parse HEAD 2>/dev/null || true)" = "$head" ] || { ok=0; why="$why HEAD is not the pushed branch"; }
+check fix-without-worktree "$ok" "$why"
+rm -rf "$tmp"
+
+# --- a merged pull request: worktree and branch go, the issue keeps only its non-agent labels ---
+setup
+worktree NL-7-fix-the-thing
+merged NL-7-fix-the-thing
+issue 7 "Fix the Thing: quickly!" "enhancement,agent/running,agent/pr-ready"
+run
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" = 0 ] && [ "$actions" = "gh issue edit 7 --remove-label agent/running,agent/pr-ready|requeue|" ] || ok=0
+[ ! -d "$tmp/$WT7" ] || { ok=0; why="$why worktree still there"; }
+[ -z "$(git -C "$tmp/main" branch --list NL-7-fix-the-thing)" ] || { ok=0; why="$why branch still there"; }
+check merged "$ok" "$why"
+rm -rf "$tmp"
+
+# --- everything at once: clean up, requeue, fix, then one queued issue ---
+setup
+worktree NL-5-done
+merged NL-5-done
+issue 5 "Done" "agent/pr-ready"
+fixpr "$PR_URL" NL-7-fix-the-thing
+worktree NL-7-fix-the-thing
+queue 8 "New work"
+run
+wt7=$(cd "$tmp/$WT7" && pwd -P); wt8=$(cd "$tmp/netty-loom-wt/NL-8-new-work" 2>/dev/null && pwd -P || echo missing)
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" = 0 ] && [ "$actions" = "gh issue edit 5 --remove-label agent/pr-ready|requeue|stage 7 fix $PR_URL in $wt7|gh pr edit $PR_URL --remove-label agent/fix|gh issue edit 8 --remove-label agent/queued --add-label agent/running|gradlew dependencySources in $wt8|pipeline 8 in $wt8|gh issue edit 8 --remove-label agent/running|" ] || ok=0
+check order "$ok" "$why"
 rm -rf "$tmp"
 
 exit "$failed"
