@@ -238,11 +238,11 @@ public class NettyServer {
 
     private record Deadline(long nanoTime) {
 
-        static Deadline in(Duration timeout) {
+        private static Deadline in(Duration timeout) {
             return new Deadline(System.nanoTime() + timeout.toNanos());
         }
 
-        long remainingMillis() {
+        private long remainingMillis() {
             return Math.max(0L, (nanoTime - System.nanoTime()) / 1_000_000L);
         }
     }
