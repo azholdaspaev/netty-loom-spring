@@ -3,7 +3,8 @@
 # @ParameterizedTest method, a class javadoc within 20 lines, a private member's within 2.
 # Usage: .claude/scripts/check-comments.sh <file.java>...
 #
-# Length is the number of lines strictly between the /** line and the */ line; `/** text */` is 1.
+# Length is the number of lines between /** and */, counting the /** and */ lines themselves only
+# when they carry text; `/** text */` is 1.
 # The 8-line class budget is not checked: whether trigger 1 raised it to 20 is a reading of the
 # text, not a count. A private nested class is a private member. Each failure names the file and
 # the line of the /**; the exit status is 1 whenever anything was printed.
@@ -17,11 +18,14 @@ function fail(msg) { print "check-comments: " FILENAME ":" start ": " msg > "/de
 FNR == 1 { state = 0 }
 /^[[:space:]]*\/\*\*/ {
     start = FNR; lines = 0; test = 0; depth = 0
-    if ($0 ~ /\*\//) { lines = 1; state = 2 } else { state = 1 }
+    if ($0 ~ /\*\//) { lines = 1; state = 2 }
+    else { rest = $0; sub(/^[[:space:]]*\/\*\*[[:space:]]*/, "", rest); lines = (rest != ""); state = 1 }
     next
 }
 state == 1 {
-    if ($0 ~ /\*\//) state = 2; else lines++
+    if ($0 !~ /\*\//) { lines++; next }
+    rest = $0; sub(/[[:space:]]*\*\/.*$/, "", rest); sub(/^[[:space:]]*\*?[[:space:]]*/, "", rest)
+    lines += (rest != ""); state = 2
     next
 }
 state == 2 {
