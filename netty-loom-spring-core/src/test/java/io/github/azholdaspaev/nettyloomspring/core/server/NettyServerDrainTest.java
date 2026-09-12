@@ -165,19 +165,17 @@ class NettyServerDrainTest {
         try (Socket client = connect()) {
             send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
             assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
-
-            client.close();
-            awaitConnectionClosed();
-
-            Future<NettyShutdownResult> shutdown = shutdownInBackground();
-            assertStillDraining(shutdown,
-                "a dispatch whose client has gone is still running and must still be waited for");
-
-            releaseDispatcher.countDown();
-
-            assertEquals(NettyShutdownResult.IDLE, shutdown.get(5, TimeUnit.SECONDS),
-                "shutdown completes once the abandoned dispatch has unwound");
         }
+        awaitConnectionClosed();
+
+        Future<NettyShutdownResult> shutdown = shutdownInBackground();
+        assertStillDraining(shutdown,
+            "a dispatch whose client has gone is still running and must still be waited for");
+
+        releaseDispatcher.countDown();
+
+        assertEquals(NettyShutdownResult.IDLE, shutdown.get(5, TimeUnit.SECONDS),
+            "shutdown completes once the abandoned dispatch has unwound");
     }
 
     @Test

@@ -1,4 +1,5 @@
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+import javax.inject.Inject
 
 plugins {
     java
@@ -6,6 +7,30 @@ plugins {
 }
 
 val springBootVersion = libs.versions.spring.boot.get()
+
+abstract class DependencySources : DefaultTask() {
+    @get:InputFiles
+    abstract val sourcesJars: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @get:Inject
+    abstract val fs: FileSystemOperations
+
+    @get:Inject
+    abstract val archives: ArchiveOperations
+
+    @TaskAction
+    fun unpack() {
+        fs.sync {
+            into(outputDirectory)
+            sourcesJars.forEach { jar ->
+                from(archives.zipTree(jar)) { into(jar.name.removeSuffix("-sources.jar")) }
+            }
+        }
+    }
+}
 
 subprojects {
     apply(plugin = "java-library")
@@ -17,7 +42,11 @@ subprojects {
     }
 
     tasks.withType<JavaCompile> {
-        options.compilerArgs.add("-parameters")
+        // Two lints stay off rather than being suppressed at their sites: `processing` fires on
+        // every starter compile because spring-boot-configuration-processor claims none of the
+        // Spring annotations, and `serial` asks for a serialVersionUID on NettyServerException
+        // that nothing ever deserializes.
+        options.compilerArgs.addAll(listOf("-parameters", "-Xlint:all,-processing,-serial", "-Werror"))
     }
 
     tasks.withType<Javadoc> {
@@ -39,6 +68,26 @@ subprojects {
         isTransitive = false
     }
 
+    // The `sources` classifier rather than an ArtifactView with withVariantReselection(): the
+    // variant route reads each module's metadata, and Spring Framework 7 publishes no sources
+    // variant, so spring-web, spring-webmvc and spring-core silently drop out. #214
+    val dependencySourceJars = configurations.named("testRuntimeClasspath").map { classpath ->
+        val modules = classpath.incoming.resolutionResult.allComponents
+            .mapNotNull { it.id as? ModuleComponentIdentifier }
+        val sources = configurations.detachedConfiguration(
+            *modules.map { dependencies.create("${it.group}:${it.module}:${it.version}:sources") }
+                .toTypedArray(),
+        )
+        sources.isTransitive = false
+        sources.incoming.artifactView { isLenient = true }.files
+    }
+
+    tasks.register<DependencySources>("dependencySources") {
+        description = "Unpacks the sources jars of testRuntimeClasspath into build/dependency-sources."
+        sourcesJars.from(dependencySourceJars)
+        outputDirectory = layout.buildDirectory.dir("dependency-sources")
+    }
+
     tasks.withType<Test> {
         useJUnitPlatform()
 
@@ -50,7 +99,8 @@ subprojects {
         })
 
         testLogging {
-            showStandardStreams = true
+            // `!= "false"` rather than `toBoolean()`: a bare `-PverboseTests` is the empty string.
+            showStandardStreams = providers.gradleProperty("verboseTests").map { it != "false" }.getOrElse(false)
             exceptionFormat = TestExceptionFormat.FULL
         }
     }
@@ -172,3 +222,17 @@ subprojects {
         "testRuntimeOnly"(rootProject.libs.junit.platform.launcher)
     }
 }
+
+// One root process rather than one per subproject: one failure list, and the script is too fast
+// for per-module incrementality to buy anything. #222
+val commentBudget = tasks.register<Exec>("commentBudget") {
+    description = "Runs .claude/scripts/check-comments.sh over every module's Java sources."
+    group = "verification"
+    val sources = fileTree(projectDir) { include("*/src/**/*.java") }
+    executable = layout.projectDirectory.file(".claude/scripts/check-comments.sh").asFile.path
+    argumentProviders.add(CommandLineArgumentProvider {
+        sources.files.map { it.relativeTo(projectDir).path }.sorted()
+    })
+}
+
+tasks.named("check") { dependsOn(commentBudget) }

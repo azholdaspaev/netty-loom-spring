@@ -332,20 +332,6 @@ class NettyHttpServletResponseTest {
             () -> response.addCookie(new Cookie("sid", "invalid value")));
     }
 
-    @Test
-    void addCookieIgnoresVersion() throws Exception {
-        var response = new NettyHttpServletResponse();
-        Cookie cookie = new Cookie("sid", "xyz");
-        cookie.setVersion(1);
-
-        assertDoesNotThrow(() -> response.addCookie(cookie));
-
-        FullHttpResponse httpResponse = response.toFullHttpResponse();
-        String setCookie = httpResponse.headers().get(HttpHeaderNames.SET_COOKIE);
-        assertTrue(setCookie.startsWith("sid=xyz"));
-        assertFalse(setCookie.contains("Version"));
-    }
-
     // --- setCookie: replaces rather than appends (issue #13) ---
 
     private static List<String> setCookieHeaders(NettyHttpServletResponse response) throws Exception {

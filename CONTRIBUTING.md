@@ -21,6 +21,13 @@ document for how changes are made here. This file is the practical summary.
 ./gradlew :netty-loom-spring-boot-starter:test --tests 'io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.test.SmokeControllerTest'
 ```
 
+A failed test's stdout is not in the build output: read `<module>/build/test-results/test/TEST-*.xml`,
+or pass `-PverboseTests` to stream it.
+
+javac runs `-Xlint:all -Werror`, so a new warning is a red build: fix the code, and suppress at
+the site with a trigger-1 comment only when an external API forces it. Never widen the `-Xlint`
+exclusions in `build.gradle.kts`.
+
 Tests use JUnit 6 on the JUnit Platform and run with `--enable-native-access=ALL-UNNAMED`, which
 the native epoll and kqueue transports need.
 
@@ -61,6 +68,10 @@ deliberate deviation from what the surrounding code predicts.
 `CLAUDE.md` § Guidelines rule 5 has the closed list of triggers and the hard line budgets. Read it
 before adding any comment; reviewers quote it.
 
+`./gradlew build` runs [`.claude/scripts/check-comments.sh`](.claude/scripts/check-comments.sh),
+which rejects a javadoc past its budget's numeric ceiling, naming the file and line; whether a
+trigger fired, and whether a class javadoc earned its raised ceiling, stay with the author.
+
 ## Commits
 
 Subject line: `NL-<issue number> <imperative summary>`, e.g.
@@ -95,8 +106,10 @@ one broke.
 CI runs `./gradlew build` on both Linux and macOS so that epoll and kqueue are each exercised.
 **Both matrix cells must pass to merge.**
 
-Applying the `review/claude` label additionally runs an automated two-pass review that leaves
-inline comments. It is advisory, never a required check, and it does not run on drafts or forks.
+Review is `/flow:review <PR>` from a Claude Code session on a checkout with dependency sources
+unpacked (`./gradlew dependencySources`): a bug pass, then a maintainability pass, posted as one
+advisory review of inline comments. It is never a required check; there is no CI review to
+trigger.
 
 ## Unrelated problems you notice
 
