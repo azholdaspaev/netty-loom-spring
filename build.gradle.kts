@@ -222,3 +222,17 @@ subprojects {
         "testRuntimeOnly"(rootProject.libs.junit.platform.launcher)
     }
 }
+
+// One root process rather than one per subproject: one failure list, and the script is too fast
+// for per-module incrementality to buy anything. #222
+val commentBudget = tasks.register<Exec>("commentBudget") {
+    description = "Runs .claude/scripts/check-comments.sh over every module's Java sources."
+    group = "verification"
+    val sources = fileTree(projectDir) { include("*/src/**/*.java") }
+    executable = layout.projectDirectory.file(".claude/scripts/check-comments.sh").asFile.path
+    argumentProviders.add(CommandLineArgumentProvider {
+        sources.files.map { it.relativeTo(projectDir).path }.sorted()
+    })
+}
+
+tasks.named("check") { dependsOn(commentBudget) }
