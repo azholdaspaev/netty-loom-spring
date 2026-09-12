@@ -49,9 +49,10 @@ request exists, the pipeline resumes at the review stage.
 
 ## Cost
 
-`stage.sh` caps each `claude -p`: implement 8 USD, review 6, fix 4, test 6, 45 minutes each;
-`pipeline.sh` runs at most three review/fix rounds. A stage that hits its cap ends with
-`error_max_budget_usd` and the issue goes to `agent/failed`.
+`stage.sh` caps each `claude -p`: implement 16 USD, review 6, fix 4, test 6, 45 minutes each;
+`pipeline.sh` runs at most three review/fix rounds, so one issue is bounded by
+16 + 3 × (6 + 4) + 6 = 48 USD. A stage that hits its cap ends with `error_max_budget_usd` and the
+issue goes to `agent/failed`.
 
 Baseline: #239, the first issue to go from `agent/queued` to a merged pull request (#249) with no
 session opened by hand, on 2026-09-13 with `main` at `a0eecdc`.
