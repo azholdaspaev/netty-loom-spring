@@ -90,6 +90,19 @@ class HttpConnectionRegistryTest {
     }
 
     @Test
+    void shouldCloseAConnectionThatArrivesAfterTheDrainIsAborted() {
+        HttpConnectionRegistry registry = newRegistry();
+        registry.abortDrain();
+
+        EmbeddedChannel latecomer = new EmbeddedChannel();
+        registry.register(latecomer);
+        latecomer.runPendingTasks();
+
+        assertFalse(latecomer.isOpen(),
+            "a connection accepted after the abort closed the group must not hold the owner's drain open");
+    }
+
+    @Test
     void shouldClearDrainingOnResetSoARestartedServerKeepsConnectionsAlive() {
         HttpConnectionRegistry registry = newRegistry();
         registry.beginDrain();

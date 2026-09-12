@@ -151,9 +151,12 @@ public class HttpConnectionRegistry {
 
     /**
      * Cuts a running {@link #awaitDrained(long)} short. A flag rather than an interrupt: the thread
-     * inside the wait belongs to the caller. Set before the signal so a waiter about to park sees it.
+     * inside the wait belongs to the caller. Both flags are set before the close and the signal, so
+     * a waiter about to park sees the abort and a connection registering after the close is closed
+     * by {@link #register(Channel)} instead of holding the owner's drain open.
      */
     public void abortDrain() {
+        draining = true;
         aborted = true;
         connections.close();
         dispatchLock.lock();
