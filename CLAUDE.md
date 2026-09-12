@@ -53,6 +53,8 @@ Tests use JUnit 6 (`org.junit.jupiter.api`, via `org.junit.jupiter:junit-jupiter
 
 `AGENTS.md` names the commit, pull request and issue templates, and is normative for their use. `.githooks/commit-msg` enforces the commit shape once `core.hooksPath` points at it (`CONTRIBUTING.md` § Commits); a clone without it has only the template. `.claude/scripts/check-comments.sh` enforces the part of rule 5 a script can count — the three numeric budgets at their ceilings — as the `commentBudget` task under `check` and as a `PostToolUse` hook; whether a class javadoc earned its raised ceiling, and the triggers, stay with the reviewer. The hook remaps the script's exit 1 to 2 because on `PostToolUse` only exit 2 puts the hook's stderr in front of the agent (Claude Code hooks reference, § Hook exit codes: https://code.claude.com/docs/en/hooks).
 
+`.claude/settings.json` tracks the permission rules every session starts with; `docs/adr/0003-tracked-permission-rules.md` records why each rule has the shape it does, and which tidier spelling would strand the pipeline.
+
 ## CI
 
 `.github/workflows/build.yml` runs `./gradlew build` on ubuntu and macos; both matrix cells must pass to merge.
