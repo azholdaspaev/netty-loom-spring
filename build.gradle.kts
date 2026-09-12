@@ -1,4 +1,5 @@
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+import javax.inject.Inject
 
 plugins {
     java
@@ -6,6 +7,30 @@ plugins {
 }
 
 val springBootVersion = libs.versions.spring.boot.get()
+
+abstract class DependencySources : DefaultTask() {
+    @get:InputFiles
+    abstract val sourcesJars: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @get:Inject
+    abstract val fs: FileSystemOperations
+
+    @get:Inject
+    abstract val archives: ArchiveOperations
+
+    @TaskAction
+    fun unpack() {
+        fs.sync {
+            into(outputDirectory)
+            sourcesJars.forEach { jar ->
+                from(archives.zipTree(jar)) { into(jar.name.removeSuffix("-sources.jar")) }
+            }
+        }
+    }
+}
 
 subprojects {
     apply(plugin = "java-library")
@@ -37,6 +62,26 @@ subprojects {
     val mockitoAgentClasspath = configurations.resolvable("mockitoAgentClasspath") {
         extendsFrom(mockitoAgent.get())
         isTransitive = false
+    }
+
+    // The `sources` classifier rather than an ArtifactView with withVariantReselection(): the
+    // variant route reads each module's metadata, and Spring Framework 7 publishes no sources
+    // variant, so spring-web, spring-webmvc and spring-core silently drop out. #214
+    val dependencySourceJars = configurations.named("testRuntimeClasspath").map { classpath ->
+        val modules = classpath.incoming.resolutionResult.allComponents
+            .mapNotNull { it.id as? ModuleComponentIdentifier }
+        val sources = configurations.detachedConfiguration(
+            *modules.map { dependencies.create("${it.group}:${it.module}:${it.version}:sources") }
+                .toTypedArray(),
+        )
+        sources.isTransitive = false
+        sources.incoming.artifactView { isLenient = true }.files
+    }
+
+    tasks.register<DependencySources>("dependencySources") {
+        description = "Unpacks the sources jars of testRuntimeClasspath into build/dependency-sources."
+        sourcesJars.from(dependencySourceJars)
+        outputDirectory = layout.buildDirectory.dir("dependency-sources")
     }
 
     tasks.withType<Test> {
