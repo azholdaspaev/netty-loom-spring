@@ -69,9 +69,8 @@ deliberate deviation from what the surrounding code predicts.
 before adding any comment; reviewers quote it.
 
 `./gradlew build` runs [`.claude/scripts/check-comments.sh`](.claude/scripts/check-comments.sh),
-which rejects the part a script can check — a javadoc on a `@Test` method, a class javadoc past 20
-lines, a `private` member's past 2 — naming the file and line; whether a trigger fired, and the
-8-line class budget, stay with the author.
+which rejects a javadoc past its budget's numeric ceiling, naming the file and line; whether a
+trigger fired, and whether a class javadoc earned its raised ceiling, stay with the author.
 
 ## Commits
 
