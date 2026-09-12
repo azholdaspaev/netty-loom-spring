@@ -64,16 +64,19 @@ class NettyServerDrainTest {
 
     private final CountDownLatch dispatcherEntered = new CountDownLatch(1);
     private final CountDownLatch releaseDispatcher = new CountDownLatch(1);
+    private final CountDownLatch releaseAbort = new CountDownLatch(1);
 
     private NettyServer nettyServer;
     private ChannelGroup connections;
     private ExecutorService dispatchExecutor;
     private ExecutorService shutdownExecutor;
+    private ExecutorService abortExecutor;
 
     @BeforeEach
     void setUp() {
         dispatchExecutor = Executors.newVirtualThreadPerTaskExecutor();
         shutdownExecutor = Executors.newSingleThreadExecutor();
+        abortExecutor = Executors.newSingleThreadExecutor();
         nettyServer = newServer();
         nettyServer.start();
     }
@@ -86,6 +89,7 @@ class NettyServerDrainTest {
         }
         dispatchExecutor.shutdownNow();
         shutdownExecutor.shutdownNow();
+        abortExecutor.shutdownNow();
     }
 
     @Test
@@ -239,6 +243,35 @@ class NettyServerDrainTest {
         }
     }
 
+    @Test
+    void shouldNotLetAJoinerWhoseDeadlineExpiredAbortARestartedServer() throws Exception {
+        Future<NettyShutdownResult> graceful;
+        Future<NettyShutdownResult> immediate;
+        try (Socket client = connect()) {
+            send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
+            assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
+            graceful = shutdownInBackground();
+            assertStillDraining(graceful, "the first shutdown must own the drain before the second arrives");
+            immediate = abortExecutor.submit(() -> nettyServer.shutdown(Duration.ZERO));
+            releaseDispatcher.countDown();
+            assertEquals(NettyShutdownResult.IDLE, graceful.get(5, TimeUnit.SECONDS));
+        }
+
+        nettyServer.start();
+        try (Socket client = connect()) {
+            send(client, "GET /ping HTTP/1.1\r\nHost: localhost\r\n\r\n");
+            BufferedReader reader = reader(client);
+            assertEquals("HTTP/1.1 200 OK", readHeaderBlock(reader).getFirst());
+            releaseAbort.countDown();
+            assertEquals(NettyShutdownResult.IDLE, immediate.get(5, TimeUnit.SECONDS));
+
+            send(client, "GET /ping HTTP/1.1\r\nHost: localhost\r\n\r\n");
+            assertEquals("HTTP/1.1 200 OK", readHeaderBlock(reader).getFirst(),
+                "a joiner whose deadline expired during the previous drain must not close the "
+                    + "restarted server's connections");
+        }
+    }
+
     private Future<NettyShutdownResult> shutdownInBackground() {
         return shutdownExecutor.submit(() -> nettyServer.shutdown(Duration.ofSeconds(10)));
     }
@@ -258,7 +291,13 @@ class NettyServerDrainTest {
 
     private NettyServer newServer() {
         connections = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
-        HttpConnectionRegistry connectionRegistry = new HttpConnectionRegistry(connections);
+        HttpConnectionRegistry connectionRegistry = new HttpConnectionRegistry(connections) {
+            @Override
+            public void abortDrain() {
+                awaitAbortRelease();
+                super.abortDrain();
+            }
+        };
         NettyServerConfiguration configuration = new NettyServerConfiguration(
             0, InetAddress.getLoopbackAddress(), 0, 0, false);
         return NettyServerFixture.newServer(configuration, connectionRegistry, List.of(
@@ -268,6 +307,20 @@ class NettyServerDrainTest {
             new NettyPipelineStep("bodyLimit", () -> new HttpRequestBodyLimitHandler(MAX_HTTP_REQUEST_BODY_BYTES)),
             new NettyPipelineStep("dispatcher",
                 () -> new HttpRequestHandler(blockingDispatcher(), dispatchExecutor, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT))));
+    }
+
+    /**
+     * Holds a joiner between its deadline expiring and its abort taking effect, the window in which
+     * the owner can finish and the server restart underneath it. Timed, because a guarded abort
+     * holds the handover lock here and the test cannot release the latch while everything it would
+     * sequence on is blocked behind that lock.
+     */
+    private void awaitAbortRelease() {
+        try {
+            releaseAbort.await(1, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**
