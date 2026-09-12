@@ -11,6 +11,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./gradlew :netty-loom-spring-boot-starter:test --tests 'io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.test.SmokeControllerTest'  # Single test
 ```
 
+A failed test's stdout is not in the build output: read `<module>/build/test-results/test/TEST-*.xml`, or pass `-PverboseTests` to stream it.
+
 Java 25 toolchain (LTS). No `--enable-preview` — the library targets only stable JDK features, so consumers don't need special JVM flags.
 
 ## Architecture

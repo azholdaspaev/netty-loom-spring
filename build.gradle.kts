@@ -95,7 +95,7 @@ subprojects {
         })
 
         testLogging {
-            showStandardStreams = true
+            showStandardStreams = providers.gradleProperty("verboseTests").isPresent
             exceptionFormat = TestExceptionFormat.FULL
         }
     }
