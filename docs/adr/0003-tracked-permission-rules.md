@@ -70,16 +70,20 @@ unknown query parameter but 404s a trailing slash -- in each spelling `gh` resol
 holds for any verb, flag position and method spelling where a `PATCH` rule would not. The GET
 readback of the repository goes with it, as the ruleset one does.
 
-**The allow list is read-only, except `./gradlew`, whose publish tasks are denied.** `gh pr view`,
+**The allow list is read-only, except `./gradlew`, whose uploads are denied.** `gh pr view`,
 `gh pr diff`, `gh issue view`, `git status`, `git log` and `git diff` read. `./gradlew *` also
 covers `publish` and `publishAllPublicationsToCentralSnapshotsRepository`, which upload to
 Central whenever `centralSnapshotsUsername` and `centralSnapshotsPassword` reach Gradle -- CI's
 secrets, or a login shell the runner inherits -- and the #215 network list allows
 `central.sonatype.com`, so no sandbox gates it. Narrowing the allow does not either:
-`./gradlew build publish` matches `build*` and the module-qualified task matches `:*`. So
-`./gradlew *publish*` is denied; `publishToMavenLocal` and the staging publish go with it, since
-a deny cannot carry an exception and neither is a pipeline step. A never-trusted clone ignores
-the allow list while still applying `deny` (#219).
+`./gradlew build publish` matches `build*` and the module-qualified task matches `:*`. So the
+upload tasks are denied by shape: `*publish` and `*publish *` catch the bare `publish` in any
+position, `*publish*Repository*` the tasks that name a repository, staging included. That rather
+than `*publish*`, which also denied `publishToMavenLocal` and
+`publishMavenPublicationToMavenLocal`, the local install the maintainer tests a consumer project
+against; neither uploads. No glob on `publish` is airtight: Gradle resolves the camel-case
+abbreviation `./gradlew pAPTCSR` to the Central task, and what stops it is that the credentials
+exist only in CI. A never-trusted clone ignores the allow list while still applying `deny` (#219).
 
 `mcp__idea__rename_refactoring` predates #212; `CLAUDE.md` § IDE Tooling owns its reason.
 
