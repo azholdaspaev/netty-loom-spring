@@ -172,9 +172,10 @@ public class HttpConnectionRegistry {
     }
 
     /**
-     * Clears the drain flag so a restarted server serves keep-alive connections again. A dispatch
-     * abandoned by a shutdown that ran out of grace is still running, so the count is not cleared —
-     * the restarted server starts non-zero and settles when that thread's {@code finally} runs.
+     * Clears the drain and abort flags so a restarted server serves keep-alive connections again and
+     * waits for its own dispatches. A dispatch abandoned by a shutdown that ran out of grace is still
+     * running, so the count is not cleared — the restarted server starts non-zero and settles when
+     * that thread's {@code finally} runs.
      */
     public void reset() {
         draining = false;
