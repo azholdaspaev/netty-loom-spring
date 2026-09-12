@@ -55,7 +55,7 @@ Tests use JUnit 6 (`org.junit.jupiter.api`, via `org.junit.jupiter:junit-jupiter
 
 `.claude/settings.json` tracks the permission rules every session starts with; `docs/adr/0003-tracked-permission-rules.md` records why each rule has the shape it does, and which tidier spelling would strand the pipeline.
 
-`scripts/agent/stage.sh <issue> implement` runs one pipeline stage as an unattended `claude -p`, with `.claude/agent/` as its system prompt and settings and `scripts/agent/test-stage.sh` as its test. In that settings file `gh`, `git push` and `pr-comments.sh` are `sandbox.excludedCommands`: under Seatbelt a Go binary cannot verify TLS and SSH cannot cross the sandbox proxy (Claude Code sandboxing reference, § Troubleshooting: https://code.claude.com/docs/en/sandboxing). They still pass the permission rules.
+`scripts/agent/stage.sh <issue> implement` runs one pipeline stage as an unattended `claude -p`, with `.claude/agent/` as its system prompt and settings and `scripts/agent/test-stage.sh` as its test; `pipeline.sh <issue>` runs stage 1 and sets the issue's outcome label, and `requeue.sh` is the tick step that moves an answered `agent/needs-input` issue back to `agent/queued`, each with its own shim-driven `test-*.sh`. In that settings file `gh`, `git push` and `pr-comments.sh` are `sandbox.excludedCommands`: under Seatbelt a Go binary cannot verify TLS and SSH cannot cross the sandbox proxy (Claude Code sandboxing reference, § Troubleshooting: https://code.claude.com/docs/en/sandboxing). They still pass the permission rules.
 
 ## CI
 
