@@ -37,6 +37,7 @@ in favour of `server.port`.
 | `server.servlet.session.cookie.*` | `name`, `domain`, `path`, `http-only`, `secure`, `max-age`, `same-site`, `partitioned` |
 | `server.servlet.session.tracking-modes` | Only `cookie`; an empty set is legal and disables the cookie |
 | `server.servlet.context-parameters.*` | Become `ServletContext` init parameters |
+| `server.server-header` | Written as the `Server` header on every response, including the container's own 4xx/5xx rejections, replacing any value the application set — as Tomcat does. Unset or blank writes no `Server` header |
 | `spring.servlet.encoding.*` | Works because Boot implements it as a `CharacterEncodingFilter` bean, not a container setting |
 
 Two extension points also work: `WebServerFactoryCustomizer<ConfigurableServletWebServerFactory>`

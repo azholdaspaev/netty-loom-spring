@@ -230,6 +230,7 @@ TCP accept (boss loop)
       HttpConnectionRegistry.register(channel)   # before the pipeline is configured
   → then the pipeline, on that same loop:
       httpCodec          HttpServerCodec(10_000, 10_000, 10_000)
+      serverHeader       HttpServerHeaderHandler   # @Sharable; only when server.server-header is set
       httpKeepAlive      HttpServerKeepAliveHandler
       drain              HttpDrainHandler          # counts the exchange for graceful shutdown
       readTimeout        HttpReadTimeoutHandler    # client deadline; suspended while dispatching
