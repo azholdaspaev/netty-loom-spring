@@ -15,7 +15,7 @@ was given, ask which one before doing anything else.
 ORDER OF WORK:
 - understand what the PR is trying to change, and the code around it — whole files and siblings, not just the hunks
 - if the PR already carries review threads, settle them before looking for anything new — this is cheap and the fan-out below is not
-- verify each unresolved thread blind: hand a sub-agent the original finding and the current code, and not the reply. Use the reply only to find the commit worth looking at. A verifier that reads the author's argument anchors on it, and you and the author are the same model reasoning about the same code
+- verify each unresolved thread blind: launch the `blind-verifier` subagent with the original finding and the diff hunk of the commit worth looking at — never the reply. Use the reply only to find that commit. A verifier that reads the author's argument anchors on it, and you and the author are the same model reasoning about the same code
 - before resolving, post what in the code proves the finding is gone — the file, the lines, the behaviour that changed — and only then resolve. A resolution nobody can audit is indistinguishable from a rubber stamp
 - where the fix does not hold, or holds only partly, say which in the thread and leave it unresolved; where nobody replied at all, leave it alone — nothing has changed to report
 - run `/code-review high $1` WITHOUT `--comment`, so its findings come back to you instead of being posted; it runs on this session's model
