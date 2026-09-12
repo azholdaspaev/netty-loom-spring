@@ -17,6 +17,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class HttpServerHeaderHandlerTest {
 
@@ -44,6 +45,13 @@ class HttpServerHeaderHandlerTest {
         assertEquals(List.of("MyApp"), out.headers().getAll(HttpHeaderNames.SERVER),
             "the configured value must override the application's, as Tomcat's does, not be added beside it");
         out.release();
+    }
+
+    @Test
+    void shouldRejectAValueTheHeaderValidatorWouldRejectAtConstruction() {
+        assertThrows(IllegalArgumentException.class, () -> new HttpServerHeaderHandler("My\r\nApp"),
+            "a value the response's header validator rejects must fail when the handler is built, "
+                + "not on every response head written through it");
     }
 
     @Test

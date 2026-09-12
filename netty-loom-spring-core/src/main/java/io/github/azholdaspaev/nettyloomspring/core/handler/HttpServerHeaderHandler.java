@@ -5,6 +5,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpHeaderValidationUtil;
 import io.netty.handler.codec.http.HttpResponse;
 
 /**
@@ -17,6 +18,13 @@ public class HttpServerHeaderHandler extends ChannelOutboundHandlerAdapter {
     private final String serverHeader;
 
     public HttpServerHeaderHandler(String serverHeader) {
+        // The same check DefaultHttpHeadersFactory runs on headers().set: rejected here, it fails startup
+        // instead of failing every response head written through this handler.
+        int prohibited = HttpHeaderValidationUtil.validateValidHeaderValue(serverHeader);
+        if (prohibited != -1) {
+            throw new IllegalArgumentException("Server header value contains prohibited character 0x"
+                + Integer.toHexString(serverHeader.charAt(prohibited)) + " at index " + prohibited);
+        }
         this.serverHeader = serverHeader;
     }
 
