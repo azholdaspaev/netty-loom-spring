@@ -51,7 +51,7 @@ All source code changes must strictly follow TDD (Test-Driven Development): writ
 
 Tests use JUnit 6 (`org.junit.jupiter.api`, via `org.junit.jupiter:junit-jupiter`) on JUnit Platform. All test tasks are configured with `useJUnitPlatform()` and run with `--enable-native-access=ALL-UNNAMED`.
 
-`AGENTS.md` names the commit, pull request and issue templates, and is normative for their use. `.githooks/commit-msg` enforces the commit shape once `core.hooksPath` points at it (`CONTRIBUTING.md` § Commits); a clone without it has only the template. `.claude/scripts/check-comments.sh` enforces the part of rule 5's budgets a script can check — no javadoc on a `@Test` method, 20 lines on a class, 2 on a `private` member — as the `commentBudget` task under `check` and as a `PostToolUse` hook; the 8-line class budget and the triggers stay with the reviewer.
+`AGENTS.md` names the commit, pull request and issue templates, and is normative for their use. `.githooks/commit-msg` enforces the commit shape once `core.hooksPath` points at it (`CONTRIBUTING.md` § Commits); a clone without it has only the template. `.claude/scripts/check-comments.sh` enforces the part of rule 5 a script can count — the three numeric budgets at their ceilings — as the `commentBudget` task under `check` and as a `PostToolUse` hook; whether a class javadoc earned its raised ceiling, and the triggers, stay with the reviewer.
 
 ## CI
 
