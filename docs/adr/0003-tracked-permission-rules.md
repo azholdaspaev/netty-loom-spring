@@ -43,13 +43,13 @@ flags are separable: one rule per flag covers both `--add-label x` and `--add-la
 hand-over (#218), merge and close are the maintainer's. The maintainer's own sessions lose them
 through Claude. The `gh api` twins are denied by the token that names them: the label endpoints
 by path (`gh api *labels*`; the pipeline reads labels through `gh issue view --json labels`) and
-the four mutations by name, as `RepositoryRuleset` is below.
+the mutations by name, as `RepositoryRuleset` is below.
 
 **The branch-protection gate: by path where the path is the target, by verb elsewhere.** PUT is
-denied in all five pflag spellings (`-X PUT`, `-XPUT`, `-X=PUT`, `--method PUT`,
+denied in every pflag spelling `gh` accepts (`-X PUT`, `-XPUT`, `-X=PUT`, `--method PUT`,
 `--method=PUT`) because that is the write `.github/rulesets/README.md` documents and it is a
 write to any endpoint. The rulesets endpoint itself is denied by path (`gh api *rulesets*`):
-DELETE removes the gate outright, the path has one spelling where the method has five, and the
+DELETE removes the gate outright, the path has one spelling where the method has several, and the
 rule therefore also holds for a lowercase or shell-quoted method there, which the verb rules do
 not (#231). The GET readback README names goes with it; the pipeline never reads rulesets and
 the maintainer runs it in a terminal. `gh api graphql *RepositoryRuleset*` covers the mutations
@@ -58,7 +58,7 @@ without denying `gh api graphql` wholesale, which resolving review threads needs
 **The repository object: `gh repo` wholesale, and its REST root by path with a terminator.**
 README § Known gaps records that the repo-level `allow_merge_commit` flag alone holds linear
 history; `gh repo edit`, `gh repo archive` and `gh repo rename` all write to that object and
-nothing in the pipeline reads it, so the whole subcommand is denied rather than three verbs.
+nothing in the pipeline reads it, so the whole subcommand is denied rather than one verb at a time.
 The REST twin is `PATCH repos/<owner>/<repo>`, and the root is a prefix of every other path, so
 the bare `*rulesets*` shape would deny `…/pulls/<N>/comments` with it. The rule instead ends
 where the path ends -- at the end of the command or at a space -- in each spelling `gh` resolves
@@ -66,7 +66,7 @@ where the path ends -- at the end of the command or at a space -- in each spelli
 holds for any verb, flag position and method spelling where a `PATCH` rule would not. The GET
 readback of the repository goes with it, as the ruleset one does.
 
-**The allow list is read-only, except `./gradlew`, whose one write is denied.** `gh pr view`,
+**The allow list is read-only, except `./gradlew`, whose publish tasks are denied.** `gh pr view`,
 `gh pr diff`, `gh issue view`, `git status`, `git log` and `git diff` read. `./gradlew *` also
 covers `publish` and `publishAllPublicationsToCentralSnapshotsRepository`, which upload to
 Central whenever `centralSnapshotsUsername` and `centralSnapshotsPassword` reach Gradle -- CI's
