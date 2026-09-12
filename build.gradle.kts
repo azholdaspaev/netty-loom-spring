@@ -42,7 +42,11 @@ subprojects {
     }
 
     tasks.withType<JavaCompile> {
-        options.compilerArgs.add("-parameters")
+        // Two lints stay off rather than being suppressed at their sites: `processing` fires on
+        // every starter compile because spring-boot-configuration-processor claims none of the
+        // Spring annotations, and `serial` asks for a serialVersionUID on NettyServerException
+        // that nothing ever deserializes.
+        options.compilerArgs.addAll(listOf("-parameters", "-Xlint:all,-processing,-serial", "-Werror"))
     }
 
     tasks.withType<Javadoc> {

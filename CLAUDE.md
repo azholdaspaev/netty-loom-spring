@@ -15,6 +15,8 @@ A failed test's stdout is not in the build output: read `<module>/build/test-res
 
 Java 25 toolchain (LTS). No `--enable-preview` — the library targets only stable JDK features, so consumers don't need special JVM flags.
 
+javac runs `-Xlint:all -Werror`, so a new warning is a red build: fix the code, and suppress at the site with a trigger-1 comment only when an external API forces it. Never widen the `-Xlint` exclusions in `build.gradle.kts`.
+
 ## Architecture
 
 A Spring Boot integration library that replaces Tomcat/Jetty with a Netty-based web server using Java virtual threads (Project Loom). **Dependency flow:** `starter → mvc → core`; `core` has no Spring dependency.
