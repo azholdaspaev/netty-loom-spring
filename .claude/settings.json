@@ -22,7 +22,11 @@
       "Bash(git push *--mirror*)",
       "Bash(git commit *--no-verify*)",
       "Bash(gh pr merge *)",
-      "Bash(gh pr ready *)"
+      "Bash(gh pr ready *)",
+      "Bash(gh pr edit *--add-label*)",
+      "Bash(gh pr edit *--remove-label*)",
+      "Bash(gh issue edit *--add-label*)",
+      "Bash(gh issue edit *--remove-label*)"
     ],
     "allow": [
       "Bash(./gradlew *)",
