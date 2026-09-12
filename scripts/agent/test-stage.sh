@@ -110,7 +110,15 @@ for flag in --permission-mode acceptEdits --permission-prompts none --max-budget
             "NL-999 implement" "/flow:implement 999"; do
   argv_has "$flag" || { ok=0; why="argv lacks $flag"; }
 done
-grep -q '/\.claude/agent/settings\.json$' "$SHIM_ARGV" 2>/dev/null || { ok=0; why="argv lacks the agent settings file"; }
+settings=$(grep '/\.claude/agent/settings\.json$' "$SHIM_ARGV" 2>/dev/null || true)
+[ -n "$settings" ] || { ok=0; why="argv lacks the agent settings file"; }
+for verb in DELETE PATCH; do
+  for rule in "Bash(gh api *-X $verb*)" "Bash(gh api *-X$verb*)" "Bash(gh api *-X=$verb*)" \
+              "Bash(gh api *--method $verb*)" "Bash(gh api *--method=$verb*)"; do
+    jq -e --arg rule "$rule" '.permissions.deny | index($rule)' "$settings" >/dev/null 2>&1 \
+      || { ok=0; why="agent settings deny lacks $rule"; }
+  done
+done
 allowed=$(argv_after --allowedTools)
 for rule in "Bash(gh api repos/*/pulls/*/comments*)" "Bash(gh api repos/*/issues/*/comments*)" \
             "Bash(gh api repos/*/pulls/comments/*)" "Bash(gh api repos/*/issues/comments/*)"; do
