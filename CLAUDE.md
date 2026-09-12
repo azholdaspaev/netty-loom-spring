@@ -15,6 +15,8 @@ A failed test's stdout is not in the build output: read `<module>/build/test-res
 
 Java 25 toolchain (LTS). No `--enable-preview` — the library targets only stable JDK features, so consumers don't need special JVM flags.
 
+javac runs `-Xlint:all -Werror`, so a new warning is a red build: fix the code, and suppress at the site with a trigger-1 comment only when an external API forces it. Never widen the `-Xlint` exclusions in `build.gradle.kts`.
+
 ## Architecture
 
 A Spring Boot integration library that replaces Tomcat/Jetty with a Netty-based web server using Java virtual threads (Project Loom). **Dependency flow:** `starter → mvc → core`; `core` has no Spring dependency.
@@ -57,7 +59,7 @@ Tests use JUnit 6 (`org.junit.jupiter.api`, via `org.junit.jupiter:junit-jupiter
 
 ## Code Review
 
-Review runs in two passes. The bug pass (`/code-review`) is tuned for correctness recall: it requires a concrete failure scenario per finding and discards style and quality findings. The maintainability pass is the `maintainability-pass` skill, which owns the lenses for naming consistency, magic constants, duplication, comment budget, simplicity and scope, and module boundaries. State-dependent correctness — concurrency, lifecycle, time arithmetic — is rule 6 below, so that either pass can quote it. `/flow:review` runs both locally; `.github/workflows/claude-review.yml` runs them on the `review/claude` label.
+Review runs in two passes. The bug pass (`/code-review`) is tuned for correctness recall: it requires a concrete failure scenario per finding and discards style and quality findings. The maintainability pass is the `maintainability-pass` skill, which owns the lenses for naming consistency, magic constants, duplication, comment budget, simplicity and scope, and module boundaries. State-dependent correctness — concurrency, lifecycle, time arithmetic — is rule 6 below, so that either pass can quote it. `/flow:review` runs both and posts what survives as inline comments, whether a maintainer invokes it or the agent pipeline does.
 
 ## Guidelines
 

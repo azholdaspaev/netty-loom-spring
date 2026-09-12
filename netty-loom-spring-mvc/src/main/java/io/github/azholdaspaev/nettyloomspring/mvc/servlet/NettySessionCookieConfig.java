@@ -17,7 +17,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
  * flag is presence with an empty value rather than the text {@code "true"}. Matching that exactly lets
  * the emit path hand the whole map straight to a {@code Cookie}.
  */
-public class NettySessionCookieConfig implements SessionCookieConfig {
+public final class NettySessionCookieConfig implements SessionCookieConfig {
 
     /**
      * The servlet-conventional default; public so tests assert against it rather than the literal.
@@ -90,11 +90,13 @@ public class NettySessionCookieConfig implements SessionCookieConfig {
         return getAttribute(CookieHeaderNames.PATH);
     }
 
+    // Servlet 6.0 specifies "If called, this method has no effect" and deprecates both comment
+    // methods for removal, but SessionCookieConfig still declares them, so the overrides stay and
+    // suppress the removal warning. Throwing would abort context refresh for any legacy initializer
+    // that defensively calls it, where Tomcat and Jetty start fine.
+    @SuppressWarnings("removal")
     @Override
     public void setComment(String comment) {
-        // Specified as "If called, this method has no effect" since Servlet 6.0, and deprecated for
-        // removal. Throwing would abort context refresh for any legacy initializer that defensively
-        // calls it, where Tomcat and Jetty start fine.
         requireNotInitialized();
     }
 
@@ -102,6 +104,7 @@ public class NettySessionCookieConfig implements SessionCookieConfig {
      * {@inheritDoc}
      * Always {@code null}: RFC 6265 dropped the attribute and Netty's encoder has no field for it.
      */
+    @SuppressWarnings("removal")
     @Override
     public String getComment() {
         return null;

@@ -21,7 +21,7 @@ ORDER OF WORK:
 - where the fix does not hold, or holds only partly, say which in the thread and leave it unresolved; where nobody replied at all, leave it alone — nothing has changed to report
 - run `/code-review high $1` WITHOUT `--comment`, so its findings come back to you instead of being posted; it runs on this session's model
 - if it comes back with nothing, say whether it found nothing or did not run — never report an abort as "no findings"
-- run the `maintainability-pass` skill for the half the bug pass discards, citing `CLAUDE.md` § Architecture for a module-boundary finding; outside `claude-review.yml` it returns its findings to you, so they go through the steps below with the bug pass's
+- run the `maintainability-pass` skill for the half the bug pass discards, citing `CLAUDE.md` § Architecture for a module-boundary finding; it returns its findings to you, so they go through the steps below with the bug pass's
 - collapse the same finding reported more than once into a single comment
 - if nothing survives that, stop: there is nothing left to deduplicate against
 - otherwise drop anything already said on the PR, by any author, silently — no "still an issue"; a finding a human already raised costs the same attention on re-reading
