@@ -24,10 +24,18 @@ setup() {
 #!/usr/bin/env bash
 echo "gradlew $*" >> "$SHIM_EVENTS"
 SHIM
+  echo '[]' > "$tmp/comments"
   cat > "$tmp/bin/gh" <<'SHIM'
 #!/usr/bin/env bash
 echo "gh $*" >> "$SHIM_EVENTS"
 case "$*" in
+  "repo view --json nameWithOwner --jq .nameWithOwner") echo o/r ;;
+  "api user --jq .login") echo runner ;;
+  "api --paginate repos/o/r/issues/999/comments?per_page=100") cat "$SHIM_COMMENTS" ;;
+  "issue comment 999 --body-file -")
+    jq --arg body "$(cat)" '. + [{user: {login: "runner"}, body: $body, created_at: "2026-09-12T12:00:01Z",
+      html_url: "https://github.com/o/r/issues/999#issuecomment-2"}]' "$SHIM_COMMENTS" > "$SHIM_COMMENTS.new"
+    mv "$SHIM_COMMENTS.new" "$SHIM_COMMENTS" ;;
   "pr list --head NL-999-x "*) if [ -n "${SHIM_PR_URL:-}" ]; then echo "$SHIM_PR_URL"; fi ;;
 esac
 SHIM
@@ -44,16 +52,19 @@ done
 echo "shim stderr line" >&2
 result() { printf '{"type":"result","subtype":"%s","is_error":%s,"session_id":"s","total_cost_usd":0.5,"num_turns":3}\n' "$1" "$2"; }
 commit() { echo x > "$SHIM_MODE.txt"; git add "$SHIM_MODE.txt"; git commit -q -m "NL-999 Work"; }
+ask() { printf '<!-- agent:question -->\nWhich one?\n' | gh issue comment 999 --body-file -; }
 case "$SHIM_MODE" in
   success)  commit; result success false ;;
   budget)   commit; result error_max_budget_usd true ;;
   nocommit) result success false ;;
+  question) ask; result success false ;;
+  question-crash) ask; echo boom; exit 1 ;;
   crash)    commit; echo boom; exit 1 ;;
   hang)     sleep 5 ;;
 esac
 SHIM
   chmod +x "$tmp/work/gradlew" "$tmp/bin/gh" "$tmp/bin/claude"
-  export SHIM_EVENTS="$tmp/events" SHIM_ARGV="$tmp/argv"
+  export SHIM_EVENTS="$tmp/events" SHIM_ARGV="$tmp/argv" SHIM_COMMENTS="$tmp/comments"
 }
 
 # run <mode> <pr-url-or-empty> <stage args...>; sets rc, out, err
@@ -80,8 +91,15 @@ run success "$PR_URL" 999 implement
 ok=1; why=""
 [ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
 [ "$out" = "$PR_URL" ] || { ok=0; why="stdout=$out"; }
-[ "$(cat "$SHIM_EVENTS" 2>/dev/null || true)" = $'gradlew --stop\nclaude\ngh pr list --head NL-999-x --json url --jq .[0].url\ngradlew --stop' ] \
-  || { ok=0; why="events=$(tr '\n' '|' 2>/dev/null < "$SHIM_EVENTS" || true)"; }
+comments_call="gh api --paginate repos/o/r/issues/999/comments?per_page=100"
+[ "$(cat "$SHIM_EVENTS" 2>/dev/null || true)" = "gh repo view --json nameWithOwner --jq .nameWithOwner
+gh api user --jq .login
+gradlew --stop
+$comments_call
+claude
+$comments_call
+gh pr list --head NL-999-x --json url --jq .[0].url
+gradlew --stop" ] || { ok=0; why="events=$(tr '\n' '|' 2>/dev/null < "$SHIM_EVENTS" || true)"; }
 for flag in --permission-mode acceptEdits --permission-prompts none --max-budget-usd 8 --output-format json \
             "NL-999 implement" "/flow:implement 999"; do
   argv_has "$flag" || { ok=0; why="argv lacks $flag"; }
@@ -128,6 +146,33 @@ run nocommit "$PR_URL" 999 implement
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "no commits" || ok=0
 check no-commits "$ok" "$why"
+rm -rf "$tmp"
+
+# --- question: the marker comment, posted during the stage, is the outcome ---
+setup
+run question "$PR_URL" 999 implement
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 3 ] && contains "$err" "asked a question: https://github.com/o/r/issues/999#issuecomment-2" || ok=0
+[ -z "$out" ] || { ok=0; why="stdout=$out"; }
+! grep -q "gh pr list" "$SHIM_EVENTS" || { ok=0; why="pull request looked up after a question"; }
+check question "$ok" "$why"
+rm -rf "$tmp"
+
+# --- stale question: a marker comment older than the stage is not this stage's question ---
+setup
+echo '[{"user":{"login":"runner"},"body":"<!-- agent:question -->\nOld?","created_at":"2026-09-12T11:00:00Z","html_url":"u1"}]' > "$SHIM_COMMENTS"
+run nocommit "$PR_URL" 999 implement
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 1 ] && contains "$err" "no commits" || ok=0
+check stale-question "$ok" "$why"
+rm -rf "$tmp"
+
+# --- question, then a crash: the comment decides, not claude's exit ---
+setup
+run question-crash "$PR_URL" 999 implement
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 3 ] && contains "$err" "asked a question" || ok=0
+check question-crash "$ok" "$why"
 rm -rf "$tmp"
 
 # --- crash: no result JSON ---
