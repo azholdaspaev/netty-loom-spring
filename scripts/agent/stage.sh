@@ -31,8 +31,9 @@ Bash(git status *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git ad
 Bash(git commit *),Bash(git push *),Bash(git stash *),Bash(git checkout -- *),\
 Bash(gh issue view *),Bash(gh issue comment *),Bash(gh issue create *),\
 Bash(gh pr view *),Bash(gh pr diff *),Bash(gh pr create *),Bash(gh pr comment *),\
-Bash(gh api repos/*/pulls/*/comments/*/replies *),Bash(gh api repos/*/pulls/*/reviews *),\
-Bash(gh api graphql *),Bash(.claude/scripts/pr-comments.sh *)"
+Bash(gh api repos/*/pulls/*/comments*),Bash(gh api repos/*/issues/*/comments*),\
+Bash(gh api repos/*/pulls/comments/*),Bash(gh api repos/*/issues/comments/*),\
+Bash(gh api repos/*/pulls/*/reviews *),Bash(gh api graphql *),Bash(.claude/scripts/pr-comments.sh *)"
 
 # The stage's own steps ride in the system prompt: a -p prompt that starts with a slash
 # command is expanded, and anything after the command name becomes its ARGUMENTS text.

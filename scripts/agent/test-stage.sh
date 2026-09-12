@@ -111,6 +111,11 @@ for flag in --permission-mode acceptEdits --permission-prompts none --max-budget
   argv_has "$flag" || { ok=0; why="argv lacks $flag"; }
 done
 grep -q '/\.claude/agent/settings\.json$' "$SHIM_ARGV" 2>/dev/null || { ok=0; why="argv lacks the agent settings file"; }
+allowed=$(argv_after --allowedTools)
+for rule in "Bash(gh api repos/*/pulls/*/comments*)" "Bash(gh api repos/*/issues/*/comments*)" \
+            "Bash(gh api repos/*/pulls/comments/*)" "Bash(gh api repos/*/issues/comments/*)"; do
+  contains "$allowed" "$rule" || { ok=0; why="allowedTools lacks $rule"; }
+done
 prompt_line=$(grep -nxF -- '/flow:implement 999' "$SHIM_ARGV" 2>/dev/null | cut -d: -f1 || true)
 allowed_line=$(grep -nxF -- '--allowedTools' "$SHIM_ARGV" 2>/dev/null | cut -d: -f1 || true)
 { [ -n "$prompt_line" ] && [ -n "$allowed_line" ] && [ "$prompt_line" -lt "$allowed_line" ]; } \
