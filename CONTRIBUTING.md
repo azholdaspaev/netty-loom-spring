@@ -21,6 +21,9 @@ document for how changes are made here. This file is the practical summary.
 ./gradlew :netty-loom-spring-boot-starter:test --tests 'io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.test.SmokeControllerTest'
 ```
 
+A failed test's stdout is not in the build output: read `<module>/build/test-results/test/TEST-*.xml`,
+or pass `-PverboseTests` to stream it.
+
 Tests use JUnit 6 on the JUnit Platform and run with `--enable-native-access=ALL-UNNAMED`, which
 the native epoll and kqueue transports need.
 
