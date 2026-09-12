@@ -17,6 +17,10 @@ ORDER OF WORK:
 - if issue confirmed, then prepare implementation plan (numbered steps, each naming its own verification)
 - if not confirmed, stop and report what the code actually does — do not implement a fix for a problem you could not reproduce
 - implement the changes following TDD rule
+- before the first push, put the work on a branch named per `CONTRIBUTING.md` § Commits
+  (`NL-<issue number>-<short-slug>`). A worktree session starts on a branch the app named
+  (`claude/...`): `git branch -m` it when it is not yet on a remote, and `git checkout -b` a fresh
+  one from `origin/main` when it already backs a pull request
 
 NOTES:
 - use sub-agents to gather context and understand the source code
