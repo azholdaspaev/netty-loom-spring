@@ -66,9 +66,16 @@ where the path ends -- at the end of the command or at a space -- in each spelli
 holds for any verb, flag position and method spelling where a `PATCH` rule would not. The GET
 readback of the repository goes with it, as the ruleset one does.
 
-**The allow list is read-only or gated elsewhere.** `./gradlew`, `gh pr view`, `gh pr diff`,
-`gh issue view`, `git status`, `git log`, `git diff`. A never-trusted clone ignores it while
-still applying `deny` (#219).
+**The allow list is read-only, except `./gradlew`, whose one write is denied.** `gh pr view`,
+`gh pr diff`, `gh issue view`, `git status`, `git log` and `git diff` read. `./gradlew *` also
+covers `publish` and `publishAllPublicationsToCentralSnapshotsRepository`, which upload to
+Central whenever `centralSnapshotsUsername` and `centralSnapshotsPassword` reach Gradle -- CI's
+secrets, or a login shell the runner inherits -- and the #215 network list allows
+`central.sonatype.com`, so no sandbox gates it. Narrowing the allow does not either:
+`./gradlew build publish` matches `build*` and the module-qualified task matches `:*`. So
+`./gradlew *publish*` is denied; `publishToMavenLocal` and the staging publish go with it, since
+a deny cannot carry an exception and neither is a pipeline step. A never-trusted clone ignores
+the allow list while still applying `deny` (#219).
 
 `mcp__idea__rename_refactoring` predates #212; `CLAUDE.md` § IDE Tooling owns its reason.
 
