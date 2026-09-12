@@ -31,7 +31,10 @@ time; the next queued issue waits for the next free tick.
 2. **The review.** On `agent/pr-ready`, review the pull request. Inline comments plus the
    `agent/fix` label on the pull request run one fix stage, which replies in every thread with a
    sha or the reason nothing changed, and the label comes off; label again for another round.
-   Merge when satisfied: the next tick removes the worktree and branch and clears the labels.
+   The fix stage never resolves a thread. For the review stage to verify the fix blind and
+   resolve it, put `agent/queued` back on the issue: the pipeline resumes at review, loops, runs
+   the test stage again and hands over again. Merge when satisfied: the next tick removes the
+   worktree and branch and clears the labels.
 
 After `agent/failed`, the comment on the issue (or pull request) holds the last 30 lines of stderr
 and the log path. Replace it with `agent/queued` to retry: the worktree is reused and, once a pull
@@ -45,10 +48,46 @@ request exists, the pipeline resumes at the review stage.
 - `~/.netty-loom-agent/logs/NL-<n>/<stage>[-<round>].json` and `.log` — each `claude -p` result
   (cost, duration, subtype) and its stderr, written by `stage.sh`.
 
+## Cost
+
+`stage.sh` caps each `claude -p`: implement 8 USD, review 6, fix 4, test 6, 45 minutes each;
+`pipeline.sh` runs at most three review/fix rounds. A stage that hits its cap ends with
+`error_max_budget_usd` and the issue goes to `agent/failed`.
+
+Baseline: #239, the first issue to go from `agent/queued` to a merged pull request (#249) with no
+session opened by hand, on 2026-09-13 with `main` at `a0eecdc`.
+
+| Stage | USD | Wall | Turns | Denied calls |
+| --- | --- | --- | --- | --- |
+| implement | 2.94 | 6 min | 50 | 4 |
+| review 1 — nothing to post | 1.24 | 2 min | 14 | 2 |
+| test | 4.73 | 13 min | 68 | 3 |
+| `agent/fix`, one thread from the maintainer | 0.88 | 2 min | 20 | 2 |
+| review 1 again — resolved that thread, posted one | 1.80 | 4 min | 26 | 3 |
+| fix 1 | 1.05 | 2 min | 22 | 3 |
+| review 2 — resolved it, nothing new | 1.71 | 3 min | 20 | 4 |
+| test again | 5.22 | 11 min | 77 | 5 |
+
+19.58 USD and 43 minutes of stage time. From label to `agent/pr-ready`: 28 minutes the first
+time, 25 the second, each including up to five minutes for the tick and one for
+`dependencySources`. The second run is the `agent/queued` step of touch point 2: the pipeline
+has no shorter path to a review stage that settles a maintainer's thread, so it pays for a test
+stage as well. With both passes running under the 6 USD review budget, no review came near it.
+
+Of the 26 denied calls, 21 were Bash commands that no allow rule matches as a whole — `;`, `|`,
+`&&`, `for`, a heredoc, a `VAR=… ./gradlew` prefix — and the stage got the same facts another
+way each time; three were `gh api` reads of pull request comments (#245); one was
+`gh issue create --label`, denied by design, so the ticket named its labels in its body; one an
+IntelliJ terminal call, not on the tool list. Two more findings: inside the stage's sandbox
+`/usr/bin/java` resolves no JDK, so the implement stage compiled and ran the tests by hand until
+the plist below named one; and a re-run test stage does not see the tickets its earlier run
+opened (#250 and #252 are the same gap).
+
 ## launchd
 
 The plist lives outside the repository, at `~/Library/LaunchAgents/`. launchd starts with a bare
-`PATH`, so the line below names where `gh`, `flock`, `timeout` (Homebrew) and `claude` live:
+`PATH`, so the line below names where `gh`, `flock`, `timeout` (Homebrew), `claude` and the JDK
+live — the same JDK the shell uses, first:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -68,7 +107,7 @@ The plist lives outside the repository, at `~/Library/LaunchAgents/`. launchd st
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/opt/homebrew/bin:/Users/you/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <string>/Users/you/.sdkman/candidates/java/current/bin:/opt/homebrew/bin:/Users/you/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
   <key>StandardOutPath</key>
   <string>/Users/you/.netty-loom-agent/runner.log</string>
