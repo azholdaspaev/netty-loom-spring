@@ -74,7 +74,9 @@ public class NettyServer {
     /**
      * The first caller owns the drain and holds {@code lock} only for the handover, never for the
      * wait. A concurrent caller joins that drain, cuts it short once its own {@code timeout} is up
-     * and returns the owner's result.
+     * and returns the owner's result. {@code state} stays set until the loops are stopped rather
+     * than moving into {@link Shutdown}, so {@link #isRunning()} reads true through the drain and
+     * {@link #start()} stays a no-op instead of binding a second server into the shared registry.
      */
     public NettyShutdownResult shutdown(Duration timeout) {
         Deadline deadline = Deadline.in(timeout);
