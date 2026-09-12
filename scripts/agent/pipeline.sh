@@ -18,7 +18,7 @@ if [ -z "$url" ]; then
   url=$("$HERE/stage.sh" "$N" implement) || rc=$?
   case "$rc" in
     0) ;;
-    3) gh issue edit "$N" --remove-label agent/running --add-label agent/needs-input; exit 0 ;;
+    3) gh issue edit "$N" --remove-label agent/running --add-label agent/needs-input >/dev/null; exit 0 ;;
     *) exit "$rc" ;;
   esac
 fi
@@ -45,8 +45,8 @@ minutes=$(jq -s '([.[].duration_ms] | add) / 60000 | round' "$LOG"/*.json)
 results=$(jq -s length "$LOG"/*.json)
 
 gh pr ready "$url"
-gh issue edit "$N" --add-label agent/pr-ready
-gh issue comment "$N" --body-file - <<BODY
+gh issue edit "$N" --add-label agent/pr-ready >/dev/null
+gh issue comment "$N" --body-file - >/dev/null <<BODY
 Pull request: $url
 Review/fix rounds: $round, $outcome
 Cost: $(printf '%.2f' "$cost") USD, wall time: $minutes min, from $results stage results in $LOG.

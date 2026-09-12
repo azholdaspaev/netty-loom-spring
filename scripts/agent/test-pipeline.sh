@@ -57,7 +57,8 @@ case "$*" in
     [ -n "$open" ] || { echo "gh shim: SHIM_OPEN exhausted" >&2; exit 1; }
     echo "$((idx + 1))" > "$SHIM_STATE/open-idx"
     jq -n --argjson n "$open" '[range($n) | {id: "T\(.)", isResolved: false, isOutdated: false, firstCommentId: .}]' ;;
-  "issue comment 999 --body-file -") cat > "$SHIM_STATE/comment" ;;
+  "issue edit 999 "*) echo "https://github.com/o/r/issues/999" ;;
+  "issue comment 999 --body-file -") cat > "$SHIM_STATE/comment"; echo "https://github.com/o/r/issues/999#issuecomment-1" ;;
 esac
 SHIM
   chmod +x "$tmp/scripts/agent/stage.sh" "$tmp/bin/gh"
