@@ -10,7 +10,10 @@
     "deny": [
       "mcp__idea__rename_refactoring",
       "Bash(gh api *-X PUT*)",
+      "Bash(gh api *-XPUT*)",
+      "Bash(gh api *-X=PUT*)",
       "Bash(gh api *--method PUT*)",
+      "Bash(gh api *--method=PUT*)",
       "Bash(git push *--force)",
       "Bash(git push *--force *)",
       "Bash(git push -f*)",
