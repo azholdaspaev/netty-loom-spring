@@ -34,16 +34,17 @@ spelling and are denied outright.
 `-m` message containing `-n`, and a false deny on a commit strands the pipeline. The commit-msg
 hook this protects is a shape check, so the cost of the gap is bounded.
 
-**Label flags on `gh pr edit` / `gh issue edit`, not the whole command.** #212 wrote
-`gh pr edit*` so that only the pipeline script moves labels and state, but the agent rewrites its
-own pull request body with the same command and a deny cannot carry an exception. The label
-flags are separable: one rule per flag covers both `--add-label x` and `--add-label=x`, while
-`--title`, `--body` and `--body-file` stay open. State stays with `gh pr ready`, `gh pr merge`,
-`gh pr close` and `gh issue close`, denied bare and with arguments: draft→ready is the script's
-hand-over (#218), merge and close are the maintainer's. The maintainer's own sessions lose them
-through Claude. The `gh api` twins are denied by the token that names them: the label endpoints
-by path (`gh api *labels*`; the pipeline reads labels through `gh issue view --json labels`) and
-the mutations by name, as `RepositoryRuleset` is below.
+**Tracked: what is irreversible for anyone, not everything the pipeline relies on.** #212 also
+listed `gh pr merge`, `gh pr ready`, `gh pr edit` and `gh issue edit` so that only the pipeline
+script, never the model, moves labels and pull request state. That invariant belongs to the
+unattended run, but a tracked deny binds every session and cannot be lifted from
+`settings.local.json`, so here it would cost the maintainer every merge, close and label through
+Claude for no protection a human at the next terminal tab does not already bypass. The
+pipeline-state rules -- draft→ready, merge, close, the label flags and their `gh api` twins --
+therefore live in the runner-only settings file #215 passes with `--settings`, where they bind
+exactly the `-p` run behind #211's `--allowedTools` gate. What stays tracked is what nobody wants
+Claude doing in any session: the branch-protection gate, the repository object, an unleased force
+push, `--no-verify` and a publish.
 
 **The branch-protection gate: by path where the path is the target, by verb elsewhere.** PUT is
 denied in every pflag spelling `gh` accepts (`-X PUT`, `-XPUT`, `-X=PUT`, `--method PUT`,
