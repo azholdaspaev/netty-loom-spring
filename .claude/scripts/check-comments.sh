@@ -32,7 +32,8 @@ state == 2 {
     if ($0 ~ /^[[:space:]]*(\/\/.*|\/\*.*\*\/)?$/) next
     if (depth > 0 || $0 ~ /^[[:space:]]*@/) {
         if ($0 ~ /@(Test|ParameterizedTest)([^A-Za-z0-9_]|$)/) test = 1
-        depth += gsub(/\(/, "(") - gsub(/\)/, ")")
+        t = $0; gsub(/"[^"]*"/, "", t); sub(/\/\/.*$/, "", t)
+        depth += gsub(/\(/, "(", t) - gsub(/\)/, ")", t)
         next
     }
     if (test) fail("javadoc on a @Test method; the budget is none")
