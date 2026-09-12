@@ -16,14 +16,16 @@ setup() {
   mkdir -p "$tmp/bin" "$tmp/home"
   git init -q --bare -b main "$tmp/origin"
   git clone -q "$tmp/origin" "$tmp/work" 2>/dev/null
-  git -C "$tmp/work" commit -q --allow-empty -m "root"
-  git -C "$tmp/work" push -q origin HEAD:main
-  git -C "$tmp/work" checkout -q -b NL-999-x
-
   cat > "$tmp/work/gradlew" <<'SHIM'
 #!/usr/bin/env bash
 echo "gradlew $*" >> "$SHIM_EVENTS"
 SHIM
+  chmod +x "$tmp/work/gradlew"
+  echo root > "$tmp/work/src.txt"
+  git -C "$tmp/work" add gradlew src.txt
+  git -C "$tmp/work" commit -q -m "root"
+  git -C "$tmp/work" push -q origin HEAD:main
+  git -C "$tmp/work" checkout -q -b NL-999-x
   echo '[]' > "$tmp/comments"
   cat > "$tmp/bin/gh" <<'SHIM'
 #!/usr/bin/env bash
@@ -37,6 +39,7 @@ case "$*" in
       html_url: "https://github.com/o/r/issues/999#issuecomment-2"}]' "$SHIM_COMMENTS" > "$SHIM_COMMENTS.new"
     mv "$SHIM_COMMENTS.new" "$SHIM_COMMENTS" ;;
   "pr list --head NL-999-x "*) if [ -n "${SHIM_PR_URL:-}" ]; then echo "$SHIM_PR_URL"; fi ;;
+  "pr view "*" --json headRefOid "*) echo "${SHIM_HEAD:-$(git rev-parse HEAD)}" ;;
 esac
 SHIM
   cat > "$tmp/bin/claude" <<'SHIM'
@@ -59,11 +62,12 @@ case "$SHIM_MODE" in
   nocommit) result success false ;;
   question) ask; result success false ;;
   question-crash) ask; echo boom; exit 1 ;;
+  dirty)    echo y >> src.txt; result success false ;;
   crash)    commit; echo boom; exit 1 ;;
   hang)     sleep 5 ;;
 esac
 SHIM
-  chmod +x "$tmp/work/gradlew" "$tmp/bin/gh" "$tmp/bin/claude"
+  chmod +x "$tmp/bin/gh" "$tmp/bin/claude"
   export SHIM_EVENTS="$tmp/events" SHIM_ARGV="$tmp/argv" SHIM_COMMENTS="$tmp/comments"
 }
 
@@ -84,6 +88,8 @@ check() {
 contains() { case "$1" in *"$2"*) return 0 ;; *) return 1 ;; esac; }
 
 argv_has() { grep -qxF -- "$1" "$SHIM_ARGV" 2>/dev/null; }
+
+argv_after() { grep -A1 -xF -- "$1" "$SHIM_ARGV" 2>/dev/null | tail -n 1 || true; }
 
 # --- success ---
 setup
@@ -110,8 +116,8 @@ allowed_line=$(grep -nxF -- '--allowedTools' "$SHIM_ARGV" 2>/dev/null | cut -d: 
 { [ -n "$prompt_line" ] && [ -n "$allowed_line" ] && [ "$prompt_line" -lt "$allowed_line" ]; } \
   || { ok=0; why="prompt must precede --allowedTools (prompt line $prompt_line, allowedTools line $allowed_line)"; }
 system=$(cat "$SHIM_ARGV.system" 2>/dev/null || true)
-for needle in "# Unattended run" "git push -u origin NL-999-x" "--draft" "--body-file build/pr-body.md" \
-              ".github/PULL_REQUEST_TEMPLATE.md" "NL-999 "; do
+for needle in "# Unattended run" $'\n\n## Stage: implement\n' "git push -u origin NL-999-x" "--draft" \
+              "--body-file build/pr-body.md" ".github/PULL_REQUEST_TEMPLATE.md" "NL-999 "; do
   contains "$system" "$needle" || { ok=0; why="system prompt lacks '$needle'"; }
 done
 log="$tmp/home/.netty-loom-agent/logs/NL-999"
@@ -211,6 +217,88 @@ ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "unknown stage" || ok=0
 [ ! -e "$SHIM_ARGV" ] || { ok=0; why="claude ran for an unknown stage"; }
 check unknown-stage "$ok" "$why"
+rm -rf "$tmp"
+
+# --- review ---
+setup
+run success "" 999 review "$PR_URL" 2
+ok=1; why=""
+[ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
+[ -z "$out" ] || { ok=0; why="stdout=$out"; }
+[ "$(cat "$SHIM_EVENTS" 2>/dev/null || true)" = "gh repo view --json nameWithOwner --jq .nameWithOwner
+gh api user --jq .login
+gradlew --stop
+$comments_call
+claude
+$comments_call
+gradlew --stop" ] || { ok=0; why="events=$(tr '\n' '|' 2>/dev/null < "$SHIM_EVENTS" || true)"; }
+[ "$(argv_after --max-budget-usd)" = 4 ] || { ok=0; why="budget=$(argv_after --max-budget-usd)"; }
+for flag in "NL-999 review 2" "/flow:review $PR_URL"; do
+  argv_has "$flag" || { ok=0; why="argv lacks $flag"; }
+done
+system=$(cat "$SHIM_ARGV.system" 2>/dev/null || true)
+contains "$system" "# Unattended run" || { ok=0; why="system prompt lacks unattended.md"; }
+contains "$system" "--draft" && { ok=0; why="system prompt carries the implement tail"; }
+log="$tmp/home/.netty-loom-agent/logs/NL-999"
+[ "$(jq -r .subtype "$log/review-2.json" 2>/dev/null)" = success ] || { ok=0; why="review-2.json missing or wrong"; }
+check review "$ok" "$why"
+rm -rf "$tmp"
+
+# --- fix ---
+setup
+run success "" 999 fix "$PR_URL" 1
+ok=1; why=""
+[ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
+[ "$(argv_after --max-budget-usd)" = 4 ] || { ok=0; why="budget=$(argv_after --max-budget-usd)"; }
+for flag in "NL-999 fix 1" "/flow:fix $PR_URL"; do
+  argv_has "$flag" || { ok=0; why="argv lacks $flag"; }
+done
+grep -qxF -- "gh pr view $PR_URL --json headRefOid --jq .headRefOid" "$SHIM_EVENTS" 2>/dev/null \
+  || { ok=0; why="events=$(tr '\n' '|' 2>/dev/null < "$SHIM_EVENTS" || true)"; }
+[ "$(jq -r .subtype "$tmp/home/.netty-loom-agent/logs/NL-999/fix-1.json" 2>/dev/null)" = success ] \
+  || { ok=0; why="fix-1.json missing or wrong"; }
+check fix "$ok" "$why"
+rm -rf "$tmp"
+
+# --- fix leaves uncommitted edits ---
+setup
+run dirty "" 999 fix "$PR_URL" 1
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 1 ] && contains "$err" "uncommitted" || ok=0
+check fix-dirty "$ok" "$why"
+rm -rf "$tmp"
+
+# --- fix did not push ---
+setup
+export SHIM_HEAD=0000000000000000000000000000000000000000
+run success "" 999 fix "$PR_URL" 1
+unset SHIM_HEAD
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 1 ] && contains "$err" "not pushed" || ok=0
+check fix-unpushed "$ok" "$why"
+rm -rf "$tmp"
+
+# --- test ---
+setup
+run nocommit "" 999 test "$PR_URL"
+ok=1; why=""
+[ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
+[ "$(argv_after --max-budget-usd)" = 6 ] || { ok=0; why="budget=$(argv_after --max-budget-usd)"; }
+for flag in "NL-999 test" "/flow:test $PR_URL"; do
+  argv_has "$flag" || { ok=0; why="argv lacks $flag"; }
+done
+[ "$(jq -r .subtype "$tmp/home/.netty-loom-agent/logs/NL-999/test.json" 2>/dev/null)" = success ] \
+  || { ok=0; why="test.json missing or wrong"; }
+check test "$ok" "$why"
+rm -rf "$tmp"
+
+# --- pull request stage without a pull request ---
+setup
+run success "" 999 review
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 1 ] && contains "$err" "pull request" || ok=0
+[ ! -e "$SHIM_ARGV" ] || { ok=0; why="claude ran without a pull request"; }
+check no-pr-argument "$ok" "$why"
 rm -rf "$tmp"
 
 exit "$failed"
