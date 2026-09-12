@@ -9,8 +9,7 @@ import io.netty.handler.codec.http.HttpHeaderValidationUtil;
 import io.netty.handler.codec.http.HttpResponse;
 
 /**
- * Stamps the configured {@code Server} header on every response head (issue #167). Sits directly
- * above the codec so the rejections other handlers write past the dispatcher carry it too.
+ * Stamps the configured {@code Server} header on every response head (issue #167).
  */
 @Sharable
 public class HttpServerHeaderHandler extends ChannelOutboundHandlerAdapter {

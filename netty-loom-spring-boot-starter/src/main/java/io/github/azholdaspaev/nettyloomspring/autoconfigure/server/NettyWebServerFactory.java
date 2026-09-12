@@ -98,6 +98,7 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
         if (!StringUtils.hasText(getServerHeader())) {
             return pipelineDefinition;
         }
+        // Directly below the codec so the rejections other handlers write past the dispatcher carry it too.
         return pipelineDefinition.withStepAfter("httpCodec",
             NettyPipelineStep.shared("serverHeader", new HttpServerHeaderHandler(getServerHeader())));
     }
