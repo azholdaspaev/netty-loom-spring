@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.web.server.PortInUseException;
-import org.springframework.context.ConfigurableApplicationContext;
 
 import java.net.BindException;
 import java.net.ServerSocket;
@@ -37,7 +36,7 @@ class ServerPortInUseTest {
             int takenPort = squatter.getLocalPort();
 
             RuntimeException failure = assertThrows(RuntimeException.class, () -> {
-                try (ConfigurableApplicationContext context = new SpringApplicationBuilder(SmokeNettyLoomApplication.class)
+                try (var _ = new SpringApplicationBuilder(SmokeNettyLoomApplication.class)
                     .properties("server.port=" + takenPort)
                     .run()) {
                     // Only reached if the bind unexpectedly succeeds; closing keeps that a legible
@@ -57,7 +56,7 @@ class ServerPortInUseTest {
         // and the bind fails EADDRNOTAVAIL on every platform. Issue #74 proposed an unprivileged bind of
         // port 80 for EACCES instead, but macOS permits a wildcard bind there and would leave a live :80.
         RuntimeException failure = assertThrows(RuntimeException.class, () -> {
-            try (ConfigurableApplicationContext context = new SpringApplicationBuilder(SmokeNettyLoomApplication.class)
+            try (var _ = new SpringApplicationBuilder(SmokeNettyLoomApplication.class)
                 .properties("server.port=0", "server.address=192.0.2.1")
                 .run()) {
                 // Reachable where non-local binding is enabled (net.ipv4.ip_nonlocal_bind=1, or a
