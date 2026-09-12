@@ -68,6 +68,11 @@ deliberate deviation from what the surrounding code predicts.
 `CLAUDE.md` § Guidelines rule 5 has the closed list of triggers and the hard line budgets. Read it
 before adding any comment; reviewers quote it.
 
+`./gradlew build` runs [`.claude/scripts/check-comments.sh`](.claude/scripts/check-comments.sh),
+which rejects the part a script can check — a javadoc on a `@Test` method, a class javadoc past 20
+lines, a `private` member's past 2 — naming the file and line; whether a trigger fired, and the
+8-line class budget, stay with the author.
+
 ## Commits
 
 Subject line: `NL-<issue number> <imperative summary>`, e.g.
