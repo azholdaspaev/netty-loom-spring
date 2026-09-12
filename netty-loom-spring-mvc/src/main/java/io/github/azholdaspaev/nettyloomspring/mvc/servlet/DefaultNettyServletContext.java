@@ -31,7 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicReference;
 
-public class DefaultNettyServletContext implements NettyServletContext {
+public final class DefaultNettyServletContext implements NettyServletContext {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultNettyServletContext.class);
 

@@ -119,7 +119,7 @@ public class NettySessionManager {
             setDefaultMaxInactiveInterval(0);
             return;
         }
-        setDefaultMaxInactiveInterval((int) Math.clamp(timeout.toSeconds(), 1, Integer.MAX_VALUE));
+        setDefaultMaxInactiveInterval(Math.clamp(timeout.toSeconds(), 1, Integer.MAX_VALUE));
     }
 
     public NettySessionCookieConfig getCookieConfig() {
