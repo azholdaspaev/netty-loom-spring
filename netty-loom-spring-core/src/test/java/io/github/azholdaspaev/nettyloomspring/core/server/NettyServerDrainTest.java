@@ -84,6 +84,7 @@ class NettyServerDrainTest {
     @AfterEach
     void tearDown() {
         releaseDispatcher.countDown();
+        releaseAbort.countDown();
         if (nettyServer.isRunning()) {
             nettyServer.shutdown(Duration.ZERO);
         }
@@ -194,6 +195,7 @@ class NettyServerDrainTest {
 
     @Test
     void shouldCutTheDrainShortWhenShutdownIsCalledAgainWithNoGrace() throws Exception {
+        releaseAbort.countDown();
         try (Socket client = connect()) {
             send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
             assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
