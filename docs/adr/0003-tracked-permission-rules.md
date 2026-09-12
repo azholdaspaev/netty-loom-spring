@@ -53,9 +53,18 @@ DELETE removes the gate outright, the path has one spelling where the method has
 rule therefore also holds for a lowercase or shell-quoted method there, which the verb rules do
 not (#231). The GET readback README names goes with it; the pipeline never reads rulesets and
 the maintainer runs it in a terminal. `gh api graphql *RepositoryRuleset*` covers the mutations
-without denying `gh api graphql` wholesale, which resolving review threads needs. `gh repo edit`
-is denied entirely: README § Known gaps records that the repo-level `allow_merge_commit` flag
-alone holds linear history, and nothing in the pipeline edits repository settings.
+without denying `gh api graphql` wholesale, which resolving review threads needs.
+
+**The repository object: `gh repo` wholesale, and its REST root by path with a terminator.**
+README § Known gaps records that the repo-level `allow_merge_commit` flag alone holds linear
+history; `gh repo edit`, `gh repo archive` and `gh repo rename` all write to that object and
+nothing in the pipeline reads it, so the whole subcommand is denied rather than three verbs.
+The REST twin is `PATCH repos/<owner>/<repo>`, and the root is a prefix of every other path, so
+the bare `*rulesets*` shape would deny `…/pulls/<N>/comments` with it. The rule instead ends
+where the path ends -- at the end of the command or at a space -- in each spelling `gh` resolves
+(`repos/azholdaspaev/netty-loom-spring`, `repos/{owner}/{repo}`, `repos/:owner/:repo`), which
+holds for any verb, flag position and method spelling where a `PATCH` rule would not. The GET
+readback of the repository goes with it, as the ruleset one does.
 
 **The allow list is read-only or gated elsewhere.** `./gradlew`, `gh pr view`, `gh pr diff`,
 `gh issue view`, `git status`, `git log`, `git diff`. A never-trusted clone ignores it while
