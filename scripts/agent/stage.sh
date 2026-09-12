@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Run one pipeline stage for a GitHub issue as an unattended claude -p and report how it ended.
+# Run one pipeline stage for a GitHub issue as an unattended claude -p and report how it ended:
+# exit 0 with the pull request URL, 3 when the stage posted a question, 124 on timeout, else 1.
 # Usage: scripts/agent/stage.sh <issue number> implement    (cwd = the issue's worktree)
 set -euo pipefail
 
@@ -15,6 +16,11 @@ case "$branch" in
   NL-"$N"-*) ;;
   *) fail "on '$branch', expected NL-$N-<slug>" ;;
 esac
+
+MARKER='<!-- agent:question -->'
+repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+me=$(gh api user --jq .login)
+comments() { gh api --paginate "repos/$repo/issues/$N/comments?per_page=100" | jq -s 'add // []'; }
 
 ALLOWED="Read,Edit,Write,Grep,Glob,Agent,Skill,Bash(./gradlew *),\
 Bash(git status *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git add *),\
@@ -49,6 +55,10 @@ mkdir -p "$LOG"
 trap './gradlew --stop >&2 || true' EXIT
 ./gradlew --stop >&2
 
+# The newest comment's own timestamp rather than date -u: GitHub's clock on both sides, so a
+# skewed local clock cannot hide this stage's question inside a "no commits" failure.
+since=$(comments | jq -r 'map(.created_at) | max // ""')
+
 rc=0
 timeout "$STAGE_TIMEOUT" claude -p "$PROMPT" \
   --permission-mode acceptEdits --permission-prompts none \
@@ -58,6 +68,11 @@ timeout "$STAGE_TIMEOUT" claude -p "$PROMPT" \
   --max-budget-usd "$BUDGET" \
   --output-format json --name "NL-$N $STAGE" \
   </dev/null >"$LOG/$STAGE.json" 2>"$LOG/$STAGE.log" || rc=$?
+
+question=$(comments | jq -r --arg me "$me" --arg since "$since" --arg marker "$MARKER" \
+  '[.[] | select(.user.login == $me and (.body | startswith($marker)) and .created_at > $since)]
+   | first // empty | .html_url')
+[ -z "$question" ] || fail "asked a question: $question" 3
 
 [ "$rc" = 124 ] && fail "timed out after $STAGE_TIMEOUT" 124
 subtype=$(jq -r '.subtype // empty' "$LOG/$STAGE.json" 2>/dev/null || true)
