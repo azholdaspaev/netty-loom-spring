@@ -236,14 +236,6 @@ public class NettyServer {
     private record State(Channel serverChannel, EventLoopGroup bossGroup, EventLoopGroup workerGroup) {
     }
 
-    private static final class Shutdown {
-
-        private final CountDownLatch done = new CountDownLatch(1);
-
-        // Stays REQUESTS_ACTIVE if the owner throws, so a joiner reads "not drained" rather than nothing.
-        private volatile NettyShutdownResult result = NettyShutdownResult.REQUESTS_ACTIVE;
-    }
-
     private record Deadline(long nanoTime) {
 
         static Deadline in(Duration timeout) {
@@ -253,5 +245,13 @@ public class NettyServer {
         long remainingMillis() {
             return Math.max(0L, (nanoTime - System.nanoTime()) / 1_000_000L);
         }
+    }
+
+    private static final class Shutdown {
+
+        private final CountDownLatch done = new CountDownLatch(1);
+
+        // Stays REQUESTS_ACTIVE if the owner throws, so a joiner reads "not drained" rather than nothing.
+        private volatile NettyShutdownResult result = NettyShutdownResult.REQUESTS_ACTIVE;
     }
 }
