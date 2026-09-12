@@ -125,7 +125,7 @@ that cost the most:
 - `server.shutdown=immediate` — the server drains anyway ([#87](https://github.com/azholdaspaev/netty-loom-spring/issues/87))
 
 The [full list](docs/configuration.md#properties-that-are-silently-ignored) covers the rest,
-including `server.server-header`, `server.mime-mappings.*` and `spring.mvc.servlet.path`.
+including `server.mime-mappings.*` and `spring.mvc.servlet.path`.
 
 ### 2. Settings that fail startup loudly
 

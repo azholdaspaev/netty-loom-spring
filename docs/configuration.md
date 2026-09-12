@@ -63,7 +63,6 @@ Everything below is set on the factory and never read again — **no warning, no
 | `server.compression.*` | No `HttpContentCompressor` in the pipeline | [#22](https://github.com/azholdaspaev/netty-loom-spring/issues/22) |
 | `server.http2.enabled` | `HttpServerCodec` is HTTP/1.1 only | [#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23) |
 | `server.shutdown=immediate` | Boot 4 registers the graceful-shutdown lifecycle for every factory; this one never reads `getShutdown()` to opt out, so it always drains | [#87](https://github.com/azholdaspaev/netty-loom-spring/issues/87) |
-| `server.server-header` | Never written to a response | |
 | `server.max-http-request-header-size` | Superseded by the fixed 10,000-byte header limit | [#42](https://github.com/azholdaspaev/netty-loom-spring/issues/42) |
 | `server.mime-mappings.*` | Never read; `ServletContext.getMimeType` throws | |
 | `server.servlet.application-display-name` | `getServletContextName()` is hardcoded | [#86](https://github.com/azholdaspaev/netty-loom-spring/issues/86) |

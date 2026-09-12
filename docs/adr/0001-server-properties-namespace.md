@@ -2,7 +2,8 @@
 
 - Status: Accepted
 - Date: 2026-07-03
-- Amended: 2026-08-16 ([#159](https://github.com/azholdaspaev/netty-loom-spring/issues/159))
+- Amended: 2026-08-16 ([#159](https://github.com/azholdaspaev/netty-loom-spring/issues/159)),
+  2026-09-12 ([#167](https://github.com/azholdaspaev/netty-loom-spring/issues/167))
 - Issue: [#49](https://github.com/azholdaspaev/netty-loom-spring/issues/49)
 
 ## Context
@@ -72,7 +73,7 @@ TLS-configured is a security footgun, `getWebServer()` **fails fast** with a cle
 The remaining inherited setters are silent no-ops by design (the interface contract requires them);
 these `server.*` knobs appear configurable but currently have **no effect**:
 
-- `setHttp2` (#23), `setCompression` (#22), `setServerHeader` — not applied to the Netty pipeline.
+- `setHttp2` (#23), `setCompression` (#22) — not applied to the Netty pipeline.
 - `setMimeMappings` — no static resource serving.
 
 [docs/configuration.md](../configuration.md#properties-that-are-silently-ignored) owns the
@@ -99,3 +100,8 @@ The ownership rule is unchanged; its worked example had drifted. #13 closed on 2
 the only knob that fails fast. **Consequences** was corrected in place.
 
 **Scope** above still describes #49's boundary as it stood on 2026-07-03 and is left as written.
+
+### 2026-09-12 — the Server header is written (#167)
+
+`setServerHeader` is applied to the Netty pipeline, so it left the list of inherited setters with
+no effect. **Consequences** was corrected in place.
