@@ -12,9 +12,12 @@ export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 
 # pipeline.sh finds stage.sh and pr-comments.sh relative to itself, so each case gets a copy of
 # the tree's layout beside a stage.sh shim, a clone on NL-999-x, gh first on PATH and a fresh HOME.
-# The stage shim writes the result file pipeline.sh sums; the gh shim answers each GraphQL thread
-# query with the next count from SHIM_OPEN ("2,0" = two open threads after the first review,
-# none after the second).
+# The stage shim writes the result file pipeline.sh sums, moves the pull request head on the fix
+# rounds SHIM_FIX_PUSHES lists ("1,0" = fix 1 pushes a commit, fix 2 does not; unset = every fix
+# pushes) and posts inline comments as the runner on the review rounds SHIM_REVIEW_POSTS counts
+# ("0,1" = review 2 posts one; unset = none). The gh shim serves that state back and answers each
+# GraphQL thread query with the next count from SHIM_OPEN ("2,0" = two open threads after the
+# first review, none after the second).
 setup() {
   tmp=$(mktemp -d)
   mkdir -p "$tmp/scripts/agent" "$tmp/.claude/scripts" "$tmp/bin" "$tmp/home" "$tmp/state"
@@ -41,6 +44,14 @@ echo '{"subtype":"success","total_cost_usd":0.5,"duration_ms":60000}' \
   > "$HOME/.netty-loom-agent/logs/NL-$1/$stage${round:+-$round}.json"
 case "$stage" in
   implement) echo "$SHIM_URL" ;;
+  review)
+    posts=$(echo "${SHIM_REVIEW_POSTS:-}" | cut -d, -f"$round")
+    jq -c --argjson n "${posts:-0}" '. as $c | $c + [range($n) | {user: {login: "runner"},
+        created_at: "2026-01-01T00:00:\(($c | length) + . | tostring | ("0" + .)[-2:])Z"}]' \
+      "$SHIM_STATE/comments" > "$SHIM_STATE/comments.new" && mv "$SHIM_STATE/comments.new" "$SHIM_STATE/comments" ;;
+  fix)
+    pushes=$(echo "${SHIM_FIX_PUSHES-1,1,1}" | cut -d, -f"$round")
+    if [ "${pushes:-0}" = 1 ]; then echo "fix-$round" > "$SHIM_STATE/head"; fi ;;
   test) if [ -n "${SHIM_TEST_DIRTY:-}" ]; then echo mutated >> src.txt; fi ;;
 esac
 SHIM
@@ -50,6 +61,9 @@ echo "gh $*" >> "$SHIM_EVENTS"
 case "$*" in
   "pr list --head NL-999-x "*) if [ -n "${SHIM_PR_URL:-}" ]; then echo "$SHIM_PR_URL"; fi ;;
   "pr view "*" --json url "*) echo "$2" ;;
+  "pr view "*" --json headRefOid "*) cat "$SHIM_STATE/head" ;;
+  "api user --jq .login") echo runner ;;
+  "api --paginate repos/o/r/pulls/7/comments?per_page=100") cat "$SHIM_STATE/comments" ;;
   "api --paginate "*) echo "[]" ;;
   "api graphql "*)
     idx=$(cat "$SHIM_STATE/open-idx" 2>/dev/null || echo 0)
@@ -62,6 +76,8 @@ case "$*" in
 esac
 SHIM
   chmod +x "$tmp/scripts/agent/stage.sh" "$tmp/bin/gh"
+  echo implement > "$tmp/state/head"
+  echo '[{"user": {"login": "maintainer"}, "created_at": "2025-12-31T00:00:00Z"}]' > "$tmp/state/comments"
   export SHIM_EVENTS="$tmp/events" SHIM_STATE="$tmp/state" SHIM_URL="$PR_URL"
 }
 
@@ -113,6 +129,45 @@ for needle in "did not converge after 3 rounds; 1 thread open" "4.00 USD" "8 min
   contains "$comment" "$needle" || { ok=0; why="comment lacks '$needle': $comment"; }
 done
 check no-convergence "$ok" "$why"
+rm -rf "$tmp"
+
+# --- a round that changes nothing ends the loop ---
+setup
+export SHIM_FIX_PUSHES=0
+run 1,1 ""
+unset SHIM_FIX_PUSHES
+ok=1; why=""
+[ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
+[ "$stages" = "$IMPLEMENT$R1$F1$R2$TEST$HANDOFF" ] || { ok=0; why="stages=$stages"; }
+for needle in "rounds: 2" "did not converge" "fix 1 pushed no commit and review 2 posted no comment" "1 thread open" "2.50 USD"; do
+  contains "$comment" "$needle" || { ok=0; why="comment lacks '$needle': $comment"; }
+done
+contains "$comment" "after 3 rounds" && { ok=0; why="comment blames the round cap: $comment"; }
+check stalls "$ok" "$why"
+rm -rf "$tmp"
+
+# --- a fix that moved the head earns the next round ---
+setup
+export SHIM_FIX_PUSHES=1,0
+run 1,1,1 ""
+unset SHIM_FIX_PUSHES
+ok=1; why=""
+[ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
+[ "$stages" = "$IMPLEMENT$R1$F1$R2$F2$R3$TEST$HANDOFF" ] || { ok=0; why="stages=$stages"; }
+contains "$comment" "fix 2 pushed no commit and review 3 posted no comment" || { ok=0; why="comment: $comment"; }
+check moved-head-continues "$ok" "$why"
+rm -rf "$tmp"
+
+# --- a review that posted a comment earns the next round ---
+setup
+export SHIM_FIX_PUSHES=0 SHIM_REVIEW_POSTS=0,1
+run 1,1,1 ""
+unset SHIM_FIX_PUSHES SHIM_REVIEW_POSTS
+ok=1; why=""
+[ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
+[ "$stages" = "$IMPLEMENT$R1$F1$R2$F2$R3$TEST$HANDOFF" ] || { ok=0; why="stages=$stages"; }
+contains "$comment" "fix 2 pushed no commit and review 3 posted no comment" || { ok=0; why="comment: $comment"; }
+check new-comment-continues "$ok" "$why"
 rm -rf "$tmp"
 
 # --- nothing to fix ---
