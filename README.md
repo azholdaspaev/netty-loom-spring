@@ -125,7 +125,7 @@ that cost the most:
 - `server.shutdown=immediate` — the server drains anyway ([#87](https://github.com/azholdaspaev/netty-loom-spring/issues/87))
 
 The [full list](docs/configuration.md#properties-that-are-silently-ignored) covers the rest,
-including `server.server-header`, `server.mime-mappings.*` and `spring.mvc.servlet.path`.
+including `server.mime-mappings.*` and `spring.mvc.servlet.path`.
 
 ### 2. Settings that fail startup loudly
 
@@ -230,6 +230,7 @@ TCP accept (boss loop)
       HttpConnectionRegistry.register(channel)   # before the pipeline is configured
   → then the pipeline, on that same loop:
       httpCodec          HttpServerCodec(10_000, 10_000, 10_000)
+      serverHeader       HttpServerHeaderHandler   # @Sharable; only when server.server-header is set
       httpKeepAlive      HttpServerKeepAliveHandler
       drain              HttpDrainHandler          # counts the exchange for graceful shutdown
       readTimeout        HttpReadTimeoutHandler    # client deadline; suspended while dispatching

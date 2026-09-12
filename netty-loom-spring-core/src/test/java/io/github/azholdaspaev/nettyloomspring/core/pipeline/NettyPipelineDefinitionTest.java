@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class NettyPipelineDefinitionTest {
 
@@ -101,6 +102,36 @@ class NettyPipelineDefinitionTest {
         assertNotNull(firstHandler);
         assertNotNull(secondHandler);
         assertNotSame(firstHandler, secondHandler);
+    }
+
+    @Test
+    void shouldInsertAStepDirectlyAfterTheNamedOneWithoutChangingTheOriginal() {
+        var original = new NettyPipelineDefinition(List.of(
+                new NettyPipelineStep("first", ChannelInboundHandlerAdapter::new),
+                new NettyPipelineStep("second", ChannelInboundHandlerAdapter::new)
+        ));
+
+        var extended = original.withStepAfter("first", new NettyPipelineStep("inserted", ChannelInboundHandlerAdapter::new));
+
+        ChannelPipeline extendedPipeline = new EmbeddedChannel().pipeline();
+        extended.applyTo(extendedPipeline);
+        assertEquals(List.of("first", "inserted", "second"), extendedPipeline.names().subList(0, 3),
+                "the new step must sit directly after the named one");
+
+        ChannelPipeline originalPipeline = new EmbeddedChannel().pipeline();
+        original.applyTo(originalPipeline);
+        assertNull(originalPipeline.get("inserted"), "the original definition must not gain the step");
+    }
+
+    @Test
+    void shouldRejectInsertingAfterAStepThatDoesNotExist() {
+        var definition = new NettyPipelineDefinition(List.of(
+                new NettyPipelineStep("first", ChannelInboundHandlerAdapter::new)
+        ));
+        var step = new NettyPipelineStep("inserted", ChannelInboundHandlerAdapter::new);
+
+        assertThrows(IllegalArgumentException.class, () -> definition.withStepAfter("missing", step),
+                "a misspelled anchor must fail when the definition is built, not once per channel");
     }
 
 }

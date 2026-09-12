@@ -37,6 +37,7 @@ in favour of `server.port`.
 | `server.servlet.session.cookie.*` | `name`, `domain`, `path`, `http-only`, `secure`, `max-age`, `same-site`, `partitioned` |
 | `server.servlet.session.tracking-modes` | Only `cookie`; an empty set is legal and disables the cookie |
 | `server.servlet.context-parameters.*` | Become `ServletContext` init parameters |
+| `server.server-header` | Written as the `Server` header on every response, including the container's own 4xx/5xx rejections, replacing any value the application set — as Tomcat does. Unset or blank writes no `Server` header |
 | `spring.servlet.encoding.*` | Works because Boot implements it as a `CharacterEncodingFilter` bean, not a container setting |
 
 Two extension points also work: `WebServerFactoryCustomizer<ConfigurableServletWebServerFactory>`
@@ -62,7 +63,6 @@ Everything below is set on the factory and never read again — **no warning, no
 | `server.compression.*` | No `HttpContentCompressor` in the pipeline | [#22](https://github.com/azholdaspaev/netty-loom-spring/issues/22) |
 | `server.http2.enabled` | `HttpServerCodec` is HTTP/1.1 only | [#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23) |
 | `server.shutdown=immediate` | Boot 4 registers the graceful-shutdown lifecycle for every factory; this one never reads `getShutdown()` to opt out, so it always drains | [#87](https://github.com/azholdaspaev/netty-loom-spring/issues/87) |
-| `server.server-header` | Never written to a response | |
 | `server.max-http-request-header-size` | Superseded by the fixed 10,000-byte header limit | [#42](https://github.com/azholdaspaev/netty-loom-spring/issues/42) |
 | `server.mime-mappings.*` | Never read; `ServletContext.getMimeType` throws | |
 | `server.servlet.application-display-name` | `getServletContextName()` is hardcoded | [#86](https://github.com/azholdaspaev/netty-loom-spring/issues/86) |
@@ -179,7 +179,8 @@ Requests stream too. `getInputStream()` blocks the request's virtual thread unti
 arrives, and the connection reads on only as that stream drains, so a client sending faster than the
 handler reads is made to wait in the socket rather than in heap.
 
-Two headers Tomcat always sends are never emitted here: `Date` and `Server`.
+`Date`, which Tomcat always sends, is never emitted here. `Server` is written only when
+[`server.server-header`](#standard-server-properties-that-are-honoured) is set.
 
 ## Exception-to-status mapping
 
