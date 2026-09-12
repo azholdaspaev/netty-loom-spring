@@ -27,7 +27,7 @@ public class NettyServer {
     private final NettyIoHandlerFactory ioHandlerFactory;
     private final HttpConnectionRegistry connectionRegistry;
 
-    private volatile RunningState state;
+    private volatile State state;
 
     private Shutdown shutdown;
 
@@ -58,7 +58,7 @@ public class NettyServer {
             boolean bound = false;
             try {
                 Channel channel = bind(boss, worker);
-                state = new RunningState(channel, boss, worker);
+                state = new State(channel, boss, worker);
                 bound = true;
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -80,7 +80,7 @@ public class NettyServer {
      */
     public NettyShutdownResult shutdown(Duration timeout) {
         Deadline deadline = Deadline.in(timeout);
-        RunningState current;
+        State current;
         Shutdown inProgress;
         Shutdown owned = null;
         synchronized (lock) {
@@ -103,7 +103,7 @@ public class NettyServer {
      */
     public void stopAcceptingConnections() {
         synchronized (lock) {
-            RunningState current = state;
+            State current = state;
             if (current == null) {
                 return;
             }
@@ -118,7 +118,7 @@ public class NettyServer {
     }
 
     public InetSocketAddress getBoundAddress() {
-        RunningState current = state;
+        State current = state;
         if (current != null && current.serverChannel().localAddress() instanceof InetSocketAddress addr) {
             return addr;
         }
@@ -157,7 +157,7 @@ public class NettyServer {
         return cause;
     }
 
-    private NettyShutdownResult drainAndStop(RunningState current, Shutdown owned, Deadline deadline) {
+    private NettyShutdownResult drainAndStop(State current, Shutdown owned, Deadline deadline) {
         try {
             closeServerChannel(current);
             boolean drained = drainOrForceClose(deadline);
@@ -197,7 +197,7 @@ public class NettyServer {
         return inProgress.result;
     }
 
-    private static void closeServerChannel(RunningState current) {
+    private static void closeServerChannel(State current) {
         current.serverChannel().close().syncUninterruptibly();
     }
 
@@ -233,7 +233,18 @@ public class NettyServer {
         return new MultiThreadIoEventLoopGroup(threads, ioHandlerFactory.getIoHandlerFactory());
     }
 
-    private record RunningState(Channel serverChannel, EventLoopGroup bossGroup, EventLoopGroup workerGroup) {
+    private record State(Channel serverChannel, EventLoopGroup bossGroup, EventLoopGroup workerGroup) {
+    }
+
+    private record Deadline(long nanoTime) {
+
+        private static Deadline in(Duration timeout) {
+            return new Deadline(System.nanoTime() + timeout.toNanos());
+        }
+
+        private long remainingMillis() {
+            return Math.max(0L, (nanoTime - System.nanoTime()) / 1_000_000L);
+        }
     }
 
     private static final class Shutdown {
