@@ -42,10 +42,7 @@ untouched file is out of scope; mention it in the summary at most, never as an i
 
 ## What to post
 
-Inside `.github/workflows/claude-review.yml` — the only place
-`mcp__github_inline_comment__create_inline_comment` exists — one inline comment per finding, on
-the line it is about, with `confirmed: true`. Anywhere else, return the findings to the caller;
-`/flow:review` anchors and posts them itself.
+Return the findings to the caller; `/flow:review` anchors and posts them itself.
 
 Each comment must name the existing code it is comparing against — the sibling whose naming
 sets the convention, the class that already owns the constant, the other file holding the same

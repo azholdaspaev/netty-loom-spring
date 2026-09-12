@@ -11,9 +11,8 @@ on:
   push:
     tags: [ 'v*.*.*' ]
 
-# cancel-in-progress: false, the opposite of claude-review.yml and for the opposite reason.
-# There, a superseded review is waste; here, cancelling between the bundle upload and the status
-# poll abandons a deployment on the Portal with nothing watching it.
+# cancel-in-progress: false: cancelling between the bundle upload and the status poll abandons
+# a deployment on the Portal with nothing watching it.
 concurrency:
   group: publish-${{ github.ref }}
   cancel-in-progress: false
