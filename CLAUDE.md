@@ -37,13 +37,11 @@ Gradle 9.4.1 (Kotlin DSL), Spring Boot BOM 4.0.5, Netty 4.2.12.Final, JUnit 6.0.
 
 ## IDE Tooling
 
-A JetBrains MCP server (`idea`) is available whenever IntelliJ has this project open; CI never has it. Load its tools in one call: `ToolSearch("select:mcp__idea__lint_files,mcp__idea__search_symbol,mcp__idea__read_file,mcp__idea__get_symbol_info")`. Reach for it only for what the IDE knows and the shell cannot:
+Library sources — Netty, Spring, the Servlet API, Tomcat — come from `./gradlew dependencySources`, which unpacks every `-sources.jar` on a module's `testRuntimeClasspath` into `<module>/build/dependency-sources/<artifact>-<version>/` (e.g. `netty-loom-spring-mvc/build/dependency-sources/spring-webmvc-<version>/org/springframework/web/servlet/DispatcherServlet.java`). Run it once per worktree; a second run is up-to-date, and `build` never runs it. Read the trees with `grep` and `cat`, the same as the source tree. `javap` gives signatures, never method bodies.
 
-- **`lint_files` / `get_file_problems`** — inspections `javac` lacks: `@Incubating` API use, JSpecify `@NullMarked` violations, superseded idioms. Gate at `min_severity: "error"`; `"warning"` adds unused-lambda-parameter noise. A clean file is omitted from `items`, not returned empty
-- **`search_symbol` with `include_external: true`, then `read_file` on the path it returns** — a dependency's own sources out of its `-sources.jar`, decompiled where no sources jar exists. `javap` gives signatures, never method bodies
-- **`get_symbol_info`** — resolved declaration and javadoc at a line/column, following references into dependencies
+A JetBrains MCP server (`idea`) is available whenever IntelliJ has this project open; CI and the agent pipeline never have it. Reach for it only for inspections `javac` lacks — `ToolSearch("select:mcp__idea__lint_files")`, then **`lint_files` / `get_file_problems`**: `@Incubating` API use, JSpecify `@NullMarked` violations, superseded idioms. Gate at `min_severity: "error"`; `"warning"` adds unused-lambda-parameter noise. A clean file is omitted from `items`, not returned empty.
 
-`./gradlew` is the ground truth for builds and tests, not the IDE. On an index error (`PSI and index do not match`) fall back to `grep`. For files inside the source tree, `grep`, `find` and `cat` are faster and already permitted. `rename_refactoring` is denied in `.claude/settings.json`: it misses `META-INF` registrations and rewrites README prose, and the result still compiles. Cross-module renames are manual.
+`./gradlew` is the ground truth for builds and tests, not the IDE. On an index error (`PSI and index do not match`) fall back to `grep`. `rename_refactoring` is denied in `.claude/settings.json`: it misses `META-INF` registrations and rewrites README prose, and the result still compiles. Cross-module renames are manual.
 
 ## Development Workflow
 
