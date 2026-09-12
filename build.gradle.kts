@@ -50,7 +50,8 @@ subprojects {
         })
 
         testLogging {
-            showStandardStreams = providers.gradleProperty("verboseTests").isPresent
+            // `!= "false"` rather than `toBoolean()`: a bare `-PverboseTests` is the empty string.
+            showStandardStreams = providers.gradleProperty("verboseTests").map { it != "false" }.getOrElse(false)
             exceptionFormat = TestExceptionFormat.FULL
         }
     }
