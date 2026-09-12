@@ -49,7 +49,7 @@ section by section, and open it with
 \`gh pr create --draft --title \"NL-$N <the issue's title>\" --body-file build/pr-body.md\`.
 No label, never mark it ready for review, and never pass the body inline or through a heredoc."
     ;;
-  review) BUDGET=4; PROMPT="/flow:review $PR" ;;
+  review) BUDGET=6; PROMPT="/flow:review $PR" ;;
   fix)    BUDGET=4; PROMPT="/flow:fix $PR" ;;
   test)   BUDGET=6; PROMPT="/flow:test $PR" ;;
   *) fail "unknown stage '$STAGE'" ;;

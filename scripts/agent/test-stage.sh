@@ -232,7 +232,7 @@ $comments_call
 claude
 $comments_call
 gradlew --stop" ] || { ok=0; why="events=$(tr '\n' '|' 2>/dev/null < "$SHIM_EVENTS" || true)"; }
-[ "$(argv_after --max-budget-usd)" = 4 ] || { ok=0; why="budget=$(argv_after --max-budget-usd)"; }
+[ "$(argv_after --max-budget-usd)" = 6 ] || { ok=0; why="budget=$(argv_after --max-budget-usd)"; }
 for flag in "NL-999 review 2" "/flow:review $PR_URL"; do
   argv_has "$flag" || { ok=0; why="argv lacks $flag"; }
 done
