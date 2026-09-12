@@ -98,8 +98,10 @@ one broke.
 CI runs `./gradlew build` on both Linux and macOS so that epoll and kqueue are each exercised.
 **Both matrix cells must pass to merge.**
 
-Applying the `review/claude` label additionally runs an automated two-pass review that leaves
-inline comments. It is advisory, never a required check, and it does not run on drafts or forks.
+Review is `/flow:review <PR>` from a Claude Code session on a checkout with dependency sources
+unpacked (`./gradlew dependencySources`): a bug pass, then a maintainability pass, posted as one
+advisory review of inline comments. It is never a required check; there is no CI review to
+trigger.
 
 ## Unrelated problems you notice
 
