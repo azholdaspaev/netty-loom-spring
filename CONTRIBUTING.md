@@ -24,6 +24,10 @@ document for how changes are made here. This file is the practical summary.
 A failed test's stdout is not in the build output: read `<module>/build/test-results/test/TEST-*.xml`,
 or pass `-PverboseTests` to stream it.
 
+javac runs `-Xlint:all -Werror`, so a new warning is a red build: fix the code, and suppress at
+the site with a trigger-1 comment only when an external API forces it. Never widen the `-Xlint`
+exclusions in `build.gradle.kts`.
+
 Tests use JUnit 6 on the JUnit Platform and run with `--enable-native-access=ALL-UNNAMED`, which
 the native epoll and kqueue transports need.
 
