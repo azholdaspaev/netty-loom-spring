@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # One launchd tick of the agent pipeline, under a lock: drop the worktree, branch and agent/*
-# labels of every merged pull request, requeue answered questions, run one fix stage per agent/fix
-# pull request, then take the oldest agent/queued issue to a worktree of its own and run
-# pipeline.sh there.
+# labels of every merged pull request, requeue answered questions, run a fix stage then a review
+# stage per agent/fix pull request, then take the oldest agent/queued issue to a worktree of its
+# own and run pipeline.sh there.
 # Usage: scripts/agent/runner.sh    (any cwd; the main clone is this script's grandparent)
 set -euo pipefail
 
@@ -49,12 +49,14 @@ gh pr list --label agent/fix --state open --json url,headRefName --jq '.[] | "\(
   log=$(log_of "$n")
   [ -d "$WT/$branch" ] || git worktree add -q "$WT/$branch" "$branch"
   rc=0
-  (cd "$WT/$branch" && "$HERE/stage.sh" "$n" fix "$url") </dev/null 2>>"$log" || rc=$?
+  for stage in fix review; do
+    (cd "$WT/$branch" && "$HERE/stage.sh" "$n" "$stage" "$url") </dev/null 2>>"$log" || { rc=$?; break; }
+  done
   if [ "$rc" = 0 ]; then
     gh pr edit "$url" --remove-label agent/fix >/dev/null
   else
     gh pr edit "$url" --remove-label agent/fix --add-label agent/failed >/dev/null
-    failure "Fix stage" "$rc" "$log" | gh pr comment "$url" --body-file - >/dev/null
+    failure "The $stage stage" "$rc" "$log" | gh pr comment "$url" --body-file - >/dev/null
   fi
 done
 
