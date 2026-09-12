@@ -40,5 +40,5 @@ state == 2 {
     else if ($0 ~ /(^|[[:space:]])(class|interface|enum|record)[[:space:]]/) { if (lines > 20) fail("class javadoc is " lines " lines; the limit is 20") }
     state = 0
 }
-END { exit failed }
+END { if (failed) print "  see CLAUDE.md rule 5" > "/dev/stderr"; exit failed }
 ' "$@"
