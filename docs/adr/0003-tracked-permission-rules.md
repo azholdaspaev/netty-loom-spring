@@ -38,9 +38,12 @@ hook this protects is a shape check, so the cost of the gap is bounded.
 `gh pr edit*` so that only the pipeline script moves labels and state, but the agent rewrites its
 own pull request body with the same command and a deny cannot carry an exception. The label
 flags are separable: one rule per flag covers both `--add-label x` and `--add-label=x`, while
-`--title`, `--body` and `--body-file` stay open. State stays with `gh pr ready` and
-`gh pr merge`, denied bare and with arguments: draft→ready is the script's hand-over (#218),
-merge is the maintainer's. The maintainer's own sessions lose both through Claude.
+`--title`, `--body` and `--body-file` stay open. State stays with `gh pr ready`, `gh pr merge`,
+`gh pr close` and `gh issue close`, denied bare and with arguments: draft→ready is the script's
+hand-over (#218), merge and close are the maintainer's. The maintainer's own sessions lose them
+through Claude. The `gh api` twins are denied by the token that names them: the label endpoints
+by path (`gh api *labels*`; the pipeline reads labels through `gh issue view --json labels`) and
+the four mutations by name, as `RepositoryRuleset` is below.
 
 **The branch-protection gate: by path where the path is the target, by verb elsewhere.** PUT is
 denied in all five pflag spellings (`-X PUT`, `-XPUT`, `-X=PUT`, `--method PUT`,
