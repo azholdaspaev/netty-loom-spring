@@ -31,8 +31,9 @@ Bash(git status *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git ad
 Bash(git commit *),Bash(git push *),Bash(git stash *),Bash(git checkout -- *),\
 Bash(gh issue view *),Bash(gh issue comment *),Bash(gh issue create *),\
 Bash(gh pr view *),Bash(gh pr diff *),Bash(gh pr create *),Bash(gh pr comment *),\
-Bash(gh api repos/*/pulls/*/comments/*/replies *),Bash(gh api repos/*/pulls/*/reviews *),\
-Bash(gh api graphql *),Bash(.claude/scripts/pr-comments.sh *),\
+Bash(gh api repos/*/pulls/*/comments*),Bash(gh api repos/*/issues/*/comments*),\
+Bash(gh api repos/*/pulls/comments/*),Bash(gh api repos/*/issues/comments/*),\
+Bash(gh api repos/*/pulls/*/reviews *),Bash(gh api graphql *),Bash(.claude/scripts/pr-comments.sh *),\
 Bash(.claude/scripts/check-comments.sh *),\
 Bash(ls *),Bash(cat *),Bash(head *),Bash(tail *),Bash(grep *),Bash(find *),Bash(wc *),\
 Bash(awk *),Bash(sed -n *),Bash(sort *),Bash(uniq *),Bash(diff *),Bash(jq *)"
@@ -50,7 +51,7 @@ When the work is committed: \`git push -u origin $branch\`. Then write the pull 
 with the Write tool to \`build/pr-body.md\`, following \`.github/PULL_REQUEST_TEMPLATE.md\`
 section by section, and open it with
 \`gh pr create --draft --title \"NL-$N <the issue's title>\" --body-file build/pr-body.md\`.
-No label, never mark it ready for review, and never pass the body inline or through a heredoc."
+No label, and never mark it ready for review."
     ;;
   review) BUDGET=6; PROMPT="/flow:review $PR" ;;
   fix)    BUDGET=4; PROMPT="/flow:fix $PR" ;;

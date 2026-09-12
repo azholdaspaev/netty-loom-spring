@@ -110,14 +110,23 @@ for flag in --permission-mode acceptEdits --permission-prompts none --max-budget
             "NL-999 implement" "/flow:implement 999"; do
   argv_has "$flag" || { ok=0; why="argv lacks $flag"; }
 done
-grep -q '/\.claude/agent/settings\.json$' "$SHIM_ARGV" 2>/dev/null || { ok=0; why="argv lacks the agent settings file"; }
+settings=$(grep '/\.claude/agent/settings\.json$' "$SHIM_ARGV" 2>/dev/null || true)
+[ -n "$settings" ] || { ok=0; why="argv lacks the agent settings file"; }
+for verb in DELETE PATCH; do
+  for rule in "Bash(gh api *-X $verb*)" "Bash(gh api *-X$verb*)" "Bash(gh api *-X=$verb*)" \
+              "Bash(gh api *--method $verb*)" "Bash(gh api *--method=$verb*)"; do
+    jq -e --arg rule "$rule" '.permissions.deny | index($rule)' "$settings" >/dev/null 2>&1 \
+      || { ok=0; why="agent settings deny lacks $rule"; }
+  done
+done
 allowed="Read,Edit,Write,Grep,Glob,Agent,Skill,Bash(./gradlew *),\
 Bash(git status *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git add *),\
 Bash(git commit *),Bash(git push *),Bash(git stash *),Bash(git checkout -- *),\
 Bash(gh issue view *),Bash(gh issue comment *),Bash(gh issue create *),\
 Bash(gh pr view *),Bash(gh pr diff *),Bash(gh pr create *),Bash(gh pr comment *),\
-Bash(gh api repos/*/pulls/*/comments/*/replies *),Bash(gh api repos/*/pulls/*/reviews *),\
-Bash(gh api graphql *),Bash(.claude/scripts/pr-comments.sh *),\
+Bash(gh api repos/*/pulls/*/comments*),Bash(gh api repos/*/issues/*/comments*),\
+Bash(gh api repos/*/pulls/comments/*),Bash(gh api repos/*/issues/comments/*),\
+Bash(gh api repos/*/pulls/*/reviews *),Bash(gh api graphql *),Bash(.claude/scripts/pr-comments.sh *),\
 Bash(.claude/scripts/check-comments.sh *),\
 Bash(ls *),Bash(cat *),Bash(head *),Bash(tail *),Bash(grep *),Bash(find *),Bash(wc *),\
 Bash(awk *),Bash(sed -n *),Bash(sort *),Bash(uniq *),Bash(diff *),Bash(jq *)"
