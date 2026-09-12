@@ -62,7 +62,8 @@ history; `gh repo edit`, `gh repo archive` and `gh repo rename` all write to tha
 nothing in the pipeline reads it, so the whole subcommand is denied rather than one verb at a time.
 The REST twin is `PATCH repos/<owner>/<repo>`, and the root is a prefix of every other path, so
 the bare `*rulesets*` shape would deny `…/pulls/<N>/comments` with it. The rule instead ends
-where the path ends -- at the end of the command or at a space -- in each spelling `gh` resolves
+where the path ends -- at the end of the command, at a space or at a `?`, since GitHub ignores an
+unknown query parameter but 404s a trailing slash -- in each spelling `gh` resolves
 (`repos/azholdaspaev/netty-loom-spring`, `repos/{owner}/{repo}`, `repos/:owner/:repo`), which
 holds for any verb, flag position and method spelling where a `PATCH` rule would not. The GET
 readback of the repository goes with it, as the ruleset one does.
