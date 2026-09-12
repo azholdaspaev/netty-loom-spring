@@ -15,13 +15,13 @@ carry questions, the pull request carries the result. Scope and the decisions be
 | `agent/running` | a pipeline is running in the issue's worktree | runner | runner, when the pipeline returns |
 | `agent/needs-input` | a question is posted on the issue | `pipeline.sh` | `requeue.sh`, once the owner has answered |
 | `agent/pr-ready` | the pull request is ready for review | `pipeline.sh` | runner, after the merge |
-| `agent/fix` | on a pull request: run one fix stage | maintainer | runner, after that stage |
+| `agent/fix` | on a pull request: run a fix stage, then a review stage | maintainer | runner, after those stages |
 | `agent/failed` | a stage failed; the comment has the log tail | runner | maintainer |
 
 One tick, in order: clean up every merged pull request (worktree, local branch, the issue's
-`agent/*` labels), `requeue.sh`, one fix stage per `agent/fix` pull request, then one
-`agent/queued` issue. A tick that finds the lock held exits at once, so one pipeline runs at a
-time; the next queued issue waits for the next free tick.
+`agent/*` labels), `requeue.sh`, a fix stage then a review stage per `agent/fix` pull request,
+then one `agent/queued` issue. A tick that finds the lock held exits at once, so one pipeline
+runs at a time; the next queued issue waits for the next free tick.
 
 ## The maintainer's two touch points
 
@@ -30,11 +30,10 @@ time; the next queued issue waits for the next free tick.
    `agent/queued` and the pipeline starts over on the same worktree.
 2. **The review.** On `agent/pr-ready`, review the pull request. Inline comments plus the
    `agent/fix` label on the pull request run one fix stage, which replies in every thread with a
-   sha or the reason nothing changed, and the label comes off; label again for another round.
-   The fix stage never resolves a thread. For the review stage to verify the fix blind and
-   resolve it, put `agent/queued` back on the issue: the pipeline resumes at review, loops, runs
-   the test stage again and hands over again. Merge when satisfied: the next tick removes the
-   worktree and branch and clears the labels.
+   sha or the reason nothing changed, then one review stage, which verifies each fix blind and
+   resolves the thread or says why not; the label comes off. A finding the review stage posts
+   waits for the next `agent/fix`; no test stage runs on this path. Merge when satisfied: the
+   next tick removes the worktree and branch and clears the labels.
 
 After `agent/failed`, the comment on the issue (or pull request) holds the last 30 lines of stderr
 and the log path. Replace it with `agent/queued` to retry: the worktree is reused and, once a pull
@@ -43,8 +42,8 @@ request exists, the pipeline resumes at the review stage.
 ## Logs
 
 - `~/.netty-loom-agent/runner.log` — every tick's output, from launchd.
-- `~/.netty-loom-agent/logs/NL-<n>/runner.log` — what the pipeline and fix stages wrote to stderr
-  for that issue, appended across ticks.
+- `~/.netty-loom-agent/logs/NL-<n>/runner.log` — what the pipeline and the `agent/fix` stages
+  wrote to stderr for that issue, appended across ticks.
 - `~/.netty-loom-agent/logs/NL-<n>/<stage>[-<round>].json` and `.log` — each `claude -p` result
   (cost, duration, subtype) and its stderr, written by `stage.sh`.
 
@@ -70,8 +69,8 @@ session opened by hand, on 2026-09-13 with `main` at `a0eecdc`.
 
 19.58 USD and 43 minutes of stage time. From label to `agent/pr-ready`: 28 minutes the first
 time, 25 the second, each including up to five minutes for the tick and one for
-`dependencySources`. The second run is the `agent/queued` step of touch point 2: the pipeline
-has no shorter path to a review stage that settles a maintainer's thread, so it pays for a test
+`dependencySources`. The second run was the `agent/queued` detour that #253 replaced: the pipeline
+had no shorter path to a review stage that settles a maintainer's thread, so it paid for a test
 stage as well. With both passes running under the 6 USD review budget, no review came near it.
 
 Of the 26 denied calls, 21 were Bash commands that no allow rule matches as a whole — `;`, `|`,

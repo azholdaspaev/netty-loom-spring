@@ -42,7 +42,8 @@ SHIM
   cat > "$tmp/main/scripts/agent/stage.sh" <<'SHIM'
 #!/usr/bin/env bash
 echo "stage $* in $(pwd -P)" >> "$SHIM_EVENTS"
-if [ -n "${SHIM_STAGE_RC:-}" ]; then
+[ "$2" != "${SHIM_STAGE_COMMIT:-}" ] || git commit -q --allow-empty -m "NL-$1 $2"
+if [ -n "${SHIM_STAGE_RC:-}" ] && [ "$2" = "${SHIM_FAIL_STAGE:-$2}" ]; then
   for i in $(seq 1 40); do echo "stage stderr line $i" >&2; done
   exit "$SHIM_STAGE_RC"
 fi
@@ -192,14 +193,14 @@ contains "$comment" "$log" || ok=0
 check failure "$ok" "$why"
 rm -rf "$tmp"
 
-# --- agent/fix on a pull request: one fix stage in its worktree, then the label comes off ---
+# --- agent/fix on a pull request: a fix stage then a review stage in its worktree, no test stage, then the label comes off ---
 setup
 fixpr "$PR_URL" NL-7-fix-the-thing
 worktree NL-7-fix-the-thing
 run
 wt=$(cd "$tmp/$WT7" && pwd -P)
 ok=1; why="rc=$rc stderr=$err actions=$actions"
-[ "$rc" = 0 ] && [ "$actions" = "requeue|stage 7 fix $PR_URL in $wt|gh pr edit $PR_URL --remove-label agent/fix|" ] || ok=0
+[ "$rc" = 0 ] && [ "$actions" = "requeue|stage 7 fix $PR_URL in $wt|stage 7 review $PR_URL in $wt|gh pr edit $PR_URL --remove-label agent/fix|" ] || ok=0
 check fix "$ok" "$why"
 rm -rf "$tmp"
 
@@ -214,10 +215,30 @@ comment=$(cat "$tmp/state/pr-comment" 2>/dev/null || true)
 log="$tmp/home/.netty-loom-agent/logs/NL-7/runner.log"
 ok=1; why="rc=$rc stderr=$err actions=$actions comment=$comment"
 [ "$rc" = 0 ] || ok=0
+contains "$actions" "stage 7 fix $PR_URL in " && ! contains "$actions" "stage 7 review" || ok=0
 contains "$actions" "gh pr edit $PR_URL --remove-label agent/fix --add-label agent/failed|gh pr comment $PR_URL --body-file -|" || ok=0
+contains "$comment" "fix stage failed (exit 1)" || ok=0
 contains "$comment" "stage stderr line 11" && contains "$comment" "stage stderr line 40" \
   && ! contains "$comment" "stage stderr line 10" && contains "$comment" "$log" || ok=0
 check fix-failure "$ok" "$why"
+rm -rf "$tmp"
+
+# --- the review stage fails after a successful fix: agent/failed, the fix commit stays ---
+setup
+fixpr "$PR_URL" NL-7-fix-the-thing
+worktree NL-7-fix-the-thing
+export SHIM_STAGE_COMMIT=fix SHIM_FAIL_STAGE=review SHIM_STAGE_RC=1
+run
+unset SHIM_STAGE_COMMIT SHIM_FAIL_STAGE SHIM_STAGE_RC
+comment=$(cat "$tmp/state/pr-comment" 2>/dev/null || true)
+log="$tmp/home/.netty-loom-agent/logs/NL-7/runner.log"
+wt=$(cd "$tmp/$WT7" && pwd -P)
+ok=1; why="rc=$rc stderr=$err actions=$actions comment=$comment"
+[ "$rc" = 0 ] || ok=0
+contains "$actions" "stage 7 fix $PR_URL in $wt|stage 7 review $PR_URL in $wt|gh pr edit $PR_URL --remove-label agent/fix --add-label agent/failed|gh pr comment $PR_URL --body-file -|" || ok=0
+contains "$comment" "review stage failed (exit 1)" && contains "$comment" "stage stderr line 40" && contains "$comment" "$log" || ok=0
+[ "$(git -C "$tmp/$WT7" log -1 --format=%s)" = "NL-7 fix" ] || { ok=0; why="$why head=$(git -C "$tmp/$WT7" log -1 --format=%s)"; }
+check fix-review-failure "$ok" "$why"
 rm -rf "$tmp"
 
 # --- agent/fix on a pull request whose branch has no worktree yet: one is added from origin ---
@@ -263,7 +284,7 @@ queue 8 "New work"
 run
 wt7=$(cd "$tmp/$WT7" && pwd -P); wt8=$(cd "$tmp/netty-loom-wt/NL-8-new-work" 2>/dev/null && pwd -P || echo missing)
 ok=1; why="rc=$rc stderr=$err actions=$actions"
-[ "$rc" = 0 ] && [ "$actions" = "gh issue edit 5 --remove-label agent/pr-ready|requeue|stage 7 fix $PR_URL in $wt7|gh pr edit $PR_URL --remove-label agent/fix|gh issue edit 8 --remove-label agent/queued --add-label agent/running|gradlew dependencySources in $wt8|pipeline 8 in $wt8|gh issue edit 8 --remove-label agent/running|" ] || ok=0
+[ "$rc" = 0 ] && [ "$actions" = "gh issue edit 5 --remove-label agent/pr-ready|requeue|stage 7 fix $PR_URL in $wt7|stage 7 review $PR_URL in $wt7|gh pr edit $PR_URL --remove-label agent/fix|gh issue edit 8 --remove-label agent/queued --add-label agent/running|gradlew dependencySources in $wt8|pipeline 8 in $wt8|gh issue edit 8 --remove-label agent/running|" ] || ok=0
 check order "$ok" "$why"
 rm -rf "$tmp"
 
