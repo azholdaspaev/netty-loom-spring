@@ -119,11 +119,18 @@ for verb in DELETE PATCH; do
       || { ok=0; why="agent settings deny lacks $rule"; }
   done
 done
-allowed=$(argv_after --allowedTools)
-for rule in "Bash(gh api repos/*/pulls/*/comments*)" "Bash(gh api repos/*/issues/*/comments*)" \
-            "Bash(gh api repos/*/pulls/comments/*)" "Bash(gh api repos/*/issues/comments/*)"; do
-  contains "$allowed" "$rule" || { ok=0; why="allowedTools lacks $rule"; }
-done
+allowed="Read,Edit,Write,Grep,Glob,Agent,Skill,Bash(./gradlew *),\
+Bash(git status *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git add *),\
+Bash(git commit *),Bash(git push *),Bash(git stash *),Bash(git checkout -- *),\
+Bash(gh issue view *),Bash(gh issue comment *),Bash(gh issue create *),\
+Bash(gh pr view *),Bash(gh pr diff *),Bash(gh pr create *),Bash(gh pr comment *),\
+Bash(gh api repos/*/pulls/*/comments*),Bash(gh api repos/*/issues/*/comments*),\
+Bash(gh api repos/*/pulls/comments/*),Bash(gh api repos/*/issues/comments/*),\
+Bash(gh api repos/*/pulls/*/reviews *),Bash(gh api graphql *),Bash(.claude/scripts/pr-comments.sh *),\
+Bash(.claude/scripts/check-comments.sh *),\
+Bash(ls *),Bash(cat *),Bash(head *),Bash(tail *),Bash(grep *),Bash(find *),Bash(wc *),\
+Bash(awk *),Bash(sed -n *),Bash(sort *),Bash(uniq *),Bash(diff *),Bash(jq *)"
+[ "$(argv_after --allowedTools)" = "$allowed" ] || { ok=0; why="allowedTools=$(argv_after --allowedTools)"; }
 prompt_line=$(grep -nxF -- '/flow:implement 999' "$SHIM_ARGV" 2>/dev/null | cut -d: -f1 || true)
 allowed_line=$(grep -nxF -- '--allowedTools' "$SHIM_ARGV" 2>/dev/null | cut -d: -f1 || true)
 { [ -n "$prompt_line" ] && [ -n "$allowed_line" ] && [ "$prompt_line" -lt "$allowed_line" ]; } \
