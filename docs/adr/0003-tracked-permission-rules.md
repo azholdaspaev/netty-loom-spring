@@ -61,7 +61,7 @@ README § Known gaps records that the repo-level `allow_merge_commit` flag alone
 history; `gh repo edit`, `gh repo archive` and `gh repo rename` all write to that object and
 nothing in the pipeline reads it, so the whole subcommand is denied rather than one verb at a time.
 The REST twin is `PATCH repos/<owner>/<repo>`, and the root is a prefix of every other path, so
-the bare `*rulesets*` shape would deny `…/pulls/<N>/comments` with it. The rule instead ends
+a bare `*repos/azholdaspaev/netty-loom-spring*` would deny `…/pulls/<N>/comments` with it. The rule instead ends
 where the path ends -- at the end of the command, at a space or at a `?`, since GitHub ignores an
 unknown query parameter but 404s a trailing slash -- in each spelling `gh` resolves
 (`repos/azholdaspaev/netty-loom-spring`, `repos/{owner}/{repo}`, `repos/:owner/:repo`), which
