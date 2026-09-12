@@ -3,6 +3,11 @@
     "enabled": true,
     "failIfUnavailable": true,
     "allowUnsandboxedCommands": false,
+    "excludedCommands": [
+      "gh *",
+      "git push *",
+      ".claude/scripts/pr-comments.sh *"
+    ],
     "filesystem": {
       "allowWrite": [
         "~/.gradle",
