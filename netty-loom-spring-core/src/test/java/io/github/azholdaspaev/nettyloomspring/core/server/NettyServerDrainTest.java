@@ -254,6 +254,13 @@ class NettyServerDrainTest {
             assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
             graceful = shutdownInBackground();
             assertStillDraining(graceful, "the first shutdown must own the drain before the second arrives");
+
+            // The fixture parks the joiner between its deadline expiring and its abort taking
+            // effect, the window in which the owner could finish and the server restart underneath
+            // it. The park is timed rather than released here: the guarded abort holds the handover
+            // lock, and the owner cannot finish until it is released, so nothing this test could
+            // sequence on completes first. The test passes because the check and the abort are one
+            // critical section and the window is unreachable, not because a late abort was survived.
             immediate = abortExecutor.submit(() -> nettyServer.shutdown(Duration.ZERO));
             releaseDispatcher.countDown();
             assertEquals(NettyShutdownResult.IDLE, graceful.get(5, TimeUnit.SECONDS));
@@ -311,12 +318,6 @@ class NettyServerDrainTest {
                 () -> new HttpRequestHandler(blockingDispatcher(), dispatchExecutor, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT))));
     }
 
-    /**
-     * Holds a joiner between its deadline expiring and its abort taking effect, the window in which
-     * the owner can finish and the server restart underneath it. Timed, because a guarded abort
-     * holds the handover lock here and the test cannot release the latch while everything it would
-     * sequence on is blocked behind that lock.
-     */
     private void awaitAbortRelease() {
         try {
             releaseAbort.await(1, TimeUnit.SECONDS);
