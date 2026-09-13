@@ -65,7 +65,7 @@ jqarg() { local prev=; for a in "$@"; do [ "$prev" = --jq ] && { printf '%s' "$a
 case "$*" in
   "issue list --label agent/queued --state open --json number --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/queued.json" ;;
   "issue list --label agent/running --state open --json number,labels --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/running.json" ;;
-  "issue list --state closed --search label:agent/"*" --json number,labels --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/closed.json" ;;
+  "issue list --state closed --search label:agent/"*" --json number --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/closed.json" ;;
   "issue view "*" --json "*" --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/issue-$3.json" ;;
   "issue edit "*) echo "https://github.com/o/r/issues/$3" ;;
   "issue comment "*" --body-file -") cat > "$SHIM_STATE/issue-comment-$3"; echo "https://github.com/o/r/issues/$3#issuecomment-1" ;;
@@ -80,11 +80,12 @@ SHIM
   export SHIM_EVENTS="$tmp/events" SHIM_STATE="$tmp/state"
 }
 
-# issue <n> <title> [<labels csv>]: known to gh issue view; queue <n> <title>: also listed as agent/queued;
-# running <n> <title> [<labels csv>]: also listed as agent/running; closed <n> <labels csv>: a closed issue in the label search
+# issue <n> <title> [<labels csv>] [<state>]: known to gh issue view; queue <n> <title>: also listed as agent/queued;
+# running <n> <title> [<labels csv>]: also listed as agent/running; closed <n> <labels csv>: a closed issue in the
+# label search; listed <n> <list> [<labels csv>]: in that search alone, whatever gh issue view says
 issue() {
-  jq -n --arg title "$2" --arg labels "${3:-}" \
-    '{title: $title, labels: ($labels | split(",") | map(select(. != "")) | map({name: .}))}' \
+  jq -n --arg title "$2" --arg labels "${3:-}" --arg state "${4:-OPEN}" \
+    '{title: $title, state: $state, labels: ($labels | split(",") | map(select(. != "")) | map({name: .}))}' \
     > "$tmp/state/issue-$1.json"
 }
 listed() {
@@ -95,7 +96,7 @@ listed() {
 }
 queue() { issue "$1" "$2" "agent/queued"; listed "$1" queued; }
 running() { issue "$1" "$2" "${3:-agent/running}"; listed "$1" running "${3:-agent/running}"; }
-closed() { listed "$1" closed "$2"; }
+closed() { issue "$1" "Closed" "$2" CLOSED; listed "$1" closed "$2"; }
 
 # fixpr <url> <branch>: an open pull request labelled agent/fix; merged <branch>: its pull request is merged;
 # worktree <branch>: what a previous tick left in netty-loom-wt
@@ -314,6 +315,18 @@ run
 ok=1; why="rc=$rc stderr=$err actions=$actions"
 [ "$rc" = 0 ] && [ "$actions" = "gh issue edit 5 --remove-label agent/pr-ready|requeue|" ] || ok=0
 check stale-labels "$ok" "$why"
+rm -rf "$tmp"
+
+# --- the search index lags the issue: one reopened and requeued since, one stripped by the last tick; neither is edited ---
+setup
+listed 5 closed "agent/queued"
+issue 5 "Reopened" "agent/queued"
+listed 4 closed "agent/failed"
+issue 4 "Stripped" "enhancement" CLOSED
+run
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" = 0 ] && [ "$actions" = "requeue|" ] || ok=0
+check stale-search "$ok" "$why"
 rm -rf "$tmp"
 
 # --- everything at once: sweep, clean up, requeue, fix, then one queued issue; the orphan's comment tails its log ---

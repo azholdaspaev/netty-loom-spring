@@ -46,10 +46,13 @@ gh issue list --label agent/running --state open --json number,labels \
     echo "$RETRY"
   } | gh issue comment "$n" --body-file - >/dev/null
 done
+# The search index lags the issue, so state and labels come from the issue itself.
 gh issue list --state closed --search label:agent/queued,agent/running,agent/needs-input,agent/pr-ready,agent/failed \
-  --json number,labels --jq '.[] | "\(.number) \([.labels[].name | select(startswith("agent/"))] | join(","))"' \
-| while read -r n labels; do
-  gh issue edit "$n" --remove-label "$labels" >/dev/null
+  --json number --jq '.[].number' \
+| while read -r n; do
+  labels=$(gh issue view "$n" --json state,labels \
+    --jq 'select(.state == "CLOSED") | [.labels[].name | select(startswith("agent/"))] | join(",")')
+  [ -z "$labels" ] || gh issue edit "$n" --remove-label "$labels" >/dev/null
 done
 
 # --- merged ---
