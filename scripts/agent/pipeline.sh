@@ -12,6 +12,8 @@ PR_COMMENTS="$HERE/../../.claude/scripts/pr-comments.sh"
 LOG="$HOME/.netty-loom-agent/logs/NL-$N"
 ROUNDS=3
 
+reset_tree() { git checkout -- . && git clean -fdq; }
+
 # stage <stage> [<pr url> [<round>]] -- runs stage.sh with its stdout in $stage_out rather than
 # echoed for a $(...) caller: an exit inside a command substitution ends only the subshell, and the
 # pipeline must end here on a question (issue to agent/needs-input, exit 0) or a failure (its code).
@@ -21,7 +23,7 @@ stage() {
   case "$rc" in
     0) ;;
     3) # Implement's edits stay for its resumed self; any later stage's would stop the review that resumes.
-       [ "$1" = implement ] || git checkout -- .
+       [ "$1" = implement ] || reset_tree
        gh issue edit "$N" --remove-label agent/running --add-label agent/needs-input >/dev/null; exit 0 ;;
     *) exit "$rc" ;;
   esac
@@ -57,7 +59,7 @@ done
 
 stage test "$url"
 dirty=$(git status --porcelain)
-[ -z "$dirty" ] || git checkout -- .
+[ -z "$dirty" ] || reset_tree
 
 threads="$open thread$([ "$open" = 1 ] || echo s) open."
 if [ "$converged" = 1 ]; then
@@ -77,7 +79,7 @@ gh issue comment "$N" --body-file - >/dev/null <<BODY
 Pull request: $url
 Review/fix rounds: $round, $outcome
 Cost: $(printf '%.2f' "$cost") USD, wall time: $minutes min, from $results stage results in $LOG.
-${dirty:+Tree was dirty after the test stage and was reset with \`git checkout -- .\`:
+${dirty:+Tree was dirty after the test stage and was reset with \`git checkout -- . && git clean -fd\`:
 \`\`\`
 $dirty
 \`\`\`}
