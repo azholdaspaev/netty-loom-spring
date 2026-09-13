@@ -51,8 +51,10 @@ class NettyListenerRegistryTest {
         servletContext = new DefaultNettyServletContext();
         registry = new NettyListenerRegistry(servletContext);
         events = new ArrayList<>();
-        // One session for the whole class: the registry only needs a non-null event source, and every
-        // create() lazily starts the manager's sweeper thread.
+        /*
+         * One session for the whole class: the registry only needs a non-null event source, and every
+         * create() lazily starts the manager's sweeper thread.
+         */
         session = servletContext.getSessionManager().create();
     }
 
@@ -203,8 +205,10 @@ class NettyListenerRegistryTest {
 
     @Test
     void aListenerOfNoSupportedTypeIsRejected() {
-        // Legal EventListener, but not one this container fires -- accepting it silently would leave the
-        // application believing it is wired up.
+        /*
+         * Legal EventListener, but not one this container fires -- accepting it silently would leave the
+         * application believing it is wired up.
+         */
         EventListener unsupported = new EventListener() {
         };
 
@@ -217,10 +221,12 @@ class NettyListenerRegistryTest {
 
     @Test
     void aContextListenerCannotRegisterOnceTheInitPassHasStarted() {
-        // fireContextInitialized iterates a CopyOnWriteArrayList snapshot taken at loop entry, so a
-        // ServletContextListener added in between would miss contextInitialized and still receive
-        // contextDestroyed. The spec closes this at registration, and Tomcat clears
-        // newServletContextListenerAllowed immediately before listenerStart fires.
+        /*
+         * fireContextInitialized iterates a CopyOnWriteArrayList snapshot taken at loop entry, so a
+         * ServletContextListener added in between would miss contextInitialized and still receive
+         * contextDestroyed. The spec closes this at registration, and Tomcat clears
+         * newServletContextListenerAllowed immediately before listenerStart fires.
+         */
         registry.fireContextInitialized();
 
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
@@ -232,8 +238,10 @@ class NettyListenerRegistryTest {
 
     @Test
     void theOtherSixTypesStillRegisterDuringFilterAndServletInit() {
-        // markInitialized is deliberately later than the init pass so a Filter.init can still configure
-        // the container. Only ServletContextListener closes early, because only it has already fired.
+        /*
+         * markInitialized is deliberately later than the init pass so a Filter.init can still configure
+         * the container. Only ServletContextListener closes early, because only it has already fired.
+         */
         registry.fireContextInitialized();
 
         assertDoesNotThrow(() -> registry.addListener((HttpSessionIdListener) (event, oldId) -> {
@@ -316,8 +324,10 @@ class NettyListenerRegistryTest {
     @ParameterizedTest
     @MethodSource("theTwoFailureShapes")
     void aFailingListenerDoesNotStrandTheRestOfATeardown(Throwable failure) {
-        // Teardown has no caller in a position to handle the failure, so it is logged and the remaining
-        // listeners still run.
+        /*
+         * Teardown has no caller in a position to handle the failure, so it is logged and the remaining
+         * listeners still run.
+         */
         registry.addListener(new RecordingListener("survivor"));
         registry.addListener(new ServletContextListener() {
             @Override
@@ -333,8 +343,10 @@ class NettyListenerRegistryTest {
 
     @Test
     void aFailingListenerAbortsStartup() {
-        // The opposite rule: a listener that cannot initialize must not leave the application serving
-        // traffic in a half-configured state, so contextInitialized propagates and startup fails.
+        /*
+         * The opposite rule: a listener that cannot initialize must not leave the application serving
+         * traffic in a half-configured state, so contextInitialized propagates and startup fails.
+         */
         registry.addListener(new ServletContextListener() {
             @Override
             public void contextInitialized(ServletContextEvent event) {
@@ -356,10 +368,12 @@ class NettyListenerRegistryTest {
     @ParameterizedTest
     @MethodSource("theTwoFailureShapes")
     void everyListenerIsInitializedEvenWhenAnEarlierOneFails(Throwable failure) {
-        // The destroy pass walks the whole list, so the init pass has to as well. Aborting on the first
-        // throw would leave listeners registered after it never initialized, and the startup backstop
-        // then calls close() -- which fires contextDestroyed at them anyway, tearing down what was never
-        // set up. Tomcat's listenerStart() catches per listener and records failure instead of returning.
+        /*
+         * The destroy pass walks the whole list, so the init pass has to as well. Aborting on the first
+         * throw would leave listeners registered after it never initialized, and the startup backstop
+         * then calls close() -- which fires contextDestroyed at them anyway, tearing down what was never
+         * set up. Tomcat's listenerStart() catches per listener and records failure instead of returning.
+         */
         registry.addListener(new RecordingListener("first"));
         registry.addListener(new ServletContextListener() {
             @Override
@@ -385,11 +399,13 @@ class NettyListenerRegistryTest {
 
     @Test
     void aCheckedExceptionFromAListenerKeepsItsDiagnosis() {
-        // contextInitialized declares no checked exception, but that binds the Java compiler, not the
-        // runtime: a listener written in Kotlin -- which has no checked exceptions -- or one using
-        // Lombok's @SneakyThrows delivers an IOException here. The widened catch admits it, so the
-        // rethrow needs somewhere to put it; a bare cast to RuntimeException would throw
-        // ClassCastException and take the real failure and everything attached to it with it.
+        /*
+         * contextInitialized declares no checked exception, but that binds the Java compiler, not the
+         * runtime: a listener written in Kotlin -- which has no checked exceptions -- or one using
+         * Lombok's @SneakyThrows delivers an IOException here. The widened catch admits it, so the
+         * rethrow needs somewhere to put it; a bare cast to RuntimeException would throw
+         * ClassCastException and take the real failure and everything attached to it with it.
+         */
         registry.addListener(new ServletContextListener() {
             @Override
             public void contextInitialized(ServletContextEvent event) {
@@ -467,8 +483,10 @@ class NettyListenerRegistryTest {
 
     @Test
     void aFailingAttributeListenerDoesNotBreakTheMutationThatTriggeredIt() {
-        // Attribute listeners are observers, not participants: unlike HttpSessionBindingListener, which is
-        // the value's own resource protocol, nothing is left half-bound when one of these fails.
+        /*
+         * Attribute listeners are observers, not participants: unlike HttpSessionBindingListener, which is
+         * the value's own resource protocol, nothing is left half-bound when one of these fails.
+         */
         registry.addListener(new RecordingListener("survivor"));
         registry.addListener(new HttpSessionAttributeListener() {
             @Override

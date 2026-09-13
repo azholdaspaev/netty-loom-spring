@@ -62,9 +62,11 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
     @Override
     public WebServer getWebServer(ServletContextInitializer... initializers) {
         verifySslNotConfigured();
-        // Set the context path before the initializer/filter/servlet startup phases so any component
-        // that reads ServletContext.getContextPath() during onStartup/init sees the configured value,
-        // as the Jakarta contract requires (rather than the default "").
+        /*
+         * Set the context path before the initializer/filter/servlet startup phases so any component
+         * that reads ServletContext.getContextPath() during onStartup/init sees the configured value,
+         * as the Jakarta contract requires (rather than the default "").
+         */
         servletContext.setContextPath(getContextPath());
         servletContext.setServletContextName(getSettings().getDisplayName());
         configureSessions();
@@ -75,9 +77,11 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
         servletContext.fireContextInitialized();
         initializeFilters();
         initializeDispatcherServlet();
-        // Only now is initialization over; markInitialized's javadoc says what freezes and why it waits
-        // for filter and servlet init. Boot's SessionConfiguringInitializer runs earlier either way, and
-        // any initializer failure aborts startup before the server is returned.
+        /*
+         * Only now is initialization over; markInitialized's javadoc says what freezes and why it waits
+         * for filter and servlet init. Boot's SessionConfiguringInitializer runs earlier either way, and
+         * any initializer failure aborts startup before the server is returned.
+         */
         servletContext.markInitialized();
         NettyServerConfiguration configuration = new NettyServerConfiguration(
             getPort(), getAddress(), properties.bossThreads(), properties.workerThreads(),
@@ -87,9 +91,11 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
     }
 
     private void verifySslNotConfigured() {
-        // Because this factory is a ConfigurableServletWebServerFactory, Boot binds server.ssl.* onto it,
-        // but the Netty pipeline has no SslHandler yet (issue #16). Fail fast rather than silently serving
-        // plaintext while the application looks TLS-configured.
+        /*
+         * Because this factory is a ConfigurableServletWebServerFactory, Boot binds server.ssl.* onto it,
+         * but the Netty pipeline has no SslHandler yet (issue #16). Fail fast rather than silently serving
+         * plaintext while the application looks TLS-configured.
+         */
         if (Ssl.isEnabled(getSsl())) {
             throw new WebServerException("server.ssl.* is configured but netty-loom-spring does not support "
                 + "TLS yet (see issue #16). Remove server.ssl.* or set server.ssl.enabled=false.", null);
@@ -103,8 +109,10 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
     private void configureSessions() {
         Session session = getSettings().getSession();
         verifySessionPersistenceNotConfigured(session);
-        // The conversion itself belongs to the manager, which owns the field and the "zero means never
-        // expires" rule; the factory only decides which setting feeds it.
+        /*
+         * The conversion itself belongs to the manager, which owns the field and the "zero means never
+         * expires" rule; the factory only decides which setting feeds it.
+         */
         servletContext.getSessionManager().setDefaultMaxInactiveInterval(session.getTimeout());
         Cookie.SameSite sameSite = session.getCookie().getSameSite();
         if (sameSite != null && sameSite.attributeValue() != null) {
@@ -118,8 +126,10 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
      * {@link #configureSessions()} writes {@code same-site} as an attribute {@code addCookie} prefers.
      */
     private void configureCookieSameSite() {
-        // Diverges from Tomcat at same-site=omitted, which writes no attribute: a supplier matching the
-        // session cookie applies to it here, where Tomcat suppresses that supplier instead.
+        /*
+         * Diverges from Tomcat at same-site=omitted, which writes no attribute: a supplier matching the
+         * session cookie applies to it here, where Tomcat suppresses that supplier instead.
+         */
         List<? extends CookieSameSiteSupplier> suppliers = getSettings().getCookieSameSiteSuppliers();
         if (!suppliers.isEmpty()) {
             servletContext.setCookieSameSiteResolver(new SuppliedCookieSameSiteResolver(suppliers));
@@ -131,9 +141,11 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
     }
 
     private void verifySessionPersistenceNotConfigured(Session session) {
-        // Under Tomcat this writes SESSIONS.ser and survives a restart. This container has an in-memory
-        // store only (issue #13 non-goal), so honouring the property is impossible and ignoring it would
-        // silently lose every session on deploy -- the same fail-fast contract as server.ssl.*.
+        /*
+         * Under Tomcat this writes SESSIONS.ser and survives a restart. This container has an in-memory
+         * store only (issue #13 non-goal), so honouring the property is impossible and ignoring it would
+         * silently lose every session on deploy -- the same fail-fast contract as server.ssl.*.
+         */
         if (session.isPersistent()) {
             throw new WebServerException("server.servlet.session.persistent=true is configured but "
                 + "netty-loom-spring stores sessions in memory only and cannot persist them across "
@@ -142,9 +154,11 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
     }
 
     private void initializeServletContext(ServletContextInitializer... initializers) {
-        // Boot's own merge, rather than a hand-rolled one: it prepends the initializers that apply
-        // server.servlet.context-parameters and the session cookie configuration, so those properties
-        // reach the context by exactly the route they take for Tomcat and Jetty.
+        /*
+         * Boot's own merge, rather than a hand-rolled one: it prepends the initializers that apply
+         * server.servlet.context-parameters and the session cookie configuration, so those properties
+         * reach the context by exactly the route they take for Tomcat and Jetty.
+         */
         for (ServletContextInitializer initializer : ServletContextInitializers.from(getSettings(), initializers)) {
             runInitializer(initializer);
         }

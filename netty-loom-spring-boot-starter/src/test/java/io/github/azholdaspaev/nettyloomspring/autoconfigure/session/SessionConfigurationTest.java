@@ -84,8 +84,10 @@ class SessionConfigurationTest {
 
     @Test
     void aDisabledPartitionedFlagIsNotEmitted() {
-        // Boot maps this property through Object::toString, so `false` reaches the cookie config as the
-        // string "false" -- which, stored verbatim, is *present* and would emit the flag it disables.
+        /*
+         * Boot maps this property through Object::toString, so `false` reaches the cookie config as the
+         * string "false" -- which, stored verbatim, is *present* and would emit the flag it disables.
+         */
         try (var context = run("server.servlet.session.cookie.partitioned=false")) {
             assertNull(servletContext(context).getSessionCookieConfig().getAttribute("Partitioned"));
         }
@@ -100,8 +102,10 @@ class SessionConfigurationTest {
 
     @Test
     void theCookieConfigurationIsFrozenOnceTheContextHasStarted() {
-        // The cookie name is read live on every request, so a runtime rename from any bean holding the
-        // ServletContext would orphan every logged-in user. The spec requires the refusal.
+        /*
+         * The cookie name is read live on every request, so a runtime rename from any bean holding the
+         * ServletContext would orphan every logged-in user. The spec requires the refusal.
+         */
         try (var context = run()) {
             assertThrows(IllegalStateException.class,
                 () -> servletContext(context).getSessionCookieConfig().setName("SID"));

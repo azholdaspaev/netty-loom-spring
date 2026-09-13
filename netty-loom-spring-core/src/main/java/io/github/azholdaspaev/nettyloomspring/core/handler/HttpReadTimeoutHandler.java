@@ -67,9 +67,11 @@ public class HttpReadTimeoutHandler extends ChannelDuplexHandler {
     public void handlerAdded(ChannelHandlerContext ctx) {
         ticker = ctx.executor().ticker();
         if (ctx.channel().isActive() && ctx.channel().isRegistered()) {
-            // The arming path in production, not a fallback: register0 builds the pipeline in
-            // invokeHandlerAddedIfNeeded before it fires channelActive, so an accepted child channel is
-            // already connected here.
+            /*
+             * The arming path in production, not a fallback: register0 builds the pipeline in
+             * invokeHandlerAddedIfNeeded before it fires channelActive, so an accepted child channel is
+             * already connected here.
+             */
             initialize(ctx);
         }
     }
@@ -125,10 +127,12 @@ public class HttpReadTimeoutHandler extends ChannelDuplexHandler {
 
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
-        // Counted out on write invocation, not on the promise: a peer whose receive window stays at zero
-        // never completes it, so the clock would suspend for ever and the connection become immortal.
-        // LastHttpContent rather than the dispatcher's return value keeps a response written in parts
-        // restarting the clock at its end.
+        /*
+         * Counted out on write invocation, not on the promise: a peer whose receive window stays at zero
+         * never completes it, so the clock would suspend for ever and the connection become immortal.
+         * LastHttpContent rather than the dispatcher's return value keeps a response written in parts
+         * restarting the clock at its end.
+         */
         if (msg instanceof LastHttpContent && !HttpResponses.isInformational(msg)) {
             requestAnswered();
         }

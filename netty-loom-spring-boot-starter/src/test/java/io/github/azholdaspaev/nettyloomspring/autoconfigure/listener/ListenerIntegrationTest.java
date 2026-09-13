@@ -115,8 +115,10 @@ class ListenerIntegrationTest {
 
     @Test
     void springsOwnRequestAttributesAlsoReachTheListener() {
-        // DispatcherServlet always publishes its WebApplicationContext as a request attribute, so this
-        // fires without the fixture setting anything.
+        /*
+         * DispatcherServlet always publishes its WebApplicationContext as a request attribute, so this
+         * fires without the fixture setting anything.
+         */
         call("/listener/ping");
 
         assertTrue(listener.countOf("requestAttributeAdded") > 0,
@@ -125,8 +127,10 @@ class ListenerIntegrationTest {
 
     @Test
     void rotatingTheSessionIdFiresSessionIdChanged() {
-        // changeSessionId() is what Spring Security calls on every authentication, so this is the event a
-        // session registry needs to keep tracking a user across the login boundary.
+        /*
+         * changeSessionId() is what Spring Security calls on every authentication, so this is the event a
+         * session registry needs to keep tracking a user across the login boundary.
+         */
         String sessionId = call("/listener/session/create");
         listener.reset();
 

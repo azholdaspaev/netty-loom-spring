@@ -287,9 +287,11 @@ class NettyHttpServletRequestTest {
 
     @Test
     void ipv6ServerNameIsBracketedWhileLocalAddrStaysRaw() {
-        // No Host header: serverName falls back to the local socket. For URL/authority use the IPv6
-        // address must be bracketed, but the Servlet-spec numeric getLocalAddr()/getLocalName() must
-        // remain the raw, unbracketed IP.
+        /*
+         * No Host header: serverName falls back to the local socket. For URL/authority use the IPv6
+         * address must be bracketed, but the Servlet-spec numeric getLocalAddr()/getLocalName() must
+         * remain the raw, unbracketed IP.
+         */
         var request = request("/x", null, new HttpConnectionMetadata("::1", 9999, "::1", 8080, false, ""));
 
         assertEquals("[::1]", request.getServerName());
@@ -300,8 +302,10 @@ class NettyHttpServletRequestTest {
 
     @Test
     void requestUrlWithoutHostAndEmptyLocalAddrOmitsAuthority() {
-        // No Host header and a non-Inet local address (empty localAddr): the URL must not become the
-        // malformed "http:///x" with an empty authority.
+        /*
+         * No Host header and a non-Inet local address (empty localAddr): the URL must not become the
+         * malformed "http:///x" with an empty authority.
+         */
         var request = request("/x", null, new HttpConnectionMetadata("", 0, "", 0, false, ""));
 
         assertEquals("http:/x", request.getRequestURL().toString());
@@ -429,8 +433,10 @@ class NettyHttpServletRequestTest {
     @Test
     void queryStringDecodedAsUtf8IndependentOfBodyEncoding() throws Exception {
         var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
-        // %C3%A9 is the UTF-8 encoding of "é". The query must always decode as UTF-8, while the
-        // form body must honor the body charset set via setCharacterEncoding.
+        /*
+         * %C3%A9 is the UTF-8 encoding of "é". The query must always decode as UTF-8, while the
+         * form body must honor the body charset set via setCharacterEncoding.
+         */
         var request = formRequest("/x?q=%C3%A9", "name=%C3%A9".getBytes(StandardCharsets.US_ASCII), insecure);
         request.setCharacterEncoding("ISO-8859-1");
 
@@ -570,8 +576,10 @@ class NettyHttpServletRequestTest {
         Cookie[] first = request.getCookies();
         Cookie[] second = request.getCookies();
 
-        // Each call hands back a fresh array (parity with getParameterValues), so a caller that
-        // mutates the returned array cannot corrupt a later getCookies() in the same request.
+        /*
+         * Each call hands back a fresh array (parity with getParameterValues), so a caller that
+         * mutates the returned array cannot corrupt a later getCookies() in the same request.
+         */
         assertNotSame(first, second);
         first[0] = null;
         assertNotNull(request.getCookies()[0]);
@@ -607,8 +615,10 @@ class NettyHttpServletRequestTest {
         }
     }
 
-    // Creating a session lazily starts a sweeper thread, so every context these tests build has to be
-    // closed again or the whole mvc suite carries one leaked thread per session test.
+    /**
+     * Creating a session lazily starts a sweeper thread, so every context these tests build has to be
+     * closed again or the whole mvc suite carries one leaked thread per session test.
+     */
     private final List<NettyServletContext> sessionContexts = new ArrayList<>();
 
     @AfterEach
@@ -641,8 +651,10 @@ class NettyHttpServletRequestTest {
 
     @Test
     void getSessionFalseWritesNoSetCookie() {
-        // DispatcherServlet calls getSession(false) on every request via SessionFlashMapManager, so this
-        // is the stateless hot path: it must neither create a session nor touch the response.
+        /*
+         * DispatcherServlet calls getSession(false) on every request via SessionFlashMapManager, so this
+         * is the stateless hot path: it must neither create a session nor touch the response.
+         */
         var exchange = exchange(new DefaultNettyServletContext());
 
         exchange.request().getSession(false);
@@ -727,8 +739,10 @@ class NettyHttpServletRequestTest {
 
     @Test
     void aStaleDuplicateSessionCookieDoesNotMaskTheLiveSession() {
-        // Issue #91, through the real cookie decoder: the stale duplicate arrives first on the wire and
-        // used to win outright.
+        /*
+         * Issue #91, through the real cookie decoder: the stale duplicate arrives first on the wire and
+         * used to win outright.
+         */
         var context = new DefaultNettyServletContext();
         var existing = context.getSessionManager().create();
 
@@ -747,8 +761,10 @@ class NettyHttpServletRequestTest {
             NettySessionCookieConfig.DEFAULT_NAME + "=DEAD1; "
                 + NettySessionCookieConfig.DEFAULT_NAME + "=DEAD2");
 
-        // The same triple SessionManagementFilter keys on as the single-cookie case: an id was presented
-        // and it is not valid, which is an expired session -- not a request that carried none.
+        /*
+         * The same triple SessionManagementFilter keys on as the single-cookie case: an id was presented
+         * and it is not valid, which is an expired session -- not a request that carried none.
+         */
         assertNull(exchange.request().getSession(false));
         assertEquals("DEAD2", exchange.request().getRequestedSessionId());
         assertFalse(exchange.request().isRequestedSessionIdValid());
@@ -757,9 +773,11 @@ class NettyHttpServletRequestTest {
 
     @Test
     void aSessionCookieNamedInADifferentCaseIsNotTheSessionCookie() {
-        // The security edge of RFC 6265 4.1.1: a mis-cased cookie, which anything sharing the host can
-        // set, must not be read as the session id even when it names a live session and the
-        // correctly-named one is dead.
+        /*
+         * The security edge of RFC 6265 4.1.1: a mis-cased cookie, which anything sharing the host can
+         * set, must not be read as the session id even when it names a live session and the
+         * correctly-named one is dead.
+         */
         var context = new DefaultNettyServletContext();
         var live = context.getSessionManager().create();
 
@@ -774,8 +792,10 @@ class NettyHttpServletRequestTest {
 
     @Test
     void getRequestedSessionIdIsNullWhenNoCookieIsPresent() {
-        // Not "": SessionManagementFilter treats any non-null requested id as a session to validate, so
-        // an empty string would make it fire its invalid-session strategy on every stateless request.
+        /*
+         * Not "": SessionManagementFilter treats any non-null requested id as a session to validate, so
+         * an empty string would make it fire its invalid-session strategy on every stateless request.
+         */
         var exchange = exchange(new DefaultNettyServletContext());
 
         assertNull(exchange.request().getRequestedSessionId());
@@ -803,8 +823,10 @@ class NettyHttpServletRequestTest {
 
     @Test
     void isRequestedSessionIdFromUrlIsAlwaysFalse() {
-        // URL rewriting is permanently out of scope: encodeURL is the identity, and COOKIE is the only
-        // effective tracking mode.
+        /*
+         * URL rewriting is permanently out of scope: encodeURL is the identity, and COOKIE is the only
+         * effective tracking mode.
+         */
         assertFalse(exchange(new DefaultNettyServletContext()).request().isRequestedSessionIdFromURL());
     }
 
@@ -829,8 +851,10 @@ class NettyHttpServletRequestTest {
 
         assertNotSame(first, second);
         assertNotEquals(firstId, second.getId());
-        // Replaced, not appended: leaving the first id as an earlier Set-Cookie of the same name would
-        // hand any client reading that header an id already unbound from the store.
+        /*
+         * Replaced, not appended: leaving the first id as an earlier Set-Cookie of the same name would
+         * hand any client reading that header an id already unbound from the store.
+         */
         assertEquals(1, exchange.setCookies().size(), "Actual: " + exchange.setCookies());
         assertTrue(exchange.setCookie().startsWith(NettySessionCookieConfig.DEFAULT_NAME + "=" + second.getId()));
     }
@@ -859,9 +883,11 @@ class NettyHttpServletRequestTest {
         var exchange = exchange(new DefaultNettyServletContext());
         exchange.request().getSession(true);
 
-        // The root context path is the "" sentinel; an empty Path= attribute would be meaningless, so
-        // this is the one place it must be translated to "/". Parsed rather than matched by substring:
-        // "Path=/" is a prefix of every other path, so contains() would accept any of them.
+        /*
+         * The root context path is the "" sentinel; an empty Path= attribute would be meaningless, so
+         * this is the one place it must be translated to "/". Parsed rather than matched by substring:
+         * "Path=/" is a prefix of every other path, so contains() would accept any of them.
+         */
         assertEquals("/", exchange.cookiePath(), "Actual: " + exchange.setCookie());
     }
 
@@ -877,8 +903,10 @@ class NettyHttpServletRequestTest {
 
     @Test
     void aConfiguredPathWinsOverTheContextPath() {
-        // The configured value is deliberately not a prefix of the context path, and vice versa: with
-        // "/" against "/app" the assertion would hold whichever won.
+        /*
+         * The configured value is deliberately not a prefix of the context path, and vice versa: with
+         * "/" against "/app" the assertion would hold whichever won.
+         */
         var context = new DefaultNettyServletContext();
         context.setContextPath("/app");
         context.getSessionCookieConfig().setPath("/custom");
@@ -985,10 +1013,12 @@ class NettyHttpServletRequestTest {
 
     @Test
     void aThrowingSessionIdListenerStillLeavesTheClientHoldingTheNewId() {
-        // sessionIdChanged fires after the rotation has committed and before writeSessionCookie runs, so
-        // a listener that throws would unwind past the Set-Cookie: the store knows only the new id while
-        // the browser still holds the old one, so every later request mints a fresh session and the user
-        // is silently logged out. Tomcat's tellChangedSessionId wraps each listener and logs.
+        /*
+         * sessionIdChanged fires after the rotation has committed and before writeSessionCookie runs, so
+         * a listener that throws would unwind past the Set-Cookie: the store knows only the new id while
+         * the browser still holds the old one, so every later request mints a fresh session and the user
+         * is silently logged out. Tomcat's tellChangedSessionId wraps each listener and logs.
+         */
         var context = new DefaultNettyServletContext();
         var exchange = exchange(context);
         var session = exchange.request().getSession(true);
@@ -1018,13 +1048,15 @@ class NettyHttpServletRequestTest {
 
     @Test
     void changeSessionIdAfterCommitStillRotatesAndDoesNotThrow() throws Exception {
-        // changeSessionId declares IllegalStateException only for "no session"; the commit-time throw
-        // belongs to getSession(create). Tomcat routes the rotated cookie through addCookie, which is
-        // specified to have no effect after a commit -- so this is silent there and must be here.
-        //
-        // The session is seeded before the commit deliberately: "no further cookie" alone is satisfied by
-        // addCookie's own guard, whereas an unguarded rotation would strip the already-emitted header as
-        // it scanned for the name to replace, leaving the client with no session cookie at all.
+        /*
+         * changeSessionId declares IllegalStateException only for "no session"; the commit-time throw
+         * belongs to getSession(create). Tomcat routes the rotated cookie through addCookie, which is
+         * specified to have no effect after a commit -- so this is silent there and must be here.
+         *
+         * The session is seeded before the commit deliberately: "no further cookie" alone is satisfied by
+         * addCookie's own guard, whereas an unguarded rotation would strip the already-emitted header as
+         * it scanned for the name to replace, leaving the client with no session cookie at all.
+         */
         var context = new DefaultNettyServletContext();
         var exchange = exchange(context);
         var existing = exchange.request().getSession(true);
@@ -1055,8 +1087,10 @@ class NettyHttpServletRequestTest {
 
         String newId = exchange.request().changeSessionId();
 
-        // Carrying the pre-rotation id would have getRequestedSessionId() name a session that no longer
-        // exists, and contradict isRequestedSessionIdValid().
+        /*
+         * Carrying the pre-rotation id would have getRequestedSessionId() name a session that no longer
+         * exists, and contradict isRequestedSessionIdValid().
+         */
         assertEquals(newId, exchange.request().getRequestedSessionId());
         assertTrue(exchange.request().isRequestedSessionIdValid());
     }
@@ -1081,10 +1115,12 @@ class NettyHttpServletRequestTest {
         var exchange = exchange(new DefaultNettyServletContext());
         exchange.response().sendRedirect("/elsewhere");
 
-        // The Servlet contract: "If the container is using cookies to maintain session integrity and is
-        // asked to create a new session when the response is committed, an IllegalStateException is
-        // thrown." Returning a session whose id can never reach the client would leave the application
-        // silently starting a new one on every request.
+        /*
+         * The Servlet contract: "If the container is using cookies to maintain session integrity and is
+         * asked to create a new session when the response is committed, an IllegalStateException is
+         * thrown." Returning a session whose id can never reach the client would leave the application
+         * silently starting a new one on every request.
+         */
         assertThrows(IllegalStateException.class, () -> exchange.request().getSession(true));
     }
 
@@ -1112,8 +1148,10 @@ class NettyHttpServletRequestTest {
 
     @Test
     void creatingASessionAfterCommitIsAllowedWhenCookieTrackingIsDisabled() throws Exception {
-        // The spec conditions the throw on the container using cookies; with tracking off there is no
-        // id to deliver and nothing is lost.
+        /*
+         * The spec conditions the throw on the container using cookies; with tracking off there is no
+         * id to deliver and nothing is lost.
+         */
         var context = new DefaultNettyServletContext();
         context.setSessionTrackingModes(Set.of());
         var exchange = exchange(context);
@@ -1133,8 +1171,10 @@ class NettyHttpServletRequestTest {
 
         exchange.request().getSession(false).invalidate();
 
-        // The contract is whether the id is *still* valid; latching the first answer would keep Spring
-        // Security's InvalidSessionStrategy from ever firing for a session killed mid-dispatch.
+        /*
+         * The contract is whether the id is *still* valid; latching the first answer would keep Spring
+         * Security's InvalidSessionStrategy from ever firing for a session killed mid-dispatch.
+         */
         assertFalse(exchange.request().isRequestedSessionIdValid());
     }
 

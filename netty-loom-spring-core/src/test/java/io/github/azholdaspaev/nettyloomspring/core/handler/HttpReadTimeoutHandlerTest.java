@@ -97,9 +97,11 @@ class HttpReadTimeoutHandlerTest {
             assertTrue(channel.isOpen(), "a connection answering requests is never idle");
         }
 
-        // Two steps rather than one bulk elapse: the tick after a response re-arms for the *remainder* of
-        // the interval, and a bulk advance cannot tell that from re-arming a whole one — which would
-        // overshoot the configured timeout by half on every keep-alive connection, silently.
+        /*
+         * Two steps rather than one bulk elapse: the tick after a response re-arms for the *remainder* of
+         * the interval, and a bulk advance cannot tell that from re-arming a whole one — which would
+         * overshoot the configured timeout by half on every keep-alive connection, silently.
+         */
         elapse(channel, TIMEOUT_MILLIS - 1);
         assertTrue(channel.isOpen(), "the last exchange restarted the clock, so a full interval is owed");
         elapse(channel, 1);
@@ -303,8 +305,10 @@ class HttpReadTimeoutHandlerTest {
         receiveRequestHead(channel);
         elapse(channel, TIMEOUT_MILLIS);
 
-        // Strictly between two ticks: elapse() runs due tasks at the instant it advances to, so a
-        // resume there coincides with the suspending tick and the re-armed timer hides the reset.
+        /*
+         * Strictly between two ticks: elapse() runs due tasks at the instant it advances to, so a
+         * resume there coincides with the suspending tick and the re-armed timer hides the reset.
+         */
         channel.advanceTimeBy(TIMEOUT_MILLIS / 2, TimeUnit.MILLISECONDS);
         valve.withheld = false;
         channel.read();

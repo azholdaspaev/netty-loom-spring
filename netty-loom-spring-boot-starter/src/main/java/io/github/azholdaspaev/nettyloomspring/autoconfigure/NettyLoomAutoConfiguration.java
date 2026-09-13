@@ -88,29 +88,41 @@ public class NettyLoomAutoConfiguration {
                                                            HttpRequestDispatcher httpRequestDispatcher,
                                                            ExecutorService nettyLoomDispatchExecutor,
                                                            HttpConnectionRegistry httpConnectionRegistry) {
-        // Nanoseconds, not millis: toMillis() truncates, so a sub-millisecond read-timeout would arrive as
-        // zero -- which the handler treats as "disabled", silently turning the slow-loris guard off.
+        /*
+         * Nanoseconds, not millis: toMillis() truncates, so a sub-millisecond read-timeout would arrive as
+         * zero -- which the handler treats as "disabled", silently turning the slow-loris guard off.
+         */
         long readTimeoutNanos = properties.readTimeout().toNanos();
         return new NettyPipelineDefinition(List.of(
             new NettyPipelineStep("httpCodec", () -> new HttpServerCodec(MAX_HTTP_INITIAL_LINE_LENGTH, MAX_HTTP_HEADER_SIZE, MAX_HTTP_CHUNK_SIZE)),
             new NettyPipelineStep("httpKeepAlive", HttpServerKeepAliveHandler::new),
-            // Directly below the codec so a connection counts as busy from the head of a request, before
-            // its body has finished arriving; outbound of httpKeepAlive so it can stamp
-            // Connection: close before that handler decides whether to close.
+            /*
+             * Directly below the codec so a connection counts as busy from the head of a request, before
+             * its body has finished arriving; outbound of httpKeepAlive so it can stamp
+             * Connection: close before that handler decides whether to close.
+             */
             new NettyPipelineStep("drain", () -> new HttpDrainHandler(httpConnectionRegistry)),
-            // Above the pipelining gate so its count stays a property of what the client has delivered
-            // rather than of what that handler has released; correctness holds on either side.
+            /*
+             * Above the pipelining gate so its count stays a property of what the client has delivered
+             * rather than of what that handler has released; correctness holds on either side.
+             */
             new NettyPipelineStep("readTimeout", () -> new HttpReadTimeoutHandler(readTimeoutNanos, TimeUnit.NANOSECONDS)),
-            // Above the dispatcher so requests are gated before dispatch while responses still pass back
-            // through, and above bodyLimit so that handler's 100 Continue and 413 are sequenced rather
-            // than travelling towards the head unsequenced (issue #78).
+            /*
+             * Above the dispatcher so requests are gated before dispatch while responses still pass back
+             * through, and above bodyLimit so that handler's 100 Continue and 413 are sequenced rather
+             * than travelling towards the head unsequenced (issue #78).
+             */
             new NettyPipelineStep("pipelining", HttpPipeliningHandler::new),
-            // Below the gate so the rejection is sequenced behind an earlier pipelined response and releases
-            // the gate on its way out. Nothing is lost by rejecting this late: the decoder discards every
-            // byte after a bad message, so no request can be queued behind one.
+            /*
+             * Below the gate so the rejection is sequenced behind an earlier pipelined response and releases
+             * the gate on its way out. Nothing is lost by rejecting this late: the decoder discards every
+             * byte after a bad message, so no request can be queued behind one.
+             */
             NettyPipelineStep.shared("decoderFailure", new HttpDecoderFailureHandler()),
-            // Below decoderFailure so it counts only what decoded, and above the dispatcher so a body it
-            // refuses never reaches one.
+            /*
+             * Below decoderFailure so it counts only what decoded, and above the dispatcher so a body it
+             * refuses never reaches one.
+             */
             new NettyPipelineStep("bodyLimit", () -> new HttpRequestBodyLimitHandler(MAX_HTTP_REQUEST_BODY_BYTES)),
             new NettyPipelineStep("dispatcher", () -> new HttpRequestHandler(httpRequestDispatcher, nettyLoomDispatchExecutor,
                 httpConnectionRegistry, properties.writeStallTimeout())),

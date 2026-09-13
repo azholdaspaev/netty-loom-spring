@@ -613,9 +613,11 @@ class DefaultNettyServletContextTest {
 
     @Test
     void shouldRoundSubMinuteTimeoutUpToOneMinute() {
-        // The manager keeps seconds so a 30s configuration is honoured exactly. Reporting that through
-        // the minutes-based ServletContext API must round up: truncating to 0 would mean "never
-        // expires", turning a 30-second timeout into an infinite one.
+        /*
+         * The manager keeps seconds so a 30s configuration is honoured exactly. Reporting that through
+         * the minutes-based ServletContext API must round up: truncating to 0 would mean "never
+         * expires", turning a 30-second timeout into an infinite one.
+         */
         context.getSessionManager().setDefaultMaxInactiveInterval(30);
 
         assertEquals(1, context.getSessionTimeout());
@@ -623,10 +625,12 @@ class DefaultNettyServletContextTest {
 
     @Test
     void shouldClampAnImplausiblyLargeSessionTimeoutRatherThanWrap() {
-        // Unchecked int arithmetic here would make Integer.MAX_VALUE minutes store -60 seconds, which
-        // isExpired reads as "never expires", and 35_791_395 minutes wrap to a plausible small positive
-        // timeout. web.xml's <session-timeout> and any ServletContextInitializer can reach this, and
-        // Integer.MAX_VALUE is a common way to spell "effectively never".
+        /*
+         * Unchecked int arithmetic here would make Integer.MAX_VALUE minutes store -60 seconds, which
+         * isExpired reads as "never expires", and 35_791_395 minutes wrap to a plausible small positive
+         * timeout. web.xml's <session-timeout> and any ServletContextInitializer can reach this, and
+         * Integer.MAX_VALUE is a common way to spell "effectively never".
+         */
         context.setSessionTimeout(Integer.MAX_VALUE);
 
         assertEquals(Integer.MAX_VALUE, context.getSessionManager().getDefaultMaxInactiveInterval());
@@ -663,8 +667,10 @@ class DefaultNettyServletContextTest {
 
     @Test
     void shouldRejectUrlSessionTrackingMode() {
-        // Silently ignoring it would leave sessions quietly broken with no signal, so fail fast the way
-        // the factory already does for server.ssl.*.
+        /*
+         * Silently ignoring it would leave sessions quietly broken with no signal, so fail fast the way
+         * the factory already does for server.ssl.*.
+         */
         var thrown = assertThrows(IllegalArgumentException.class,
             () -> context.setSessionTrackingModes(Set.of(SessionTrackingMode.URL)));
 
@@ -774,9 +780,11 @@ class DefaultNettyServletContextTest {
 
     @Test
     void shouldRejectAListenerClassThatCannotBeInstantiated() {
-        // The overload that wraps createListener was untested: emptying its catch block left the suite
-        // green and turned addListener(Class) into a silent no-op, which is exactly the "application
-        // starts believing it is wired up" failure the registry throws to avoid.
+        /*
+         * The overload that wraps createListener was untested: emptying its catch block left the suite
+         * green and turned addListener(Class) into a silent no-op, which is exactly the "application
+         * starts believing it is wired up" failure the registry throws to avoid.
+         */
         var thrown = assertThrows(IllegalArgumentException.class,
             () -> context.addListener(UninstantiableListener.class));
 
@@ -801,8 +809,10 @@ class DefaultNettyServletContextTest {
 
     @Test
     void shouldReportListenerInstantiationFailureAsServletException() {
-        // The Jakarta contract: createListener wraps the reflective failure, so a caller sees why the
-        // class could not be built rather than a bare InvocationTargetException.
+        /*
+         * The Jakarta contract: createListener wraps the reflective failure, so a caller sees why the
+         * class could not be built rather than a bare InvocationTargetException.
+         */
         var thrown = assertThrows(jakarta.servlet.ServletException.class,
             () -> context.createListener(UninstantiableListener.class));
 
@@ -812,8 +822,10 @@ class DefaultNettyServletContextTest {
 
     @Test
     void shouldFreezeEveryComponentFromOneCall() {
-        // "Startup is over" is one fact, so the context fans it out rather than each caller naming every
-        // freezable component, none of which can then be silently missed.
+        /*
+         * "Startup is over" is one fact, so the context fans it out rather than each caller naming every
+         * freezable component, none of which can then be silently missed.
+         */
         context.markInitialized();
 
         assertThrows(IllegalStateException.class, () -> context.addListener(new CountingContextListener()),
@@ -848,8 +860,10 @@ class DefaultNettyServletContextTest {
 
     @Test
     void shouldFireContextDestroyedOnlyOnceAcrossRepeatedCloses() {
-        // close() is an idempotent backstop -- SessionStoreLifecycle.stop() and the bean-destruction
-        // callback both reach it -- so the event must not be delivered twice.
+        /*
+         * close() is an idempotent backstop -- SessionStoreLifecycle.stop() and the bean-destruction
+         * callback both reach it -- so the event must not be delivered twice.
+         */
         var listener = new CountingContextListener();
         context.addListener(listener);
         context.fireContextInitialized();
@@ -862,8 +876,10 @@ class DefaultNettyServletContextTest {
 
     @Test
     void shouldNotFireContextDestroyedWhenStartupNeverCompleted() {
-        // An initializer can fail before fireContextInitialized runs; close() still executes as the
-        // backstop, and destroying listeners that were never initialized would be worse than doing nothing.
+        /*
+         * An initializer can fail before fireContextInitialized runs; close() still executes as the
+         * backstop, and destroying listeners that were never initialized would be worse than doing nothing.
+         */
         var listener = new CountingContextListener();
         context.addListener(listener);
 
@@ -874,8 +890,10 @@ class DefaultNettyServletContextTest {
 
     @Test
     void shouldFireContextDestroyedAfterTheSessionStoreIsDrained() {
-        // Tomcat stops the Manager before listenerStop, so a listener auditing live sessions on the way
-        // out sees the store already emptied rather than a half-drained one.
+        /*
+         * Tomcat stops the Manager before listenerStop, so a listener auditing live sessions on the way
+         * out sees the store already emptied rather than a half-drained one.
+         */
         var sessionsAtDestroy = new int[]{-1};
         context.addListener(new ServletContextListener() {
             @Override
@@ -893,8 +911,10 @@ class DefaultNettyServletContextTest {
 
     @Test
     void shouldReinitializeListenersWhenTheContextIsRestarted() {
-        // ApplicationContext.start() after stop(), and CRaC restore, replay the stop phase. Leaving the
-        // listeners destroyed would mean an application serving normally with every listener torn down.
+        /*
+         * ApplicationContext.start() after stop(), and CRaC restore, replay the stop phase. Leaving the
+         * listeners destroyed would mean an application serving normally with every listener torn down.
+         */
         var listener = new CountingContextListener();
         context.addListener(listener);
         context.fireContextInitialized();
@@ -919,8 +939,10 @@ class DefaultNettyServletContextTest {
 
     @Test
     void shouldNotFireContextInitializedOnOpenWithoutAPriorClose() {
-        // open() runs on every start, including the first -- where the factory has already fired the
-        // event. Firing again would double-initialize every listener on a normal boot.
+        /*
+         * open() runs on every start, including the first -- where the factory has already fired the
+         * event. Firing again would double-initialize every listener on a normal boot.
+         */
         var listener = new CountingContextListener();
         context.addListener(listener);
         context.fireContextInitialized();

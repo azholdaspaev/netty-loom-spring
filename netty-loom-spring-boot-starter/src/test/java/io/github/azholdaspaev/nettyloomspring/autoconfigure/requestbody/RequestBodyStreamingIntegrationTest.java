@@ -174,8 +174,10 @@ class RequestBodyStreamingIntegrationTest {
         try (Socket socket = connect()) {
             RawHttpClient.send(socket, "POST /upload/ignored HTTP/1.1",
                 "Host: localhost", "Content-Length: " + LARGE_BODY_BYTES);
-            // Off this thread: past the queue bound the server withholds reads, so the client blocks
-            // in the socket until whatever drains the abandoned body has run.
+            /*
+             * Off this thread: past the queue bound the server withholds reads, so the client blocks
+             * in the socket until whatever drains the abandoned body has run.
+             */
             Thread sender = Thread.ofVirtual().start(() -> sendQuietly(socket, "x".repeat(LARGE_BODY_BYTES)));
 
             RawHttpResponse first = RawHttpResponse.read(socket.getInputStream());

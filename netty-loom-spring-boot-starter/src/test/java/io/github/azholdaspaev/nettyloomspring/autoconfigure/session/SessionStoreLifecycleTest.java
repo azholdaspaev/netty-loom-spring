@@ -48,8 +48,10 @@ class SessionStoreLifecycleTest {
         lifecycle.stop();
 
         assertFalse(lifecycle.isRunning());
-        // Asserted through the servlet contract rather than the internal flag: an invalidated session is
-        // exactly one whose accessors throw.
+        /*
+         * Asserted through the servlet contract rather than the internal flag: an invalidated session is
+         * exactly one whose accessors throw.
+         */
         assertThrows(IllegalStateException.class, () -> session.getAttribute("anything"),
             "stopping must invalidate the sessions it drops");
     }
@@ -69,8 +71,10 @@ class SessionStoreLifecycleTest {
 
     @Test
     void aStopWithoutARestartLeavesTheStoreClosed() {
-        // The other half of the pair: reopening must be something start() does, not something close()
-        // forgot to do. Without this, "restart works" would also be satisfied by never closing at all.
+        /*
+         * The other half of the pair: reopening must be something start() does, not something close()
+         * forgot to do. Without this, "restart works" would also be satisfied by never closing at all.
+         */
         lifecycle.stop();
 
         assertThrows(IllegalStateException.class, () -> servletContext.getSessionManager().create());
@@ -84,9 +88,11 @@ class SessionStoreLifecycleTest {
 
     @Test
     void theStoreStopsAfterTheWebServerHasDrained() {
-        // stopBeans sorts descending, so a lower phase stops later. Asserted as an inequality against
-        // Boot's own constant rather than as an equality with our arithmetic, which would restate the
-        // implementation instead of the ordering it exists to produce.
+        /*
+         * stopBeans sorts descending, so a lower phase stops later. Asserted as an inequality against
+         * Boot's own constant rather than as an equality with our arithmetic, which would restate the
+         * implementation instead of the ordering it exists to produce.
+         */
         assertTrue(lifecycle.getPhase() < WebServerApplicationContext.START_STOP_LIFECYCLE_PHASE,
             "tearing sessions down before the server drains would hit requests still in flight");
     }

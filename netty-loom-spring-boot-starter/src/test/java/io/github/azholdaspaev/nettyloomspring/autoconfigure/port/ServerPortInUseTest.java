@@ -29,9 +29,11 @@ class ServerPortInUseTest {
 
     @Test
     void shouldReportTakenPortAsPortInUse() throws Exception {
-        // Both sockets must bind the wildcard for the collision to be guaranteed: Netty enables
-        // SO_REUSEADDR by default on every transport, and BSD lets a specific-address bind succeed over a
-        // listening wildcard -- so setting server.address here would pass on Linux and fail on macOS.
+        /*
+         * Both sockets must bind the wildcard for the collision to be guaranteed: Netty enables
+         * SO_REUSEADDR by default on every transport, and BSD lets a specific-address bind succeed over a
+         * listening wildcard -- so setting server.address here would pass on Linux and fail on macOS.
+         */
         try (ServerSocket squatter = new ServerSocket(0)) {
             int takenPort = squatter.getLocalPort();
 
@@ -39,8 +41,10 @@ class ServerPortInUseTest {
                 try (var _ = new SpringApplicationBuilder(SmokeNettyLoomApplication.class)
                     .properties("server.port=" + takenPort)
                     .run()) {
-                    // Only reached if the bind unexpectedly succeeds; closing keeps that a legible
-                    // single failure instead of leaking a live server into the rest of the suite.
+                    /*
+                     * Only reached if the bind unexpectedly succeeds; closing keeps that a legible
+                     * single failure instead of leaking a live server into the rest of the suite.
+                     */
                 }
             });
 
@@ -52,15 +56,19 @@ class ServerPortInUseTest {
 
     @Test
     void shouldNotReportUnassignableAddressAsPortInUse() {
-        // 192.0.2.1 is RFC 5737 TEST-NET-1, reserved for documentation, so it is never a local interface
-        // and the bind fails EADDRNOTAVAIL on every platform. Issue #74 proposed an unprivileged bind of
-        // port 80 for EACCES instead, but macOS permits a wildcard bind there and would leave a live :80.
+        /*
+         * 192.0.2.1 is RFC 5737 TEST-NET-1, reserved for documentation, so it is never a local interface
+         * and the bind fails EADDRNOTAVAIL on every platform. Issue #74 proposed an unprivileged bind of
+         * port 80 for EACCES instead, but macOS permits a wildcard bind there and would leave a live :80.
+         */
         RuntimeException failure = assertThrows(RuntimeException.class, () -> {
             try (var _ = new SpringApplicationBuilder(SmokeNettyLoomApplication.class)
                 .properties("server.port=0", "server.address=192.0.2.1")
                 .run()) {
-                // Reachable where non-local binding is enabled (net.ipv4.ip_nonlocal_bind=1, or a
-                // host that aliases TEST-NET-1); close so the failure stays a single legible one.
+                /*
+                 * Reachable where non-local binding is enabled (net.ipv4.ip_nonlocal_bind=1, or a
+                 * host that aliases TEST-NET-1); close so the failure stays a single legible one.
+                 */
             }
         });
 

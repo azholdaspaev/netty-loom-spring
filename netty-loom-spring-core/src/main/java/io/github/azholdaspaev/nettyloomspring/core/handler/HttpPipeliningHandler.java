@@ -44,10 +44,12 @@ public class HttpPipeliningHandler extends ChannelDuplexHandler {
             return;
         }
         if (part instanceof HttpRequest) {
-            // Queued behind an empty queue too: an exchange that has just ended leaves serving false
-            // before the queue drains, and a request arriving in that window would jump the ones
-            // already waiting. Held, not forwarded, so this handler is its sole owner until it is
-            // passed on -- which is why it needs no retain(), only the release in channelInactive.
+            /*
+             * Queued behind an empty queue too: an exchange that has just ended leaves serving false
+             * before the queue drains, and a request arriving in that window would jump the ones
+             * already waiting. Held, not forwarded, so this handler is its sole owner until it is
+             * passed on -- which is why it needs no retain(), only the release in channelInactive.
+             */
             if (serving || !pending.isEmpty()) {
                 pending.addLast(part);
                 return;
@@ -64,16 +66,20 @@ public class HttpPipeliningHandler extends ChannelDuplexHandler {
 
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
-        // LastHttpContent rather than the dispatcher's return value, so a response written in parts
-        // still ends its exchange at the end.
+        /*
+         * LastHttpContent rather than the dispatcher's return value, so a response written in parts
+         * still ends its exchange at the end.
+         */
         if (!(msg instanceof LastHttpContent) || HttpResponses.isInformational(msg)) {
             ctx.write(msg, promise);
             return;
         }
         ctx.write(msg, promise);
-        // Ended on write invocation, not on the promise: a peer whose receive window stays at zero
-        // never completes it, so the gate would latch shut for ever and HttpReadTimeoutHandler, seeing
-        // an exchange still unanswered, would never reclaim the connection (issue #76 review).
+        /*
+         * Ended on write invocation, not on the promise: a peer whose receive window stays at zero
+         * never completes it, so the gate would latch shut for ever and HttpReadTimeoutHandler, seeing
+         * an exchange still unanswered, would never reclaim the connection (issue #76 review).
+         */
         responseEnded = true;
         endExchangeIfSettled(ctx);
     }
@@ -100,8 +106,10 @@ public class HttpPipeliningHandler extends ChannelDuplexHandler {
     private void begin(ChannelHandlerContext ctx, HttpObject head) {
         serving = true;
         responseEnded = false;
-        // A FullHttpRequest is its own terminator, so a pipeline that still aggregates has its body
-        // off the wire on arrival.
+        /*
+         * A FullHttpRequest is its own terminator, so a pipeline that still aggregates has its body
+         * off the wire on arrival.
+         */
         bodyArriving = !(head instanceof LastHttpContent);
         ctx.fireChannelRead(head);
         endExchangeIfSettled(ctx);
@@ -121,15 +129,19 @@ public class HttpPipeliningHandler extends ChannelDuplexHandler {
         }
         serving = false;
         responseEnded = false;
-        // Deferred rather than inline because the recursion is otherwise unbounded: HttpRequestHandler
-        // fires exceptionCaught synchronously on this loop when its dispatch executor rejects, so a
-        // burst answered in-loop re-enters this method once per queued request.
+        /*
+         * Deferred rather than inline because the recursion is otherwise unbounded: HttpRequestHandler
+         * fires exceptionCaught synchronously on this loop when its dispatch executor rejects, so a
+         * burst answered in-loop re-enters this method once per queued request.
+         */
         try {
             ctx.executor().execute(() -> serveNext(ctx));
         } catch (RejectedExecutionException shuttingDown) {
-            // Swallowed rather than propagated: the message has already been handed on, so letting this
-            // out would fail the response promise for a write that did happen, firing the keep-alive and
-            // drain completion listeners on a false failure.
+            /*
+             * Swallowed rather than propagated: the message has already been handed on, so letting this
+             * out would fail the response promise for a write that did happen, firing the keep-alive and
+             * drain completion listeners on a false failure.
+             */
         }
     }
 

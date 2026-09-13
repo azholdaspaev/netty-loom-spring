@@ -103,8 +103,10 @@ class StreamingIntegrationTest {
 
             assertEquals(200, response.status());
 
-            // Netty's codec drops the body of a HEAD, terminator included, so absence cannot be read
-            // off this response; a second request on the same socket is what proves nothing followed.
+            /*
+             * Netty's codec drops the body of a HEAD, terminator included, so absence cannot be read
+             * off this response; a second request on the same socket is what proves nothing followed.
+             */
             RawHttpClient.send(socket, "GET /streaming/sized HTTP/1.1", "Host: localhost");
             assertEquals(200, RawHttpResponse.read(socket.getInputStream()).status(),
                 "no body may have been written, or the next response would read as part of this one");

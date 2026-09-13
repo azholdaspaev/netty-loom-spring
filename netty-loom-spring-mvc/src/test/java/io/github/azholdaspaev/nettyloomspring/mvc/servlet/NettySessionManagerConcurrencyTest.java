@@ -76,8 +76,10 @@ class NettySessionManagerConcurrencyTest {
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 } catch (RuntimeException ignored) {
-                    // A loser that throws IllegalStateException is a legitimate outcome here; what the
-                    // assertions care about is the state the store is left in.
+                    /*
+                     * A loser that throws IllegalStateException is a legitimate outcome here; what the
+                     * assertions care about is the state the store is left in.
+                     */
                 } finally {
                     done.countDown();
                 }
@@ -113,9 +115,11 @@ class NettySessionManagerConcurrencyTest {
 
     @Test
     void concurrentRotationsLeaveExactlyOneReachableEntry() throws InterruptedException {
-        // Two tabs submitting the same login form both reach ChangeSessionIdAuthenticationStrategy.
-        // Rotating on a key the session carries means an unserialised pair can bind two ids and unbind
-        // only one, stranding an entry no removal path can ever name again.
+        /*
+         * Two tabs submitting the same login form both reach ChangeSessionIdAuthenticationStrategy.
+         * Rotating on a key the session carries means an unserialised pair can bind two ids and unbind
+         * only one, stranding an entry no removal path can ever name again.
+         */
         for (int round = 0; round < ROUNDS; round++) {
             NettyHttpSession session = manager.create();
 
@@ -132,8 +136,10 @@ class NettySessionManagerConcurrencyTest {
 
     @Test
     void aRotationRacingInvalidationLeavesNothingBehind() throws InterruptedException {
-        // Login and logout in flight together. Whichever wins, an invalidated session must not remain
-        // resolvable -- find() would keep refreshing it while every attribute access throws.
+        /*
+         * Login and logout in flight together. Whichever wins, an invalidated session must not remain
+         * resolvable -- find() would keep refreshing it while every attribute access throws.
+         */
         for (int round = 0; round < ROUNDS; round++) {
             NettyHttpSession session = manager.create();
 
@@ -147,10 +153,12 @@ class NettySessionManagerConcurrencyTest {
 
     @Test
     void aValueBoundWhileTheSessionIsTornDownIsStillUnbound() throws InterruptedException {
-        // The re-check in setAttribute exists for exactly this: checkValid() can pass and invalidation
-        // land during the put, leaving a value in a session nothing will ever tear down. Pairing rather
-        // than a ceiling on the releases: counting only those leaves an unpaired *bind* invisible, and
-        // it is the pairing that holds the remove(key, value) claim honest against a double release.
+        /*
+         * The re-check in setAttribute exists for exactly this: checkValid() can pass and invalidation
+         * land during the put, leaving a value in a session nothing will ever tear down. Pairing rather
+         * than a ceiling on the releases: counting only those leaves an unpaired *bind* invisible, and
+         * it is the pairing that holds the remove(key, value) claim honest against a double release.
+         */
         for (int round = 0; round < ROUNDS; round++) {
             NettyHttpSession session = manager.create();
             var value = new CountingValue();
@@ -167,16 +175,20 @@ class NettySessionManagerConcurrencyTest {
 
     @Test
     void reBindingAnInstanceWhileTheSessionIsTornDownDoesNotUnbindItTwice() throws InterruptedException {
-        // setAttribute skips valueBound when the identical instance is already bound, and separately
-        // re-checks invalidation after its put. Combined naively those give one bind and *two* unbinds:
-        // the teardown claims the value and fires once, the losing put resurrects it into the map, and
-        // the re-check claims it again. A listener that acquires in bound and releases in unbound
-        // double-releases; a @SessionScope bean runs @PreDestroy twice.
+        /*
+         * setAttribute skips valueBound when the identical instance is already bound, and separately
+         * re-checks invalidation after its put. Combined naively those give one bind and *two* unbinds:
+         * the teardown claims the value and fires once, the losing put resurrects it into the map, and
+         * the re-check claims it again. A listener that acquires in bound and releases in unbound
+         * double-releases; a @SessionScope bean runs @PreDestroy twice.
+         */
         for (int round = 0; round < ROUNDS; round++) {
             NettyHttpSession session = manager.create();
             var value = new CountingValue();
-            // Already bound, so the re-bind below is the no-valueBound path -- what
-            // DefaultSessionAttributeStore.storeAttribute does on every request for @SessionAttributes.
+            /*
+             * Already bound, so the re-bind below is the no-valueBound path -- what
+             * DefaultSessionAttributeStore.storeAttribute does on every request for @SessionAttributes.
+             */
             session.setAttribute("k", value);
 
             race(() -> {
@@ -196,11 +208,13 @@ class NettySessionManagerConcurrencyTest {
 
     @Test
     void aReBindRacingARemovalReleasesTheValueOncePerBind() throws InterruptedException {
-        // The @SessionAttributes write-through path with nothing exotic around it: one request re-stores
-        // an instance that is already bound while another removes the key. Deciding "is it already
-        // bound?" from a read taken before the publish lets the removal land in between -- it unbinds,
-        // the re-bind then resurrects the value with no valueBound of its own, and the teardown releases
-        // it a second time. A @SessionScope bean would run its @PreDestroy twice.
+        /*
+         * The @SessionAttributes write-through path with nothing exotic around it: one request re-stores
+         * an instance that is already bound while another removes the key. Deciding "is it already
+         * bound?" from a read taken before the publish lets the removal land in between -- it unbinds,
+         * the re-bind then resurrects the value with no valueBound of its own, and the teardown releases
+         * it a second time. A @SessionScope bean would run its @PreDestroy twice.
+         */
         for (int round = 0; round < ATTRIBUTE_ROUNDS; round++) {
             NettyHttpSession session = manager.create();
             var value = new CountingValue();
@@ -217,8 +231,10 @@ class NettySessionManagerConcurrencyTest {
 
     @Test
     void aReBindRacingAnotherValueReleasesTheValueOncePerBind() throws InterruptedException {
-        // The same shape with a replacement rather than a removal: the racing request's own publish
-        // claims the bound value and unbinds it, and the re-bind puts it back unannounced.
+        /*
+         * The same shape with a replacement rather than a removal: the racing request's own publish
+         * claims the bound value and unbinds it, and the re-bind puts it back unannounced.
+         */
         for (int round = 0; round < ATTRIBUTE_ROUNDS; round++) {
             NettyHttpSession session = manager.create();
             var value = new CountingValue();
@@ -234,9 +250,11 @@ class NettySessionManagerConcurrencyTest {
 
     @Test
     void sweepingConcurrentlyWithFindLeavesTheStoreAndTheSessionAgreeing() throws InterruptedException {
-        // Named for what it checks, which is weaker than the race it runs: every assertion here is made
-        // after both threads have joined, so this pins the *outcome* invariant -- nothing invalidated
-        // stays reachable, nothing reachable is invalidated -- and not the locking that produces it.
+        /*
+         * Named for what it checks, which is weaker than the race it runs: every assertion here is made
+         * after both threads have joined, so this pins the *outcome* invariant -- nothing invalidated
+         * stays reachable, nothing reachable is invalidated -- and not the locking that produces it.
+         */
         for (int round = 0; round < ROUNDS; round++) {
             NettyHttpSession session = manager.create();
             String id = session.getId();
@@ -258,9 +276,11 @@ class NettySessionManagerConcurrencyTest {
 
     @Test
     void findRefusesAnInvalidatedSessionStillPresentInTheStore() {
-        // find()'s in-lock isInvalidated() guard, without a race: the state it exists for -- marked but
-        // not yet unbound from the store -- is what the teardown paths pass through, and can be
-        // constructed directly rather than covered by luck.
+        /*
+         * find()'s in-lock isInvalidated() guard, without a race: the state it exists for -- marked but
+         * not yet unbound from the store -- is what the teardown paths pass through, and can be
+         * constructed directly rather than covered by luck.
+         */
         NettyHttpSession session = manager.create();
         session.markInvalidated();
 
@@ -271,9 +291,11 @@ class NettySessionManagerConcurrencyTest {
 
     @Test
     void findWaitsForAnEvictionThatHasAlreadyTakenTheSessionLock() throws InterruptedException {
-        // That find() takes the *session's* lock rather than merely reading flags. Holding the production
-        // monitor from the test thread is what makes this deterministic; asserting the finder actually
-        // reaches BLOCKED is what stops it going quietly vacuous if find() ever stops locking.
+        /*
+         * That find() takes the *session's* lock rather than merely reading flags. Holding the production
+         * monitor from the test thread is what makes this deterministic; asserting the finder actually
+         * reaches BLOCKED is what stops it going quietly vacuous if find() ever stops locking.
+         */
         NettyHttpSession session = manager.create();
         String id = session.getId();
 
@@ -291,11 +313,13 @@ class NettySessionManagerConcurrencyTest {
 
     @Test
     void aSessionExtendedWhileTheSweeperWaitsForTheLockIsNotEvicted() throws InterruptedException {
-        // The widest form of the window, made deterministic by holding the lock: the sweeper judges the
-        // session expired, blocks entering the eviction, and an ordinary setMaxInactiveInterval -- a
-        // plain volatile write, taking no lock -- extends it before the sweeper gets in. Deciding expiry
-        // outside the lock and then evicting unconditionally destroys a session that is now live for
-        // another hour, and the request that extended it sees IllegalStateException on its next access.
+        /*
+         * The widest form of the window, made deterministic by holding the lock: the sweeper judges the
+         * session expired, blocks entering the eviction, and an ordinary setMaxInactiveInterval -- a
+         * plain volatile write, taking no lock -- extends it before the sweeper gets in. Deciding expiry
+         * outside the lock and then evicting unconditionally destroys a session that is now live for
+         * another hour, and the request that extended it sees IllegalStateException on its next access.
+         */
         NettyHttpSession session = manager.create();
         long deadline = ONE_MINUTE * 1000L;
         clock.set(deadline);

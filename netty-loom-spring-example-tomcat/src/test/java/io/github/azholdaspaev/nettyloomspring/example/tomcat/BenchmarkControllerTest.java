@@ -75,10 +75,12 @@ class BenchmarkControllerTest {
     void workSecuredReturnsJsonAfterFormLoginOnTheRotatedSessionCookie() {
         String postLoginSessionId = logIn();
 
-        // Twice on the same cookie, not once. The load scenario authenticates a virtual user once and
-        // then rides that session for the whole plateau, so a session that authenticates a single
-        // request and then lapses would leave every later request redirecting to /login — cheap,
-        // fast, and indistinguishable from a win in the aggregate numbers.
+        /*
+         * Twice on the same cookie, not once. The load scenario authenticates a virtual user once and
+         * then rides that session for the whole plateau, so a session that authenticates a single
+         * request and then lapses would leave every later request redirecting to /login — cheap,
+         * fast, and indistinguishable from a win in the aggregate numbers.
+         */
         expectWorkSecuredOk(postLoginSessionId);
         expectWorkSecuredOk(postLoginSessionId);
     }
@@ -105,8 +107,10 @@ class BenchmarkControllerTest {
             .expectBody(String.class).returnResult();
 
         String preLoginSessionId = sessionIdFrom(loginPage.getResponseHeaders());
-        // Asserted, not assumed: if the login page created no session the rotation check below
-        // would compare null against an id and pass vacuously.
+        /*
+         * Asserted, not assumed: if the login page created no session the rotation check below
+         * would compare null against an id and pass vacuously.
+         */
         assertNotNull(preLoginSessionId, "the login page must create the CSRF-token session");
         String csrfToken = csrfTokenFrom(loginPage.getResponseBody());
 
@@ -120,9 +124,11 @@ class BenchmarkControllerTest {
 
         String postLoginSessionId = sessionIdFrom(login.getResponseHeaders());
         assertNotNull(postLoginSessionId, "a successful login must emit a session cookie");
-        // Session-fixation defence (CWE-384). Also load-bearing for the k6 script: the id the VU
-        // authenticated with is not the one it must carry afterwards, so a bridge that dropped the
-        // rotated cookie would send every subsequent request back to /login.
+        /*
+         * Session-fixation defence (CWE-384). Also load-bearing for the k6 script: the id the VU
+         * authenticated with is not the one it must carry afterwards, so a bridge that dropped the
+         * rotated cookie would send every subsequent request back to /login.
+         */
         assertNotEquals(preLoginSessionId, postLoginSessionId,
             "login must rotate the session id");
         return postLoginSessionId;

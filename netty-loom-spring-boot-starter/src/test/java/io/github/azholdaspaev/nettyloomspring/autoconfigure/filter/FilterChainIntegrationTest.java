@@ -63,8 +63,10 @@ class FilterChainIntegrationTest {
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
     void exactPatternMatchesAgainstQueryStrippedPath() {
-        // /api/greeting is an EXACT filter mapping; a query string must not defeat the match,
-        // proving the dispatcher matches on getRequestURI() (path only), not the raw URI.
+        /*
+         * /api/greeting is an EXACT filter mapping; a query string must not defeat the match,
+         * proving the dispatcher matches on getRequestURI() (path only), not the raw URI.
+         */
         restTestClient.get().uri("/api/greeting?msg=hi")
             .exchange()
             .expectStatus().isOk()

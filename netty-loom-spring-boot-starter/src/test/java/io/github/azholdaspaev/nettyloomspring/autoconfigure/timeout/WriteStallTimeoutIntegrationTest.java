@@ -91,8 +91,10 @@ class WriteStallTimeoutIntegrationTest {
                 total += read;
             }
         } catch (IOException reset) {
-            // A give-up closes with bytes still queued, which the peer may report as a reset rather
-            // than an orderly end. Both are the same event to this assertion.
+            /*
+             * A give-up closes with bytes still queued, which the peer may report as a reset rather
+             * than an orderly end. Both are the same event to this assertion.
+             */
         }
         return total;
     }

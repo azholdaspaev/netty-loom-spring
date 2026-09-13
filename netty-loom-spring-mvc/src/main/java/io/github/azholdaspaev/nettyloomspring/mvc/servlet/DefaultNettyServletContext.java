@@ -35,14 +35,17 @@ public final class DefaultNettyServletContext implements NettyServletContext {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultNettyServletContext.class);
 
-    // ServletContext expresses the session timeout in minutes while HttpSession and the manager use
-    // seconds, so the session-timeout methods below convert.
+    /**
+     * ServletContext expresses the session timeout in minutes while HttpSession and the manager use
+     * seconds, so the session-timeout methods below convert.
+     */
     private static final int SECONDS_PER_MINUTE = 60;
     private static final String DEFAULT_SERVLET_CONTEXT_NAME = "NettyServletContext";
 
-    // Constructed here rather than injected: both need a ServletContext -- the manager for
-    // HttpSession.getServletContext(), the registry to name the source of every event it fires -- so a
-    // separate bean would mean a cycle or two-phase init.
+    /**
+     * Constructed here rather than injected: both need this ServletContext, so a separate bean would
+     * mean a cycle or two-phase init.
+     */
     private final NettySessionManager sessionManager = new NettySessionManager(this);
     private final NettyListenerRegistry listeners = new NettyListenerRegistry(this);
 
@@ -50,19 +53,20 @@ public final class DefaultNettyServletContext implements NettyServletContext {
     private final ConcurrentMap<String, String> initParameters = new ConcurrentHashMap<>();
     private final Map<String, ServletRegistration> servletRegistrations = new LinkedHashMap<>();
     private final Map<String, FilterRegistration> filterRegistrations = new LinkedHashMap<>();
-    // Immutable snapshot of the executable filters, built once and reused on the per-request hot
-    // path. Invalidated (set to null) whenever a filter is registered, so a late registration
-    // rebuilds it on next read. Registration is single-threaded at startup; reads happen after
-    // server start, so the volatile field is sufficient for safe publication.
+    /**
+     * Rebuilt on the next read after a filter registration sets it to null. Registration is
+     * single-threaded at startup and reads follow server start, so volatile suffices for publication.
+     */
     private volatile List<RegisteredFilter> registeredFiltersSnapshot;
     private volatile String contextPath = ROOT_CONTEXT_PATH;
     private volatile String servletContextName = DEFAULT_SERVLET_CONTEXT_NAME;
     private volatile NettyDispatchFactory dispatchFactory;
     private volatile NettyCookieSameSiteResolver cookieSameSiteResolver = NettyCookieSameSiteResolver.NO_OPINION;
     private volatile NettyErrorPageResolver errorPageResolver = NettyErrorPageResolver.NO_PAGES;
-    // Atomic because the transition, not the value, is what must happen once: close() is reachable from
-    // both SessionStoreLifecycle.stop() and the bean-destruction backstop, and each event is owed exactly
-    // one delivery. Same idiom as NettyHttpSession.markInvalidated.
+    /**
+     * Atomic because the transition must happen once: close() is reachable from both
+     * SessionStoreLifecycle.stop() and the bean-destruction backstop, and each event is owed one delivery.
+     */
     private final AtomicReference<ListenerState> listenerState = new AtomicReference<>(ListenerState.NEW);
 
     /**
@@ -223,9 +227,11 @@ public final class DefaultNettyServletContext implements NettyServletContext {
         try {
             listeners.addListener(createListener(listenerClass));
         } catch (ServletException e) {
-            // This overload declares no checked exception, so the instantiation failure has to arrive as
-            // an unchecked one. IllegalArgumentException is what Tomcat raises here, and it is what
-            // ServletContext.addListener already documents for a class it cannot use.
+            /*
+             * This overload declares no checked exception, so the instantiation failure has to arrive as
+             * an unchecked one. IllegalArgumentException is what Tomcat raises here, and it is what
+             * ServletContext.addListener already documents for a class it cannot use.
+             */
             throw new IllegalArgumentException("Listener class " + listenerClass.getName()
                 + " could not be instantiated", e);
         }
@@ -233,9 +239,11 @@ public final class DefaultNettyServletContext implements NettyServletContext {
 
     @Override
     public <T extends EventListener> T createListener(Class<T> clazz) throws ServletException {
-        // The spec puts the same wrong-type clause on createListener as on addListener, and Tomcat runs
-        // the checks before instantiating. Without it an application following the documented
-        // create-customize-then-addListener idiom gets no signal until the later addListener call.
+        /*
+         * The spec puts the same wrong-type clause on createListener as on addListener, and Tomcat runs
+         * the checks before instantiating. Without it an application following the documented
+         * create-customize-then-addListener idiom gets no signal until the later addListener call.
+         */
         listeners.requireSupportedType(clazz);
         try {
             return clazz.getDeclaredConstructor().newInstance();
@@ -357,8 +365,10 @@ public final class DefaultNettyServletContext implements NettyServletContext {
 
     @Override
     public void setSessionTimeout(int sessionTimeout) {
-        // Widened before the multiply and clamped rather than left to int arithmetic: the wrap lands on a
-        // plausible-looking value rather than an obviously wrong one.
+        /*
+         * Widened before the multiply and clamped rather than left to int arithmetic: the wrap lands on a
+         * plausible-looking value rather than an obviously wrong one.
+         */
         sessionManager.setDefaultMaxInactiveInterval(
             Math.clamp((long) sessionTimeout * SECONDS_PER_MINUTE, Integer.MIN_VALUE, Integer.MAX_VALUE));
     }
@@ -379,11 +389,13 @@ public final class DefaultNettyServletContext implements NettyServletContext {
     @Override
     public void close() {
         sessionManager.close();
-        // After the store is drained, matching Tomcat: StandardContext.stopInternal() stops the Manager
-        // and only then runs listenerStop, so a listener auditing live sessions on the way out is not
-        // handed a half-drained store. Guarded by the transition, not by a flag read: close() is reached
-        // both from SessionStoreLifecycle.stop() and from the bean-destruction backstop, and a startup
-        // that failed before fireContextInitialized has nothing to destroy.
+        /*
+         * After the store is drained, matching Tomcat: StandardContext.stopInternal() stops the Manager
+         * and only then runs listenerStop, so a listener auditing live sessions on the way out is not
+         * handed a half-drained store. Guarded by the transition, not by a flag read: close() is reached
+         * both from SessionStoreLifecycle.stop() and from the bean-destruction backstop, and a startup
+         * that failed before fireContextInitialized has nothing to destroy.
+         */
         if (listenerState.compareAndSet(ListenerState.STARTED, ListenerState.STOPPED)) {
             listeners.fireContextDestroyed();
         }
@@ -392,8 +404,10 @@ public final class DefaultNettyServletContext implements NettyServletContext {
     @Override
     public void open() {
         sessionManager.open();
-        // Only from STOPPED. open() also runs on a first start, where the factory has already fired
-        // contextInitialized, and re-firing there would double-initialize every listener on a normal boot.
+        /*
+         * Only from STOPPED. open() also runs on a first start, where the factory has already fired
+         * contextInitialized, and re-firing there would double-initialize every listener on a normal boot.
+         */
         if (listenerState.get() == ListenerState.STOPPED) {
             fireContextInitialized();
         }
@@ -552,8 +566,10 @@ public final class DefaultNettyServletContext implements NettyServletContext {
         @Override
         public void addMappingForServletNames(EnumSet<DispatcherType> dispatcherTypes,
                                                boolean isMatchAfter, String... servletNames) {
-            // Servlet-name filter mappings are not executed by this server (only URL-pattern
-            // mappings are). Warn so the unsupported mapping is observable instead of a silent no-op.
+            /*
+             * Servlet-name filter mappings are not executed by this server (only URL-pattern
+             * mappings are). Warn so the unsupported mapping is observable instead of a silent no-op.
+             */
             if (servletNames != null && servletNames.length > 0) {
                 log.warn("Filter '{}' declares servlet-name mappings {} which are not supported "
                     + "and will be ignored; map it by URL pattern instead.", getName(), List.of(servletNames));
@@ -568,8 +584,10 @@ public final class DefaultNettyServletContext implements NettyServletContext {
         @Override
         public void addMappingForUrlPatterns(EnumSet<DispatcherType> dispatcherTypes,
                                               boolean isMatchAfter, String... urlPatterns) {
-            // The servlet spec defaults to REQUEST when no dispatcher types are supplied; Spring
-            // Boot always passes EnumSet.of(REQUEST), but the spec allows null.
+            /*
+             * The servlet spec defaults to REQUEST when no dispatcher types are supplied; Spring
+             * Boot always passes EnumSet.of(REQUEST), but the spec allows null.
+             */
             this.dispatcherTypes.addAll(dispatcherTypes == null ? EnumSet.of(DispatcherType.REQUEST) : dispatcherTypes);
             Collections.addAll(this.urlPatterns, urlPatterns);
         }

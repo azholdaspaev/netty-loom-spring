@@ -39,9 +39,11 @@ class SuppliedCookieSameSiteResolverTest {
 
     @Test
     void anOmittedSameSiteStopsAtThatSupplierAndSuppressesTheRest() {
-        // SameSite.OMITTED is an opinion -- "emit nothing" -- not an abstention, so the search ends
-        // there. Reading past it would let the next supplier's Strict appear where Tomcat emits no
-        // SameSite at all.
+        /*
+         * SameSite.OMITTED is an opinion -- "emit nothing" -- not an abstention, so the search ends
+         * there. Reading past it would let the next supplier's Strict appear where Tomcat emits no
+         * SameSite at all.
+         */
         var resolver = new SuppliedCookieSameSiteResolver(List.of(
             CookieSameSiteSupplier.of(SameSite.OMITTED),
             CookieSameSiteSupplier.ofStrict()));

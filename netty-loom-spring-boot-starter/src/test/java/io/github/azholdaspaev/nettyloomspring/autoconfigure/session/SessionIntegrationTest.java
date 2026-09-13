@@ -84,10 +84,12 @@ class SessionIntegrationTest {
 
     @Test
     void aStaleDuplicateSessionCookieDoesNotMaskTheLiveOne() {
-        // Issue #91, over the wire: what this adds over the unit tests is that a duplicated cookie name
-        // survives the real socket and HttpServerCodec un-merged and in order. Hence the raw header
-        // rather than two .cookie(...) calls -- whether RestTestClient's cookie map serialises a
-        // duplicated name into one header is undocumented, and that is exactly the premise under test.
+        /*
+         * Issue #91, over the wire: what this adds over the unit tests is that a duplicated cookie name
+         * survives the real socket and HttpServerCodec un-merged and in order. Hence the raw header
+         * rather than two .cookie(...) calls -- whether RestTestClient's cookie map serialises a
+         * duplicated name into one header is undocumented, and that is exactly the premise under test.
+         */
         String sessionId = createSessionWith("hello");
 
         restTestClient.get().uri("/session/get")
@@ -127,8 +129,10 @@ class SessionIntegrationTest {
         String setCookie = result.getResponseHeaders().get(HttpHeaders.SET_COOKIE).getFirst();
         HttpCookie parsed = HttpCookie.parse(setCookie).getFirst();
         assertTrue(setCookie.contains("HTTPOnly"), "Actual: " + setCookie);
-        // Parsed, not substring-matched: "Path=/" is a prefix of every path, so contains() would hold
-        // whatever the container actually emitted.
+        /*
+         * Parsed, not substring-matched: "Path=/" is a prefix of every path, so contains() would hold
+         * whatever the container actually emitted.
+         */
         assertEquals("/", parsed.getPath(), "Actual: " + setCookie);
         assertEquals(-1, parsed.getMaxAge(), "A browser-session cookie carries no Max-Age: " + setCookie);
     }
@@ -187,8 +191,10 @@ class SessionIntegrationTest {
 
     @Test
     void noSessionCookieMeansNoRequestedSessionId() {
-        // "null", not "" -- an empty string is non-null and would make SessionManagementFilter run its
-        // invalid-session strategy on every stateless request.
+        /*
+         * "null", not "" -- an empty string is non-null and would make SessionManagementFilter run its
+         * invalid-session strategy on every stateless request.
+         */
         restTestClient.get().uri("/session/requested-id")
             .exchange()
             .expectStatus().isOk()

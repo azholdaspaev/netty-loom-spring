@@ -144,20 +144,24 @@ public class NettyListenerRegistry {
     void fireContextInitialized() {
         contextListenersStarted = true;
         ServletContextEvent event = new ServletContextEvent(servletContext);
-        // Every listener is initialized, and only then is the first failure rethrown. Aborting the loop
-        // instead would be asymmetric with the destroy pass, which walks the whole list: the startup
-        // backstop calls close() once getWebServer fails, so a listener that never received
-        // contextInitialized would receive contextDestroyed and tear down state it never built. Tomcat's
-        // listenerStart() records failure per listener for the same reason. Caught as Throwable because
-        // contextInitialized is where applications touch static initializers and lazily-loaded classes,
-        // so ExceptionInInitializerError and NoClassDefFoundError are the realistic failures.
+        /*
+         * Every listener is initialized, and only then is the first failure rethrown. Aborting the loop
+         * instead would be asymmetric with the destroy pass, which walks the whole list: the startup
+         * backstop calls close() once getWebServer fails, so a listener that never received
+         * contextInitialized would receive contextDestroyed and tear down state it never built. Tomcat's
+         * listenerStart() records failure per listener for the same reason. Caught as Throwable because
+         * contextInitialized is where applications touch static initializers and lazily-loaded classes,
+         * so ExceptionInInitializerError and NoClassDefFoundError are the realistic failures.
+         */
         Throwable failure = null;
         for (ServletContextListener listener : contextListeners) {
             try {
                 listener.contextInitialized(event);
             } catch (Throwable thrown) {
-                // Straight out, without initializing what is left: there is no point continuing a
-                // startup pass on a JVM that has already failed.
+                /*
+                 * Straight out, without initializing what is left: there is no point continuing a
+                 * startup pass on a JVM that has already failed.
+                 */
                 rethrowIfFatal(thrown);
                 if (failure == null) {
                     failure = thrown;
@@ -171,11 +175,13 @@ public class NettyListenerRegistry {
             case null -> { }
             case Error error -> throw error;
             case RuntimeException runtime -> throw runtime;
-            // A third arm, not an assertion that this cannot happen: contextInitialized declaring no
-            // checked exception binds the Java compiler, not the runtime. A listener written in Kotlin,
-            // which has no checked exceptions, or one using Lombok's @SneakyThrows, delivers one here.
-            // Wrapped rather than cast, so the cause and everything addSuppressed attached to it survive
-            // instead of being replaced by a ClassCastException naming no listener at all.
+            /*
+             * A third arm, not an assertion that this cannot happen: contextInitialized declaring no
+             * checked exception binds the Java compiler, not the runtime. A listener written in Kotlin,
+             * which has no checked exceptions, or one using Lombok's @SneakyThrows, delivers one here.
+             * Wrapped rather than cast, so the cause and everything addSuppressed attached to it survive
+             * instead of being replaced by a ClassCastException naming no listener at all.
+             */
             default -> throw new IllegalStateException(
                 "ServletContextListener.contextInitialized failed", failure);
         }
@@ -188,10 +194,12 @@ public class NettyListenerRegistry {
     }
 
     // --- ServletContextAttributeListener ---
-    //
-    // Every fire*AttributeReplaced below takes `previous`, the value being displaced: a replacement
-    // event reports the old value, not the new one. Callers decide which of added/replaced is due from
-    // what their own put() displaced, so the event cannot disagree with the map they just wrote.
+
+    /*
+     * Every fire*AttributeReplaced below takes `previous`, the value being displaced: a replacement
+     * event reports the old value, not the new one. Callers decide which of added/replaced is due from
+     * what their own put() displaced, so the event cannot disagree with the map they just wrote.
+     */
 
     void fireContextAttributeAdded(String name, Object value) {
         var event = new ServletContextAttributeEvent(servletContext, name, value);
@@ -212,12 +220,14 @@ public class NettyListenerRegistry {
     }
 
     // --- ServletRequestListener ---
-    //
-    // Everything below is per-request, so each fire opens with an isEmpty() check -- one volatile array
-    // read on a CopyOnWriteArrayList, no lock -- and an application registering no request listener
-    // allocates no event and no lambda at all. DispatcherServlet publishes its own context, locale
-    // resolver and matched handler as request attributes, so even a bare dispatch reaches these. The
-    // context and session events are startup- or per-session-scoped and need no such guard.
+
+    /*
+     * Everything below is per-request, so each fire opens with an isEmpty() check -- one volatile array
+     * read on a CopyOnWriteArrayList, no lock -- and an application registering no request listener
+     * allocates no event and no lambda at all. DispatcherServlet publishes its own context, locale
+     * resolver and matched handler as request attributes, so even a bare dispatch reaches these. The
+     * context and session events are startup- or per-session-scoped and need no such guard.
+     */
 
     /**
      * Notifies every request listener, or none: a failure releases the prefix that did initialize before
@@ -230,25 +240,31 @@ public class NettyListenerRegistry {
             return;
         }
         ServletRequestEvent event = new ServletRequestEvent(servletContext, request);
-        // On failure `notified` is the failing index, so the listeners below it are the ones owed a
-        // release.
+        /*
+         * On failure `notified` is the failing index, so the listeners below it are the ones owed a
+         * release.
+         */
         int notified = 0;
         try {
             for (; notified < requestListeners.size(); notified++) {
                 requestListeners.get(notified).requestInitialized(event);
             }
         } catch (Throwable failure) {
-            // Throwable, so an Error cannot skip the release: the dispatcher fires this outside its try,
-            // so nothing else would run it. Newest first, matching the destroy order everywhere else, and
-            // quietly -- notify() swallows an Error too, or a listener failing to release would replace
-            // `failure`, which is the one the caller needs to see, and skip the listeners below it.
+            /*
+             * Throwable, so an Error cannot skip the release: the dispatcher fires this outside its try,
+             * so nothing else would run it. Newest first, matching the destroy order everywhere else, and
+             * quietly -- notify() swallows an Error too, or a listener failing to release would replace
+             * `failure`, which is the one the caller needs to see, and skip the listeners below it.
+             */
             for (int i = notified - 1; i >= 0; i--) {
                 notify(requestListeners.get(i), "ServletRequestListener.requestDestroyed",
                     listener -> listener.requestDestroyed(event));
             }
-            // Propagates, so the dispatcher's exception handling turns it into a status code: a listener
-            // that failed to set up request scope has left the servlet unable to run correctly. Precise
-            // rethrow -- requestInitialized declares no checked exception, so this needs no throws clause.
+            /*
+             * Propagates, so the dispatcher's exception handling turns it into a status code: a listener
+             * that failed to set up request scope has left the servlet unable to run correctly. Precise
+             * rethrow -- requestInitialized declares no checked exception, so this needs no throws clause.
+             */
             throw failure;
         }
     }
@@ -295,10 +311,12 @@ public class NettyListenerRegistry {
 
     void fireSessionCreated(HttpSession session) {
         HttpSessionEvent event = new HttpSessionEvent(session);
-        // Quietly, not propagating: by the time this runs the session is already published in the store,
-        // and an exception leaving here would abandon an entry that is still valid and whose id the
-        // client never received -- nothing would invalidate or unbind it for the whole idle timeout.
-        // Tomcat's tellNew() catches per listener.
+        /*
+         * Quietly, not propagating: by the time this runs the session is already published in the store,
+         * and an exception leaving here would abandon an entry that is still valid and whose id the
+         * client never received -- nothing would invalidate or unbind it for the whole idle timeout.
+         * Tomcat's tellNew() catches per listener.
+         */
         fireQuietly(sessionListeners, "HttpSessionListener.sessionCreated",
             listener -> listener.sessionCreated(event));
     }
@@ -311,10 +329,12 @@ public class NettyListenerRegistry {
 
     void fireSessionIdChanged(HttpSession session, String oldSessionId) {
         HttpSessionEvent event = new HttpSessionEvent(session);
-        // Quietly: the rotation has already committed and the caller has yet to write the Set-Cookie, so
-        // an exception leaving here strands the client on an id the store no longer knows -- a silent
-        // logout that repeats for as long as the listener keeps failing. Tomcat's
-        // StandardSession.tellChangedSessionId wraps each listener for the same reason.
+        /*
+         * Quietly: the rotation has already committed and the caller has yet to write the Set-Cookie, so
+         * an exception leaving here strands the client on an id the store no longer knows -- a silent
+         * logout that repeats for as long as the listener keeps failing. Tomcat's
+         * StandardSession.tellChangedSessionId wraps each listener for the same reason.
+         */
         fireQuietly(sessionIdListeners, "HttpSessionIdListener.sessionIdChanged",
             listener -> listener.sessionIdChanged(event, oldSessionId));
     }
@@ -365,10 +385,12 @@ public class NettyListenerRegistry {
         try {
             callback.accept(listener);
         } catch (Throwable failure) {
-            // Per listener, not per event: one bad listener aborting the loop would silently skip every
-            // listener registered after it, on every occurrence, for the life of the JVM. Throwable
-            // rather than RuntimeException because an application listener raising NoClassDefFoundError
-            // is enough to do that -- but a VM error is not this method's to swallow.
+            /*
+             * Per listener, not per event: one bad listener aborting the loop would silently skip every
+             * listener registered after it, on every occurrence, for the life of the JVM. Throwable
+             * rather than RuntimeException because an application listener raising NoClassDefFoundError
+             * is enough to do that -- but a VM error is not this method's to swallow.
+             */
             rethrowIfFatal(failure);
             log.warn("{} failed on {}", description, listener.getClass().getName(), failure);
         }

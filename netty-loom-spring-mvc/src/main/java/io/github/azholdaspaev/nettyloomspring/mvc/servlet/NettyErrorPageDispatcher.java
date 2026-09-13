@@ -35,11 +35,13 @@ public class NettyErrorPageDispatcher {
         if (failure == null && !response.isErrorSent()) {
             return false;
         }
-        // The two throwables answer different questions, so both are passed on. The wrapper
-        // FrameworkServlet adds tells a controller failure from a filter's, and only the latter keeps
-        // the pipeline's mapped status -- taken over whatever the response already held, as Tomcat's
-        // StandardWrapperValve.exception does. The root cause is what an application registers a page
-        // for, which is why StandardHostValve.throwable unwraps too.
+        /*
+         * The two throwables answer different questions, so both are passed on. The wrapper
+         * FrameworkServlet adds tells a controller failure from a filter's, and only the latter keeps
+         * the pipeline's mapped status -- taken over whatever the response already held, as Tomcat's
+         * StandardWrapperValve.exception does. The root cause is what an application registers a page
+         * for, which is why StandardHostValve.throwable unwraps too.
+         */
         Throwable rootCause = rootCauseOf(failure);
         int status = statusFor(response, failure);
         String path = context.getErrorPageResolver().resolve(status, failure, rootCause);
@@ -84,8 +86,10 @@ public class NettyErrorPageDispatcher {
     private static void setErrorAttributes(HttpServletRequest request, int status, String message,
                                            Throwable rootCause) {
         request.setAttribute(RequestDispatcher.ERROR_STATUS_CODE, status);
-        // Never null: setAttribute(name, null) removes, and an absent attribute reads as "no message
-        // recorded" rather than the empty one the spec promises (Tomcat bz 69444).
+        /*
+         * Never null: setAttribute(name, null) removes, and an absent attribute reads as "no message
+         * recorded" rather than the empty one the spec promises (Tomcat bz 69444).
+         */
         request.setAttribute(RequestDispatcher.ERROR_MESSAGE, Objects.requireNonNullElse(message, ""));
         request.setAttribute(RequestDispatcher.ERROR_REQUEST_URI, request.getRequestURI());
         request.setAttribute(RequestDispatcher.ERROR_METHOD, request.getMethod());

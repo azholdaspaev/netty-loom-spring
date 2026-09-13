@@ -52,11 +52,15 @@ public class NettyHttpServletResponse implements HttpServletResponse {
     private ServletOutputStream outputStream;
     private PrintWriter writer;
     private int bufferSize = DEFAULT_BUFFER_SIZE;
-    // The Servlet spec requires status and header mutations after a commit to be ignored; without that,
-    // Spring's HttpServlet.doOptions fallback stamps a reflected Allow header onto an already-errored 404.
+    /**
+     * The Servlet spec requires status and header mutations after a commit to be ignored; without that,
+     * Spring's HttpServlet.doOptions fallback stamps a reflected Allow header onto an already-errored 404.
+     */
     private boolean committed;
-    // The narrower half: bytes have actually left. sendError and sendRedirect commit without sending
-    // anything, and taking such a response back is honest, so reset and its kin refuse on this instead.
+    /**
+     * The narrower half: bytes have actually left. sendError and sendRedirect commit without sending
+     * anything, and taking such a response back is honest, so reset and its kin refuse on this instead.
+     */
     private boolean headWritten;
     // Which of those two it was: only an error is owed a page.
     private boolean errorSent;
@@ -65,15 +69,19 @@ public class NettyHttpServletResponse implements HttpServletResponse {
     private final NettyCookieSameSiteResolver sameSiteResolver;
     private final HttpResponseWriter responseWriter;
 
-    // Package-private: the container always builds a response with its policy, so a caller outside this
-    // package that forgets one should not compile, and dropping the SameSite silently is the defect a
-    // public twin would reintroduce (issue #85).
+    /**
+     * Package-private: the container always builds a response with its policy, so a caller outside this
+     * package that forgets one should not compile, and dropping the SameSite silently is the defect a
+     * public twin would reintroduce (issue #85).
+     */
     NettyHttpServletResponse() {
         this(NettyCookieSameSiteResolver.NO_OPINION);
     }
 
-    // Likewise package-private, and likewise for what it omits: a response with nowhere to write is
-    // only ever a test's, and one that reaches the wire anyway should say so rather than lose the body.
+    /**
+     * Likewise package-private, and likewise for what it omits: a response with nowhere to write is
+     * only ever a test's, and one that reaches the wire anyway should say so rather than lose the body.
+     */
     NettyHttpServletResponse(NettyCookieSameSiteResolver sameSiteResolver) {
         this(sameSiteResolver, _ -> {
             throw new IllegalStateException("This response was built without a connection to write to");
@@ -104,10 +112,12 @@ public class NettyHttpServletResponse implements HttpServletResponse {
         }
         nettyCookie.setSecure(cookie.getSecure());
         nettyCookie.setHttpOnly(cookie.isHttpOnly());
-        // The container-wide policy applies only where the cookie declares nothing, matching Tomcat's
-        // Rfc6265CookieProcessor. The test is on the raw attribute, not on the parsed value: a malformed
-        // one (which parseSameSite drops) is still an expressed intent, and must not silently fall
-        // through to a policy the caller did not ask for.
+        /*
+         * The container-wide policy applies only where the cookie declares nothing, matching Tomcat's
+         * Rfc6265CookieProcessor. The test is on the raw attribute, not on the parsed value: a malformed
+         * one (which parseSameSite drops) is still an expressed intent, and must not silently fall
+         * through to a policy the caller did not ask for.
+         */
         String sameSiteValue = cookie.getAttribute(CookieHeaderNames.SAMESITE);
         if (sameSiteValue == null) {
             sameSiteValue = sameSiteResolver.resolve(cookie);
@@ -120,10 +130,12 @@ public class NettyHttpServletResponse implements HttpServletResponse {
         if (cookie.getAttribute(CookieHeaderNames.PARTITIONED) != null) {
             nettyCookie.setPartitioned(true);
         }
-        // Netty's Cookie has no arbitrary-attribute setter, so any other Servlet 6.0 attribute (Expires,
-        // and version, for which RFC 6265 and Netty have no field) is dropped. STRICT throws
-        // IllegalArgumentException on octets outside the RFC 6265 name/value sets, and that propagates
-        // rather than mangling the cookie, matching Tomcat's Rfc6265CookieProcessor.
+        /*
+         * Netty's Cookie has no arbitrary-attribute setter, so any other Servlet 6.0 attribute (Expires,
+         * and version, for which RFC 6265 and Netty have no field) is dropped. STRICT throws
+         * IllegalArgumentException on octets outside the RFC 6265 name/value sets, and that propagates
+         * rather than mangling the cookie, matching Tomcat's Rfc6265CookieProcessor.
+         */
         headers.add(HttpHeaders.SET_COOKIE, ServerCookieEncoder.STRICT.encode(nettyCookie));
     }
 
@@ -305,11 +317,13 @@ public class NettyHttpServletResponse implements HttpServletResponse {
                     flushIfBufferFull();
                 }
 
-                // Tomcat commits on both, in CoyoteOutputStream.flush() and .close(); OutputStream's
-                // inherited no-ops would leave the portable out.write()/out.flush() idiom delivering
-                // nothing. flushToWire() rather than flushBuffer(), which a writer-driven flush would
-                // re-enter through flushCharacterWriter(); rather than complete(), which would
-                // terminate a response the dispatcher has yet to finish.
+                /**
+                 * Tomcat commits on both, in CoyoteOutputStream.flush() and .close(); OutputStream's
+                 * inherited no-ops would leave the portable out.write()/out.flush() idiom delivering
+                 * nothing. flushToWire() rather than flushBuffer(), which a writer-driven flush would
+                 * re-enter through flushCharacterWriter(); rather than complete(), which would
+                 * terminate a response the dispatcher has yet to finish.
+                 */
                 @Override
                 public void flush() throws IOException {
                     flushToWire();
@@ -383,13 +397,17 @@ public class NettyHttpServletResponse implements HttpServletResponse {
     public void resetBuffer() {
         requireHeadNotWritten();
         body.reset();
-        // Drop the cached writer/stream too: the writer (autoFlush=false) holds an encoder buffer
-        // whose unflushed chars would otherwise be re-flushed into the body by toFullHttpResponse().
+        /*
+         * Drop the cached writer/stream too: the writer (autoFlush=false) holds an encoder buffer
+         * whose unflushed chars would otherwise be re-flushed into the body by toFullHttpResponse().
+         */
         writer = null;
         outputStream = null;
-        // And the length, deviating from the spec's "without clearing headers": the emptied body would
-        // otherwise ship behind a Content-Length describing what was discarded, leaving the client
-        // waiting for bytes that never arrive. toFullHttpResponse recomputes it whenever it is absent.
+        /*
+         * And the length, deviating from the spec's "without clearing headers": the emptied body would
+         * otherwise ship behind a Content-Length describing what was discarded, leaving the client
+         * waiting for bytes that never arrive. toFullHttpResponse recomputes it whenever it is absent.
+         */
         headers.remove(HttpHeaders.CONTENT_LENGTH);
     }
 
@@ -426,9 +444,11 @@ public class NettyHttpServletResponse implements HttpServletResponse {
      * {@code setAppCommitted(false)}.
      */
     void reopenForErrorPage() {
-        // Reachable only while nothing has shipped: resetBuffer refuses once the head is on the wire,
-        // so this un-commits a sendError or sendRedirect -- which commit without sending -- and never a
-        // response the client has already begun reading.
+        /*
+         * Reachable only while nothing has shipped: resetBuffer refuses once the head is on the wire,
+         * so this un-commits a sendError or sendRedirect -- which commit without sending -- and never a
+         * response the client has already begun reading.
+         */
         resetBuffer();
         committed = false;
         errorSent = false;
@@ -482,8 +502,10 @@ public class NettyHttpServletResponse implements HttpServletResponse {
             responseWriter.write(toFullHttpResponse());
             return;
         }
-        // Remainder and terminator as one part: they encode to the same bytes as two, and cost the
-        // connection one write rather than two at the end of every streamed response.
+        /*
+         * Remainder and terminator as one part: they encode to the same bytes as two, and cost the
+         * connection one write rather than two at the end of every streamed response.
+         */
         responseWriter.write(new DefaultLastHttpContent(takeBufferedBody()));
     }
 

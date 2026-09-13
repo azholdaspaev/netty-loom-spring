@@ -45,9 +45,10 @@ public final class NettySessionCookieConfig implements SessionCookieConfig {
     private static final String[] FLAG_ATTRIBUTES = {
         CookieHeaderNames.SECURE, CookieHeaderNames.HTTPONLY, CookieHeaderNames.PARTITIONED};
 
-    // Case-insensitive because cookie attribute names are, and Boot and Jakarta callers are not
-    // consistent about which casing they use. Taking it from the map rather than folding a list of
-    // known names means every attribute folds, not just the ones we happened to enumerate.
+    /**
+     * Case-insensitive because cookie attribute names are, and Boot and Jakarta callers disagree on
+     * casing; folding in the map rather than a list of known names folds every attribute.
+     */
     private final ConcurrentMap<String, String> attributes =
         new ConcurrentSkipListMap<>(String.CASE_INSENSITIVE_ORDER);
 
@@ -90,10 +91,12 @@ public final class NettySessionCookieConfig implements SessionCookieConfig {
         return getAttribute(CookieHeaderNames.PATH);
     }
 
-    // Servlet 6.0 specifies "If called, this method has no effect" and deprecates both comment
-    // methods for removal, but SessionCookieConfig still declares them, so the overrides stay and
-    // suppress the removal warning. Throwing would abort context refresh for any legacy initializer
-    // that defensively calls it, where Tomcat and Jetty start fine.
+    /**
+     * Servlet 6.0 specifies "If called, this method has no effect" and deprecates both comment
+     * methods for removal, but SessionCookieConfig still declares them, so the overrides stay and
+     * suppress the removal warning. Throwing would abort context refresh for any legacy initializer
+     * that defensively calls it, where Tomcat and Jetty start fine.
+     */
     @SuppressWarnings("removal")
     @Override
     public void setComment(String comment) {
@@ -150,16 +153,20 @@ public final class NettySessionCookieConfig implements SessionCookieConfig {
             return;
         }
         if (isFlag(name)) {
-            // Boolean attributes are presence-encoded, but callers hand them over as text: Boot maps
-            // server.servlet.session.cookie.partitioned through Object::toString, so a configured `false`
-            // arrives here as the string "false" and, stored verbatim, would emit the flag it was meant
-            // to suppress.
+            /*
+             * Boolean attributes are presence-encoded, but callers hand them over as text: Boot maps
+             * server.servlet.session.cookie.partitioned through Object::toString, so a configured `false`
+             * arrives here as the string "false" and, stored verbatim, would emit the flag it was meant
+             * to suppress.
+             */
             setFlag(name, !Boolean.toString(false).equalsIgnoreCase(value));
             return;
         }
         if (CookieHeaderNames.MAX_AGE.equalsIgnoreCase(name)) {
-            // Parsed now rather than at the first session-creating request, where it would surface as a
-            // 500 with a stack trace pointing nowhere near the misconfiguration.
+            /*
+             * Parsed now rather than at the first session-creating request, where it would surface as a
+             * 500 with a stack trace pointing nowhere near the misconfiguration.
+             */
             Integer.parseInt(value);
         }
         attributes.put(name, value);

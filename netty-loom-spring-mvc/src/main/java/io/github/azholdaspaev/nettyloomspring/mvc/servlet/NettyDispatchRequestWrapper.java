@@ -36,10 +36,10 @@ class NettyDispatchRequestWrapper extends HttpServletRequestWrapper {
         this.forwardAttributes = forwardAttributesOf(original, dispatcherType);
     }
 
-    // The delegate's value wins where it has one: on a nested forward that delegate is the previous
-    // wrapper, so the outermost request's path elements survive any depth (Servlet 6.1 section 9.4.2).
-    // An ERROR dispatch sets none of them (Servlet 6.1 section 9.9); the container sets the
-    // jakarta.servlet.error.* set on the request itself instead.
+    /**
+     * The delegate's value wins where it has one, so the outermost request's path elements survive a
+     * nested forward (Servlet 6.1 section 9.4.2); an ERROR dispatch sets none of them (section 9.9).
+     */
     private static Map<String, Object> forwardAttributesOf(HttpServletRequest original, DispatcherType type) {
         if (type != DispatcherType.FORWARD
             || original.getAttribute(RequestDispatcher.FORWARD_REQUEST_URI) != null) {
@@ -75,9 +75,11 @@ class NettyDispatchRequestWrapper extends HttpServletRequestWrapper {
         return dispatcherType;
     }
 
-    // Every ERROR dispatch runs as a GET, the original method surviving only as
-    // jakarta.servlet.error.method (Servlet 6.1 section 9.9; Tomcat's ApplicationDispatcher.forward
-    // does the same, gated on that attribute rather than on the type because JSP does not set one).
+    /**
+     * Every ERROR dispatch runs as a GET, the original method surviving only as
+     * jakarta.servlet.error.method (Servlet 6.1 section 9.9; Tomcat's ApplicationDispatcher.forward
+     * does the same, gated on that attribute rather than on the type because JSP does not set one).
+     */
     @Override
     public String getMethod() {
         return dispatcherType == DispatcherType.ERROR ? HttpMethod.GET.name() : super.getMethod();
@@ -132,8 +134,10 @@ class NettyDispatchRequestWrapper extends HttpServletRequestWrapper {
         return parameters;
     }
 
-    // The dispatch path's parameters take precedence over the original's and are added to them, rather
-    // than replacing them (Servlet 6.1 section 9.1.1).
+    /**
+     * The dispatch path's parameters take precedence over the original's and are added to them, rather
+     * than replacing them (Servlet 6.1 section 9.1.1).
+     */
     private Map<String, String[]> mergedParameters() {
         Map<String, List<String>> merged = new LinkedHashMap<>();
         new QueryStringDecoder(queryString, StandardCharsets.UTF_8, false).parameters()

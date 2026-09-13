@@ -37,8 +37,10 @@ class HeadOptionsIntegrationTest extends BaseIntegrationTest {
         long contentLength = get.getResponseHeaders().getContentLength();
         assertTrue(contentLength > 0, "GET must return a non-empty body for this test to mean anything");
 
-        // Servlet-spec HEAD: identical status and headers to the GET, Content-Length still advertising
-        // the bytes the GET would have sent, but no body on the wire.
+        /*
+         * Servlet-spec HEAD: identical status and headers to the GET, Content-Length still advertising
+         * the bytes the GET would have sent, but no body on the wire.
+         */
         restTestClient.head().uri("/api/greeting")
             .exchange()
             .expectStatus().isOk()
@@ -74,8 +76,10 @@ class HeadOptionsIntegrationTest extends BaseIntegrationTest {
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
     void shouldAnswerOptionsOnUnknownPathWithNotFoundAndNoAllowHeader() {
-        // Spring's HttpServlet.doOptions fallback stamps a reflected Allow header onto any OPTIONS
-        // response no handler claimed; the 404 is already committed, so that write must be swallowed.
+        /*
+         * Spring's HttpServlet.doOptions fallback stamps a reflected Allow header onto any OPTIONS
+         * response no handler claimed; the 404 is already committed, so that write must be swallowed.
+         */
         restTestClient.options().uri("/does-not-exist")
             .exchange()
             .expectStatus().isNotFound()
@@ -101,8 +105,10 @@ class HeadOptionsIntegrationTest extends BaseIntegrationTest {
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
     void shouldAnswerUnsupportedMethodWithAllowHeader() {
-        // /get maps GET only. The Allow header is added by Spring's exception resolver *before* it calls
-        // sendError, so it must survive the commit — unlike the post-commit write above.
+        /*
+         * /get maps GET only. The Allow header is added by Spring's exception resolver *before* it calls
+         * sendError, so it must survive the commit — unlike the post-commit write above.
+         */
         EntityExchangeResult<byte[]> result = restTestClient.post().uri("/get")
             .exchange()
             .expectStatus().isEqualTo(HttpStatus.METHOD_NOT_ALLOWED)

@@ -25,8 +25,10 @@ import java.util.Map;
 @RestController
 public class SmokeController {
 
-    // The origin and header the CORS endpoint below is configured to allow. Tests build their preflight
-    // requests from these so the allowance and the request under test cannot drift apart.
+    /**
+     * The origin and header the CORS endpoint below is configured to allow. Tests build their preflight
+     * requests from these so the allowance and the request under test cannot drift apart.
+     */
     public static final String ALLOWED_CORS_ORIGIN = "https://allowed.example";
     public static final String ALLOWED_CORS_HEADER = "X-Custom";
 
