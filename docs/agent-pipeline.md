@@ -30,9 +30,9 @@ time; the next queued issue waits for the next free tick.
 
 ## The maintainer's two touch points
 
-1. **A question.** The implement stage posts one comment starting with `<!-- agent:question -->`
-   and the issue moves to `agent/needs-input`. Reply on the issue; the next tick moves it back to
-   `agent/queued` and the pipeline starts over on the same worktree.
+1. **A question.** A stage of `pipeline.sh` posts one comment starting with
+   `<!-- agent:question -->` and the issue moves to `agent/needs-input`. Reply on the issue; the
+   next tick moves it back to `agent/queued` and the pipeline starts over on the same worktree.
 2. **The review.** On `agent/pr-ready`, review the pull request. Inline comments plus the
    `agent/fix` label on the pull request run one fix stage, which replies in every thread with a
    sha or the reason nothing changed, then one review stage, which verifies each fix blind and

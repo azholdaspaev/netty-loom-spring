@@ -14,8 +14,11 @@ export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 # the tree's layout beside a stage.sh shim, a clone on NL-999-x, gh first on PATH and a fresh HOME.
 # The stage shim writes the result file pipeline.sh sums, moves the pull request head on the fix
 # rounds SHIM_FIX_PUSHES lists ("1,0" = fix 1 pushes a commit, fix 2 does not; unset = every fix
-# pushes) and posts inline comments as the runner on the review rounds SHIM_REVIEW_POSTS counts
-# ("0,1" = review 2 posts one; unset = none). The gh shim serves that state back, inline comments
+# pushes), posts inline comments as the runner on the review rounds SHIM_REVIEW_POSTS counts
+# ("0,1" = review 2 posts one; unset = none), edits src.txt -- staged and unstaged -- and adds
+# scratch.txt in the stage SHIM_DIRTY names, and
+# exits 1 from the stage SHIM_FAIL names or 3 from the one SHIM_QUESTION names ("review 2"). The
+# gh shim serves that state back, inline comments
 # only through pr-comments.sh's own call, and answers each GraphQL thread query with the count
 # SHIM_OPEN holds for the latest review round ("2,0" = two open threads after the first review,
 # none after the second).
@@ -36,8 +39,14 @@ setup() {
 #!/usr/bin/env bash
 echo "stage $*" >> "$SHIM_EVENTS"
 stage=$2; round=${4:-}
+if [ "$stage" = "${SHIM_DIRTY:-}" ]; then
+  echo staged >> src.txt; git add src.txt; echo mutated >> src.txt; touch scratch.txt
+fi
 if [ "$stage${round:+ $round}" = "${SHIM_FAIL:-}" ]; then
   echo "stage.sh: NL-$1 $stage: claude ended with error_max_budget_usd" >&2; exit 1
+fi
+if [ "$stage${round:+ $round}" = "${SHIM_QUESTION:-}" ]; then
+  echo "stage.sh: NL-$1 $stage: asked a question: https://github.com/o/r/issues/999#issuecomment-2" >&2; exit 3
 fi
 if [ "$stage" = implement ] && [ "${SHIM_IMPLEMENT_RC:-0}" != 0 ]; then exit "$SHIM_IMPLEMENT_RC"; fi
 mkdir -p "$HOME/.netty-loom-agent/logs/NL-$1"
@@ -54,7 +63,6 @@ case "$stage" in
   fix)
     pushes=$(echo "${SHIM_FIX_PUSHES-1,1,1}" | cut -d, -f"$round")
     if [ "${pushes:-0}" = 1 ]; then echo "fix-$round" > "$SHIM_STATE/head"; fi ;;
-  test) if [ -n "${SHIM_TEST_DIRTY:-}" ]; then echo mutated >> src.txt; fi ;;
 esac
 SHIM
   cat > "$tmp/bin/gh" <<'SHIM'
@@ -105,6 +113,7 @@ R2="stage 999 review $PR_URL 2|"; F2="stage 999 fix $PR_URL 2|"
 R3="stage 999 review $PR_URL 3|"; F3="stage 999 fix $PR_URL 3|"
 TEST="stage 999 test $PR_URL|"
 HANDOFF="gh pr ready $PR_URL|gh issue edit 999 --add-label agent/pr-ready|gh issue comment 999 --body-file -|"
+NEEDS_INPUT="gh issue edit 999 --remove-label agent/running --add-label agent/needs-input|"
 
 # --- converges at the second review ---
 setup
@@ -193,13 +202,57 @@ rm -rf "$tmp"
 
 # --- implement asked a question ---
 setup
-export SHIM_IMPLEMENT_RC=3
+export SHIM_QUESTION=implement
 run 0 ""
-unset SHIM_IMPLEMENT_RC
+unset SHIM_QUESTION
 ok=1; why="rc=$rc stdout=$out stderr=$err stages=$stages"
 [ "$rc" = 0 ] && [ -z "$out" ] \
-  && [ "$stages" = "${IMPLEMENT}gh issue edit 999 --remove-label agent/running --add-label agent/needs-input|" ] || ok=0
+  && [ "$stages" = "$IMPLEMENT$NEEDS_INPUT" ] || ok=0
 check question "$ok" "$why"
+rm -rf "$tmp"
+
+# --- a review asked a question: same label move, no hand-off ---
+setup
+export SHIM_QUESTION="review 2"
+run 1,1 ""
+unset SHIM_QUESTION
+ok=1; why="rc=$rc stdout=$out stderr=$err stages=$stages comment=$comment"
+[ "$rc" = 0 ] && [ -z "$out" ] && [ -z "$comment" ] \
+  && [ "$stages" = "$IMPLEMENT$R1$F1$R2$NEEDS_INPUT" ] || ok=0
+check review-question "$ok" "$why"
+rm -rf "$tmp"
+
+# --- the test stage asked a question ---
+setup
+export SHIM_QUESTION=test
+run 0 ""
+unset SHIM_QUESTION
+ok=1; why="rc=$rc stdout=$out stderr=$err stages=$stages comment=$comment"
+[ "$rc" = 0 ] && [ -z "$out" ] && [ -z "$comment" ] \
+  && [ "$stages" = "$IMPLEMENT$R1$TEST$NEEDS_INPUT" ] || ok=0
+check test-question "$ok" "$why"
+rm -rf "$tmp"
+
+# --- the test stage asked a question with the tree dirty: reset, so the resume starts clean ---
+setup
+export SHIM_QUESTION=test SHIM_DIRTY=test
+run 0 ""
+unset SHIM_QUESTION SHIM_DIRTY
+ok=1; why="rc=$rc stderr=$err stages=$stages tree=$(git -C "$tmp/work" status --porcelain)"
+[ "$rc" = 0 ] && [ -z "$(git -C "$tmp/work" status --porcelain)" ] \
+  && [ "$stages" = "$IMPLEMENT$R1$TEST$NEEDS_INPUT" ] || ok=0
+check test-question-dirty "$ok" "$why"
+rm -rf "$tmp"
+
+# --- implement asked a question mid-work: its edits stay for the resumed implement ---
+setup
+export SHIM_QUESTION=implement SHIM_DIRTY=implement
+run 0 ""
+unset SHIM_QUESTION SHIM_DIRTY
+ok=1; why="rc=$rc stderr=$err stages=$stages tree=$(git -C "$tmp/work" status --porcelain)"
+[ "$rc" = 0 ] && [ "$(git -C "$tmp/work" status --porcelain)" = $'MM src.txt\n?? scratch.txt' ] \
+  && [ "$stages" = "$IMPLEMENT$NEEDS_INPUT" ] || ok=0
+check implement-question-dirty "$ok" "$why"
 rm -rf "$tmp"
 
 # --- implement failed or timed out: the code passes through untouched ---
@@ -228,13 +281,13 @@ rm -rf "$tmp"
 
 # --- the test stage leaves the tree dirty ---
 setup
-export SHIM_TEST_DIRTY=1
+export SHIM_DIRTY=test
 run 0 ""
-unset SHIM_TEST_DIRTY
+unset SHIM_DIRTY
 ok=1; why=""
 [ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
 [ -z "$(git -C "$tmp/work" status --porcelain)" ] || { ok=0; why="tree still dirty: $(git -C "$tmp/work" status --porcelain)"; }
-for needle in "git checkout -- ." " M src.txt"; do
+for needle in "MM src.txt" "?? scratch.txt"; do
   contains "$comment" "$needle" || { ok=0; why="comment lacks '$needle': $comment"; }
 done
 check dirty-after-test "$ok" "$why"
