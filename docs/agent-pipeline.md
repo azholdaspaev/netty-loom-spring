@@ -84,7 +84,7 @@ way each time; three were `gh api` reads of pull request comments (#245); one wa
 IntelliJ terminal call, not on the tool list. Two more findings: inside the stage's sandbox
 `/usr/bin/java` resolves no JDK, so the implement stage compiled and ran the tests by hand until
 the plist below named one; and a re-run test stage does not see the tickets its earlier run
-opened (#250 and #252 are the same gap).
+opened (#250 and #252 are the same gap; #254).
 
 ## launchd
 
