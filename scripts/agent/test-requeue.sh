@@ -10,6 +10,7 @@ setup() {
   tmp=$(mktemp -d)
   mkdir -p "$tmp/bin"
   : > "$tmp/issues"
+  : > "$tmp/pr-ready"
   cat > "$tmp/bin/gh" <<'SHIM'
 #!/usr/bin/env bash
 echo "gh $*" >> "$SHIM_EVENTS"
@@ -17,6 +18,7 @@ case "$*" in
   "repo view --json nameWithOwner --jq .nameWithOwner") echo o/r ;;
   "api user --jq .login") echo o ;;
   "issue list --label agent/needs-input --state open --json number --jq .[].number") cat "$SHIM_DIR/issues" ;;
+  "issue list --label agent/pr-ready --state open --json number --jq .[].number") cat "$SHIM_DIR/pr-ready" ;;
   "api --paginate repos/o/r/issues/"*"/comments?per_page=100") n=${3#repos/o/r/issues/}; cat "$SHIM_DIR/comments-${n%%/*}.json" ;;
 esac
 SHIM
@@ -24,10 +26,11 @@ SHIM
   export SHIM_EVENTS="$tmp/events" SHIM_DIR="$tmp"
 }
 
-# thread <issue> <login:q|c>...  -- q posts the marker, c a plain comment; order is chronological
+# thread <issue> <login:q|c>...  -- q posts the marker, c a plain comment; order is chronological;
+# the issue is listed as agent/needs-input, or as agent/pr-ready under LIST=pr-ready
 thread() {
   local n=$1 i=0 list='[]'; shift
-  echo "$n" >> "$tmp/issues"
+  echo "$n" >> "$tmp/${LIST:-issues}"
   for spec in "$@"; do
     i=$((i + 1))
     local body="comment $i"
@@ -70,6 +73,16 @@ case_ third-party     ""           5 o:q x:c
 case_ no-marker       ""           5 o:c
 case_ second-question ""           5 o:q o:c o:q
 case_ owner-then-third-party ""    5 o:q o:c x:c
+
+# An agent/pr-ready issue whose newest comment is the marker: a stage asked after the hand-over
+# and could not read its question back, so the label is put on here; anything after the marker
+# may be the runner's own hand-over comment, so only the newest comment counts.
+label_5="gh issue edit 5 --add-label agent/needs-input"
+
+LIST=pr-ready case_ lost-question          "$label_5" 5 o:q
+LIST=pr-ready case_ lost-question-followed ""         5 o:q o:c
+LIST=pr-ready case_ pr-ready-no-comments   ""         5
+LIST=pr-ready case_ pr-ready-third-party   ""         5 x:q
 
 # --- two issues: one answered, one pending; the no-op last iteration must not fail the script ---
 setup
