@@ -13,7 +13,7 @@ decisions behind it: #211.
 | Label | Meaning | Set by | Cleared by |
 | --- | --- | --- | --- |
 | `agent/queued` | waiting for a tick | maintainer; `requeue.sh` after an answer | runner, on pick-up |
-| `agent/running` | a pipeline is running in the issue's worktree | runner | runner, when the pipeline returns; the next tick, when the tick died — to `agent/failed`, or just off when `agent/pr-ready` is already there |
+| `agent/running` | a pipeline is running in the issue's worktree | runner | runner, when the pipeline returns; the next tick, when the tick died — to `agent/failed`, or just off when `agent/pr-ready` or `agent/queued` is already there |
 | `agent/needs-input` | a question is posted on the issue | `pipeline.sh` | `requeue.sh`, once the owner has answered |
 | `agent/pr-ready` | the pull request is ready for review | `pipeline.sh` | runner, after the merge, or on pick-up when the issue is queued again |
 | `agent/fix` | on a pull request: run a fix stage, then a review stage | maintainer | runner, after those stages |
@@ -21,7 +21,8 @@ decisions behind it: #211.
 
 One tick, in order: sweep — every open `agent/running` issue to `agent/failed` with the usual
 comment, since the lock proves no pipeline is running (one that also carries `agent/pr-ready`
-finished its pipeline, so only `agent/running` comes off), and every closed issue's `agent/*`
+finished its pipeline, one that also carries `agent/queued` was requeued by hand, and either
+way only `agent/running` comes off), and every closed issue's `agent/*`
 labels off — then clean up every merged pull request (worktree, local branch, the issue's `agent/*`
 labels), `requeue.sh`, a fix stage then a review stage per `agent/fix` pull request, then one
 `agent/queued` issue. A tick that finds the lock held exits at once, so one pipeline runs at a
