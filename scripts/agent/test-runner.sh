@@ -54,6 +54,8 @@ echo "requeue" >> "$SHIM_EVENTS"
 SHIM
   : > "$tmp/events"
   echo '[]' > "$tmp/state/queued.json"
+  echo '[]' > "$tmp/state/running.json"
+  echo '[]' > "$tmp/state/closed.json"
   echo '[]' > "$tmp/state/fix-prs.json"
   : > "$tmp/state/merged"
   cat > "$tmp/bin/gh" <<'SHIM'
@@ -62,6 +64,8 @@ echo "gh $*" >> "$SHIM_EVENTS"
 jqarg() { local prev=; for a in "$@"; do [ "$prev" = --jq ] && { printf '%s' "$a"; return; }; prev=$a; done; }
 case "$*" in
   "issue list --label agent/queued --state open --json number --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/queued.json" ;;
+  "issue list --label agent/running --state open --json number --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/running.json" ;;
+  "issue list --state closed --search label:agent/"*" --json number,labels --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/closed.json" ;;
   "issue view "*" --json "*" --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/issue-$3.json" ;;
   "issue edit "*) echo "https://github.com/o/r/issues/$3" ;;
   "issue comment "*" --body-file -") cat > "$SHIM_STATE/issue-comment-$3"; echo "https://github.com/o/r/issues/$3#issuecomment-1" ;;
@@ -76,17 +80,22 @@ SHIM
   export SHIM_EVENTS="$tmp/events" SHIM_STATE="$tmp/state"
 }
 
-# issue <n> <title> [<labels csv>]: known to gh issue view; queue <n> <title>: also listed as agent/queued
+# issue <n> <title> [<labels csv>]: known to gh issue view; queue <n> <title>: also listed as agent/queued;
+# running <n> <title>: also listed as agent/running; closed <n> <labels csv>: a closed issue in the label search
 issue() {
   jq -n --arg title "$2" --arg labels "${3:-}" \
     '{title: $title, labels: ($labels | split(",") | map(select(. != "")) | map({name: .}))}' \
     > "$tmp/state/issue-$1.json"
 }
-queue() {
-  issue "$1" "$2" "agent/queued"
-  jq --argjson n "$1" '. + [{number: $n}]' "$tmp/state/queued.json" > "$tmp/state/queued.new"
-  mv "$tmp/state/queued.new" "$tmp/state/queued.json"
+listed() {
+  jq --argjson n "$1" --arg labels "${3:-}" \
+    '. + [{number: $n, labels: ($labels | split(",") | map(select(. != "")) | map({name: .}))}]' \
+    "$tmp/state/$2.json" > "$tmp/state/$2.new"
+  mv "$tmp/state/$2.new" "$tmp/state/$2.json"
 }
+queue() { issue "$1" "$2" "agent/queued"; listed "$1" queued; }
+running() { issue "$1" "$2" "agent/running"; listed "$1" running; }
+closed() { listed "$1" closed "$2"; }
 
 # fixpr <url> <branch>: an open pull request labelled agent/fix; merged <branch>: its pull request is merged;
 # worktree <branch>: what a previous tick left in netty-loom-wt
@@ -273,8 +282,37 @@ ok=1; why="rc=$rc stderr=$err actions=$actions"
 check merged "$ok" "$why"
 rm -rf "$tmp"
 
-# --- everything at once: clean up, requeue, fix, then one queued issue ---
+# --- an open agent/running issue at tick start is an orphan: agent/failed, one comment with the log path and the retry line, then the tick goes on ---
 setup
+running 7 "Fix the Thing: quickly!"
+queue 8 "New work"
+run
+comment=$(cat "$tmp/state/issue-comment-7" 2>/dev/null || true)
+log="$tmp/home/.netty-loom-agent/logs/NL-7/runner.log"
+wt8=$(cd "$tmp/netty-loom-wt/NL-8-new-work" 2>/dev/null && pwd -P || echo missing)
+ok=1; why="rc=$rc stderr=$err actions=$actions comment=$comment"
+[ "$rc" = 0 ] && [ -z "$err" ] || ok=0
+[ "$actions" = "gh issue edit 7 --remove-label agent/running --add-label agent/failed|gh issue comment 7 --body-file -|requeue|gh issue edit 8 --remove-label agent/queued --add-label agent/running|gradlew dependencySources in $wt8|pipeline 8 in $wt8|gh issue edit 8 --remove-label agent/running|" ] || ok=0
+contains "$comment" "$log" && contains "$comment" 'Replace `agent/failed` with `agent/queued`' || ok=0
+[ ! -d "$tmp/$WT7" ] || { ok=0; why="$why a worktree was added for the orphan"; }
+check orphan "$ok" "$why"
+rm -rf "$tmp"
+
+# --- a closed issue still carrying agent/* labels loses them, nothing else ---
+setup
+closed 5 "enhancement,agent/pr-ready"
+run
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" = 0 ] && [ "$actions" = "gh issue edit 5 --remove-label agent/pr-ready|requeue|" ] || ok=0
+check stale-labels "$ok" "$why"
+rm -rf "$tmp"
+
+# --- everything at once: sweep, clean up, requeue, fix, then one queued issue; the orphan's comment tails its log ---
+setup
+running 6 "Dead"
+mkdir -p "$tmp/home/.netty-loom-agent/logs/NL-6"
+for i in $(seq 1 40); do echo "old stderr line $i"; done > "$tmp/home/.netty-loom-agent/logs/NL-6/runner.log"
+closed 4 "agent/queued,agent/failed"
 worktree NL-5-done
 merged NL-5-done
 issue 5 "Done" "agent/pr-ready"
@@ -282,9 +320,11 @@ fixpr "$PR_URL" NL-7-fix-the-thing
 worktree NL-7-fix-the-thing
 queue 8 "New work"
 run
+comment=$(cat "$tmp/state/issue-comment-6" 2>/dev/null || true)
 wt7=$(cd "$tmp/$WT7" && pwd -P); wt8=$(cd "$tmp/netty-loom-wt/NL-8-new-work" 2>/dev/null && pwd -P || echo missing)
-ok=1; why="rc=$rc stderr=$err actions=$actions"
-[ "$rc" = 0 ] && [ "$actions" = "gh issue edit 5 --remove-label agent/pr-ready|requeue|stage 7 fix $PR_URL in $wt7|stage 7 review $PR_URL in $wt7|gh pr edit $PR_URL --remove-label agent/fix|gh issue edit 8 --remove-label agent/queued --add-label agent/running|gradlew dependencySources in $wt8|pipeline 8 in $wt8|gh issue edit 8 --remove-label agent/running|" ] || ok=0
+ok=1; why="rc=$rc stderr=$err actions=$actions comment=$comment"
+[ "$rc" = 0 ] && [ "$actions" = "gh issue edit 6 --remove-label agent/running --add-label agent/failed|gh issue comment 6 --body-file -|gh issue edit 4 --remove-label agent/queued,agent/failed|gh issue edit 5 --remove-label agent/pr-ready|requeue|stage 7 fix $PR_URL in $wt7|stage 7 review $PR_URL in $wt7|gh pr edit $PR_URL --remove-label agent/fix|gh issue edit 8 --remove-label agent/queued --add-label agent/running|gradlew dependencySources in $wt8|pipeline 8 in $wt8|gh issue edit 8 --remove-label agent/running|" ] || ok=0
+contains "$comment" "old stderr line 11" && contains "$comment" "old stderr line 40" && ! contains "$comment" "old stderr line 10" || ok=0
 check order "$ok" "$why"
 rm -rf "$tmp"
 
