@@ -101,6 +101,17 @@ ok=1; why=""
 [ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
 [ "$out" = "$PR_URL" ] || { ok=0; why="stdout=$out"; }
 comments_call="gh api --paginate repos/o/r/issues/999/comments?per_page=100"
+allowed="Read,Edit,Write,Grep,Glob,Agent,Skill,Bash(./gradlew *),\
+Bash(git status *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git add *),\
+Bash(git commit *),Bash(git push *),Bash(git stash *),Bash(git checkout -- *),\
+Bash(gh issue view *),Bash(gh issue comment *),Bash(gh issue create *),\
+Bash(gh pr view *),Bash(gh pr diff *),Bash(gh pr create *),Bash(gh pr comment *),\
+Bash(gh api repos/*/pulls/*/comments*),Bash(gh api repos/*/issues/*/comments*),\
+Bash(gh api repos/*/pulls/comments/*),Bash(gh api repos/*/issues/comments/*),\
+Bash(gh api repos/*/pulls/*/reviews *),Bash(gh api graphql *),Bash(.claude/scripts/pr-comments.sh *),\
+Bash(.claude/scripts/check-comments.sh *),\
+Bash(ls *),Bash(cat *),Bash(head *),Bash(tail *),Bash(grep *),Bash(find *),Bash(wc *),\
+Bash(awk *),Bash(sed -n *),Bash(sort *),Bash(uniq *),Bash(diff *),Bash(jq *)"
 [ "$(cat "$SHIM_EVENTS" 2>/dev/null || true)" = "gh repo view --json nameWithOwner --jq .nameWithOwner
 gh api user --jq .login
 gradlew --stop
@@ -123,17 +134,6 @@ for verb in DELETE PATCH; do
       || { ok=0; why="agent settings deny lacks $rule"; }
   done
 done
-allowed="Read,Edit,Write,Grep,Glob,Agent,Skill,Bash(./gradlew *),\
-Bash(git status *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git add *),\
-Bash(git commit *),Bash(git push *),Bash(git stash *),Bash(git checkout -- *),\
-Bash(gh issue view *),Bash(gh issue comment *),Bash(gh issue create *),\
-Bash(gh pr view *),Bash(gh pr diff *),Bash(gh pr create *),Bash(gh pr comment *),\
-Bash(gh api repos/*/pulls/*/comments*),Bash(gh api repos/*/issues/*/comments*),\
-Bash(gh api repos/*/pulls/comments/*),Bash(gh api repos/*/issues/comments/*),\
-Bash(gh api repos/*/pulls/*/reviews *),Bash(gh api graphql *),Bash(.claude/scripts/pr-comments.sh *),\
-Bash(.claude/scripts/check-comments.sh *),\
-Bash(ls *),Bash(cat *),Bash(head *),Bash(tail *),Bash(grep *),Bash(find *),Bash(wc *),\
-Bash(awk *),Bash(sed -n *),Bash(sort *),Bash(uniq *),Bash(diff *),Bash(jq *)"
 [ "$(argv_after --allowedTools)" = "$allowed" ] || { ok=0; why="allowedTools=$(argv_after --allowedTools)"; }
 prompt_line=$(grep -nxF -- '/flow:implement 999' "$SHIM_ARGV" 2>/dev/null | cut -d: -f1 || true)
 allowed_line=$(grep -nxF -- '--allowedTools' "$SHIM_ARGV" 2>/dev/null | cut -d: -f1 || true)
@@ -284,6 +284,7 @@ claude
 $comments_call
 gradlew --stop" ] || { ok=0; why="events=$(tr '\n' '|' 2>/dev/null < "$SHIM_EVENTS" || true)"; }
 [ "$(argv_after --max-budget-usd)" = 6 ] || { ok=0; why="budget=$(argv_after --max-budget-usd)"; }
+[ "$(argv_after --allowedTools)" = "$allowed" ] || { ok=0; why="allowedTools=$(argv_after --allowedTools)"; }
 for flag in "NL-999 review 2" "/flow:review $PR_URL"; do
   argv_has "$flag" || { ok=0; why="argv lacks $flag"; }
 done
@@ -301,6 +302,7 @@ run success "" 999 fix "$PR_URL" 1
 ok=1; why=""
 [ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
 [ "$(argv_after --max-budget-usd)" = 4 ] || { ok=0; why="budget=$(argv_after --max-budget-usd)"; }
+[ "$(argv_after --allowedTools)" = "$allowed" ] || { ok=0; why="allowedTools=$(argv_after --allowedTools)"; }
 for flag in "NL-999 fix 1" "/flow:fix $PR_URL"; do
   argv_has "$flag" || { ok=0; why="argv lacks $flag"; }
 done
@@ -335,6 +337,7 @@ run nocommit "" 999 test "$PR_URL"
 ok=1; why=""
 [ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
 [ "$(argv_after --max-budget-usd)" = 6 ] || { ok=0; why="budget=$(argv_after --max-budget-usd)"; }
+[ "$(argv_after --allowedTools)" = "$allowed" ] || { ok=0; why="allowedTools=$(argv_after --allowedTools)"; }
 for flag in "NL-999 test" "/flow:test $PR_URL"; do
   argv_has "$flag" || { ok=0; why="argv lacks $flag"; }
 done
