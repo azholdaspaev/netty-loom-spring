@@ -30,6 +30,8 @@ repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 me=$(gh api user --jq .login)
 comments() { gh api --paginate "repos/$repo/issues/$N/comments?per_page=100" | jq -s 'add // []'; }
 
+# One entry per suite rather than test-*.sh *: a trailing " *" matches the bare command only when it
+# is the rule's sole wildcard (Claude Code permissions reference, "Wildcard patterns").
 ALLOWED="Read,Edit,Write,Grep,Glob,Agent,Skill,Bash(./gradlew *),\
 Bash(git status *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git add *),\
 Bash(git commit *),Bash(git push *),Bash(git stash *),Bash(git checkout -- *),\
@@ -39,6 +41,8 @@ Bash(gh api repos/*/pulls/*/comments*),Bash(gh api repos/*/issues/*/comments*),\
 Bash(gh api repos/*/pulls/comments/*),Bash(gh api repos/*/issues/comments/*),\
 Bash(gh api repos/*/pulls/*/reviews *),Bash(gh api graphql *),Bash(.claude/scripts/pr-comments.sh *),\
 Bash(.claude/scripts/check-comments.sh *),\
+Bash(scripts/agent/test-stage.sh *),Bash(scripts/agent/test-pipeline.sh *),\
+Bash(scripts/agent/test-runner.sh *),Bash(scripts/agent/test-requeue.sh *),Bash(shellcheck *),\
 Bash(ls *),Bash(cat *),Bash(head *),Bash(tail *),Bash(grep *),Bash(find *),Bash(wc *),\
 Bash(awk *),Bash(sed -n *),Bash(sort *),Bash(uniq *),Bash(diff *),Bash(jq *)"
 
