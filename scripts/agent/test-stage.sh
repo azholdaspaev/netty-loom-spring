@@ -191,13 +191,33 @@ ok=1; why="rc=$rc stderr=$err"
 check question "$ok" "$why"
 rm -rf "$tmp"
 
-# --- stale question: a marker comment older than the stage is not this stage's question ---
+# --- stale question: an answered marker comment older than the stage is not this stage's question ---
 setup
-echo '[{"user":{"login":"runner"},"body":"<!-- agent:question -->\nOld?","created_at":"2026-09-12T11:00:00Z","html_url":"u1"}]' > "$SHIM_COMMENTS"
+echo '[{"user":{"login":"runner"},"body":"<!-- agent:question -->\nOld?","created_at":"2026-09-12T11:00:00Z","html_url":"u1"},
+       {"user":{"login":"o"},"body":"The first.","created_at":"2026-09-12T11:30:00Z","html_url":"u2"}]' > "$SHIM_COMMENTS"
 run nocommit "$PR_URL" 999 implement
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "no commits" || ok=0
 check stale-question "$ok" "$why"
+rm -rf "$tmp"
+
+# --- pending question: the runner's marker is the newest comment before the stage, so the stage does not run ---
+setup
+echo '[{"user":{"login":"runner"},"body":"<!-- agent:question -->\nWhich one?","created_at":"2026-09-12T11:00:00Z","html_url":"u1"}]' > "$SHIM_COMMENTS"
+run success "$PR_URL" 999 implement
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 3 ] && contains "$err" "question pending: u1" || ok=0
+[ ! -e "$SHIM_ARGV" ] || { ok=0; why="claude ran with a question pending"; }
+check pending-question "$ok" "$why"
+rm -rf "$tmp"
+
+# --- pending question from a third party: not the runner's, so the stage runs ---
+setup
+echo '[{"user":{"login":"o"},"body":"<!-- agent:question -->\nMine?","created_at":"2026-09-12T11:00:00Z","html_url":"u1"}]' > "$SHIM_COMMENTS"
+run success "$PR_URL" 999 implement
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] || ok=0
+check third-party-marker "$ok" "$why"
 rm -rf "$tmp"
 
 # --- question, then a crash: the comment decides, not claude's exit ---
