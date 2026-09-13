@@ -12,8 +12,9 @@ PR_COMMENTS="$HERE/../../.claude/scripts/pr-comments.sh"
 LOG="$HOME/.netty-loom-agent/logs/NL-$N"
 ROUNDS=3
 
-# stage <stage> [<pr url> [<round>]] -- runs stage.sh and leaves its stdout in $stage_out; the
-# pipeline ends here on a question (issue to agent/needs-input, exit 0) or a failure (its code).
+# stage <stage> [<pr url> [<round>]] -- runs stage.sh with its stdout in $stage_out rather than
+# echoed for a $(...) caller: an exit inside a command substitution ends only the subshell, and the
+# pipeline must end here on a question (issue to agent/needs-input, exit 0) or a failure (its code).
 stage() {
   local rc=0
   stage_out=$("$HERE/stage.sh" "$N" "$@") || rc=$?
