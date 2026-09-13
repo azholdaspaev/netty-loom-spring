@@ -95,7 +95,13 @@ question=$(comments | jq -r --arg me "$me" --arg since "$since" --arg marker "$M
 [ "$rc" = 124 ] && fail "timed out after $STAGE_TIMEOUT" 124
 subtype=$(jq -r '.subtype // empty' "$OUT.json" 2>/dev/null || true)
 [ -n "$subtype" ] || fail "no result (claude exited $rc), see $OUT.log"
-[ "$subtype" = success ] || fail "claude ended with $subtype, see $OUT.json"
+# .subtype is "success" when the API was never reached (#270); .is_error is what the CLI sets then.
+is_error=$(jq -r '.is_error' "$OUT.json")
+outcome=$(jq -r '[(.terminal_reason | select(. != "completed"))
+                  // (if .subtype == "success" and .is_error == true then "is_error" else .subtype end),
+                  (.result // "" | split("\n")[0] // empty | select(. != ""))] | join(": ")' "$OUT.json")
+[ "$subtype" = success ] && [ "$is_error" != true ] && [ "$rc" = 0 ] \
+  || fail "claude ended with $outcome (exited $rc), see $OUT.json"
 
 case "$STAGE" in
   implement)
