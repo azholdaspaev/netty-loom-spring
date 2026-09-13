@@ -32,9 +32,15 @@ RETRY='Replace `agent/failed` with `agent/queued` to retry from the worktree as 
 
 # --- sweep ---
 # The lock held above proves no pipeline is running, so agent/running on an open issue is a tick
-# that died without reaching its own label handling.
-gh issue list --label agent/running --state open --json number --jq '.[].number' \
-| while read -r n; do
+# that died without reaching its own label handling; beside agent/pr-ready it died after
+# pipeline.sh had handed over, and only the label is stale.
+gh issue list --label agent/running --state open --json number,labels \
+  --jq '.[] | "\(.number) \(any(.labels[]; .name == "agent/pr-ready"))"' \
+| while read -r n ready; do
+  if [ "$ready" = true ]; then
+    gh issue edit "$n" --remove-label agent/running >/dev/null
+    continue
+  fi
   gh issue edit "$n" --remove-label agent/running --add-label agent/failed >/dev/null
   { failure 'A tick died with this issue on `agent/running`' "$(log_of "$n")"
     echo "$RETRY"
