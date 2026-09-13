@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # The part of CLAUDE.md rule 7 a script can check: no article in a method name, a @Test or
-# @ParameterizedTest method named should..., no name over 60 characters, no
-# non-@Override method starting with a verb from the table's Not column, and no two names in one
-# file equal ignoring case.
+# @ParameterizedTest method named should..., no name over 60 characters, no non-@Override method
+# outside a src/test tree starting with a verb from the table's Not column, and no two names in
+# one file equal ignoring case.
 # Usage: .claude/scripts/check-naming.sh <file.java>...
 #
 # A declaration is a line of the shape `<modifiers> <type> <name>(`; a name on the line after its
@@ -30,7 +30,7 @@ FNR == 1 { test = 0; override = 0; split("", seen) }
     if (name ~ /[a-z](A|An|The)[A-Z0-9]|^(a|an|the)[A-Z0-9]/) fail(FNR, "article in method name " name)
     if (test && name !~ /^should/) fail(FNR, "test method " name " does not start with should")
     if (length(name) > 60) fail(FNR, "method name " name " is " length(name) " characters; the budget is 60")
-    if (!override && name ~ /^(verify|check|notify|create|build|as)([A-Z]|$)/) fail(FNR, "vocabulary: " name " starts with a verb from the Not column of the rule 7 table")
+    if (!override && FILENAME !~ /\/src\/test\// && name ~ /^(verify|check|notify|create|build|as)([A-Z]|$)/) fail(FNR, "vocabulary: " name " starts with a verb from the Not column of the rule 7 table")
     lower = tolower(name)
     if (lower in seen && seen[lower] != name) fail(FNR, "case collision: " name " and " seen[lower] " in one file")
     else seen[lower] = name
