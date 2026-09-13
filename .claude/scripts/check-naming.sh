@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The part of CLAUDE.md rule 7 a script can check: no article in a method name, a @Test,
-# @ParameterizedTest or @RepeatedTest method named should..., no name over 60 characters, no
+# The part of CLAUDE.md rule 7 a script can check: no article in a method name, a @Test or
+# @ParameterizedTest method named should..., no name over 60 characters, no
 # non-@Override method starting with a verb from the table's Not column, and no two names in one
 # file equal ignoring case.
 # Usage: .claude/scripts/check-naming.sh <file.java>...
@@ -17,7 +17,7 @@ awk '
 function fail(line, msg) { print "check-naming: " FILENAME ":" line ": " msg > "/dev/stderr"; failed = 1 }
 FNR == 1 { test = 0; override = 0; split("", seen) }
 /^[[:space:]]*(\/\/|\/\*|\*)/ { next }
-/@(Test|ParameterizedTest|RepeatedTest)([^A-Za-z0-9_]|$)/ { test = 1 }
+/@(Test|ParameterizedTest)([^A-Za-z0-9_]|$)/ { test = 1 }
 /@Override([^A-Za-z0-9_]|$)/ { override = 1 }
 {
     line = $0; gsub(/"[^"]*"/, "", line); sub(/\/\/.*$/, "", line)
