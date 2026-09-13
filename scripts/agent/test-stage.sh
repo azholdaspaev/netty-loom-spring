@@ -30,6 +30,9 @@ SHIM
   cat > "$tmp/bin/gh" <<'SHIM'
 #!/usr/bin/env bash
 echo "gh $*" >> "$SHIM_EVENTS"
+if [ -n "${SHIM_GH_FAIL:-}" ] && { [ -z "${SHIM_GH_FAIL_AFTER:-}" ] || grep -qx claude "$SHIM_EVENTS"; }; then
+  case "$*" in "$SHIM_GH_FAIL"*) echo "gh: dial tcp: no route to host" >&2; exit 1 ;; esac
+fi
 case "$*" in
   "repo view --json nameWithOwner --jq .nameWithOwner") echo o/r ;;
   "api user --jq .login") echo runner ;;
@@ -66,6 +69,7 @@ case "$SHIM_MODE" in
   crash)    commit; echo boom; exit 1 ;;
   api-error) result success true | jq -c '. + {terminal_reason: "api_error", result: "API Error: 403 blocked"}'; exit 1 ;;
   is-error) commit; result success true ;;
+  dropped)  commit; result error_during_execution true; exit 1 ;;
   exit-1)   commit; result success false | jq -c '. + {result: "Done.\n```\nsecond line\n```"}'; exit 1 ;;
   hang)     sleep 5 ;;
 esac
@@ -238,6 +242,36 @@ ok=1; why="rc=$rc stderr=$err"
 ! contains "$err" "second line" || { ok=0; why="whole .result in stderr: $err"; }
 [ -z "$out" ] || { ok=0; why="stdout=$out"; }
 check success-exit-1 "$ok" "$why"
+rm -rf "$tmp"
+
+# --- error_during_execution: infrastructure, so exit 2 ---
+setup
+run dropped "$PR_URL" 999 implement
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 2 ] && contains "$err" "claude ended with error_during_execution" || ok=0
+[ -z "$out" ] || { ok=0; why="stdout=$out"; }
+check dropped "$ok" "$why"
+rm -rf "$tmp"
+
+# --- gh fails before the stage: infrastructure, exit 2, claude never runs ---
+setup
+export SHIM_GH_FAIL="api --paginate"
+run success "$PR_URL" 999 implement
+unset SHIM_GH_FAIL
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 2 ] && contains "$err" "gh api --paginate failed" || ok=0
+[ ! -e "$SHIM_ARGV" ] || { ok=0; why="claude ran after gh failed"; }
+check gh-before "$ok" "$why"
+rm -rf "$tmp"
+
+# --- comments unreadable after the stage: logged, and the pull request and commits decide ---
+setup
+export SHIM_GH_FAIL="api --paginate" SHIM_GH_FAIL_AFTER=1
+run success "$PR_URL" 999 implement
+unset SHIM_GH_FAIL SHIM_GH_FAIL_AFTER
+ok=1; why="rc=$rc stdout=$out stderr=$err"
+[ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] && contains "$err" "comments unreadable after the stage" || ok=0
+check comments-unread "$ok" "$why"
 rm -rf "$tmp"
 
 # --- timeout ---
