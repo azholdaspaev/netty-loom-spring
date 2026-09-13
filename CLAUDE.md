@@ -51,7 +51,7 @@ All source code changes must strictly follow TDD (Test-Driven Development): writ
 
 Tests use JUnit 6 (`org.junit.jupiter.api`, via `org.junit.jupiter:junit-jupiter`) on JUnit Platform. All test tasks are configured with `useJUnitPlatform()` and run with `--enable-native-access=ALL-UNNAMED`.
 
-`AGENTS.md` names the commit, pull request and issue templates, and is normative for their use. `.githooks/commit-msg` enforces the commit shape once `core.hooksPath` points at it (`CONTRIBUTING.md` § Commits); a clone without it has only the template. `.claude/scripts/check-comments.sh` enforces the part of rule 5 a script can count — the three numeric budgets at their ceilings — as the `commentBudget` task under `check` and as a `PostToolUse` hook; whether a class javadoc earned its raised ceiling, and the triggers, stay with the reviewer. The hook remaps the script's exit 1 to 2 because on `PostToolUse` only exit 2 puts the hook's stderr in front of the agent (Claude Code hooks reference, § Hook exit codes: https://code.claude.com/docs/en/hooks).
+`AGENTS.md` names the commit, pull request and issue templates, and is normative for their use. `.githooks/commit-msg` enforces the commit shape once `core.hooksPath` points at it (`CONTRIBUTING.md` § Commits); a clone without it has only the template. `.claude/scripts/check-comments.sh` enforces the part of rule 5 a script can count — the three numeric budgets at their ceilings, and the block form for multi-line comments — as the `commentBudget` task under `check` and as a `PostToolUse` hook; whether a class javadoc earned its raised ceiling, and the triggers, stay with the reviewer. The hook remaps the script's exit 1 to 2 because on `PostToolUse` only exit 2 puts the hook's stderr in front of the agent (Claude Code hooks reference, § Hook exit codes: https://code.claude.com/docs/en/hooks).
 
 `.claude/settings.json` tracks the permission rules every session starts with; the body and review threads of #230, the pull request that added them, record why each rule has the shape it does, and which tidier spelling would strand the pipeline.
 
@@ -94,7 +94,9 @@ When code and comment conflict, the code is right and the comment is a bug. Comm
 
 - Class javadoc: 8 lines. Trigger 1, and only trigger 1, with the external source cited, raises it to 20. Past 20 lines it is a design document - put it in `docs/adr/` and leave a one-line pointer.
 - `private` members: 2 lines, invariant only, and only when that invariant is unguessable from the type and name. A private method's rationale belongs at the one call site that needs it, not above the method.
-- `@Test` methods: none. The test name and the assertion message carry the meaning; lengthen the assertion message rather than add a comment. A genuine harness trap - why the test would pass against a broken version - goes in the test body as a `//` block.
+- `@Test` methods: none. The test name and the assertion message carry the meaning; lengthen the assertion message rather than add a comment. A genuine harness trap - why the test would pass against a broken version - goes in the test body as a `/* */` block.
+
+**Form.** A single line is `//`. Anything longer is a block: `/** */` when it documents a declaration, `/* */` inside a body. Two consecutive full-line `//` lines fail `check-comments.sh`, a `// --- Name ---` banner included when another `//` line follows it — a `//` run reads as disabled code and is invisible to the budgets above.
 
 **One owner per fact; link rather than restate.** Rationale for class X lives in X. If you find yourself writing "the reason is recorded there", stop - you have just proved the paragraph is redundant. Link and delete it. The Duplication lens applies to comments across files.
 
