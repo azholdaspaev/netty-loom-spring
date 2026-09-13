@@ -25,6 +25,9 @@ stage() {
     3) # Implement's edits stay for its resumed self; any later stage's would stop the review that resumes.
        [ "$1" = implement ] || reset_tree
        gh issue edit "$N" --remove-label agent/running --add-label agent/needs-input >/dev/null; exit 0 ;;
+    124|2) # Killed or dropped mid-edit and retried by the runner, so the same reset; a work failure's tree stays for the maintainer.
+       [ "$1" = implement ] || reset_tree
+       exit "$rc" ;;
     *) exit "$rc" ;;
   esac
 }
