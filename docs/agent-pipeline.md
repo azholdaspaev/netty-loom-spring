@@ -60,6 +60,16 @@ with the stderr tail and the log path, and no retry.
 - `~/.netty-loom-agent/logs/NL-<n>/<stage>[-<round>].json` and `.log` — each `claude -p` result
   (cost, duration, subtype) and its stderr, written by `stage.sh`.
 
+Every line the scripts write themselves starts with an ISO-8601 UTC timestamp and the script's
+name; what `gh`, `git` and Gradle print passes through unchanged. The tick's log gets
+`2026-09-13T10:00:03Z runner.sh: tick start`, one line per step (`sweep: NL-7 agent/running ->
+agent/failed`, `merged: NL-5-done removed`, `requeue`, `fix: NL-7 <pull request url>`,
+`queued: NL-7 picked up on NL-7-<slug>`) and `tick end (exit 0)`; a tick that finds the lock held
+writes only `tick skipped: lock held`, so a gap with no line at all means launchd did not fire. The
+issue's log gets the pick-up and the `queued: NL-7 pipeline exit 0` / `fix: NL-7 exit 0` outcome
+lines as well, and from `stage.sh` a `stage.sh: NL-7 review 2: start` and `end (exit 0)` pair per
+stage, so the wait before pick-up and each stage's wall time read off that file alone.
+
 ## Cost
 
 `stage.sh` caps each `claude -p`: implement 16 USD, review 6, fix 4, test 6, 45 minutes each;
