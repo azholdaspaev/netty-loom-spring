@@ -101,13 +101,13 @@ stale=$(gh issue view "$n" --json labels --jq '.labels[].name | select(. == "age
 gh issue edit "$n" --remove-label "agent/queued${stale:+,$stale}" --add-label agent/running >/dev/null
 [ -d "$WT/$branch" ] || git worktree add -q "$WT/$branch" -b "$branch" origin/main
 rc=0
-(cd "$WT/$branch" && ./gradlew dependencySources && "$HERE/pipeline.sh" "$n") 2>>"$log" || rc=$?
+(cd "$WT/$branch" && { ./gradlew dependencySources || exit 2; } && "$HERE/pipeline.sh" "$n") 2>>"$log" || rc=$?
 if [ "$rc" = 0 ]; then
   gh issue edit "$n" --remove-label agent/running >/dev/null
   exit 0
 fi
 # stage.sh's codes, passed through by pipeline.sh: 124 from timeout, 2 for a gh call that failed
-# or claude's error_during_execution; anything else is the work.
+# (pipeline.sh's own too) or claude's error_during_execution; anything else is the work.
 class=work; case "$rc" in 124|2) class=infrastructure ;; esac
 retried=$(gh issue view "$n" --json labels --jq '.labels[].name | select(. == "agent/retried")')
 if [ "$class" = infrastructure ] && [ -z "$retried" ]; then

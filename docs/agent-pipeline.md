@@ -42,9 +42,10 @@ time; the next queued issue waits for the next free tick.
    next tick removes the worktree and branch and clears the labels.
 
 A pipeline that fails on the infrastructure — `stage.sh` exits 124 on a timeout, 2 when a `gh`
-call failed or `claude` ended with `error_during_execution` — goes back to `agent/queued` with
-`agent/retried` and no comment, once; every other failure, and a second infrastructure failure,
-is `agent/failed`. The comment on the issue (or pull request) then names the class and holds the
+call failed or `claude` ended with `error_during_execution`; `pipeline.sh` exits 2 when one of its
+own `gh` calls failed, the runner when `./gradlew dependencySources` did — goes back to
+`agent/queued` with `agent/retried` and no comment, once; every other failure, and a second
+infrastructure failure, is `agent/failed`. The comment on the issue (or pull request) then names the class and holds the
 last 30 lines of stderr and the log path. Replace `agent/failed` with `agent/queued` to retry: the
 worktree is reused and, once a pull request exists, the pipeline resumes at the review stage.
 `agent/retried` stays on until the merge, so a hand retry after it gets no second automatic one.

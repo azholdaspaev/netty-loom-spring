@@ -24,6 +24,7 @@ setup() {
   cat > "$tmp/main/gradlew" <<'SHIM'
 #!/usr/bin/env bash
 echo "gradlew $* in $(pwd -P)" >> "$SHIM_EVENTS"
+exit "${SHIM_GRADLEW_RC:-0}"
 SHIM
   chmod +x "$tmp/main/gradlew"
   echo root > "$tmp/main/src.txt"
@@ -225,6 +226,20 @@ for code in 124 2; do
   check "infrastructure-retry-$code" "$ok" "$why"
   rm -rf "$tmp"
 done
+
+# --- dependencySources fails to resolve: infrastructure too, and the pipeline never starts ---
+setup
+queue 7 "Fix the Thing: quickly!"
+export SHIM_GRADLEW_RC=1
+run
+unset SHIM_GRADLEW_RC
+wt=$(cd "$tmp/$WT7" 2>/dev/null && pwd -P || echo missing)
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" = 0 ] || ok=0
+[ "$actions" = "requeue|${PICK7}gradlew dependencySources in $wt|gh issue edit 7 --remove-label agent/running --add-label agent/queued,agent/retried|" ] || ok=0
+[ ! -e "$tmp/state/issue-comment-7" ] || { ok=0; why="$why a comment was posted"; }
+check infrastructure-retry-sources "$ok" "$why"
+rm -rf "$tmp"
 
 # --- a second infrastructure failure, agent/retried already on: agent/failed, and the comment names the class ---
 setup
