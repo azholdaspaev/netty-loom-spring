@@ -224,7 +224,7 @@ rm -rf "$tmp"
 setup
 run is-error "$PR_URL" 999 implement
 ok=1; why="rc=$rc stderr=$err"
-[ "$rc" = 1 ] && contains "$err" "claude ended with success (exited 0)" || ok=0
+[ "$rc" = 1 ] && contains "$err" "claude ended with is_error (exited 0)" || ok=0
 [ -z "$out" ] || { ok=0; why="stdout=$out"; }
 check is-error "$ok" "$why"
 rm -rf "$tmp"
