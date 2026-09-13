@@ -14,7 +14,7 @@ decisions behind it: #211.
 | --- | --- | --- | --- |
 | `agent/queued` | waiting for a tick | maintainer; `requeue.sh` after an answer | runner, on pick-up |
 | `agent/running` | a pipeline is running in the issue's worktree | runner | runner, when the pipeline returns; the next tick, when the tick died — to `agent/failed`, or just off when `agent/pr-ready` or `agent/queued` is already there |
-| `agent/needs-input` | a question is posted on the issue | `pipeline.sh`; `requeue.sh`, when an `agent/pr-ready` issue's newest comment is a question the stage could not read back | `requeue.sh`, once the owner has answered |
+| `agent/needs-input` | a question is posted on the issue | `pipeline.sh`; `requeue.sh`, when an `agent/pr-ready` issue's newest comment is a question — one an `agent/fix` stage asked, since those post nothing else on the issue | `requeue.sh`, once the owner has answered |
 | `agent/pr-ready` | the pull request is ready for review | `pipeline.sh` | runner, after the merge, or on pick-up when the issue is queued again |
 | `agent/fix` | on a pull request: run a fix stage, then a review stage | maintainer | runner, after those stages |
 | `agent/retried` | the pipeline's one infrastructure failure — a stage timeout, a dropped API connection, a failed `gh` call — was retried from the worktree | runner | runner, after the merge |
