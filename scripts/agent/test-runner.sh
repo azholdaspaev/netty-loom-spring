@@ -64,7 +64,7 @@ echo "gh $*" >> "$SHIM_EVENTS"
 jqarg() { local prev=; for a in "$@"; do [ "$prev" = --jq ] && { printf '%s' "$a"; return; }; prev=$a; done; }
 case "$*" in
   "issue list --label agent/queued --state open --json number --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/queued.json" ;;
-  "issue list --label agent/running --state open --json number --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/running.json" ;;
+  "issue list --label agent/running --state open --json number,labels --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/running.json" ;;
   "issue list --state closed --search label:agent/"*" --json number,labels --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/closed.json" ;;
   "issue view "*" --json "*" --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/issue-$3.json" ;;
   "issue edit "*) echo "https://github.com/o/r/issues/$3" ;;
@@ -81,7 +81,7 @@ SHIM
 }
 
 # issue <n> <title> [<labels csv>]: known to gh issue view; queue <n> <title>: also listed as agent/queued;
-# running <n> <title>: also listed as agent/running; closed <n> <labels csv>: a closed issue in the label search
+# running <n> <title> [<labels csv>]: also listed as agent/running; closed <n> <labels csv>: a closed issue in the label search
 issue() {
   jq -n --arg title "$2" --arg labels "${3:-}" \
     '{title: $title, labels: ($labels | split(",") | map(select(. != "")) | map({name: .}))}' \
@@ -94,7 +94,7 @@ listed() {
   mv "$tmp/state/$2.new" "$tmp/state/$2.json"
 }
 queue() { issue "$1" "$2" "agent/queued"; listed "$1" queued; }
-running() { issue "$1" "$2" "agent/running"; listed "$1" running; }
+running() { issue "$1" "$2" "${3:-agent/running}"; listed "$1" running "${3:-agent/running}"; }
 closed() { listed "$1" closed "$2"; }
 
 # fixpr <url> <branch>: an open pull request labelled agent/fix; merged <branch>: its pull request is merged;
@@ -296,6 +296,15 @@ ok=1; why="rc=$rc stderr=$err actions=$actions comment=$comment"
 contains "$comment" "$log" && contains "$comment" 'Replace `agent/failed` with `agent/queued`' || ok=0
 [ ! -d "$tmp/$WT7" ] || { ok=0; why="$why a worktree was added for the orphan"; }
 check orphan "$ok" "$why"
+rm -rf "$tmp"
+
+# --- agent/running beside agent/pr-ready: the pipeline finished and only the runner died, so the label comes off and no comment is posted ---
+setup
+running 7 "Fix the Thing: quickly!" "agent/running,agent/pr-ready"
+run
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" = 0 ] && [ "$actions" = "gh issue edit 7 --remove-label agent/running|requeue|" ] || ok=0
+check orphan-pr-ready "$ok" "$why"
 rm -rf "$tmp"
 
 # --- a closed issue still carrying agent/* labels loses them, nothing else ---
