@@ -79,8 +79,10 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
             writer = new HttpChannelResponseWriter(ctx, request);
             requestOffWire = msg instanceof LastHttpContent;
             if (msg instanceof HttpContent aggregated) {
-                // A FullHttpRequest is head, body and terminator at once, which is what a pipeline
-                // that still aggregates delivers; offered before the dispatch, which may run inline.
+                /*
+                 * A FullHttpRequest is head, body and terminator at once, which is what a pipeline
+                 * that still aggregates delivers; offered before the dispatch, which may run inline.
+                 */
                 body.offer(aggregated);
             }
             dispatch(ctx, request, HttpConnectionMetadata.from(ctx), body, writer);
@@ -89,8 +91,10 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
         if (msg instanceof HttpContent content) {
             requestOffWire |= content instanceof LastHttpContent;
             if (body == null) {
-                // No dispatch owns this: the exchange was answered without reading its body, so the
-                // rest of it is drained here rather than left to stall the connection.
+                /*
+                 * No dispatch owns this: the exchange was answered without reading its body, so the
+                 * rest of it is drained here rather than left to stall the connection.
+                 */
                 content.release();
             } else {
                 body.offer(content);
@@ -146,8 +150,10 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
         try {
             ctx.executor().execute(ctx::read);
         } catch (RejectedExecutionException terminated) {
-            // Runs on the dispatch thread, inside read(): letting this out would break InputStream's
-            // promise of IOException, and there is no loop left to read the more it asks for (#109).
+            /*
+             * Runs on the dispatch thread, inside read(): letting this out would break InputStream's
+             * promise of IOException, and there is no loop left to read the more it asks for (#109).
+             */
         }
     }
 
@@ -159,19 +165,23 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
                 try {
                     requestDispatcher.handle(request, requestBody, connection, writer);
                     if (writer.state.get() != ResponseState.ENDED && ctx.channel().isActive()) {
-                        // The SPI's return no longer carries the response, so a dispatcher can leave the
-                        // exchange hanging by returning. Worth saying only while the connection is still
-                        // there: a departed client is the ordinary reason a response stops early.
+                        /*
+                         * The SPI's return no longer carries the response, so a dispatcher can leave the
+                         * exchange hanging by returning. Worth saying only while the connection is still
+                         * there: a departed client is the ordinary reason a response stops early.
+                         */
                         reportDispatchFailure(ctx, request, writer,
                             new IllegalStateException("Dispatcher returned without writing a complete response"));
                     }
                 } catch (Throwable cause) {
                     reportDispatchFailure(ctx, request, writer, cause);
                 } finally {
-                    // Ahead of close(), which rethrows a queued part's failed release: the count is
-                    // global and reset() does not clear it, so it must not depend on a call that can
-                    // fail. forget() is in a finally for the same reason -- it is the only site that
-                    // reopens the read valve behind an abandoned body.
+                    /*
+                     * Ahead of close(), which rethrows a queued part's failed release: the count is
+                     * global and reset() does not clear it, so it must not depend on a call that can
+                     * fail. forget() is in a finally for the same reason -- it is the only site that
+                     * reopens the read valve behind an abandoned body.
+                     */
                     connectionRegistry.dispatchFinished();
                     try {
                         try {
@@ -180,10 +190,12 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
                             forget(ctx, requestBody);
                         }
                     } catch (Throwable ignored) {
-                        // Nothing may escape the task, fatal errors included. Deliberately not paired
-                        // with a rethrowIfFatal: on an Executor that runs tasks inline, rethrowing
-                        // would reach the catch below -- which exists for a submission that never ran
-                        // -- and count the same dispatch out twice.
+                        /*
+                         * Nothing may escape the task, fatal errors included. Deliberately not paired
+                         * with a rethrowIfFatal: on an Executor that runs tasks inline, rethrowing
+                         * would reach the catch below -- which exists for a submission that never ran
+                         * -- and count the same dispatch out twice.
+                         */
                     }
                 }
             });
@@ -207,8 +219,10 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
         ctx.executor().execute(() -> {
             if (body == finished) {
                 body = null;
-                // Reopens the valve: channelReadComplete withheld the read while the abandoned body
-                // filled the queue, and no other site asks once that queue is gone.
+                /*
+                 * Reopens the valve: channelReadComplete withheld the read while the abandoned body
+                 * filled the queue, and no other site asks once that queue is gone.
+                 */
                 ctx.read();
                 forgetWriterIfSettled();
             }
@@ -232,14 +246,18 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
     private static void reportDispatchFailure(ChannelHandlerContext ctx, HttpRequest request,
                                               HttpChannelResponseWriter writer, Throwable cause) {
         if (writer.preempted) {
-            // The pipeline has already answered this exchange; reporting the unwind it caused would
-            // put a second status on the same request.
+            /*
+             * The pipeline has already answered this exchange; reporting the unwind it caused would
+             * put a second status on the same request.
+             */
             return;
         }
         if (writer.state.get() != ResponseState.NOT_STARTED) {
-            // A client that hung up mid-download ends the stream the ordinary way, so only a fault the
-            // server owns is worth a warning. Both are still closes -- there is no response left to
-            // send either way -- so the log is the whole of the difference.
+            /*
+             * A client that hung up mid-download ends the stream the ordinary way, so only a fault the
+             * server owns is worth a warning. Both are still closes -- there is no response left to
+             * send either way -- so the log is the whole of the difference.
+             */
             if (cause instanceof ClosedChannelException) {
                 log.debug("Client left during {} {}", request.method(), request.uri());
             } else {
@@ -302,10 +320,12 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
 
         @Override
         public void write(HttpObject part) throws IOException {
-            // A handler streaming into a dead channel, or into an exchange the pipeline has taken over,
-            // would otherwise produce for ever, and the part is released here because the writer still
-            // owns it. ClosedChannelException, not a plain IOException: the type is what
-            // HttpExceptionHandler classifies a departed client by.
+            /*
+             * A handler streaming into a dead channel, or into an exchange the pipeline has taken over,
+             * would otherwise produce for ever, and the part is released here because the writer still
+             * owns it. ClosedChannelException, not a plain IOException: the type is what
+             * HttpExceptionHandler classifies a departed client by.
+             */
             ResponseState settled = part instanceof LastHttpContent
                 ? ResponseState.ENDED : ResponseState.STARTED;
             if (preempted || !ctx.channel().isActive() || !claim(settled)) {
@@ -356,16 +376,20 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
                 || HttpUtil.isTransferEncodingChunked(response)) {
                 return;
             }
-            // Netty repairs most of this set and not 304: sanitizeHeadersBeforeEncode skips it while
-            // isContentAlwaysEmpty still drops its body and terminator. Declared empty rather than left
-            // bare because isSelfDefinedMessageLength covers 1xx and 204 but not 304 or 205, so a bare
-            // head has HttpServerKeepAliveHandler close after every conditional GET.
+            /*
+             * Netty repairs most of this set and not 304: sanitizeHeadersBeforeEncode skips it while
+             * isContentAlwaysEmpty still drops its body and terminator. Declared empty rather than left
+             * bare because isSelfDefinedMessageLength covers 1xx and 204 but not 304 or 205, so a bare
+             * head has HttpServerKeepAliveHandler close after every conditional GET.
+             */
             if (carriesNoBody(response.status())) {
                 HttpUtil.setContentLength(response, 0);
                 return;
             }
-            // An HTTP/1.0 client reads chunk-size lines as body content, so its response is left for
-            // the close to delimit; HttpServerKeepAliveHandler then stamps Connection: close itself.
+            /*
+             * An HTTP/1.0 client reads chunk-size lines as body content, so its response is left for
+             * the close to delimit; HttpServerKeepAliveHandler then stamps Connection: close itself.
+             */
             if (HttpVersion.HTTP_1_0.equals(request.protocolVersion())) {
                 return;
             }

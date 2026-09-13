@@ -94,8 +94,10 @@ public class HttpConnectionRegistry {
     }
 
     public void dispatchFinished() {
-        // Only signal while draining: outside a shutdown nobody is waiting, and at low load every
-        // request returns the count to zero, so this would take the lock on each one.
+        /*
+         * Only signal while draining: outside a shutdown nobody is waiting, and at low load every
+         * request returns the count to zero, so this would take the lock on each one.
+         */
         if (dispatchesInFlight.decrementAndGet() <= 0 && draining) {
             dispatchLock.lock();
             try {
@@ -183,8 +185,10 @@ public class HttpConnectionRegistry {
     }
 
     private static void closeIfIdle(Channel connection) {
-        // Decided on the connection's own event loop: exchangeStarted runs there too, so a request
-        // already read off the wire has necessarily been counted before this check observes it.
+        /*
+         * Decided on the connection's own event loop: exchangeStarted runs there too, so a request
+         * already read off the wire has necessarily been counted before this check observes it.
+         */
         connection.eventLoop().execute(() -> {
             if (counter(connection).get() <= 0) {
                 connection.close();

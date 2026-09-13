@@ -64,8 +64,10 @@ class ContextListenerLifecycleTest {
 
     @Test
     void registrationIsRefusedOnceStartupHasFinished() {
-        // The ServletContext.addListener contract: a listener registered from here on would never see
-        // contextInitialized and would begin observing requests midway through the application's life.
+        /*
+         * The ServletContext.addListener contract: a listener registered from here on would never see
+         * contextInitialized and would begin observing requests midway through the application's life.
+         */
         try (ConfigurableApplicationContext context = run()) {
             NettyServletContext servletContext = servletContext(context);
 

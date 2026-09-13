@@ -149,19 +149,23 @@ class NettyHttpSessionTest {
 
         session.setAttribute("callback", value);
 
-        // Firing valueBound again while valueUnbound stays guarded would make an acquire-in-bound /
-        // release-in-unbound listener acquire twice and release once. Tomcat guards both sides too.
+        /*
+         * Firing valueBound again while valueUnbound stays guarded would make an acquire-in-bound /
+         * release-in-unbound listener acquire twice and release once. Tomcat guards both sides too.
+         */
         assertEquals(List.of("bound:callback"), value.events());
     }
 
     @Test
     void bindingAnInstanceTwiceBeforeEitherPublishesReleasesItOncePerBind() {
-        // Two requests binding the same instance can both observe it absent before either publishes, so
-        // both fire valueBound while only one of them is a real transition -- the second finds the value
-        // already there and stays quiet, leaving a bind nothing releases.
-        //
-        // Deterministic rather than threaded: valueBound is application code that runs inside exactly
-        // that window, so re-entering setAttribute from it occupies the window the second request would.
+        /*
+         * Two requests binding the same instance can both observe it absent before either publishes, so
+         * both fire valueBound while only one of them is a real transition -- the second finds the value
+         * already there and stays quiet, leaving a bind nothing releases.
+         *
+         * Deterministic rather than threaded: valueBound is application code that runs inside exactly
+         * that window, so re-entering setAttribute from it occupies the window the second request would.
+         */
         NettyHttpSession session = manager.create();
         var events = new ArrayList<String>();
         var reentered = new boolean[1];
@@ -190,8 +194,10 @@ class NettyHttpSessionTest {
 
     @Test
     void bindingEventsCarryTheValue() {
-        // The canonical HttpSessionBindingListener is a resource holder that reads event.getValue() to
-        // know what to release; the two-argument HttpSessionBindingEvent leaves it null.
+        /*
+         * The canonical HttpSessionBindingListener is a resource holder that reads event.getValue() to
+         * know what to release; the two-argument HttpSessionBindingEvent leaves it null.
+         */
         NettyHttpSession session = manager.create();
         var seen = new java.util.ArrayList<Object>();
         var value = new HttpSessionBindingListener() {
@@ -256,10 +262,12 @@ class NettyHttpSessionTest {
 
     @Test
     void aLinkageErrorFromValueUnboundDoesNotAbortTheUnbindingOfOtherAttributes() {
-        // The other shape the same listener fails in, and the one a value touching a lazily-loaded
-        // release helper actually raises. It has to be swallowed for the same reason as the exception
-        // above: the values ordered after it in the teardown are otherwise left bound, with the
-        // @PreDestroy of every @SessionScope bean among them unrun.
+        /*
+         * The other shape the same listener fails in, and the one a value touching a lazily-loaded
+         * release helper actually raises. It has to be swallowed for the same reason as the exception
+         * above: the values ordered after it in the teardown are otherwise left bound, with the
+         * @PreDestroy of every @SessionScope bean among them unrun.
+         */
         NettyHttpSession session = manager.create();
         RecordingValue survivor = new RecordingValue();
         session.setAttribute("bad", new HttpSessionBindingListener() {
@@ -291,9 +299,11 @@ class NettyHttpSessionTest {
 
     @Test
     void aThrowingValueBoundStillReleasesTheValueItDisplaced() {
-        // valueBound runs after the publish -- it has to, since only the publish knows what it displaced
-        // -- so by the time it fails the previous value is already out of the map and nothing else can
-        // reach it. Its release is owed regardless, or a failed bind strands whatever it was holding.
+        /*
+         * valueBound runs after the publish -- it has to, since only the publish knows what it displaced
+         * -- so by the time it fails the previous value is already out of the map and nothing else can
+         * reach it. Its release is owed regardless, or a failed bind strands whatever it was holding.
+         */
         NettyHttpSession session = manager.create();
         RecordingValue displaced = new RecordingValue();
         session.setAttribute("cart", displaced);
@@ -314,10 +324,12 @@ class NettyHttpSessionTest {
 
     @Test
     void anErrorFromTheDisplacedValueDoesNotReplaceTheFailedBind() {
-        // The bind failure is the one the caller needs to see -- propagating it is the whole reason
-        // valueBound is not routed through the quiet path. The release it owes runs in a finally, and a
-        // finally completing abruptly discards whatever the try was throwing (JLS 14.20.2), with nothing
-        // attached as suppressed: addSuppressed is try-with-resources only.
+        /*
+         * The bind failure is the one the caller needs to see -- propagating it is the whole reason
+         * valueBound is not routed through the quiet path. The release it owes runs in a finally, and a
+         * finally completing abruptly discards whatever the try was throwing (JLS 14.20.2), with nothing
+         * attached as suppressed: addSuppressed is try-with-resources only.
+         */
         NettyHttpSession session = manager.create();
         session.setAttribute("cart", new HttpSessionBindingListener() {
             @Override
@@ -484,9 +496,11 @@ class NettyHttpSessionTest {
 
     @Test
     void attributesAreStillReadableFromInsideSessionDestroyed() {
-        // The window Tomcat's StandardSession.expiring opens. Spring Security's HttpSessionDestroyedEvent
-        // walks getAttributeNames() to collect the SecurityContexts it is publishing the logout for, so a
-        // session that has already slammed shut makes the listener useless.
+        /*
+         * The window Tomcat's StandardSession.expiring opens. Spring Security's HttpSessionDestroyedEvent
+         * walks getAttributeNames() to collect the SecurityContexts it is publishing the logout for, so a
+         * session that has already slammed shut makes the listener useless.
+         */
         var seen = new ArrayList<String>();
         servletContext.addListener(new HttpSessionListener() {
             @Override
@@ -544,8 +558,10 @@ class NettyHttpSessionTest {
 
     @Test
     void tearingDownASessionRemovesItsAttributesThroughTheListener() {
-        // Tomcat's expire() removes each attribute with notification on, so an audit listener sees the
-        // same "attribute gone" event whether the application removed it or the container did.
+        /*
+         * Tomcat's expire() removes each attribute with notification on, so an audit listener sees the
+         * same "attribute gone" event whether the application removed it or the container did.
+         */
         var removed = new ArrayList<String>();
         servletContext.addListener(new HttpSessionAttributeListener() {
             @Override
@@ -563,14 +579,16 @@ class NettyHttpSessionTest {
 
     @Test
     void anAttributeClaimedBackByInvalidationWasAnnouncedFirst() {
-        // The claim-back branch: compute publishes while the session is still valid, the session is
-        // invalidated a moment later, and setAttribute takes the value back -- notifying attributeRemoved.
-        // The add or replace it pairs with must already have been announced, or a listener maintaining an
-        // index (get(name).remove(value)) is told to remove something it was never told about.
-        //
-        // Deterministic rather than threaded: the displaced value's own valueUnbound is application code
-        // that setAttribute runs after compute has published, which is exactly the window a concurrent
-        // invalidate() occupies.
+        /*
+         * The claim-back branch: compute publishes while the session is still valid, the session is
+         * invalidated a moment later, and setAttribute takes the value back -- notifying attributeRemoved.
+         * The add or replace it pairs with must already have been announced, or a listener maintaining an
+         * index (get(name).remove(value)) is told to remove something it was never told about.
+         *
+         * Deterministic rather than threaded: the displaced value's own valueUnbound is application code
+         * that setAttribute runs after compute has published, which is exactly the window a concurrent
+         * invalidate() occupies.
+         */
         var events = new ArrayList<String>();
         servletContext.addListener(new HttpSessionAttributeListener() {
             @Override
@@ -604,9 +622,11 @@ class NettyHttpSessionTest {
 
     @Test
     void aValueInvalidatingTheSessionFromValueBoundWasAnnouncedFirst() {
-        // The sibling of the case above, for the bound side: valueBound runs after compute has published,
-        // so it too can invalidate and provoke the claim-back. Its add must already be announced, or the
-        // index listener is again told to remove something it was never told about.
+        /*
+         * The sibling of the case above, for the bound side: valueBound runs after compute has published,
+         * so it too can invalidate and provoke the claim-back. Its add must already be announced, or the
+         * index listener is again told to remove something it was never told about.
+         */
         var events = new ArrayList<String>();
         servletContext.addListener(new HttpSessionAttributeListener() {
             @Override
@@ -675,10 +695,12 @@ class NettyHttpSessionTest {
 
     @Test
     void aThrowingSessionDestroyedListenerDoesNotAbortTheTeardown() {
-        // fireSessionDestroyed runs at the top of unbindAll, before the attribute unbind loop. If it
-        // propagated, one bad listener would abort the rest of teardown -- no attribute unbound, so every
-        // @SessionScope destruction callback and every valueUnbound skipped -- and the failure would
-        // escape into invalidate(), the sweep and the shutdown drain.
+        /*
+         * fireSessionDestroyed runs at the top of unbindAll, before the attribute unbind loop. If it
+         * propagated, one bad listener would abort the rest of teardown -- no attribute unbound, so every
+         * @SessionScope destruction callback and every valueUnbound skipped -- and the failure would
+         * escape into invalidate(), the sweep and the shutdown drain.
+         */
         var unbound = new ArrayList<String>();
         servletContext.addListener(new HttpSessionListener() {
             @Override
@@ -702,8 +724,10 @@ class NettyHttpSessionTest {
 
     @Test
     void aThrowingAttributeRemovedListenerDoesNotAbortTheTeardown() {
-        // fireSessionAttributeRemoved runs inside the unbind loop, so a propagating attributeRemoved would
-        // abort the remaining unbinds and escape into invalidate(), the sweep and the shutdown drain.
+        /*
+         * fireSessionAttributeRemoved runs inside the unbind loop, so a propagating attributeRemoved would
+         * abort the remaining unbinds and escape into invalidate(), the sweep and the shutdown drain.
+         */
         var unbound = new ArrayList<String>();
         servletContext.addListener(new HttpSessionAttributeListener() {
             @Override

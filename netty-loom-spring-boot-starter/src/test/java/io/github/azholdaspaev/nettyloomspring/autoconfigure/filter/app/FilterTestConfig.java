@@ -25,8 +25,10 @@ public class FilterTestConfig {
         return registration(headerFilter, 0, "/*");
     }
 
-    // Declared deliberately OUT of @Order sequence (30, 10, 20) so the ordering test can only
-    // pass if @Order resolution actually sorts them — not by accident of bean declaration order.
+    /**
+     * Declared deliberately OUT of @Order sequence (30, 10, 20) so the ordering test can only
+     * pass if @Order resolution actually sorts them — not by accident of bean declaration order.
+     */
     @Bean
     FilterRegistrationBean<OrderFilter> orderFilter30() {
         return registration(new OrderFilter("30"), 30, "/*");
@@ -57,8 +59,10 @@ public class FilterTestConfig {
         return registration(new ForbiddenFilter(), 5, "/secure/*");
     }
 
-    // Throwing filter declared BEFORE its error handler so the "upstream catches downstream" test
-    // depends on @Order (HIGHEST_PRECEDENCE sorts first), not on declaration order.
+    /**
+     * Throwing filter declared BEFORE its error handler so the "upstream catches downstream" test
+     * depends on @Order (HIGHEST_PRECEDENCE sorts first), not on declaration order.
+     */
     @Bean
     FilterRegistrationBean<ThrowingFilter> throwingFilter() {
         return registration(new ThrowingFilter(), 100, "/boom/*");

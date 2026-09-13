@@ -20,11 +20,15 @@ public class NettyHttpSession implements HttpSession {
 
     private final NettySessionManager manager;
     private final long creationTime;
-    // Unlike NettyHttpServletRequest's attributes, these really are shared: two browser tabs are two
-    // concurrent requests on one session, each on its own virtual thread.
+    /**
+     * Unlike NettyHttpServletRequest's attributes, these really are shared: two browser tabs are two
+     * concurrent requests on one session, each on its own virtual thread.
+     */
     private final Map<String, Object> attributes = new ConcurrentHashMap<>();
-    // CAS rather than a flag so a racing invalidate() reliably loses and throws, as the spec requires,
-    // and so the sweeper can take the same transition silently.
+    /**
+     * CAS rather than a flag so a racing invalidate() reliably loses and throws, as the spec requires,
+     * and so the sweeper can take the same transition silently.
+     */
     private final AtomicBoolean invalidated = new AtomicBoolean();
 
     /**
@@ -61,8 +65,10 @@ public class NettyHttpSession implements HttpSession {
     void access(long now) {
         this.lastAccessedTime = this.thisAccessedTime;
         this.thisAccessedTime = now;
-        // Guarded because this only ever transitions once: a volatile read is a plain load, so every
-        // request after the second skips the store fence.
+        /*
+         * Guarded because this only ever transitions once: a volatile read is a plain load, so every
+         * request after the second skips the store fence.
+         */
         if (isNew) {
             this.isNew = false;
         }
@@ -115,8 +121,10 @@ public class NettyHttpSession implements HttpSession {
 
     @Override
     public String getId() {
-        // Deliberately unguarded: Servlet 6.0 dropped the IllegalStateException so logging and audit
-        // code can still name a session it has just destroyed.
+        /*
+         * Deliberately unguarded: Servlet 6.0 dropped the IllegalStateException so logging and audit
+         * code can still name a session it has just destroyed.
+         */
         return id;
     }
 
@@ -160,15 +168,17 @@ public class NettyHttpSession implements HttpSession {
             removeAttribute(name);
             return;
         }
-        // Reading what was already here, and publishing, are one step: compute records the displaced value
-        // and decides publication from the invalidation flag while holding the bin lock, which unbindAll's
-        // remove(key, value) also takes -- strictly after the CAS that sets that flag. So a key the
-        // teardown has already claimed cannot be resurrected, and one it has not reached is either
-        // published or left exactly as found. Reading the map beforehand instead let two requests binding
-        // one instance each announce the single binding that resulted, and let a quiet re-bind resurrect a
-        // value another thread had just released. No listener runs inside the mapping function -- that
-        // would execute application code under a bin lock -- so every notification below is driven by what
-        // compute recorded.
+        /*
+         * Reading what was already here, and publishing, are one step: compute records the displaced value
+         * and decides publication from the invalidation flag while holding the bin lock, which unbindAll's
+         * remove(key, value) also takes -- strictly after the CAS that sets that flag. So a key the
+         * teardown has already claimed cannot be resurrected, and one it has not reached is either
+         * published or left exactly as found. Reading the map beforehand instead let two requests binding
+         * one instance each announce the single binding that resulted, and let a quiet re-bind resurrect a
+         * value another thread had just released. No listener runs inside the mapping function -- that
+         * would execute application code under a bin lock -- so every notification below is driven by what
+         * compute recorded.
+         */
         var previous = new Object[1];
         var published = new boolean[1];
         attributes.compute(name, (key, existing) -> {
@@ -180,24 +190,30 @@ public class NettyHttpSession implements HttpSession {
             // The teardown claimed this key first and the map was left as found, so nothing is announced.
             throw new IllegalStateException("Session " + id + " has been invalidated");
         }
-        // Announced as soon as the map changed, and deliberately before every callback below: each runs
-        // application code that may invalidate the session, and the claim-back that then follows notifies
-        // attributeRemoved. Firing later would let that removal be the first a listener hears of this
-        // value. This is why the order differs from Tomcat's, which unbinds the displaced value first.
+        /*
+         * Announced as soon as the map changed, and deliberately before every callback below: each runs
+         * application code that may invalidate the session, and the claim-back that then follows notifies
+         * attributeRemoved. Firing later would let that removal be the first a listener hears of this
+         * value. This is why the order differs from Tomcat's, which unbinds the displaced value first.
+         */
         if (previous[0] == null) {
             manager.listeners().fireSessionAttributeAdded(this, name, value);
         } else {
             manager.listeners().fireSessionAttributeReplaced(this, name, previous[0]);
         }
-        // Re-binding the identical instance is neither a bind nor an unbind. One comparison guarding both
-        // sides keeps a listener that acquires in valueBound and releases in valueUnbound balanced;
-        // Tomcat guards both too (notifyBindingListenerOnUnchangedValue is false).
+        /*
+         * Re-binding the identical instance is neither a bind nor an unbind. One comparison guarding both
+         * sides keeps a listener that acquires in valueBound and releases in valueUnbound balanced;
+         * Tomcat guards both too (notifyBindingListenerOnUnchangedValue is false).
+         */
         boolean bound = previous[0] != value;
         boolean invalid;
         try {
-            // Unlike valueUnbound this propagates, but it can no longer veto the binding as Tomcat's does,
-            // since the value is published by the time compute has told us a bind is owed. Hence the
-            // finally: a thrown failure must not strand the displaced value, which nothing else can reach.
+            /*
+             * Unlike valueUnbound this propagates, but it can no longer veto the binding as Tomcat's does,
+             * since the value is published by the time compute has told us a bind is owed. Hence the
+             * finally: a thrown failure must not strand the displaced value, which nothing else can reach.
+             */
             if (bound && value instanceof HttpSessionBindingListener listener) {
                 listener.valueBound(new HttpSessionBindingEvent(this, name, value));
             }
@@ -205,10 +221,12 @@ public class NettyHttpSession implements HttpSession {
             if (bound && previous[0] instanceof HttpSessionBindingListener listener) {
                 notifyUnbound(listener, name, previous[0]);
             }
-            // Published, and only then invalidated: claim the value back, and if the teardown got there
-            // first, remove(key, value) fails and it is that claim which notified. Read once, because
-            // deciding the claim-back and the throw separately lets a flip between them throw without
-            // taking the value back.
+            /*
+             * Published, and only then invalidated: claim the value back, and if the teardown got there
+             * first, remove(key, value) fails and it is that claim which notified. Read once, because
+             * deciding the claim-back and the throw separately lets a flip between them throw without
+             * taking the value back.
+             */
             invalid = invalidated.get();
             if (invalid) {
                 removeIfStillBound(name, value);
@@ -230,8 +248,10 @@ public class NettyHttpSession implements HttpSession {
 
     @Override
     public void invalidate() {
-        // The mark and the store removal go together under the lock, matching the manager's eviction
-        // paths, so a concurrent lookup cannot resolve this session once either has begun.
+        /*
+         * The mark and the store removal go together under the lock, matching the manager's eviction
+         * paths, so a concurrent lookup cannot resolve this session once either has begun.
+         */
         synchronized (lock) {
             if (!markInvalidated()) {
                 throw new IllegalStateException("Session " + id + " has already been invalidated");
@@ -254,16 +274,22 @@ public class NettyHttpSession implements HttpSession {
      * whatever it was holding.
      */
     void unbindAll() {
-        // Open across the whole teardown, not just the sessionDestroyed call: a valueUnbound implementation
-        // commonly reads a sibling attribute to release what it is holding.
+        /*
+         * Open across the whole teardown, not just the sessionDestroyed call: a valueUnbound implementation
+         * commonly reads a sibling attribute to release what it is holding.
+         */
         destroying = true;
         try {
-            // Before anything is unbound, as StandardSession.expire() does: a listener told the session
-            // is going away can then still read what was in it.
+            /*
+             * Before anything is unbound, as StandardSession.expire() does: a listener told the session
+             * is going away can then still read what was in it.
+             */
             manager.listeners().fireSessionDestroyed(this);
-            // A value bound by a request that raced this teardown may land after the iteration passes its
-            // key; that request's own re-check in setAttribute removes and unbinds it, so nothing is left
-            // silently bound and a second pass here would be redundant.
+            /*
+             * A value bound by a request that raced this teardown may land after the iteration passes its
+             * key; that request's own re-check in setAttribute removes and unbinds it, so nothing is left
+             * silently bound and a second pass here would be redundant.
+             */
             attributes.forEach(this::removeIfStillBound);
         } finally {
             destroying = false;

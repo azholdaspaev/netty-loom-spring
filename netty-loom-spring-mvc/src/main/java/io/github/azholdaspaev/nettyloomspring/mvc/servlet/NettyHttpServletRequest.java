@@ -60,16 +60,19 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     private final InputStream body;
     private final HttpConnectionMetadata connection;
     private final NettyServletContext servletContext;
-    // Held so a session created mid-request can emit its Set-Cookie immediately. Deferring that to the
-    // end of the dispatch would lose it: addCookie is a no-op once the response is committed, and
-    // RedirectView creates the session (saving the flash map) before it calls sendRedirect.
+    /**
+     * Held so a session created mid-request emits its Set-Cookie at once: addCookie is a no-op after
+     * commit, and RedirectView creates the session (saving the flash map) before it calls sendRedirect.
+     */
     private final NettyHttpServletResponse response;
 
     private final Map<String, Object> attributes = new HashMap<>();
     private final String requestId = Long.toHexString(REQUEST_IDS.getAndIncrement());
     private final String requestURI;
-    // getRequestURI() reports the URI as sent (Servlet 6.0, 3.5), while Tomcat matches its mapper and
-    // filter registrations on the decoded path (CoyoteAdapter.postParseRequest) -- so the two differ.
+    /**
+     * getRequestURI() reports the URI as sent (Servlet 6.0, 3.5), while Tomcat matches its mapper and
+     * filter registrations on the decoded path (CoyoteAdapter.postParseRequest) -- so the two differ.
+     */
     private final String decodedPath;
     private final String queryString;
     private final QueryStringDecoder queryDecoder;
@@ -152,10 +155,12 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     }
 
     private void mergeFormBodyParameters(Map<String, List<String>> target, Charset charset) {
-        // Tomcat parses a form body only for Connector.parseBodyMethods -- POST alone by default,
-        // which is why Spring ships FormContentFilter for the others -- and Request.doParseParameters
-        // then returns when usingInputStream || usingReader. The body is single-pass, so either parse
-        // would drain what its owner is about to read.
+        /*
+         * Tomcat parses a form body only for Connector.parseBodyMethods -- POST alone by default,
+         * which is why Spring ships FormContentFilter for the others -- and Request.doParseParameters
+         * then returns when usingInputStream || usingReader. The body is single-pass, so either parse
+         * would drain what its owner is about to read.
+         */
         if (!HttpMethod.POST.equals(nettyRequest.method()) || inputStream != null || reader != null) {
             return;
         }
@@ -309,14 +314,18 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     public String getRequestedSessionId() {
         if (!requestedSessionIdResolved) {
             requestedSessionIdResolved = true;
-            // Latched: readSessionId picks among duplicate cookies by liveness (issue #91), so
-            // re-resolving mid-dispatch could name a different id once the winner is invalidated.
-            // contains() rather than headers().getAll(name), which allocates a list whether or not the
-            // header exists -- and DispatcherServlet resolves the flash map on every request, so this
-            // runs even for stateless endpoints.
+            /*
+             * Latched: readSessionId picks among duplicate cookies by liveness (issue #91), so
+             * re-resolving mid-dispatch could name a different id once the winner is invalidated.
+             * contains() rather than headers().getAll(name), which allocates a list whether or not the
+             * header exists -- and DispatcherServlet resolves the flash map on every request, so this
+             * runs even for stateless endpoints.
+             */
             if (nettyRequest.headers().contains(HttpHeaderNames.COOKIE)) {
-                // The shared cookie parse, not a second one: re-deriving ServerCookieDecoder.STRICT's
-                // quoting and legacy-attribute handling would only drift from it.
+                /*
+                 * The shared cookie parse, not a second one: re-deriving ServerCookieDecoder.STRICT's
+                 * quoting and legacy-attribute handling would only drift from it.
+                 */
                 ensureCookiesParsed();
                 requestedSessionId = servletContext.getSessionManager().readSessionId(cookies);
             }
@@ -365,8 +374,10 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     @Override
     public String getServletPath() {
         if (!isWithinContext()) {
-            // Out-of-context URI: the context-relative path is undefined. Return "" rather than blindly
-            // stripping the prefix, which would throw when decodedPath is shorter than the context path.
+            /*
+             * Out-of-context URI: the context-relative path is undefined. Return "" rather than blindly
+             * stripping the prefix, which would throw when decodedPath is shorter than the context path.
+             */
             return "";
         }
         return decodedPath.substring(servletContext.getContextPath().length());
@@ -375,8 +386,10 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     @Override
     public HttpSession getSession(boolean create) {
         if (session != null && session.isInvalidated()) {
-            // Invalidated during this request (or swept underneath it): forget it, so a following
-            // getSession(true) issues a genuinely new session and a new cookie.
+            /*
+             * Invalidated during this request (or swept underneath it): forget it, so a following
+             * getSession(true) issues a genuinely new session and a new cookie.
+             */
             session = null;
         }
         if (session == null && !sessionResolved) {
@@ -396,16 +409,20 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public String changeSessionId() {
-        // Spring Security's ChangeSessionIdAuthenticationStrategy calls this on login to defeat session
-        // fixation (CWE-384). A no-op here would leave an attacker-planted id valid after authentication
-        // while Security believed it had rotated.
+        /*
+         * Spring Security's ChangeSessionIdAuthenticationStrategy calls this on login to defeat session
+         * fixation (CWE-384). A no-op here would leave an attacker-planted id valid after authentication
+         * while Security believed it had rotated.
+         */
         if (getSession(false) == null) {
             throw new IllegalStateException("changeSessionId() requires an existing session");
         }
         String newId = servletContext.getSessionManager().changeId(session);
-        // The client presented the pre-rotation id, but it is unbound now; carrying it for the rest of
-        // the request would have getRequestedSessionId() name a session that no longer exists. Tomcat's
-        // Request.changeSessionId does the same reassignment.
+        /*
+         * The client presented the pre-rotation id, but it is unbound now; carrying it for the rest of
+         * the request would have getRequestedSessionId() name a session that no longer exists. Tomcat's
+         * Request.changeSessionId does the same reassignment.
+         */
         if (requestedSessionId != null) {
             requestedSessionId = newId;
         }
@@ -415,10 +432,12 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public boolean isRequestedSessionIdValid() {
-        // Re-queried rather than latched at first resolution: the contract is whether the id is *still*
-        // valid, and a session invalidated earlier in this same dispatch must report false -- that is
-        // what gates Spring Security's InvalidSessionStrategy. The query deliberately does not go
-        // through find(), which would refresh the access time and clear isNew as a side effect.
+        /*
+         * Re-queried rather than latched at first resolution: the contract is whether the id is *still*
+         * valid, and a session invalidated earlier in this same dispatch must report false -- that is
+         * what gates Spring Security's InvalidSessionStrategy. The query deliberately does not go
+         * through find(), which would refresh the access time and clear isNew as a side effect.
+         */
         return servletContext.getSessionManager().isValidId(getRequestedSessionId());
     }
 

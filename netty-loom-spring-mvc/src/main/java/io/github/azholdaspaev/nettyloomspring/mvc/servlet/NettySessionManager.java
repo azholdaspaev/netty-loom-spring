@@ -46,19 +46,21 @@ public class NettySessionManager {
      */
     private static final String ROOT_COOKIE_PATH = "/";
 
-    // One shared instance, deliberately: never getInstanceStrong() (it can block on /dev/random), and
-    // never a ThreadLocal -- with one virtual thread per request that would mean an unbounded number of
-    // SecureRandom instances. Contention here scales with the session-creation rate, not the request
-    // rate, and on Java 25 a blocked monitor no longer pins the carrier thread (JEP 491).
+    /**
+     * One shared instance: never getInstanceStrong(), which can block on /dev/random, and never a
+     * ThreadLocal, which with one virtual thread per request means an unbounded number of instances.
+     */
     private static final SecureRandom ID_GENERATOR = new SecureRandom();
-    // Hex, not Base64: ServerCookieEncoder.STRICT throws on octets outside the RFC 6265 cookie-value
-    // set, and hex cannot produce one.
+    /**
+     * Hex, not Base64: ServerCookieEncoder.STRICT throws on octets outside the RFC 6265 cookie-value
+     * set, and hex cannot produce one.
+     */
     private static final HexFormat ID_FORMAT = HexFormat.of().withUpperCase();
 
-    // The sweeper's one thread. Named so it is identifiable in a thread dump or profiler rather than
-    // appearing as an anonymous pool-N-thread-1, and a daemon so a manager that is never closed can
-    // never keep the JVM alive. Platform rather than virtual: it is a long-lived timer that spends its
-    // life parked, which is the case virtual threads do not help.
+    /**
+     * Named for thread dumps, and a daemon so an unclosed manager cannot keep the JVM alive. Platform
+     * rather than virtual: a long-lived timer that spends its life parked gains nothing from Loom.
+     */
     private static final ThreadFactory SWEEPER_THREAD_FACTORY =
         Thread.ofPlatform().name("netty-loom-session-sweeper").daemon(true).factory();
 
@@ -69,8 +71,10 @@ public class NettySessionManager {
 
     private final ConcurrentMap<String, NettyHttpSession> sessions = new ConcurrentHashMap<>();
     private final NettySessionCookieConfig cookieConfig = new NettySessionCookieConfig();
-    // NettyServletContext, not ServletContext: the store fires HttpSessionListener events, and
-    // getListenerRegistry() is on this seam rather than the Jakarta interface.
+    /**
+     * NettyServletContext, not ServletContext: the store fires HttpSessionListener events, and
+     * getListenerRegistry() is on this seam rather than the Jakarta interface.
+     */
     private final NettyServletContext servletContext;
     private final LongSupplier clock;
 
@@ -180,10 +184,12 @@ public class NettySessionManager {
     }
 
     public NettyHttpSession create() {
-        // Refused once closed rather than quietly stored: a request thread can still be in the
-        // dispatcher while the context is being torn down, and a session added after the shutdown drain
-        // would be dropped without ever being invalidated or unbound -- the client would hold a cookie
-        // for a session no @PreDestroy will ever run against. Failing the request is the honest outcome.
+        /*
+         * Refused once closed rather than quietly stored: a request thread can still be in the
+         * dispatcher while the context is being torn down, and a session added after the shutdown drain
+         * would be dropped without ever being invalidated or unbound -- the client would hold a cookie
+         * for a session no @PreDestroy will ever run against. Failing the request is the honest outcome.
+         */
         if (closed) {
             throw new IllegalStateException(
                 "The servlet context has been closed; no new sessions can be created");
@@ -193,18 +199,22 @@ public class NettySessionManager {
         String id = newSessionId();
         NettyHttpSession session = new NettyHttpSession(id, this, now, defaultMaxInactiveInterval);
         sessions.put(id, session);
-        // Re-checked after the publish: the guard above is not atomic with this line -- ensureSweeperStarted
-        // and newSessionId both take monitors in between -- so close() can run the whole drain while this
-        // thread is between them, and a session published afterwards would sit in the store never
-        // invalidated and never unbound.
+        /*
+         * Re-checked after the publish: the guard above is not atomic with this line -- ensureSweeperStarted
+         * and newSessionId both take monitors in between -- so close() can run the whole drain while this
+         * thread is between them, and a session published afterwards would sit in the store never
+         * invalidated and never unbound.
+         */
         if (closed) {
             sessions.remove(id, session);
             session.markInvalidated();
             throw new IllegalStateException(
                 "The servlet context has been closed; no new sessions can be created");
         }
-        // Only once the session is reachable and the refusal window has passed: a listener told about a
-        // session that is about to be dropped would hold a reference no teardown will ever revisit.
+        /*
+         * Only once the session is reachable and the refusal window has passed: a listener told about a
+         * session that is about to be dropped would hold a reference no teardown will ever revisit.
+         */
         listeners().fireSessionCreated(session);
         return session;
     }
@@ -218,9 +228,11 @@ public class NettySessionManager {
             return null;
         }
         long now = clock.getAsLong();
-        // Under the session's monitor so eviction cannot complete between the liveness check and the
-        // return: without it the sweeper can expire this session a moment after the check, and the
-        // caller gets an object whose every accessor throws IllegalStateException.
+        /*
+         * Under the session's monitor so eviction cannot complete between the liveness check and the
+         * return: without it the sweeper can expire this session a moment after the check, and the
+         * caller gets an object whose every accessor throws IllegalStateException.
+         */
         boolean expired;
         synchronized (session.lock()) {
             if (session.isInvalidated()) {
@@ -270,8 +282,10 @@ public class NettySessionManager {
             session.setId(newId);
             sessions.remove(oldId, session);
         }
-        // Outside the monitor: application code must never execute under a container lock, and Spring
-        // Security rotates here on every authentication.
+        /*
+         * Outside the monitor: application code must never execute under a container lock, and Spring
+         * Security rotates here on every authentication.
+         */
         listeners().fireSessionIdChanged(session, oldId);
         return newId;
     }
@@ -301,8 +315,10 @@ public class NettySessionManager {
         String name = cookieConfig.getName();
         String lastMatch = null;
         for (Cookie cookie : cookies) {
-            // Case-sensitive, per RFC 6265 4.1.1: a name differing only in case is a different cookie,
-            // and anything sharing the host can set one.
+            /*
+             * Case-sensitive, per RFC 6265 4.1.1: a name differing only in case is a different cookie,
+             * and anything sharing the host can set one.
+             */
             if (!name.equals(cookie.getName())) {
                 continue;
             }
@@ -348,22 +364,28 @@ public class NettySessionManager {
             return;
         }
         Cookie cookie = new Cookie(cookieConfig.getName(), session.getId());
-        // Both sides model attributes the way jakarta.servlet.http.Cookie does -- same names, same
-        // case-insensitivity, same presence-encoding for flags -- so the whole configuration transfers
-        // in one pass with nothing to fix up afterwards.
+        /*
+         * Both sides model attributes the way jakarta.servlet.http.Cookie does -- same names, same
+         * case-insensitivity, same presence-encoding for flags -- so the whole configuration transfers
+         * in one pass with nothing to fix up afterwards.
+         */
         cookieConfig.getAttributes().forEach(cookie::setAttribute);
-        // Secure is the one attribute the request can strengthen: TLS forces it on regardless of
-        // configuration (issue #16).
+        /*
+         * Secure is the one attribute the request can strengthen: TLS forces it on regardless of
+         * configuration (issue #16).
+         */
         if (secureConnection) {
             cookie.setSecure(true);
         }
         if (cookie.getPath() == null) {
             cookie.setPath(defaultCookiePath());
         }
-        // Replace rather than append: a rotation within the same exchange would otherwise leave the
-        // pre-rotation id as the first Set-Cookie of that name, and it has already been unbound from the
-        // store. Browsers take last-wins, but anything reading the first header binds to a dead id.
-        // Tomcat's addSessionCookieInternal does the same scan for the same reason.
+        /*
+         * Replace rather than append: a rotation within the same exchange would otherwise leave the
+         * pre-rotation id as the first Set-Cookie of that name, and it has already been unbound from the
+         * store. Browsers take last-wins, but anything reading the first header binds to a dead id.
+         * Tomcat's addSessionCookieInternal does the same scan for the same reason.
+         */
         response.setCookie(cookie);
     }
 
@@ -386,9 +408,11 @@ public class NettySessionManager {
                     reclaimed++;
                 }
             } catch (Throwable failure) {
-                // Per session, not per pass: ConcurrentHashMap iterates in a stable order, so one bad
-                // session aborting the loop would skip everything ordered after it on every future pass
-                // too, not just this one.
+                /*
+                 * Per session, not per pass: ConcurrentHashMap iterates in a stable order, so one bad
+                 * session aborting the loop would skip everything ordered after it on every future pass
+                 * too, not just this one.
+                 */
                 log.warn("Failed to reclaim session {}", session.getId(), failure);
             }
         }
@@ -475,10 +499,12 @@ public class NettySessionManager {
         try {
             sweep(clock.getAsLong());
         } catch (Throwable failure) {
-            // Throwable, not RuntimeException: scheduleWithFixedDelay cancels the task on anything that
-            // escapes, silently and for the lifetime of the application. An application listener raising
-            // NoClassDefFoundError from valueUnbound is enough, and reclamation stopping without a log
-            // line is exactly the unbounded growth this class exists to prevent.
+            /*
+             * Throwable, not RuntimeException: scheduleWithFixedDelay cancels the task on anything that
+             * escapes, silently and for the lifetime of the application. An application listener raising
+             * NoClassDefFoundError from valueUnbound is enough, and reclamation stopping without a log
+             * line is exactly the unbounded growth this class exists to prevent.
+             */
             log.warn("Session sweep failed", failure);
         }
     }
@@ -510,12 +536,14 @@ public class NettySessionManager {
         if (running != null) {
             running.shutdownNow();
         }
-        // Expire rather than drop: Spring keeps a DestructionCallbackBindingListener as a session
-        // attribute, so clearing silently here would mean no @SessionScope bean ever runs its destruction
-        // callback on context close. Drained rather than iterate-then-clear: the map's iterator is weakly
-        // consistent, so an entry inserted into a bin the loop has already passed would be missed and then
-        // silently dropped by a trailing clear(). Bounded rather than trusting convergence, because the
-        // failure mode of an unbounded drain is a JVM that never shuts down.
+        /*
+         * Expire rather than drop: Spring keeps a DestructionCallbackBindingListener as a session
+         * attribute, so clearing silently here would mean no @SessionScope bean ever runs its destruction
+         * callback on context close. Drained rather than iterate-then-clear: the map's iterator is weakly
+         * consistent, so an entry inserted into a bin the loop has already passed would be missed and then
+         * silently dropped by a trailing clear(). Bounded rather than trusting convergence, because the
+         * failure mode of an unbounded drain is a JVM that never shuts down.
+         */
         for (int pass = 0; pass < MAX_SHUTDOWN_DRAIN_PASSES && !sessions.isEmpty(); pass++) {
             for (Map.Entry<String, NettyHttpSession> entry : sessions.entrySet()) {
                 try {
@@ -523,16 +551,20 @@ public class NettySessionManager {
                 } catch (Throwable failure) {
                     log.warn("Failed to expire session {} during shutdown", entry.getKey(), failure);
                 }
-                // By key, so a pass always makes progress even if the entry is bound under an id the
-                // session no longer carries.
+                /*
+                 * By key, so a pass always makes progress even if the entry is bound under an id the
+                 * session no longer carries.
+                 */
                 sessions.remove(entry.getKey());
             }
         }
         if (!sessions.isEmpty()) {
             log.warn("{} session(s) could not be drained during shutdown", sessions.size());
-            // Still marked on the way out: the loop giving up is a reason to stop retrying removal, not a
-            // reason to abandon the invariant that a session leaving the store is invalid and has unbound
-            // its values. Dropping them silently is the same missed @PreDestroy the drain above prevents.
+            /*
+             * Still marked on the way out: the loop giving up is a reason to stop retrying removal, not a
+             * reason to abandon the invariant that a session leaving the store is invalid and has unbound
+             * its values. Dropping them silently is the same missed @PreDestroy the drain above prevents.
+             */
             for (NettyHttpSession session : sessions.values()) {
                 try {
                     if (session.markInvalidated()) {

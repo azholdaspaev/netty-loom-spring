@@ -250,9 +250,11 @@ class HttpRequestHandlerTest {
     void shouldParkTheDispatchThreadWhileTheConnectionIsUnwritable() throws Exception {
         CountDownLatch responseFinished = new CountDownLatch(1);
         AtomicReference<Thread> worker = new AtomicReference<>();
-        // On a real loop rather than an EmbeddedChannel, whose loop reports inEventLoop()
-        // unconditionally true: a wait inside the writer would be refused there as a deadlock
-        // instead of parking, and this test would pass against a writer that never waits.
+        /*
+         * On a real loop rather than an EmbeddedChannel, whose loop reports inEventLoop()
+         * unconditionally true: a wait inside the writer would be refused there as a deadlock
+         * instead of parking, and this test would pass against a writer that never waits.
+         */
         try (StalledConnection connection = new StalledConnection(new HttpRequestHandler((_, _, _, writer) -> {
                 writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
                 writer.write(LastHttpContent.EMPTY_LAST_CONTENT);
@@ -317,8 +319,10 @@ class HttpRequestHandlerTest {
 
             connection.dispatch();
 
-            // WAITING rather than TIMED_WAITING is the whole of the difference: SpinWait.untilParked
-            // would pass against a bound that still expires, which is what this test denies.
+            /*
+             * WAITING rather than TIMED_WAITING is the whole of the difference: SpinWait.untilParked
+             * would pass against a bound that still expires, which is what this test denies.
+             */
             SpinWait.until(() -> {
                 Thread parked = worker.get();
                 return parked != null && parked.getState() == Thread.State.WAITING;
@@ -403,8 +407,10 @@ class HttpRequestHandlerTest {
                 .handler(this)
                 .connect(address).sync().channel();
             channel.pipeline().addLast(handler);
-            // On the loop, which is where writability is owned. A user-defined flag flips isWritable()
-            // without having to fill the outbound buffer to a water mark first.
+            /*
+             * On the loop, which is where writability is owned. A user-defined flag flips isWritable()
+             * without having to fill the outbound buffer to a water mark first.
+             */
             channel.eventLoop().submit(
                 () -> channel.unsafe().outboundBuffer().setUserDefinedWritability(1, false)).sync();
         }
@@ -688,9 +694,11 @@ class HttpRequestHandlerTest {
             UNREACHED_WRITE_STALL_TIMEOUT), capture);
         channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/ok"));
         channel.pipeline().fireChannelRead(LastHttpContent.EMPTY_LAST_CONTENT);
-        // The terminator arrives while the response has not started, which is the order a virtual
-        // thread takes and an inline executor never does: it leaves the dispatch's own cleanup as the
-        // only site that can let go of the writer.
+        /*
+         * The terminator arrives while the response has not started, which is the order a virtual
+         * thread takes and an inline executor never does: it leaves the dispatch's own cleanup as the
+         * only site that can let go of the writer.
+         */
         submitted.join().run();
         channel.runPendingTasks();
 
@@ -712,8 +720,10 @@ class HttpRequestHandlerTest {
             UNREACHED_WRITE_STALL_TIMEOUT), capture);
         channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/upload"));
         submitted.join().run();
-        // The dispatch's own cleanup must run while the body is still arriving, or its writer-clearing
-        // site does the work and the test passes against a version that has only that one.
+        /*
+         * The dispatch's own cleanup must run while the body is still arriving, or its writer-clearing
+         * site does the work and the test passes against a version that has only that one.
+         */
         channel.runPendingTasks();
 
         channel.pipeline().fireChannelRead(LastHttpContent.EMPTY_LAST_CONTENT);
@@ -733,8 +743,10 @@ class HttpRequestHandlerTest {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
             (_, _, _, writer) -> writer.write(new PreemptingResponse(preemption)), DIRECT,
             connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT), capture);
-        // Between write()'s guard and the wire: the response is being framed, which is where the two
-        // threads interleave and where reading preempted and state separately cannot see the other.
+        /*
+         * Between write()'s guard and the wire: the response is being framed, which is where the two
+         * threads interleave and where reading preempted and state separately cannot see the other.
+         */
         preemption.set(() -> channel.pipeline()
             .fireExceptionCaught(new TooLongFrameException("body past the limit")));
 
@@ -756,8 +768,10 @@ class HttpRequestHandlerTest {
             UNREACHED_WRITE_STALL_TIMEOUT), capture);
         channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/upload"));
         submitted.join().run();
-        // The dispatch's own cleanup must have run: without it the writer is still held for the
-        // uninteresting reason, and the test would pass against a version that dropped it too early.
+        /*
+         * The dispatch's own cleanup must have run: without it the writer is still held for the
+         * uninteresting reason, and the test would pass against a version that dropped it too early.
+         */
         channel.runPendingTasks();
 
         channel.pipeline().fireExceptionCaught(new TooLongFrameException("body past the limit"));
@@ -1054,8 +1068,10 @@ class HttpRequestHandlerTest {
 
             connection.pipeline().fireChannelRead(
                 new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/upload"));
-            // Enough that draining it crosses the low watermark, which is the only thing that asks the
-            // connection for more -- and the ask is what the terminated loop rejects.
+            /*
+             * Enough that draining it crosses the low watermark, which is the only thing that asks the
+             * connection for more -- and the ask is what the terminated loop rejects.
+             */
             connection.pipeline().fireChannelRead(
                 bodyPart("x".repeat(HttpRequestBodyStream.LOW_WATERMARK_BYTES)));
             Thread worker = dispatch.join();

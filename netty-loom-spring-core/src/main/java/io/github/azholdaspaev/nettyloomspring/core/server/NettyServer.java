@@ -180,9 +180,11 @@ public class NettyServer {
     private NettyShutdownResult joinOrAbort(Shutdown inProgress, Deadline deadline) {
         try {
             if (!inProgress.done.await(deadline.remainingMillis(), TimeUnit.MILLISECONDS)) {
-                // Under lock, and only while this is still the live drain: the owner clears shutdown
-                // and start() resets the registry under the same lock, so a late abort cannot reach
-                // a restarted server. abortDrain does not block, so holding lock across it is cheap.
+                /*
+                 * Under lock, and only while this is still the live drain: the owner clears shutdown
+                 * and start() resets the registry under the same lock, so a late abort cannot reach
+                 * a restarted server. abortDrain does not block, so holding lock across it is cheap.
+                 */
                 synchronized (lock) {
                     if (shutdown == inProgress) {
                         connectionRegistry.abortDrain();

@@ -253,12 +253,14 @@ class NettyServerDrainTest {
             graceful = shutdownInBackground();
             assertStillDraining(graceful, "the first shutdown must own the drain before the second arrives");
 
-            // The fixture parks the joiner between its deadline expiring and its abort taking
-            // effect, the window in which the owner could finish and the server restart underneath
-            // it. The park is timed rather than released here: the guarded abort holds the handover
-            // lock, and the owner cannot finish until it is released, so nothing this test could
-            // sequence on completes first. The test passes because the check and the abort are one
-            // critical section and the window is unreachable, not because a late abort was survived.
+            /*
+             * The fixture parks the joiner between its deadline expiring and its abort taking
+             * effect, the window in which the owner could finish and the server restart underneath
+             * it. The park is timed rather than released here: the guarded abort holds the handover
+             * lock, and the owner cannot finish until it is released, so nothing this test could
+             * sequence on completes first. The test passes because the check and the abort are one
+             * critical section and the window is unreachable, not because a late abort was survived.
+             */
             immediate = abortExecutor.submit(() -> nettyServer.shutdown(Duration.ZERO));
             releaseDispatcher.countDown();
             assertEquals(NettyShutdownResult.IDLE, graceful.get(5, TimeUnit.SECONDS));

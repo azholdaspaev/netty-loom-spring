@@ -84,10 +84,12 @@ class GracefulShutdownTest {
             assertTrue(holding.entered.await(5, TimeUnit.SECONDS),
                 "the request must be inside the controller before shutdown begins");
 
-            // Judged from the client, not from how long close() takes: destroying the dispatch
-            // executor bean calls ExecutorService.close(), which waits for running tasks with no
-            // timeout, so close() lasts the controller's hold whether or not the drain was cut short.
-            // The same wait is why the controller must let go by itself rather than on a latch.
+            /*
+             * Judged from the client, not from how long close() takes: destroying the dispatch
+             * executor bean calls ExecutorService.close(), which waits for running tasks with no
+             * timeout, so close() lasts the controller's hold whether or not the drain was cut short.
+             * The same wait is why the controller must let go by itself rather than on a latch.
+             */
             long startedAt = System.nanoTime();
             settledAfterMillis = response.handle((_, _) -> (System.nanoTime() - startedAt) / 1_000_000L);
             context.close();

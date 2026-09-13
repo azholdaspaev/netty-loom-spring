@@ -29,11 +29,13 @@ public class NettyWebServer implements WebServer {
         try {
             nettyServer.start();
         } catch (NettyServerException e) {
-            // Same call TomcatWebServer.start() makes, so PortInUseFailureAnalyzer names the port and
-            // prints its remediation instead of a bare "Failed to start Netty server" (issue #74).
-            // Boot matches only a BindException whose message says "in use", so EACCES and an
-            // unassignable address fall through to the generic wrapper below. getPort() reports the
-            // requested port here, since nothing is bound.
+            /*
+             * Same call TomcatWebServer.start() makes, so PortInUseFailureAnalyzer names the port and
+             * prints its remediation instead of a bare "Failed to start Netty server" (issue #74).
+             * Boot matches only a BindException whose message says "in use", so EACCES and an
+             * unassignable address fall through to the generic wrapper below. getPort() reports the
+             * requested port here, since nothing is bound.
+             */
             PortInUseException.throwIfPortBindingException(e, this::getPort);
             throw new WebServerException("Failed to start Netty server", e);
         }

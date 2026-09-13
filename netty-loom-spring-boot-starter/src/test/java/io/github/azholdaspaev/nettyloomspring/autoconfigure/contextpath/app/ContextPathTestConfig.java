@@ -15,8 +15,10 @@ import java.io.IOException;
 @Configuration
 public class ContextPathTestConfig {
 
-    // Mapped by the context-relative pattern "/hello" (the servlet path), proving filter matching
-    // uses the in-context path rather than the full request URI once a context path is set.
+    /**
+     * Mapped by the context-relative pattern "/hello" (the servlet path), proving filter matching
+     * uses the in-context path rather than the full request URI once a context path is set.
+     */
     @Bean
     FilterRegistrationBean<Filter> contextPathFilter() {
         var registration = new FilterRegistrationBean<Filter>(new HeaderFilter());

@@ -114,8 +114,10 @@ class ErrorPageIntegrationTest {
             .exchange()
             .expectHeader().valueEquals("X-Error-Filter", "ran")
             .expectHeader().doesNotExist("X-Request-Filter");
-        // Both filters are mapped to /error and only the dispatcher type separates them, so a chain
-        // built without one would show up as the wrong header, not as no header at all.
+        /*
+         * Both filters are mapped to /error and only the dispatcher type separates them, so a chain
+         * built without one would show up as the wrong header, not as no header at all.
+         */
     }
 
     @Test

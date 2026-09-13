@@ -175,10 +175,12 @@ class HttpPipeliningHandlerTest {
         channel.writeInbound(request("/first"), request("/second"));
         uriOf(channel.readInbound());
 
-        // Written but not yet drained: the gate is open again while /second is still queued, and one
-        // read loop delivers every decoded request before any task submitted from it runs.
-        // Driven through the pipeline rather than the channel, whose every operation ends in
-        // runPendingTasks() and would close the window before the assertion.
+        /*
+         * Written but not yet drained: the gate is open again while /second is still queued, and one
+         * read loop delivers every decoded request before any task submitted from it runs.
+         * Driven through the pipeline rather than the channel, whose every operation ends in
+         * runPendingTasks() and would close the window before the assertion.
+         */
         channel.pipeline().write(okResponse());
         channel.pipeline().fireChannelRead(request("/third"));
 
@@ -194,8 +196,10 @@ class HttpPipeliningHandlerTest {
         channel.writeInbound(request("/first"));
         assertEquals("/first", uriOf(channel.readInbound()));
 
-        // The release for /first is scheduled here; /second takes the gate before it runs, so that
-        // task now refers to an exchange that has already been replaced.
+        /*
+         * The release for /first is scheduled here; /second takes the gate before it runs, so that
+         * task now refers to an exchange that has already been replaced.
+         */
         channel.pipeline().write(okResponse());
         channel.pipeline().fireChannelRead(request("/second"));
         channel.pipeline().fireChannelRead(request("/third"));

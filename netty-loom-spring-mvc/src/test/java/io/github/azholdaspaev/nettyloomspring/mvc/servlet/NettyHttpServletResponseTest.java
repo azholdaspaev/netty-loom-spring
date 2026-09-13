@@ -63,8 +63,10 @@ class NettyHttpServletResponseTest {
         response.sendError(HttpResponseStatus.FORBIDDEN.code());
 
         FullHttpResponse httpResponse = response.toFullHttpResponse();
-        // Empty body must not be advertised with the stale Content-Length: 100, which would
-        // make the client hang waiting for bytes that never arrive.
+        /*
+         * Empty body must not be advertised with the stale Content-Length: 100, which would
+         * make the client hang waiting for bytes that never arrive.
+         */
         assertEquals(0, httpResponse.content().readableBytes());
         assertEquals("0", httpResponse.headers().get(HttpHeaderNames.CONTENT_LENGTH));
     }
@@ -180,8 +182,10 @@ class NettyHttpServletResponseTest {
     @Test
     void resetBufferDiscardsContentBufferedInTheWriter() throws Exception {
         var response = new NettyHttpServletResponse();
-        // Writer uses autoFlush=false, so these chars sit in the writer's encoder buffer,
-        // not yet flushed to the body — resetBuffer() must discard them, not just body's bytes.
+        /*
+         * Writer uses autoFlush=false, so these chars sit in the writer's encoder buffer,
+         * not yet flushed to the body — resetBuffer() must discard them, not just body's bytes.
+         */
         response.getWriter().write("buffered but not yet flushed to the body");
 
         response.resetBuffer();
@@ -386,11 +390,13 @@ class NettyHttpServletResponseTest {
 
     @Test
     void setCookieIsIgnoredOnceCommitted() throws Exception {
-        // The Servlet contract says a cookie written after the commit has no effect. A cookie is seeded
-        // before the commit deliberately: without one, "no Set-Cookie appeared" is satisfied by
-        // addCookie's own guard, which setCookie delegates to. What is unique to setCookie is the replace
-        // scan running *before* that delegation -- unguarded, a post-commit write strips an
-        // already-emitted header off a response whose content is by definition already decided.
+        /*
+         * The Servlet contract says a cookie written after the commit has no effect. A cookie is seeded
+         * before the commit deliberately: without one, "no Set-Cookie appeared" is satisfied by
+         * addCookie's own guard, which setCookie delegates to. What is unique to setCookie is the replace
+         * scan running *before* that delegation -- unguarded, a post-commit write strips an
+         * already-emitted header off a response whose content is by definition already decided.
+         */
         var response = new NettyHttpServletResponse();
         response.addCookie(new Cookie("sid", "first"));
 

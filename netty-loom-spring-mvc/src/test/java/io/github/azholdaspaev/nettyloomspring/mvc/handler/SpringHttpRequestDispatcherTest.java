@@ -115,8 +115,10 @@ class SpringHttpRequestDispatcherTest {
 
     @Test
     void requestDestroyedStillFiresWhenTheDispatchThrows() {
-        // A handler that blows up is exactly when request scope most needs unbinding: without the
-        // finally, RequestContextHolder would stay bound to a request that is already gone.
+        /*
+         * A handler that blows up is exactly when request scope most needs unbinding: without the
+         * finally, RequestContextHolder would stay bound to a request that is already gone.
+         */
         recordRequests();
         var dispatcher = dispatcher((request, response) -> {
             throw new IllegalStateException("boom");
@@ -150,9 +152,11 @@ class SpringHttpRequestDispatcherTest {
     @Test
     void theContextsCookieSameSiteResolverReachesTheResponse() throws Exception {
         var dispatcher = dispatcher((request, response) -> response.addCookie(new Cookie("tracker", "t")));
-        // Set after the dispatcher exists: the factory installs the resolver during getWebServer(), long
-        // after this bean is constructed, so a resolver captured at construction would always be the
-        // default. Reading it per request is what makes the bean order irrelevant.
+        /*
+         * Set after the dispatcher exists: the factory installs the resolver during getWebServer(), long
+         * after this bean is constructed, so a resolver captured at construction would always be the
+         * default. Reading it per request is what makes the bean order irrelevant.
+         */
         servletContext.setCookieSameSiteResolver(cookie -> "Strict");
 
         FullHttpResponse response = dispatch(dispatcher, get("/api/ping"));
@@ -286,8 +290,10 @@ class SpringHttpRequestDispatcherTest {
 
     @Test
     void anOutOfContextRequestNeverEntersTheContext() throws Exception {
-        // A URI outside server.servlet.context-path is rejected with a bare 404 before filters or the
-        // servlet run. Nothing was dispatched into this context, so nothing may be announced as if it was.
+        /*
+         * A URI outside server.servlet.context-path is rejected with a bare 404 before filters or the
+         * servlet run. Nothing was dispatched into this context, so nothing may be announced as if it was.
+         */
         servletContext.setContextPath("/app");
         recordRequests();
         var dispatcher = dispatcher((request, response) -> events.add("service"));
@@ -300,9 +306,11 @@ class SpringHttpRequestDispatcherTest {
 
     @Test
     void aFailingRequestListenerAbortsTheDispatch() {
-        // requestInitialized propagates: a listener that could not set up request scope has left the
-        // servlet unable to run correctly, so the exception handler turns it into a status code rather
-        // than the application silently serving a request with no scope bound.
+        /*
+         * requestInitialized propagates: a listener that could not set up request scope has left the
+         * servlet unable to run correctly, so the exception handler turns it into a status code rather
+         * than the application silently serving a request with no scope bound.
+         */
         servletContext.addListener(new ServletRequestListener() {
             @Override
             public void requestInitialized(ServletRequestEvent event) {
@@ -334,11 +342,13 @@ class SpringHttpRequestDispatcherTest {
     @ParameterizedTest
     @MethodSource("theTwoFailureShapes")
     void aListenerInitializedBeforeAFailingOneIsStillReleased(Throwable failure) {
-        // requestDestroyed is a release, not a notification: RequestContextListener.requestDestroyed runs
-        // the destruction callbacks of every @RequestScope bean the dispatch created. fireRequestInitialized
-        // runs before the try, so a later listener throwing would skip the finally entirely and leave the
-        // earlier one's request scope bound with its @PreDestroy methods never run. An Error has to reach
-        // the unwind for the same reason -- nothing else would release it.
+        /*
+         * requestDestroyed is a release, not a notification: RequestContextListener.requestDestroyed runs
+         * the destruction callbacks of every @RequestScope bean the dispatch created. fireRequestInitialized
+         * runs before the try, so a later listener throwing would skip the finally entirely and leave the
+         * earlier one's request scope bound with its @PreDestroy methods never run. An Error has to reach
+         * the unwind for the same reason -- nothing else would release it.
+         */
         servletContext.addListener(new ServletRequestListener() {
             @Override
             public void requestInitialized(ServletRequestEvent event) {
@@ -366,8 +376,10 @@ class SpringHttpRequestDispatcherTest {
 
     @Test
     void aListenerThatNeverInitializedIsNotDestroyed() {
-        // The other half of the same rule: releasing a listener that was never set up is what the
-        // symmetric contextInitialized fix exists to prevent, and it applies per request too.
+        /*
+         * The other half of the same rule: releasing a listener that was never set up is what the
+         * symmetric contextInitialized fix exists to prevent, and it applies per request too.
+         */
         servletContext.addListener(new ServletRequestListener() {
             @Override
             public void requestInitialized(ServletRequestEvent event) {
@@ -394,9 +406,11 @@ class SpringHttpRequestDispatcherTest {
 
     @Test
     void aThrowingRequestDestroyedListenerDoesNotReplaceTheHandlersFailure() {
-        // fireRequestDestroyed runs in the dispatcher's finally, so propagating there would replace any
-        // in-flight exception -- losing the handler's failure on every request while the listener stayed
-        // broken -- and would skip the listeners below it.
+        /*
+         * fireRequestDestroyed runs in the dispatcher's finally, so propagating there would replace any
+         * in-flight exception -- losing the handler's failure on every request while the listener stayed
+         * broken -- and would skip the listeners below it.
+         */
         servletContext.addListener(new ServletRequestListener() {
             @Override
             public void requestDestroyed(ServletRequestEvent event) {
@@ -439,8 +453,10 @@ class SpringHttpRequestDispatcherTest {
 
     @Test
     void anErrorFromAReleasedListenerDoesNotReplaceTheOriginalFailure() {
-        // An Error escaping the release loop would replace the original failure -- the one the caller
-        // needs to see -- and skip the listeners below it.
+        /*
+         * An Error escaping the release loop would replace the original failure -- the one the caller
+         * needs to see -- and skip the listeners below it.
+         */
         servletContext.addListener(new ServletRequestListener() {
             @Override
             public void requestDestroyed(ServletRequestEvent event) {
@@ -498,8 +514,10 @@ class SpringHttpRequestDispatcherTest {
     private SpringHttpRequestDispatcher forwardingDispatcher() {
         return dispatcher((request, response) -> {
             try {
-                // The servlet is re-entered by its own forward; branching on the URI is what stops
-                // the second pass forwarding again.
+                /*
+                 * The servlet is re-entered by its own forward; branching on the URI is what stops
+                 * the second pass forwarding again.
+                 */
                 if ("/target".equals(request.getRequestURI())) {
                     events.add("target");
                     response.getOutputStream().write("target".getBytes(StandardCharsets.UTF_8));

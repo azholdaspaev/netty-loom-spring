@@ -36,8 +36,10 @@ public class HttpDrainHandler extends ChannelDuplexHandler {
 
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
-        // Without this the exchange would end before the body was sent, stamping Connection: close on
-        // the very invitation to send it.
+        /*
+         * Without this the exchange would end before the body was sent, stamping Connection: close on
+         * the very invitation to send it.
+         */
         if (HttpResponses.isInformational(msg)) {
             ctx.write(msg, promise);
             return;
@@ -45,13 +47,15 @@ public class HttpDrainHandler extends ChannelDuplexHandler {
         if (msg instanceof HttpResponse response && isLastResponseOwedWhileDraining(ctx)) {
             HttpUtil.setKeepAlive(response.headers(), response.protocolVersion(), false);
         }
-        // Completion, not invocation: shutdown waits for bytes to reach the client, so keying this on
-        // invocation would let it abandon responses still unflushed. Safe here because a close fails
-        // every outstanding write promise (AbstractUnsafe.close calls outboundBuffer.failFlushed), so
-        // the listener always runs and inFlight always settles.
-        //
-        // unvoid() because addListener on a void promise throws, and the write must then carry the
-        // unvoided promise or the listener would never be notified.
+        /*
+         * Completion, not invocation: shutdown waits for bytes to reach the client, so keying this on
+         * invocation would let it abandon responses still unflushed. Safe here because a close fails
+         * every outstanding write promise (AbstractUnsafe.close calls outboundBuffer.failFlushed), so
+         * the listener always runs and inFlight always settles.
+         *
+         * unvoid() because addListener on a void promise throws, and the write must then carry the
+         * unvoided promise or the listener would never be notified.
+         */
         ChannelPromise writePromise = promise;
         if (msg instanceof LastHttpContent) {
             writePromise = promise.unvoid();

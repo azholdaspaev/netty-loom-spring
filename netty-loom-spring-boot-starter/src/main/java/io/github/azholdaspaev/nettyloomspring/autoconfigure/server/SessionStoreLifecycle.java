@@ -32,10 +32,12 @@ public class SessionStoreLifecycle implements SmartLifecycle {
 
     @Override
     public void start() {
-        // Reopened, not merely flagged: stop() closes the store for good otherwise. Spring restarts this
-        // phase on ApplicationContext.start()/restart() and on CRaC restore -- and with Boot's documented
-        // spring.context.checkpoint=onRefresh, the checkpoint/restore pair runs *during* refresh, so a
-        // checkpointed application would reach its first request with a store that is already closed.
+        /*
+         * Reopened, not merely flagged: stop() closes the store for good otherwise. Spring restarts this
+         * phase on ApplicationContext.start()/restart() and on CRaC restore -- and with Boot's documented
+         * spring.context.checkpoint=onRefresh, the checkpoint/restore pair runs *during* refresh, so a
+         * checkpointed application would reach its first request with a store that is already closed.
+         */
         servletContext.open();
         this.running = true;
     }

@@ -61,8 +61,10 @@ public class HttpRequestBodyLimitHandler extends ChannelInboundHandlerAdapter {
             if (received > maxBodyBytes) {
                 refused = true;
                 content.release();
-                // The status is left to HttpExceptionHandler's mapping rather than written here, so a
-                // body refused mid-dispatch cannot overtake a response already going out (issue #78).
+                /*
+                 * The status is left to HttpExceptionHandler's mapping rather than written here, so a
+                 * body refused mid-dispatch cannot overtake a response already going out (issue #78).
+                 */
                 ctx.fireExceptionCaught(new TooLongFrameException(
                     "Request body exceeded " + maxBodyBytes + " bytes"));
                 return;
@@ -91,8 +93,10 @@ public class HttpRequestBodyLimitHandler extends ChannelInboundHandlerAdapter {
         refused = true;
         ReferenceCountUtil.release(request);
         FullHttpResponse rejection = emptyResponse(status);
-        // Netty's HttpServerKeepAliveHandler stamps nothing on a response of self-defined length, so
-        // without this a pooling client reuses the socket the listener below closes (RFC 9112 §9.6).
+        /*
+         * Netty's HttpServerKeepAliveHandler stamps nothing on a response of self-defined length, so
+         * without this a pooling client reuses the socket the listener below closes (RFC 9112 §9.6).
+         */
         rejection.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
         ctx.writeAndFlush(rejection).addListener(ChannelFutureListener.CLOSE);
         return true;

@@ -23,8 +23,10 @@ class NettyRequestDispatcher implements RequestDispatcher {
 
     @Override
     public void forward(ServletRequest request, ServletResponse response) throws ServletException, IOException {
-        // isCommitted() before resetBuffer(), not instead of it: sendError and sendRedirect commit
-        // without writing the head, which resetBuffer's own guard would let through.
+        /*
+         * isCommitted() before resetBuffer(), not instead of it: sendError and sendRedirect commit
+         * without writing the head, which resetBuffer's own guard would let through.
+         */
         if (response.isCommitted()) {
             throw new IllegalStateException("Cannot forward after the response has been committed");
         }

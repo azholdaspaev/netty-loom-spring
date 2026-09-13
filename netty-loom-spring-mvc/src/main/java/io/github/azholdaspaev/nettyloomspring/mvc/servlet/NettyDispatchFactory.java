@@ -50,8 +50,10 @@ public class NettyDispatchFactory {
         return new NettyFilterChain(applicable, terminal);
     }
 
-    // Context-relative throughout, so a path canonicalising out of the context yields no dispatcher at
-    // all; the query splits off first so a ".." inside it is never normalised (Servlet 6.0, 3.5.2).
+    /**
+     * Context-relative throughout, so a path canonicalising out of the context yields no dispatcher at
+     * all; the query splits off first so a ".." inside it is never normalised (Servlet 6.0, 3.5.2).
+     */
     NettyRequestDispatcher resolve(String path) {
         int queryStart = path.indexOf('?');
         String targetPath = queryStart < 0 ? path : path.substring(0, queryStart);
@@ -63,10 +65,10 @@ public class NettyDispatchFactory {
         return new NettyRequestDispatcher(this, normalized, queryString);
     }
 
-    // Decided on the form the consumer sees rather than on the dispatched path, because Spring's
-    // DefaultPathContainer strips ';' parameters and percent-decodes each segment: a guard reading
-    // the raw path would call "..;" and "%2e%2e" ordinary segments where Spring calls them "..".
-    // The dispatched path stays undecoded, since getRequestURI() must report the URI as sent.
+    /**
+     * Decided on the form the consumer sees rather than on the dispatched path: Spring's
+     * DefaultPathContainer strips ';' parameters and percent-decodes, so "..;" and "%2e%2e" are "..".
+     */
     private static boolean escapesContext(String normalized) {
         String canonical;
         try {

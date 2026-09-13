@@ -24,8 +24,10 @@ public class BenchmarkController {
 
     @GetMapping("/work-secured")
     public WorkResponse workSecured() throws InterruptedException {
-        // Delegates rather than repeating the body: the benchmark's premise is that the secured and
-        // unsecured endpoints do identical work, so the Δ between them is the filter chain alone.
+        /*
+         * Delegates rather than repeating the body: the benchmark's premise is that the secured and
+         * unsecured endpoints do identical work, so the Δ between them is the filter chain alone.
+         */
         return work();
     }
 

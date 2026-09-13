@@ -50,12 +50,16 @@ class ReadTimeoutSlowLorisTest {
 
             long elapsedMillis = Duration.ofNanos(System.nanoTime() - start).toMillis();
             assertEquals(-1, firstByte, "server should close the connection (EOF) after readTimeout");
-            // Brackets the configured value end to end. Without this nothing ties the property to the
-            // behaviour: hardcoding the wiring to any timeout in (0, 5000ms] left the whole suite green.
+            /*
+             * Brackets the configured value end to end. Without this nothing ties the property to the
+             * behaviour: hardcoding the wiring to any timeout in (0, 5000ms] left the whole suite green.
+             */
             assertTrue(elapsedMillis >= READ_TIMEOUT_MILLIS * 4 / 5,
                 "closed after " + elapsedMillis + "ms, before the configured " + READ_TIMEOUT_MILLIS + "ms");
-            // Tight enough to kill a mis-wiring to 1000ms, the likeliest constant to arrive here by
-            // copy-paste, which a looser bound would wave through as a silent 2x.
+            /*
+             * Tight enough to kill a mis-wiring to 1000ms, the likeliest constant to arrive here by
+             * copy-paste, which a looser bound would wave through as a silent 2x.
+             */
             assertTrue(elapsedMillis < READ_TIMEOUT_MILLIS * 2L,
                 "closed after " + elapsedMillis + "ms, far past the configured " + READ_TIMEOUT_MILLIS + "ms");
         }
@@ -66,14 +70,18 @@ class ReadTimeoutSlowLorisTest {
     void shouldCloseConnectionWhenClientDribblesARequestItNeverCompletes() throws Exception {
         int soTimeout = (DRIBBLE.length() * DRIBBLE_INTERVAL_MILLIS) * 2 / 3;
 
-        // The classic slow loris: a byte-level idle clock is refreshed by every byte, so a dribble holds
-        // the connection open for ever, while measuring whole requests closes it (issue #76). That
-        // discrimination survives only while each byte lands inside the timeout -- raise the interval past
-        // it, a plausible edit to cut CPU, and a byte-level clock would close the connection too.
+        /*
+         * The classic slow loris: a byte-level idle clock is refreshed by every byte, so a dribble holds
+         * the connection open for ever, while measuring whole requests closes it (issue #76). That
+         * discrimination survives only while each byte lands inside the timeout -- raise the interval past
+         * it, a plausible edit to cut CPU, and a byte-level clock would close the connection too.
+         */
         assertTrue(DRIBBLE_INTERVAL_MILLIS < READ_TIMEOUT_MILLIS,
             "the dribble must out-pace the server's deadline or a byte-level clock would expire too");
-        // Otherwise a regression surfaces as SocketTimeoutException rather than the assertion. Shortening
-        // DRIBBLE far enough drags soTimeout under the server's deadline and trips this.
+        /*
+         * Otherwise a regression surfaces as SocketTimeoutException rather than the assertion. Shortening
+         * DRIBBLE far enough drags soTimeout under the server's deadline and trips this.
+         */
         assertTrue(READ_TIMEOUT_MILLIS < soTimeout,
             "the server must close before the client's read deadline, or the failure is unreadable");
 
@@ -84,8 +92,10 @@ class ReadTimeoutSlowLorisTest {
             try {
                 assertServerClosedTheConnection(socket);
 
-                // Without this, a dribbler slow to be scheduled sends nothing, and the test silently
-                // degrades into a duplicate of shouldCloseConnectionWhenClientSendsNoBytes -- passing.
+                /*
+                 * Without this, a dribbler slow to be scheduled sends nothing, and the test silently
+                 * degrades into a duplicate of shouldCloseConnectionWhenClientSendsNoBytes -- passing.
+                 */
                 assertTrue(flushed.get() >= 2,
                     "the client must actually have dribbled; got " + flushed.get() + " bytes");
             } finally {
@@ -104,9 +114,11 @@ class ReadTimeoutSlowLorisTest {
             assertEquals(-1, socket.getInputStream().read(),
                 "a request that never completes must not hold the connection open");
         } catch (SocketException reset) {
-            // TCP answers a close that still has unread data buffered with RST rather than FIN, so the
-            // client sees a reset or a clean EOF depending on how the last dribbled byte raced the close.
-            // Both are the server having closed, which is the whole assertion.
+            /*
+             * TCP answers a close that still has unread data buffered with RST rather than FIN, so the
+             * client sees a reset or a clean EOF depending on how the last dribbled byte raced the close.
+             * Both are the server having closed, which is the whole assertion.
+             */
         }
     }
 
