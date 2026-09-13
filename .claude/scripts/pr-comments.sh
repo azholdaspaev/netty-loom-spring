@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Every comment on a pull request, projected to what deduplication and a reply need.
+# Every comment on a pull request, projected to what deduplication, a reply and pipeline.sh's
+# progress check need.
 # Read-only. Usage: .claude/scripts/pr-comments.sh <PR number or URL>
 #
 # Three REST endpoints hold the three comment kinds, and `--paginate` emits one array per
@@ -15,7 +16,7 @@ owner=${repo%/*}
 name=${repo#*/}
 
 inline=$(gh api --paginate "repos/$repo/pulls/$pr/comments?per_page=100" \
-  --jq '[.[] | {id, kind: "inline", path, line, original_line, author: .user.login, in_reply_to_id, body: .body[0:400]}]' \
+  --jq '[.[] | {id, kind: "inline", path, line, original_line, author: .user.login, in_reply_to_id, body: .body[0:400], created_at}]' \
   | jq -s 'add // []')
 
 conversation=$(gh api --paginate "repos/$repo/issues/$pr/comments?per_page=100" \

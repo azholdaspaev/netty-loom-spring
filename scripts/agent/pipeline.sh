@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Take a GitHub issue from its worktree to a pull request ready for review: implement (or move
 # the issue to agent/needs-input when that stage asked a question), then review and fix until no
-# review thread is left open (three rounds at most), then verify by test and hand over.
+# review thread is left open or a round changed nothing -- the fix pushed no commit and the review
+# after it posted no comment -- three rounds at most, then verify by test and hand over.
 # Usage: scripts/agent/pipeline.sh <issue number>    (cwd = the issue's worktree)
 set -euo pipefail
 
@@ -23,22 +24,38 @@ if [ -z "$url" ]; then
   esac
 fi
 
+me=$(gh api user --jq .login)
+pr_head() { gh pr view "$url" --json headRefOid --jq .headRefOid; }
+
 converged=0
+stalled=0
+moved=1
 for round in $(seq 1 "$ROUNDS"); do
+  since=$("$PR_COMMENTS" "$url" | jq -r '[.inline[].created_at] | max // ""')
   "$HERE/stage.sh" "$N" review "$url" "$round"
-  open=$("$PR_COMMENTS" "$url" | jq '[.threads[] | select(.isResolved | not)] | length')
+  comments=$("$PR_COMMENTS" "$url")
+  posted=$(jq --arg me "$me" --arg since "$since" \
+    '[.inline[] | select(.author == $me and .created_at > $since)] | length' <<<"$comments")
+  open=$(jq '[.threads[] | select(.isResolved | not)] | length' <<<"$comments")
   if [ "$open" = 0 ]; then converged=1; break; fi
+  if [ "$moved" = 0 ] && [ "$posted" = 0 ]; then stalled=1; break; fi
+  before=$(pr_head)
   "$HERE/stage.sh" "$N" fix "$url" "$round"
+  moved=0
+  [ "$(pr_head)" = "$before" ] || moved=1
 done
 
 "$HERE/stage.sh" "$N" test "$url"
 dirty=$(git status --porcelain)
 [ -z "$dirty" ] || git checkout -- .
 
+threads="$open thread$([ "$open" = 1 ] || echo s) open."
 if [ "$converged" = 1 ]; then
   outcome="converged."
+elif [ "$stalled" = 1 ]; then
+  outcome="did not converge: fix $((round - 1)) pushed no commit and review $round posted no comment; $threads"
 else
-  outcome="did not converge after $ROUNDS rounds; $open thread$([ "$open" = 1 ] || echo s) open."
+  outcome="did not converge after $ROUNDS rounds; $threads"
 fi
 cost=$(jq -s '[.[].total_cost_usd] | add' "$LOG"/*.json)
 minutes=$(jq -s '([.[].duration_ms] | add) / 60000 | round' "$LOG"/*.json)
