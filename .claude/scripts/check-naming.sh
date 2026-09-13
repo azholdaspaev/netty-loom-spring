@@ -27,7 +27,7 @@ FNR == 1 { test = 0; override = 0; split("", seen) }
     n = split(decl, word, /[[:space:]]+/); name = word[n]
     if (name ~ /^(if|for|while|switch|catch|return|new|throw|synchronized|try|else|do|yield|case|assert)$/) next
     if (n >= 2 && word[n - 1] ~ /^(return|new|throw|else|case|yield|assert|do|instanceof|throws)$|[<,]$/) next
-    if (name ~ /[a-z](A|An|The)[A-Z]|^(a|an|the)[A-Z]/) fail(FNR, "article in method name " name)
+    if (name ~ /[a-z](A|An|The)[A-Z0-9]|^(a|an|the)[A-Z0-9]/) fail(FNR, "article in method name " name)
     if (test && name !~ /^should/) fail(FNR, "test method " name " does not start with should")
     if (length(name) > 60) fail(FNR, "method name " name " is " length(name) " characters; the budget is 60")
     if (!override && name ~ /^(verify|check|notify|create|build|as)([A-Z]|$)/) fail(FNR, "vocabulary: " name " starts with a verb from the Not column of the rule 7 table")
