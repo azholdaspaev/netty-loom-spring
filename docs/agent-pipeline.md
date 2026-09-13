@@ -13,16 +13,18 @@ decisions behind it: #211.
 | Label | Meaning | Set by | Cleared by |
 | --- | --- | --- | --- |
 | `agent/queued` | waiting for a tick | maintainer; `requeue.sh` after an answer | runner, on pick-up |
-| `agent/running` | a pipeline is running in the issue's worktree | runner | runner, when the pipeline returns |
+| `agent/running` | a pipeline is running in the issue's worktree | runner | runner, when the pipeline returns; the next tick, to `agent/failed`, when the tick died |
 | `agent/needs-input` | a question is posted on the issue | `pipeline.sh` | `requeue.sh`, once the owner has answered |
 | `agent/pr-ready` | the pull request is ready for review | `pipeline.sh` | runner, after the merge |
 | `agent/fix` | on a pull request: run a fix stage, then a review stage | maintainer | runner, after those stages |
 | `agent/failed` | a stage failed; the comment has the log tail | runner | maintainer |
 
-One tick, in order: clean up every merged pull request (worktree, local branch, the issue's
-`agent/*` labels), `requeue.sh`, a fix stage then a review stage per `agent/fix` pull request,
-then one `agent/queued` issue. A tick that finds the lock held exits at once, so one pipeline
-runs at a time; the next queued issue waits for the next free tick.
+One tick, in order: sweep — every open `agent/running` issue to `agent/failed` with the usual
+comment, since the lock proves no pipeline is running, and every closed issue's `agent/*` labels
+off — then clean up every merged pull request (worktree, local branch, the issue's `agent/*`
+labels), `requeue.sh`, a fix stage then a review stage per `agent/fix` pull request, then one
+`agent/queued` issue. A tick that finds the lock held exits at once, so one pipeline runs at a
+time; the next queued issue waits for the next free tick.
 
 ## The maintainer's two touch points
 
@@ -124,9 +126,10 @@ live — the same JDK the shell uses, first:
 launchctl load ~/Library/LaunchAgents/io.github.azholdaspaev.netty-loom-agent.plist
 ```
 
-To stop the runner, unload it. launchd terminates a tick in flight, which releases the lock but
-leaves that issue on `agent/running`; put `agent/queued` back by hand and the pipeline resumes on
-the same worktree when the runner is loaded again:
+To stop the runner, unload it. launchd terminates a tick in flight, which releases the lock and
+leaves that issue on `agent/running`; the first tick after the runner is loaded again moves it to
+`agent/failed` with the usual comment, and `agent/queued` resumes the pipeline on the same
+worktree. A reboot or a `kill -9` recovers the same way:
 
 ```bash
 launchctl unload ~/Library/LaunchAgents/io.github.azholdaspaev.netty-loom-agent.plist

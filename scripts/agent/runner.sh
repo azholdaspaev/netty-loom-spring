@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# One launchd tick of the agent pipeline, under a lock: drop the worktree, branch and agent/*
+# One launchd tick of the agent pipeline, under a lock: fail every issue a dead tick left on
+# agent/running and strip agent/* labels from closed issues, drop the worktree, branch and agent/*
 # labels of every merged pull request, requeue answered questions, run a fix stage then a review
 # stage per agent/fix pull request, then take the oldest agent/queued issue to a worktree of its
 # own and run pipeline.sh there.
@@ -19,14 +20,31 @@ cd "$MAIN"
 git fetch -q origin
 
 issue_of() { local rest=${1#NL-}; echo "${rest%%-*}"; }
-log_of() { mkdir -p "$STATE/logs/NL-$1"; echo "$STATE/logs/NL-$1/runner.log"; }
+log_of() { local log="$STATE/logs/NL-$1/runner.log"; mkdir -p "${log%/*}"; touch "$log"; echo "$log"; }
 failure() { cat <<BODY
-$1 failed (exit $2). Last $TAIL lines of stderr, full log at \`$3\`:
+$1. Last $TAIL lines of stderr, full log at \`$2\`:
 \`\`\`
-$(tail -n "$TAIL" "$3")
+$(tail -n "$TAIL" "$2")
 \`\`\`
 BODY
 }
+RETRY='Replace `agent/failed` with `agent/queued` to retry from the worktree as it is.'
+
+# --- sweep ---
+# The lock held above proves no pipeline is running, so agent/running on an open issue is a tick
+# that died without reaching its own label handling.
+gh issue list --label agent/running --state open --json number --jq '.[].number' \
+| while read -r n; do
+  gh issue edit "$n" --remove-label agent/running --add-label agent/failed >/dev/null
+  { failure 'A tick died with this issue on `agent/running`' "$(log_of "$n")"
+    echo "$RETRY"
+  } | gh issue comment "$n" --body-file - >/dev/null
+done
+gh issue list --state closed --search label:agent/queued,agent/running,agent/needs-input,agent/pr-ready,agent/failed \
+  --json number,labels --jq '.[] | "\(.number) \([.labels[].name | select(startswith("agent/"))] | join(","))"' \
+| while read -r n labels; do
+  gh issue edit "$n" --remove-label "$labels" >/dev/null
+done
 
 # --- merged ---
 for wt in "$WT"/NL-*/; do
@@ -56,7 +74,7 @@ gh pr list --label agent/fix --state open --json url,headRefName --jq '.[] | "\(
     gh pr edit "$url" --remove-label agent/fix >/dev/null
   else
     gh pr edit "$url" --remove-label agent/fix --add-label agent/failed >/dev/null
-    failure "The $stage stage" "$rc" "$log" | gh pr comment "$url" --body-file - >/dev/null
+    failure "The $stage stage failed (exit $rc)" "$log" | gh pr comment "$url" --body-file - >/dev/null
   fi
 done
 
@@ -74,7 +92,7 @@ if [ "$rc" = 0 ]; then
   gh issue edit "$n" --remove-label agent/running >/dev/null
 else
   gh issue edit "$n" --remove-label agent/running --add-label agent/failed >/dev/null
-  { failure "Pipeline" "$rc" "$log"
-    echo "Replace \`agent/failed\` with \`agent/queued\` to retry from the worktree as it is."
+  { failure "Pipeline failed (exit $rc)" "$log"
+    echo "$RETRY"
   } | gh issue comment "$n" --body-file - >/dev/null
 fi
