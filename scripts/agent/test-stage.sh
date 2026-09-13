@@ -66,7 +66,7 @@ case "$SHIM_MODE" in
   crash)    commit; echo boom; exit 1 ;;
   api-error) result success true | jq -c '. + {terminal_reason: "api_error", result: "API Error: 403 blocked"}'; exit 1 ;;
   is-error) commit; result success true ;;
-  exit-1)   commit; result success false; exit 1 ;;
+  exit-1)   commit; result success false | jq -c '. + {result: "Done.\n```\nsecond line\n```"}'; exit 1 ;;
   hang)     sleep 5 ;;
 esac
 SHIM
@@ -229,11 +229,12 @@ ok=1; why="rc=$rc stderr=$err"
 check is-error "$ok" "$why"
 rm -rf "$tmp"
 
-# --- success result, non-zero exit ---
+# --- success result, non-zero exit: only the first line of .result reaches the failure line ---
 setup
 run exit-1 "$PR_URL" 999 implement
 ok=1; why="rc=$rc stderr=$err"
-[ "$rc" = 1 ] && contains "$err" "claude ended with success (exited 1)" || ok=0
+[ "$rc" = 1 ] && contains "$err" "claude ended with success: Done. (exited 1)" || ok=0
+! contains "$err" "second line" || { ok=0; why="whole .result in stderr: $err"; }
 [ -z "$out" ] || { ok=0; why="stdout=$out"; }
 check success-exit-1 "$ok" "$why"
 rm -rf "$tmp"
