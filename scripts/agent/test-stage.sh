@@ -78,13 +78,17 @@ SHIM
   export SHIM_EVENTS="$tmp/events" SHIM_ARGV="$tmp/argv" SHIM_COMMENTS="$tmp/comments"
 }
 
-# run <mode> <pr-url-or-empty> <stage args...>; sets rc, out, err
+TS='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z'
+
+# run <mode> <pr-url-or-empty> <stage args...>; sets rc, out, err and said (stderr with the stage's
+# own timestamped prefix stripped, so a line without it stands out)
 run() {
   local mode=$1 url=$2; shift 2
   rc=0
   out=$(cd "$tmp/work" && SHIM_MODE=$mode SHIM_PR_URL=$url HOME=$tmp/home PATH="$tmp/bin:$PATH" \
         "$STAGE_SH" "$@" 2> "$tmp/stderr") || rc=$?
   err=$(cat "$tmp/stderr")
+  said=$(sed -E "s/^$TS stage\.sh: //" "$tmp/stderr" | tr '\n' '|')
 }
 
 check() {
@@ -153,6 +157,7 @@ done
 log="$tmp/home/.netty-loom-agent/logs/NL-999"
 [ "$(jq -r .subtype "$log/implement.json" 2>/dev/null)" = success ] || { ok=0; why="implement.json missing or wrong"; }
 grep -q "shim stderr line" "$log/implement.log" 2>/dev/null || { ok=0; why="implement.log lacks claude's stderr"; }
+[ "$said" = "NL-999 implement: start|NL-999 implement: end (exit 0)|" ] || { ok=0; why="said=$said"; }
 check success "$ok" "$why"
 rm -rf "$tmp"
 
@@ -165,6 +170,7 @@ run budget "$PR_URL" 999 implement
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "ended with error_max_budget_usd" || ok=0
 [ "$(jq -r .subtype "$tmp/home/.netty-loom-agent/logs/NL-999/implement.json" 2>/dev/null || true)" = error_max_budget_usd ] || ok=0
+case "$said" in "NL-999 implement: start|NL-999 implement: claude ended with error_max_budget_usd"*"|NL-999 implement: end (exit 1)|") ;; *) ok=0; why="$why said=$said" ;; esac
 check budget "$ok" "$why"
 rm -rf "$tmp"
 
@@ -191,6 +197,7 @@ ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 3 ] && contains "$err" "asked a question: https://github.com/o/r/issues/999#issuecomment-2" || ok=0
 [ -z "$out" ] || { ok=0; why="stdout=$out"; }
 ! grep -q "gh pr list" "$SHIM_EVENTS" || { ok=0; why="pull request looked up after a question"; }
+case "$said" in *"|NL-999 implement: end (exit 3)|") ;; *) ok=0; why="$why said=$said" ;; esac
 check question "$ok" "$why"
 rm -rf "$tmp"
 
@@ -304,6 +311,7 @@ unset STAGE_TIMEOUT
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 124 ] && contains "$err" "timed out" || ok=0
 [ ! -s "$tmp/home/.netty-loom-agent/logs/NL-999/implement.json" ] || { ok=0; why="implement.json is not empty"; }
+case "$said" in *"|NL-999 implement: end (exit 124)|") ;; *) ok=0; why="$why said=$said" ;; esac
 check timeout "$ok" "$why"
 rm -rf "$tmp"
 
@@ -314,6 +322,7 @@ run success "$PR_URL" 999 implement
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "expected NL-999-" || ok=0
 [ ! -e "$SHIM_ARGV" ] || { ok=0; why="claude ran on branch main"; }
+[ "$said" = "NL-999 implement: on 'main', expected NL-999-<slug>|" ] || { ok=0; why="$why said=$said"; }
 check wrong-branch "$ok" "$why"
 rm -rf "$tmp"
 
@@ -349,6 +358,7 @@ contains "$system" "# Unattended run" || { ok=0; why="system prompt lacks unatte
 contains "$system" "--draft" && { ok=0; why="system prompt carries the implement tail"; }
 log="$tmp/home/.netty-loom-agent/logs/NL-999"
 [ "$(jq -r .subtype "$log/review-2.json" 2>/dev/null)" = success ] || { ok=0; why="review-2.json missing or wrong"; }
+[ "$said" = "NL-999 review 2: start|NL-999 review 2: end (exit 0)|" ] || { ok=0; why="said=$said"; }
 check review "$ok" "$why"
 rm -rf "$tmp"
 

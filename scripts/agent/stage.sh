@@ -11,10 +11,12 @@ N="${1:?usage: stage.sh <issue number> <stage> [<pr url> [<round>]]}"
 STAGE="${2:?usage: stage.sh <issue number> <stage> [<pr url> [<round>]]}"
 PR="${3:-}"
 ROUND="${4:-}"
+NAME="$STAGE${ROUND:+ $ROUND}"
 STAGE_TIMEOUT="${STAGE_TIMEOUT:-45m}"
 AGENT="$(cd "$(dirname "$0")/../../.claude/agent" && pwd)"
 
-fail() { echo "stage.sh: NL-$N $STAGE: $1" >&2; exit "${2:-1}"; }
+say() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) stage.sh: NL-$N $NAME: $*" >&2; }
+fail() { say "$1"; exit "${2:-1}"; }
 gh() { command gh "$@" || fail "gh $1 $2 failed" 2; }
 
 branch=$(git branch --show-current)
@@ -68,12 +70,12 @@ esac
 
 LOG="$HOME/.netty-loom-agent/logs/NL-$N"
 mkdir -p "$LOG"
-NAME="$STAGE${ROUND:+ $ROUND}"
 OUT="$LOG/$STAGE${ROUND:+-$ROUND}"
 
+say start
 # A Gradle daemon keeps the Seatbelt profile it was spawned under and any later client reuses it,
 # so the stage starts its own daemon inside the sandbox and leaves none behind for the next build.
-trap './gradlew --stop >&2 || true' EXIT
+trap 'status=$?; ./gradlew --stop >&2 || true; say "end (exit $status)"' EXIT
 ./gradlew --stop >&2
 
 # The newest comment's own timestamp rather than date -u: GitHub's clock on both sides, so a
