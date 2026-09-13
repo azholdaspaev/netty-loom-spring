@@ -200,9 +200,9 @@ rm -rf "$tmp"
 
 # --- implement asked a question ---
 setup
-export SHIM_IMPLEMENT_RC=3
+export SHIM_QUESTION=implement
 run 0 ""
-unset SHIM_IMPLEMENT_RC
+unset SHIM_QUESTION
 ok=1; why="rc=$rc stdout=$out stderr=$err stages=$stages"
 [ "$rc" = 0 ] && [ -z "$out" ] \
   && [ "$stages" = "$IMPLEMENT$NEEDS_INPUT" ] || ok=0
