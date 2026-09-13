@@ -1,6 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionMetadata;
+import io.netty.handler.ssl.ApplicationProtocolNames;
 import jakarta.servlet.ServletConnection;
 
 record NettyServletConnection(HttpConnectionMetadata connection) implements ServletConnection {
@@ -12,9 +13,8 @@ record NettyServletConnection(HttpConnectionMetadata connection) implements Serv
 
     @Override
     public String getProtocol() {
-        // The ALPN identification sequence, which ServletConnection.getProtocol requires for a registered
-        // protocol -- so "http/1.1", not HttpVersion.text()'s "HTTP/1.1"; Tomcat's Http11Processor agrees.
-        return "http/1.1";
+        // ServletConnection.getProtocol requires the ALPN identification sequence for a registered protocol.
+        return ApplicationProtocolNames.HTTP_1_1;
     }
 
     @Override
