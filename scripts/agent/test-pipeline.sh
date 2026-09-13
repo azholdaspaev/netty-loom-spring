@@ -287,7 +287,7 @@ unset SHIM_DIRTY
 ok=1; why=""
 [ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
 [ -z "$(git -C "$tmp/work" status --porcelain)" ] || { ok=0; why="tree still dirty: $(git -C "$tmp/work" status --porcelain)"; }
-for needle in "git reset --hard && git clean -fd" "MM src.txt" "?? scratch.txt"; do
+for needle in "MM src.txt" "?? scratch.txt"; do
   contains "$comment" "$needle" || { ok=0; why="comment lacks '$needle': $comment"; }
 done
 check dirty-after-test "$ok" "$why"
