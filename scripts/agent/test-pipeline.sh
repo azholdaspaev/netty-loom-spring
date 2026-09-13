@@ -15,9 +15,10 @@ export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 # The stage shim writes the result file pipeline.sh sums, moves the pull request head on the fix
 # rounds SHIM_FIX_PUSHES lists ("1,0" = fix 1 pushes a commit, fix 2 does not; unset = every fix
 # pushes) and posts inline comments as the runner on the review rounds SHIM_REVIEW_POSTS counts
-# ("0,1" = review 2 posts one; unset = none). The gh shim serves that state back and answers each
-# GraphQL thread query with the next count from SHIM_OPEN ("2,0" = two open threads after the
-# first review, none after the second).
+# ("0,1" = review 2 posts one; unset = none). The gh shim serves that state back, inline comments
+# only through pr-comments.sh's own call, and answers each GraphQL thread query with the count
+# SHIM_OPEN holds for the latest review round ("2,0" = two open threads after the first review,
+# none after the second).
 setup() {
   tmp=$(mktemp -d)
   mkdir -p "$tmp/scripts/agent" "$tmp/.claude/scripts" "$tmp/bin" "$tmp/home" "$tmp/state"
@@ -45,6 +46,7 @@ echo '{"subtype":"success","total_cost_usd":0.5,"duration_ms":60000}' \
 case "$stage" in
   implement) echo "$SHIM_URL" ;;
   review)
+    echo "$round" > "$SHIM_STATE/review-round"
     posts=$(echo "${SHIM_REVIEW_POSTS:-}" | cut -d, -f"$round")
     jq -c --argjson n "${posts:-0}" '. as $c | $c + [range($n) | {user: {login: "runner"},
         created_at: "2026-01-01T00:00:\(($c | length) + . | tostring | ("0" + .)[-2:])Z"}]' \
@@ -60,16 +62,15 @@ SHIM
 echo "gh $*" >> "$SHIM_EVENTS"
 case "$*" in
   "pr list --head NL-999-x "*) if [ -n "${SHIM_PR_URL:-}" ]; then echo "$SHIM_PR_URL"; fi ;;
-  "pr view "*" --json url "*) echo "$2" ;;
+  "pr view "*" --json url "*) echo "$3" ;;
   "pr view "*" --json headRefOid "*) cat "$SHIM_STATE/head" ;;
   "api user --jq .login") echo runner ;;
-  "api --paginate repos/o/r/pulls/7/comments?per_page=100") cat "$SHIM_STATE/comments" ;;
+  "api --paginate repos/o/r/pulls/7/comments?per_page=100 --jq "*) jq "$5" "$SHIM_STATE/comments" ;;
   "api --paginate "*) echo "[]" ;;
   "api graphql "*)
-    idx=$(cat "$SHIM_STATE/open-idx" 2>/dev/null || echo 0)
-    open=$(echo "$SHIM_OPEN" | cut -d, -f"$((idx + 1))")
+    round=$(cat "$SHIM_STATE/review-round" 2>/dev/null || echo 1)
+    open=$(echo "$SHIM_OPEN" | cut -d, -f"$round")
     [ -n "$open" ] || { echo "gh shim: SHIM_OPEN exhausted" >&2; exit 1; }
-    echo "$((idx + 1))" > "$SHIM_STATE/open-idx"
     jq -n --argjson n "$open" '[range($n) | {id: "T\(.)", isResolved: false, isOutdated: false, firstCommentId: .}]' ;;
   "issue edit 999 "*) echo "https://github.com/o/r/issues/999" ;;
   "issue comment 999 --body-file -") cat > "$SHIM_STATE/comment"; echo "https://github.com/o/r/issues/999#issuecomment-1" ;;

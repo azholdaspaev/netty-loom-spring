@@ -24,22 +24,19 @@ if [ -z "$url" ]; then
   esac
 fi
 
-pr=${url##*/}
-repo=${url#https://github.com/}
-repo=${repo%/pull/*}
 me=$(gh api user --jq .login)
-inline() { gh api --paginate "repos/$repo/pulls/$pr/comments?per_page=100" | jq -s 'add // []'; }
 pr_head() { gh pr view "$url" --json headRefOid --jq .headRefOid; }
 
 converged=0
 stalled=0
 moved=1
 for round in $(seq 1 "$ROUNDS"); do
-  since=$(inline | jq -r 'map(.created_at) | max // ""')
+  since=$("$PR_COMMENTS" "$url" | jq -r '[.inline[].created_at] | max // ""')
   "$HERE/stage.sh" "$N" review "$url" "$round"
-  posted=$(inline | jq --arg me "$me" --arg since "$since" \
-    '[.[] | select(.user.login == $me and .created_at > $since)] | length')
-  open=$("$PR_COMMENTS" "$url" | jq '[.threads[] | select(.isResolved | not)] | length')
+  comments=$("$PR_COMMENTS" "$url")
+  posted=$(jq --arg me "$me" --arg since "$since" \
+    '[.inline[] | select(.author == $me and .created_at > $since)] | length' <<<"$comments")
+  open=$(jq '[.threads[] | select(.isResolved | not)] | length' <<<"$comments")
   if [ "$open" = 0 ]; then converged=1; break; fi
   if [ "$moved" = 0 ] && [ "$posted" = 0 ]; then stalled=1; break; fi
   before=$(pr_head)
