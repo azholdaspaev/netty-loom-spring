@@ -3,7 +3,8 @@
 # agent/running and strip agent/* labels from closed issues, drop the worktree, branch and agent/*
 # labels of every merged pull request, requeue answered questions, run a fix stage then a review
 # stage per agent/fix pull request, then take the oldest agent/queued issue to a worktree of its
-# own and run pipeline.sh there.
+# own and run pipeline.sh there; its first infrastructure failure goes back to agent/queued with
+# agent/retried, any other to agent/failed.
 # Usage: scripts/agent/runner.sh    (any cwd; the main clone is this script's grandparent)
 set -euo pipefail
 
@@ -103,9 +104,17 @@ rc=0
 (cd "$WT/$branch" && ./gradlew dependencySources && "$HERE/pipeline.sh" "$n") 2>>"$log" || rc=$?
 if [ "$rc" = 0 ]; then
   gh issue edit "$n" --remove-label agent/running >/dev/null
+  exit 0
+fi
+# stage.sh's codes, passed through by pipeline.sh: 124 from timeout, 2 for a gh call that failed
+# or claude's error_during_execution; anything else is the work.
+class=work; case "$rc" in 124|2) class=infrastructure ;; esac
+retried=$(gh issue view "$n" --json labels --jq '.labels[].name | select(. == "agent/retried")')
+if [ "$class" = infrastructure ] && [ -z "$retried" ]; then
+  gh issue edit "$n" --remove-label agent/running --add-label agent/queued,agent/retried >/dev/null
 else
   gh issue edit "$n" --remove-label agent/running --add-label agent/failed >/dev/null
-  { failure "Pipeline failed (exit $rc)" "$log"
+  { failure "Pipeline failed (exit $rc, $class${retried:+, retried once already})" "$log"
     echo "$RETRY"
   } | gh issue comment "$n" --body-file - >/dev/null
 fi
