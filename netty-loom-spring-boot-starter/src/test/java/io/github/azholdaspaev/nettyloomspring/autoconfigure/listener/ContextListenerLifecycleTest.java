@@ -11,6 +11,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 
 import java.util.concurrent.TimeUnit;
 
+import static io.github.azholdaspaev.nettyloomspring.autoconfigure.support.NettyLoomApplications.servletContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -66,10 +67,7 @@ class ContextListenerLifecycleTest {
         // The ServletContext.addListener contract: a listener registered from here on would never see
         // contextInitialized and would begin observing requests midway through the application's life.
         try (ConfigurableApplicationContext context = run()) {
-            // By name: Boot also registers the raw ServletContext as a "servletContext" bean, and both
-            // answer to this type.
-            NettyServletContext servletContext =
-                context.getBean("nettyServletContext", NettyServletContext.class);
+            NettyServletContext servletContext = servletContext(context);
 
             assertThrows(IllegalStateException.class,
                 () -> servletContext.addListener(new RecordingListener()));

@@ -1,16 +1,14 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.session;
 
-import io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.app.SmokeNettyLoomApplication;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.support.ThrowableChains;
-import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-import org.springframework.boot.builder.SpringApplicationBuilder;
-import org.springframework.context.ConfigurableApplicationContext;
 
 import java.util.concurrent.TimeUnit;
 
+import static io.github.azholdaspaev.nettyloomspring.autoconfigure.support.NettyLoomApplications.run;
+import static io.github.azholdaspaev.nettyloomspring.autoconfigure.support.NettyLoomApplications.servletContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -24,19 +22,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @Timeout(value = 60, unit = TimeUnit.SECONDS)
 class SessionConfigurationTest {
-
-    private static ConfigurableApplicationContext run(String... properties) {
-        String[] all = new String[properties.length + 1];
-        all[0] = "server.port=0";
-        System.arraycopy(properties, 0, all, 1, properties.length);
-        return new SpringApplicationBuilder(SmokeNettyLoomApplication.class).properties(all).run();
-    }
-
-    private static NettyServletContext servletContext(ConfigurableApplicationContext context) {
-        // By name: a web application context also republishes the live ServletContext as a bean named
-        // "servletContext", which is this same instance, so a by-type lookup is ambiguous.
-        return context.getBean("nettyServletContext", NettyServletContext.class);
-    }
 
     @Test
     void defaultTimeoutIsThirtyMinutes() {
