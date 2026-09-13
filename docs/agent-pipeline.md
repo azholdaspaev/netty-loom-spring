@@ -17,7 +17,7 @@ decisions behind it: #211.
 | `agent/needs-input` | a question is posted on the issue | `pipeline.sh` | `requeue.sh`, once the owner has answered |
 | `agent/pr-ready` | the pull request is ready for review | `pipeline.sh` | runner, after the merge, or on pick-up when the issue is queued again |
 | `agent/fix` | on a pull request: run a fix stage, then a review stage | maintainer | runner, after those stages |
-| `agent/failed` | a stage failed; the comment has the log tail | runner | maintainer |
+| `agent/failed` | a stage failed, or a tick died with the issue on `agent/running`; the comment has the log tail | runner | maintainer |
 
 One tick, in order: sweep — every open `agent/running` issue to `agent/failed` with the usual
 comment, since the lock proves no pipeline is running (one that also carries `agent/pr-ready`
