@@ -20,6 +20,7 @@ ORDER OF WORK:
 - prove those tests bind: break the production path each one covers, confirm that test fails, then restore the file exactly. A test that still passes against mutated code covers nothing, whatever the suite says
 - rerun the ROUNDS-based concurrency tests several times with `--rerun-tasks` — Gradle's up-to-date check hides them, and one green run of a nondeterministic test is not a result
 - restore everything before you report: `git status` must come back clean, and no mutation is ever committed or pushed
+- before opening any ticket, look for one already open for the same gap: an earlier test stage on this PR named every ticket it opened in its PR comment (`gh pr view $1 --json comments`), and a search of open issues for the PR number, then for the test or class name, finds one opened from elsewhere. Cite the ticket you find in the PR comment, comment on it only with what this run adds, and open nothing for that gap — a re-run of this stage must not duplicate its own tickets (#254: #250 and #252)
 - open one ticket listing every missing scenario, not one ticket each — a reviewer reads a coverage gap once
 - open a separate ticket for each unrelated defect you find along the way, and fix none of them here
 - post one comment on the PR: what holds, what does not, and every issue you opened
@@ -32,6 +33,7 @@ NOTES:
 - never let parallel sub-agents mutate a shared worktree — they clobber each other's edits and run Gradle against each other's mutated sources. Fan out for reading and reasoning; do every mutation yourself, serially, on a clean tree
 - the mutation must be one the change is about — invert the condition, drop the call, return the other branch. Deleting a whole method body proves only that the code is reachable
 - tickets follow `.github/ISSUE_TEMPLATE/bug.md`, carrying the mutation applied and the command that reproduces it under `## TDD entry point`. Label with `bug` for a defect, a `priority/P*`, and the `area/*` of the code under test — there is no testing area label
+- search open issues with `gh api graphql -f query='{ search(type: ISSUE, first: 20, query: "repo:azholdaspaev/netty-loom-spring is:issue is:open <PR number>") { nodes { ... on Issue { number title url } } } }'` — `gh issue list` and `gh search issues` are not on the stage's tool list (`scripts/agent/stage.sh`, `ALLOWED`)
 - report what was proven, not what was run: name the tests that failed against mutated code, and name every production path where none did
 - use sub-agents to gather context and to probe the change from different angles
 
