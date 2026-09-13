@@ -95,7 +95,7 @@ class NettyFilterChainTest {
     void propagatesRequestAndResponseWrappersToDownstreamFilterAndTerminal() throws Exception {
         var original = new NettyHttpServletRequest(
             new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/x"), InputStream.nullInputStream(),
-            new HttpConnectionMetadata("", 0, "", 0, false),
+            new HttpConnectionMetadata("", 0, "", 0, false, ""),
             new DefaultNettyServletContext(),
             new NettyHttpServletResponse());
         var wrappedRequest = new HttpServletRequestWrapper(original);

@@ -519,7 +519,7 @@ class HttpRequestHandlerTest {
         receive(channel, HttpMethod.GET, "/");
         channel.runPendingTasks();
 
-        assertEquals(new HttpConnectionMetadata("", 0, "", 0, false), dispatcher.lastConnection,
+        assertEquals(new HttpConnectionMetadata("", 0, "", 0, false, "embedded"), dispatcher.lastConnection,
             "handler must snapshot the connection metadata and pass it to the dispatcher");
 
         FullHttpResponse out = channel.readOutbound();

@@ -50,7 +50,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SpringHttpRequestDispatcherTest {
 
     private static final HttpConnectionMetadata CONNECTION =
-        new HttpConnectionMetadata("198.51.100.2", 1234, "198.51.100.9", 8080, false);
+        new HttpConnectionMetadata("198.51.100.2", 1234, "198.51.100.9", 8080, false, "");
 
     private DefaultNettyServletContext servletContext;
     private List<String> events;

@@ -73,9 +73,9 @@ What the servlet bridge implements, method by method. Verified against the sourc
 | `getUserPrincipal`, `getRemoteUser`, `getAuthType` | `none` | Always `null` |
 | `isUserInRole` | `none` | Always `false` |
 | `authenticate`, `login`, `logout` | `none` | Silent no-ops — `login` reports no failure, so a caller believes it succeeded |
-| `getRequestId()` | `none` | Always `""`, so every request shares one id where the spec requires a unique one ([#116](https://github.com/azholdaspaev/netty-loom-spring/issues/116)) |
+| `getRequestId()` | `works` | A hex counter over the JVM's lifetime, as Tomcat's `coyote.Request` does — unique within the container, not unguessable; a `forward` or error-page dispatch keeps the original request's id |
 | `getProtocolRequestId()` | `works` | `""`, which is what the spec prescribes for HTTP/1.x |
-| `getServletConnection()` | `none` | Returns **`null`**, for which the spec defines no case, so callers NPE at their own call site ([#116](https://github.com/azholdaspaev/netty-loom-spring/issues/116)) |
+| `getServletConnection()` | `works` | Connection id is the Netty channel id (`ChannelId.asLongText()`), protocol is the ALPN name `http/1.1`, protocol connection id is `""` and `isSecure()` mirrors the request's |
 | `getDispatcherType()` | `partial` | `REQUEST` for the initial dispatch, `FORWARD` during a forward and `ERROR` during an error-page dispatch. `INCLUDE` and `ASYNC` are unreachable |
 
 ## Response

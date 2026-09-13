@@ -11,6 +11,7 @@ import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 
+import jakarta.servlet.ServletConnection;
 import jakarta.servlet.ServletInputStream;
 import jakarta.servlet.ServletRequestAttributeEvent;
 import jakarta.servlet.ServletRequestAttributeListener;
@@ -86,7 +87,7 @@ class NettyHttpServletRequestTest {
         context.setContextPath(contextPath);
         return new NettyHttpServletRequest(
             new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri), InputStream.nullInputStream(),
-            new HttpConnectionMetadata("", 0, "", 0, false),
+            new HttpConnectionMetadata("", 0, "", 0, false, ""),
             context,
             new NettyHttpServletResponse());
     }
@@ -198,7 +199,7 @@ class NettyHttpServletRequestTest {
     @Test
     void networkGettersFromConnection() {
         var context = new DefaultNettyServletContext();
-        var request = request(new HttpConnectionMetadata("203.0.113.7", 54321, "198.51.100.2", 8080, false), context);
+        var request = request(new HttpConnectionMetadata("203.0.113.7", 54321, "198.51.100.2", 8080, false, ""), context);
 
         assertEquals("203.0.113.7", request.getRemoteAddr());
         assertEquals("203.0.113.7", request.getRemoteHost());
@@ -214,7 +215,7 @@ class NettyHttpServletRequestTest {
     @Test
     void remoteAndLocalHostsAreNotReverseDnsResolvedForIpv6() {
         var request = request(
-            new HttpConnectionMetadata("::1", 9999, "::1", 8080, false),
+            new HttpConnectionMetadata("::1", 9999, "::1", 8080, false, ""),
             new DefaultNettyServletContext());
 
         assertEquals("::1", request.getRemoteAddr());
@@ -225,14 +226,35 @@ class NettyHttpServletRequestTest {
 
     @Test
     void protocolReflectsHttpVersion() {
-        var request = request(new HttpConnectionMetadata("", 0, "", 0, false), new DefaultNettyServletContext());
+        var request = request(new HttpConnectionMetadata("", 0, "", 0, false, ""), new DefaultNettyServletContext());
 
         assertEquals("HTTP/1.1", request.getProtocol());
     }
 
     @Test
+    void requestIdIsUniquePerRequestAndServletConnectionIsNeverNull() {
+        var secure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, true, "conn-7");
+        var first = request(secure, new DefaultNettyServletContext());
+        var second = request(secure, new DefaultNettyServletContext());
+
+        assertFalse(first.getRequestId().isEmpty(), "getRequestId() must not be the empty string");
+        assertNotEquals(first.getRequestId(), second.getRequestId(),
+            "two requests must not share a request id (Servlet 6.0 getRequestId: unique within the container)");
+        assertEquals(first.getRequestId(), first.getRequestId(), "the id must be stable for the request's lifetime");
+        assertEquals("", first.getProtocolRequestId(), "HTTP/1.x defines no protocol request id");
+
+        ServletConnection connection = first.getServletConnection();
+        assertNotNull(connection, "getServletConnection() must never be null");
+        assertEquals("conn-7", connection.getConnectionId());
+        assertEquals("http/1.1", connection.getProtocol(), "the ALPN identification sequence, as the spec requires");
+        assertEquals("", connection.getProtocolConnectionId(), "HTTP/1.x defines no protocol connection id");
+        assertTrue(connection.isSecure());
+        assertFalse(request(INSECURE, new DefaultNettyServletContext()).getServletConnection().isSecure());
+    }
+
+    @Test
     void serverNamePortFromHostHeader() {
-        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false);
+        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
 
         var hostOnly = request("/x", "example.com", insecure);
         assertEquals("example.com", hostOnly.getServerName());
@@ -268,7 +290,7 @@ class NettyHttpServletRequestTest {
         // No Host header: serverName falls back to the local socket. For URL/authority use the IPv6
         // address must be bracketed, but the Servlet-spec numeric getLocalAddr()/getLocalName() must
         // remain the raw, unbracketed IP.
-        var request = request("/x", null, new HttpConnectionMetadata("::1", 9999, "::1", 8080, false));
+        var request = request("/x", null, new HttpConnectionMetadata("::1", 9999, "::1", 8080, false, ""));
 
         assertEquals("[::1]", request.getServerName());
         assertEquals("http://[::1]:8080/x", request.getRequestURL().toString());
@@ -280,14 +302,14 @@ class NettyHttpServletRequestTest {
     void requestUrlWithoutHostAndEmptyLocalAddrOmitsAuthority() {
         // No Host header and a non-Inet local address (empty localAddr): the URL must not become the
         // malformed "http:///x" with an empty authority.
-        var request = request("/x", null, new HttpConnectionMetadata("", 0, "", 0, false));
+        var request = request("/x", null, new HttpConnectionMetadata("", 0, "", 0, false, ""));
 
         assertEquals("http:/x", request.getRequestURL().toString());
     }
 
     @Test
     void localesParseQOrderAndDefault() {
-        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false);
+        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
 
         var ordered = requestWithAcceptLanguage("da, en-gb;q=0.8, en;q=0.7", insecure);
         assertEquals(Locale.forLanguageTag("da"), ordered.getLocale());
@@ -320,7 +342,7 @@ class NettyHttpServletRequestTest {
 
     @Test
     void localesAreCachedOnFirstAccessAndReused() {
-        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false);
+        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
         var nettyRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/x");
         nettyRequest.headers().set(HttpHeaderNames.ACCEPT_LANGUAGE, "da, en-gb;q=0.8, en;q=0.7");
         var request = new NettyHttpServletRequest(
@@ -340,8 +362,8 @@ class NettyHttpServletRequestTest {
 
     @Test
     void requestUrlOmitsDefaultPortAndQuery() {
-        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false);
-        var secure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, true);
+        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
+        var secure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, true, "");
 
         var defaultHttp = request("/foo", "example.com", insecure);
         assertEquals("http://example.com/foo", defaultHttp.getRequestURL().toString());
@@ -356,7 +378,7 @@ class NettyHttpServletRequestTest {
 
     @Test
     void paramsParseLazilyOnFirstAccess() {
-        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false);
+        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
         var request = formRequest("/x?a=1", "b=2".getBytes(StandardCharsets.UTF_8), insecure);
 
         assertEquals("1", request.getParameter("a"));
@@ -367,7 +389,7 @@ class NettyHttpServletRequestTest {
 
     @Test
     void formParametersAreNotParsedForAMethodTomcatWouldNotParse() throws Exception {
-        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false);
+        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
         var request = formRequest(HttpMethod.PUT, "/x?a=1", "b=2".getBytes(StandardCharsets.UTF_8), insecure);
 
         assertEquals("1", request.getParameter("a"), "the query string is parsed on every method");
@@ -380,7 +402,7 @@ class NettyHttpServletRequestTest {
 
     @Test
     void formParametersAreNotParsedOnceGetInputStreamHasClaimedTheBody() throws Exception {
-        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false);
+        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
         var request = formRequest("/x?a=1", "b=2".getBytes(StandardCharsets.UTF_8), insecure);
         ServletInputStream body = request.getInputStream();
         assertEquals('b', body.read());
@@ -394,7 +416,7 @@ class NettyHttpServletRequestTest {
 
     @Test
     void formParametersAreNotParsedOnceGetReaderHasClaimedTheBody() throws Exception {
-        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false);
+        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
         var request = formRequest("/x?a=1", "b=2".getBytes(StandardCharsets.UTF_8), insecure);
         BufferedReader reader = request.getReader();
 
@@ -406,7 +428,7 @@ class NettyHttpServletRequestTest {
 
     @Test
     void queryStringDecodedAsUtf8IndependentOfBodyEncoding() throws Exception {
-        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false);
+        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
         // %C3%A9 is the UTF-8 encoding of "é". The query must always decode as UTF-8, while the
         // form body must honor the body charset set via setCharacterEncoding.
         var request = formRequest("/x?q=%C3%A9", "name=%C3%A9".getBytes(StandardCharsets.US_ASCII), insecure);
@@ -419,7 +441,7 @@ class NettyHttpServletRequestTest {
 
     @Test
     void readerDefaultCharsetMatchesParameterParsing() throws Exception {
-        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false);
+        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
         // No charset set anywhere: getReader() and parameter parsing must agree on the default.
         byte[] body = new byte[] {'v', '=', (byte) 0xE9};
 
@@ -433,7 +455,7 @@ class NettyHttpServletRequestTest {
 
     @Test
     void setEncodingBeforeReadAffectsParamsThenLocks() throws Exception {
-        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false);
+        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
         // 0xE9 decodes to "é" in ISO-8859-1, and to the replacement char in UTF-8.
         byte[] body = new byte[] {'n', 'a', 'm', 'e', '=', (byte) 0xE9};
 
@@ -470,7 +492,7 @@ class NettyHttpServletRequestTest {
         }
         return new NettyHttpServletRequest(
             nettyRequest, InputStream.nullInputStream(),
-            new HttpConnectionMetadata("", 0, "", 0, false),
+            new HttpConnectionMetadata("", 0, "", 0, false, ""),
             new DefaultNettyServletContext(),
             new NettyHttpServletResponse());
     }
@@ -559,8 +581,8 @@ class NettyHttpServletRequestTest {
 
     // --- Sessions (issue #13) ---
 
-    private static final HttpConnectionMetadata INSECURE = new HttpConnectionMetadata("", 0, "", 0, false);
-    private static final HttpConnectionMetadata SECURE = new HttpConnectionMetadata("", 0, "", 0, true);
+    private static final HttpConnectionMetadata INSECURE = new HttpConnectionMetadata("", 0, "", 0, false, "");
+    private static final HttpConnectionMetadata SECURE = new HttpConnectionMetadata("", 0, "", 0, true, "");
 
     /**
      * One request/response pair over a shared servlet context, as the dispatcher builds them.
@@ -1154,7 +1176,7 @@ class NettyHttpServletRequestTest {
     void requestAttributeMutationsFireTheContainerAttributeListener() {
         var context = new DefaultNettyServletContext();
         var events = recordRequestAttributes(context);
-        var request = request(new HttpConnectionMetadata("", 0, "", 0, false), context);
+        var request = request(new HttpConnectionMetadata("", 0, "", 0, false, ""), context);
 
         request.setAttribute("stage", "one");
         request.setAttribute("stage", "two");
@@ -1167,7 +1189,7 @@ class NettyHttpServletRequestTest {
     void settingARequestAttributeToNullFiresRemoved() {
         var context = new DefaultNettyServletContext();
         var events = recordRequestAttributes(context);
-        var request = request(new HttpConnectionMetadata("", 0, "", 0, false), context);
+        var request = request(new HttpConnectionMetadata("", 0, "", 0, false, ""), context);
         request.setAttribute("stage", "one");
 
         request.setAttribute("stage", null);
@@ -1179,7 +1201,7 @@ class NettyHttpServletRequestTest {
     void removingAnAbsentRequestAttributeNotifiesNothing() {
         var context = new DefaultNettyServletContext();
         var events = recordRequestAttributes(context);
-        var request = request(new HttpConnectionMetadata("", 0, "", 0, false), context);
+        var request = request(new HttpConnectionMetadata("", 0, "", 0, false, ""), context);
 
         request.removeAttribute("never-set");
         request.setAttribute("never-set", null);
@@ -1198,7 +1220,7 @@ class NettyHttpServletRequestTest {
                 seen[1] = event.getServletContext();
             }
         });
-        var request = request(new HttpConnectionMetadata("", 0, "", 0, false), context);
+        var request = request(new HttpConnectionMetadata("", 0, "", 0, false, ""), context);
 
         request.setAttribute("stage", "one");
 

@@ -10,7 +10,8 @@ import java.net.SocketAddress;
 public record HttpConnectionMetadata(
         String remoteAddr, int remotePort,
         String localAddr, int localPort,
-        boolean secure) {
+        boolean secure,
+        String connectionId) {
 
     /**
      * Servlet contract for an unknown remote/local address (getRemoteAddr/getLocalAddr).
@@ -26,7 +27,9 @@ public record HttpConnectionMetadata(
         InetSocketAddress remote = asInet(ctx.channel().remoteAddress());
         InetSocketAddress local = asInet(ctx.channel().localAddress());
         boolean secure = ctx.pipeline().get(SslHandler.class) != null;
-        return new HttpConnectionMetadata(host(remote), port(remote), host(local), port(local), secure);
+        // asLongText, not asShortText: ChannelId documents only the long form as globally unique.
+        return new HttpConnectionMetadata(host(remote), port(remote), host(local), port(local), secure,
+            ctx.channel().id().asLongText());
     }
 
     public String scheme() {
