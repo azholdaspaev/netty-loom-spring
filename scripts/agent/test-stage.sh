@@ -106,7 +106,7 @@ claude
 $comments_call
 gh pr list --head NL-999-x --json url --jq .[0].url
 gradlew --stop" ] || { ok=0; why="events=$(tr '\n' '|' 2>/dev/null < "$SHIM_EVENTS" || true)"; }
-for flag in --permission-mode acceptEdits --permission-prompts none --max-budget-usd 8 --output-format json \
+for flag in --permission-mode acceptEdits --permission-prompts none --max-budget-usd 16 --output-format json \
             "NL-999 implement" "/flow:implement 999"; do
   argv_has "$flag" || { ok=0; why="argv lacks $flag"; }
 done

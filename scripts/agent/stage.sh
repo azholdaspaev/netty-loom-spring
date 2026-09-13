@@ -43,7 +43,7 @@ Bash(awk *),Bash(sed -n *),Bash(sort *),Bash(uniq *),Bash(diff *),Bash(jq *)"
 TAIL=""
 case "$STAGE" in
   implement)
-    BUDGET=8
+    BUDGET=16
     PROMPT="/flow:implement $N"
     TAIL="## Stage: implement
 
