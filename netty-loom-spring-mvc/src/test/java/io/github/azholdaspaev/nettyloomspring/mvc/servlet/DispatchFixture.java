@@ -19,7 +19,7 @@ import java.util.List;
 abstract class DispatchFixture {
 
     static final HttpConnectionMetadata CONNECTION =
-        new HttpConnectionMetadata("198.51.100.2", 1234, "198.51.100.9", 8080, false);
+        new HttpConnectionMetadata("198.51.100.2", 1234, "198.51.100.9", 8080, false, "");
 
     DefaultNettyServletContext context;
     NettyDispatchFactory factory;

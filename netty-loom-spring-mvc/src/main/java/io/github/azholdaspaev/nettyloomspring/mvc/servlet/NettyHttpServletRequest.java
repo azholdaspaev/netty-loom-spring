@@ -48,10 +48,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.springframework.http.HttpHeaders;
 
 public class NettyHttpServletRequest implements HttpServletRequest {
+
+    private static final AtomicLong REQUEST_IDS = new AtomicLong();
 
     private final HttpRequest nettyRequest;
     private final InputStream body;
@@ -63,6 +66,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     private final NettyHttpServletResponse response;
 
     private final Map<String, Object> attributes = new HashMap<>();
+    private final String requestId = Long.toHexString(REQUEST_IDS.getAndIncrement());
     private final String requestURI;
     // getRequestURI() reports the URI as sent (Servlet 6.0, 3.5), while Tomcat matches its mapper and
     // filter registrations on the decoded path (CoyoteAdapter.postParseRequest) -- so the two differ.
@@ -714,7 +718,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public String getRequestId() {
-        return "";
+        return requestId;
     }
 
     @Override
@@ -724,6 +728,6 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public ServletConnection getServletConnection() {
-        return null;
+        return new NettyServletConnection(connection);
     }
 }
