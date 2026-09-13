@@ -22,8 +22,6 @@ for n in $(gh issue list --label agent/needs-input --state open --json number --
   fi
 done
 
-# Only the newest comment counts: the runner's own hand-over or failure comment follows an
-# answered question just as an answer does, and both come from the owner's login.
 for n in $(gh issue list --label agent/pr-ready --state open --json number --jq '.[].number'); do
   pending=$(comments "$n" | jq -r --arg me "$me" --arg marker "$MARKER" '
         .[-1] | .user.login == $me and (.body | startswith($marker))')
