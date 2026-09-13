@@ -106,8 +106,7 @@ if [ "$rc" = 0 ]; then
   gh issue edit "$n" --remove-label agent/running >/dev/null
   exit 0
 fi
-# stage.sh's codes, passed through by pipeline.sh: 124 from timeout, 2 for a gh call that failed
-# (pipeline.sh's own too) or claude's error_during_execution; anything else is the work.
+# 124 and 2 are stage.sh's infrastructure codes (its header), passed through by pipeline.sh.
 class=work; case "$rc" in 124|2) class=infrastructure ;; esac
 retried=$(gh issue view "$n" --json labels --jq '.labels[].name | select(. == "agent/retried")')
 if [ "$class" = infrastructure ] && [ -z "$retried" ]; then
