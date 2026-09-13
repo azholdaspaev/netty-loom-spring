@@ -31,7 +31,7 @@ FNR == 1 { test = 0; override = 0; split("", seen) }
     if (name ~ /([a-z]A|^a)([A-Z][a-z]|[0-9])|([a-z](An|The)|^(an|the))[A-Z0-9]/) fail(FNR, "article in method name " name)
     if (test && name !~ /^should/) fail(FNR, "test method " name " does not start with should")
     if (length(name) > 60) fail(FNR, "method name " name " is " length(name) " characters; the budget is 60")
-    if (!override && FILENAME !~ /\/src\/test\// && name ~ /^(verify|check|notify|create|build|as)([A-Z]|$)/) fail(FNR, "vocabulary: " name " starts with a verb from the Not column of the rule 7 table")
+    if (!override && FILENAME !~ /(^|\/)src\/test\// && name ~ /^(verify|check|notify|create|build|as)([A-Z]|$)/) fail(FNR, "vocabulary: " name " starts with a verb from the Not column of the rule 7 table")
     lower = tolower(name)
     if (lower in seen && seen[lower] != name) fail(FNR, "case collision: " name " and " seen[lower] " in one file")
     else seen[lower] = name
