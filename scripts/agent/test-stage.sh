@@ -53,7 +53,7 @@ for arg in "$@"; do
   prev=$arg
 done
 echo "shim stderr line" >&2
-result() { printf '{"type":"result","subtype":"%s","is_error":%s,"session_id":"s","total_cost_usd":0.5,"num_turns":3}\n' "$1" "$2"; }
+result() { printf '{"type":"result","subtype":"%s","is_error":%s,"terminal_reason":"completed","session_id":"s","total_cost_usd":0.5,"num_turns":3}\n' "$1" "$2"; }
 commit() { echo x > "$SHIM_MODE.txt"; git add "$SHIM_MODE.txt"; git commit -q -m "NL-999 Work"; }
 ask() { printf '<!-- agent:question -->\nWhich one?\n' | gh issue comment 999 --body-file -; }
 case "$SHIM_MODE" in
