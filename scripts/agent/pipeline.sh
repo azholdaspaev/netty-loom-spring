@@ -79,7 +79,7 @@ gh issue comment "$N" --body-file - >/dev/null <<BODY
 Pull request: $url
 Review/fix rounds: $round, $outcome
 Cost: $(printf '%.2f' "$cost") USD, wall time: $minutes min, from $results stage results in $LOG.
-${dirty:+Tree was dirty after the test stage and was reset with \`git reset --hard && git clean -fd\`:
+${dirty:+Tree was dirty after the test stage and was reset with \`reset_tree\` (\`pipeline.sh\`):
 \`\`\`
 $dirty
 \`\`\`}
