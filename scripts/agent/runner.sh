@@ -93,7 +93,10 @@ n=$(gh issue list --label agent/queued --state open --json number --jq 'min_by(.
 slug=$(gh issue view "$n" --json title --jq .title | tr 'A-Z' 'a-z' | sed -E 's/[^a-z0-9]+/-/g; s/^-//; s/-$//' | cut -d- -f1-3)
 branch="NL-$n-$slug"
 log=$(log_of "$n")
-gh issue edit "$n" --remove-label agent/queued --add-label agent/running >/dev/null
+# A stale agent/pr-ready (failed at hand-over, or its pull request closed unmerged) comes off
+# here, so beside agent/running it means the pipeline finished, as the sweep reads it.
+stale=$(gh issue view "$n" --json labels --jq '.labels[].name | select(. == "agent/pr-ready")')
+gh issue edit "$n" --remove-label "agent/queued${stale:+,$stale}" --add-label agent/running >/dev/null
 [ -d "$WT/$branch" ] || git worktree add -q "$WT/$branch" -b "$branch" origin/main
 rc=0
 (cd "$WT/$branch" && ./gradlew dependencySources && "$HERE/pipeline.sh" "$n") 2>>"$log" || rc=$?
