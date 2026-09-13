@@ -66,6 +66,7 @@ SHIM
   cat > "$tmp/bin/gh" <<'SHIM'
 #!/usr/bin/env bash
 echo "gh $*" >> "$SHIM_EVENTS"
+[ -z "${SHIM_GH_RC:-}" ] || exit "$SHIM_GH_RC"
 jqarg() { local prev=; for a in "$@"; do [ "$prev" = --jq ] && { printf '%s' "$a"; return; }; prev=$a; done; }
 agent_labels=$(jq -r '[.[].name | select(startswith("agent/"))] | join(",")' "$SHIM_STATE/labels.json")
 case "$*" in
@@ -114,11 +115,15 @@ fixpr() {
 merged() { echo "$1" >> "$tmp/state/merged"; }
 worktree() { git -C "$tmp/main" worktree add -q "$tmp/netty-loom-wt/$1" -b "$1" origin/main; }
 
+TS='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z'
+
 # runs the tick from outside the clone; sets rc, out, err, actions (everything but reads, in order)
+# and said (stderr with the runner's own timestamped prefix stripped, so a line without it stands out)
 run() {
   rc=0
   out=$(cd "$tmp" && HOME=$tmp/home PATH="$tmp/bin:$PATH" "$tmp/main/scripts/agent/runner.sh" 2> "$tmp/stderr") || rc=$?
   err=$(cat "$tmp/stderr")
+  said=$(sed -E "s/^$TS runner\.sh: //" "$tmp/stderr" | tr '\n' '|')
   actions=$(grep -E '^(gh (issue|pr) (edit|comment)|gradlew|pipeline|stage|requeue)' "$SHIM_EVENTS" 2>/dev/null | tr '\n' '|' || true)
 }
 
@@ -128,6 +133,8 @@ check() {
 }
 
 contains() { case "$1" in *"$2"*) return 0 ;; *) return 1 ;; esac; }
+
+said_in() { grep -E "^$TS runner\.sh: " "$1" 2>/dev/null | sed -E "s/^$TS runner\.sh: //" | tr '\n' '|' || true; }
 
 WT7="netty-loom-wt/NL-7-fix-the-thing"
 PICK7="gh issue edit 7 --remove-label agent/queued --add-label agent/running|"
@@ -140,7 +147,7 @@ sleep 0.2
 run
 kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null || true
 ok=1; why="rc=$rc stdout=$out stderr=$err events=$(cat "$SHIM_EVENTS" 2>/dev/null | tr '\n' '|')"
-[ "$rc" = 0 ] && [ -z "$out" ] && [ ! -s "$SHIM_EVENTS" ] || ok=0
+[ "$rc" = 0 ] && [ -z "$out" ] && [ ! -s "$SHIM_EVENTS" ] && [ "$said" = "tick skipped: lock held|" ] || ok=0
 check locked "$ok" "$why"
 rm -rf "$tmp"
 
@@ -149,6 +156,7 @@ setup
 run
 ok=1; why="rc=$rc stdout=$out stderr=$err actions=$actions"
 [ "$rc" = 0 ] && [ "$actions" = "requeue|" ] && [ ! -d "$tmp/netty-loom-wt" ] || ok=0
+[ "$said" = "tick start|requeue|tick end (exit 0)|" ] || ok=0
 check idle "$ok" "$why"
 rm -rf "$tmp"
 
@@ -162,6 +170,9 @@ wt=$(cd "$tmp/$WT7" 2>/dev/null && pwd -P || echo missing)
 [ "$actions" = "requeue|${PICK7}gradlew dependencySources in $wt|pipeline 7 in $wt|gh issue edit 7 --remove-label agent/running|" ] || ok=0
 [ "$(git -C "$tmp/$WT7" branch --show-current 2>/dev/null)" = NL-7-fix-the-thing ] || { ok=0; why="$why branch=$(git -C "$tmp/$WT7" branch --show-current 2>&1 || true)"; }
 [ "$(git -C "$tmp/$WT7" rev-parse HEAD 2>/dev/null)" = "$(git -C "$tmp/main" rev-parse origin/main)" ] || { ok=0; why="$why HEAD is not origin/main"; }
+PICKED7="queued: NL-7 picked up on NL-7-fix-the-thing|queued: NL-7 pipeline exit 0|"
+[ "$said" = "tick start|requeue|${PICKED7}tick end (exit 0)|" ] || { ok=0; why="$why said=$said"; }
+[ "$(said_in "$tmp/home/.netty-loom-agent/logs/NL-7/runner.log")" = "$PICKED7" ] || { ok=0; why="$why issue log=$(said_in "$tmp/home/.netty-loom-agent/logs/NL-7/runner.log")"; }
 check queued "$ok" "$why"
 rm -rf "$tmp"
 
@@ -208,6 +219,8 @@ contains "$comment" "pipeline stderr line 11" && contains "$comment" "pipeline s
   && ! contains "$comment" "pipeline stderr line 10" || ok=0
 contains "$comment" "$log" || ok=0
 [ "$(grep -c 'pipeline stderr line' "$log" 2>/dev/null)" = 40 ] || { ok=0; why="$why log=$(wc -l < "$log" 2>&1 || true)"; }
+contains "$said" "queued: NL-7 pipeline exit 1|tick end (exit 0)|" || { ok=0; why="$why said=$said"; }
+[ "$(tail -n 1 "$log" 2>/dev/null | sed -E "s/^$TS runner\.sh: //")" = "queued: NL-7 pipeline exit 1" ] || { ok=0; why="$why last log line=$(tail -n 1 "$log" 2>&1 || true)"; }
 check failure "$ok" "$why"
 rm -rf "$tmp"
 
@@ -266,6 +279,8 @@ run
 wt=$(cd "$tmp/$WT7" && pwd -P)
 ok=1; why="rc=$rc stderr=$err actions=$actions"
 [ "$rc" = 0 ] && [ "$actions" = "requeue|stage 7 fix $PR_URL in $wt|stage 7 review $PR_URL in $wt|gh pr edit $PR_URL --remove-label agent/fix|" ] || ok=0
+[ "$said" = "tick start|requeue|fix: NL-7 $PR_URL|fix: NL-7 exit 0|tick end (exit 0)|" ] || { ok=0; why="$why said=$said"; }
+[ "$(said_in "$tmp/home/.netty-loom-agent/logs/NL-7/runner.log")" = "fix: NL-7 $PR_URL|fix: NL-7 exit 0|" ] || { ok=0; why="$why issue log=$(said_in "$tmp/home/.netty-loom-agent/logs/NL-7/runner.log")"; }
 check fix "$ok" "$why"
 rm -rf "$tmp"
 
@@ -285,6 +300,7 @@ contains "$actions" "gh pr edit $PR_URL --remove-label agent/fix --add-label age
 contains "$comment" "fix stage failed (exit 1)" || ok=0
 contains "$comment" "stage stderr line 11" && contains "$comment" "stage stderr line 40" \
   && ! contains "$comment" "stage stderr line 10" && contains "$comment" "$log" || ok=0
+contains "$said" "fix: NL-7 exit 1|" || { ok=0; why="$why said=$said"; }
 check fix-failure "$ok" "$why"
 rm -rf "$tmp"
 
@@ -335,6 +351,7 @@ ok=1; why="rc=$rc stderr=$err actions=$actions"
 [ "$rc" = 0 ] && [ "$actions" = "gh issue edit 7 --remove-label agent/running,agent/pr-ready|requeue|" ] || ok=0
 [ ! -d "$tmp/$WT7" ] || { ok=0; why="$why worktree still there"; }
 [ -z "$(git -C "$tmp/main" branch --list NL-7-fix-the-thing)" ] || { ok=0; why="$why branch still there"; }
+[ "$said" = "tick start|merged: NL-7-fix-the-thing removed|requeue|tick end (exit 0)|" ] || { ok=0; why="$why said=$said"; }
 check merged "$ok" "$why"
 rm -rf "$tmp"
 
@@ -347,8 +364,9 @@ comment=$(cat "$tmp/state/issue-comment-7" 2>/dev/null || true)
 log="$tmp/home/.netty-loom-agent/logs/NL-7/runner.log"
 wt8=$(cd "$tmp/netty-loom-wt/NL-8-new-work" 2>/dev/null && pwd -P || echo missing)
 ok=1; why="rc=$rc stderr=$err actions=$actions comment=$comment"
-[ "$rc" = 0 ] && [ -z "$err" ] || ok=0
+[ "$rc" = 0 ] || ok=0
 [ "$actions" = "gh issue edit 7 --remove-label agent/running --add-label agent/failed|gh issue comment 7 --body-file -|requeue|gh issue edit 8 --remove-label agent/queued --add-label agent/running|gradlew dependencySources in $wt8|pipeline 8 in $wt8|gh issue edit 8 --remove-label agent/running|" ] || ok=0
+[ "$said" = "tick start|sweep: NL-7 agent/running -> agent/failed|requeue|queued: NL-8 picked up on NL-8-new-work|queued: NL-8 pipeline exit 0|tick end (exit 0)|" ] || { ok=0; why="$why said=$said"; }
 contains "$comment" "$log" && contains "$comment" 'Replace `agent/failed` with `agent/queued`' || ok=0
 [ ! -d "$tmp/$WT7" ] || { ok=0; why="$why a worktree was added for the orphan"; }
 check orphan "$ok" "$why"
@@ -360,6 +378,7 @@ running 7 "Fix the Thing: quickly!" "agent/running,agent/pr-ready"
 run
 ok=1; why="rc=$rc stderr=$err actions=$actions"
 [ "$rc" = 0 ] && [ "$actions" = "gh issue edit 7 --remove-label agent/running|requeue|" ] || ok=0
+contains "$said" "|sweep: NL-7 agent/running off|" || { ok=0; why="$why said=$said"; }
 check orphan-pr-ready "$ok" "$why"
 rm -rf "$tmp"
 
@@ -392,6 +411,7 @@ closed 5 "enhancement,agent/pr-ready"
 run
 ok=1; why="rc=$rc stderr=$err actions=$actions"
 [ "$rc" = 0 ] && [ "$actions" = "gh issue edit 5 --remove-label agent/pr-ready|requeue|" ] || ok=0
+contains "$said" "|sweep: NL-5 closed, agent/pr-ready off|" || { ok=0; why="$why said=$said"; }
 check stale-labels "$ok" "$why"
 rm -rf "$tmp"
 
@@ -425,7 +445,18 @@ wt7=$(cd "$tmp/$WT7" && pwd -P); wt8=$(cd "$tmp/netty-loom-wt/NL-8-new-work" 2>/
 ok=1; why="rc=$rc stderr=$err actions=$actions comment=$comment"
 [ "$rc" = 0 ] && [ "$actions" = "gh issue edit 6 --remove-label agent/running --add-label agent/failed|gh issue comment 6 --body-file -|gh issue edit 4 --remove-label agent/queued,agent/failed|gh issue edit 5 --remove-label agent/pr-ready|requeue|stage 7 fix $PR_URL in $wt7|stage 7 review $PR_URL in $wt7|gh pr edit $PR_URL --remove-label agent/fix|gh issue edit 8 --remove-label agent/queued --add-label agent/running|gradlew dependencySources in $wt8|pipeline 8 in $wt8|gh issue edit 8 --remove-label agent/running|" ] || ok=0
 contains "$comment" "old stderr line 11" && contains "$comment" "old stderr line 40" && ! contains "$comment" "old stderr line 10" || ok=0
+[ "$said" = "tick start|sweep: NL-6 agent/running -> agent/failed|sweep: NL-4 closed, agent/queued,agent/failed off|merged: NL-5-done removed|requeue|fix: NL-7 $PR_URL|fix: NL-7 exit 0|queued: NL-8 picked up on NL-8-new-work|queued: NL-8 pipeline exit 0|tick end (exit 0)|" ] || { ok=0; why="$why said=$said"; }
 check order "$ok" "$why"
+rm -rf "$tmp"
+
+# --- gh fails on the first call: the tick dies, and its end line still carries the exit code ---
+setup
+export SHIM_GH_RC=3
+run
+unset SHIM_GH_RC
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" != 0 ] && [ -z "$actions" ] && [ "$said" = "tick start|tick end (exit $rc)|" ] || ok=0
+check dead-tick "$ok" "$why"
 rm -rf "$tmp"
 
 exit "$failed"
