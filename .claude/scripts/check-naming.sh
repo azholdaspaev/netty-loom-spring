@@ -21,6 +21,7 @@ FNR == 1 { test = 0; override = 0; split("", seen) }
 /@Override([^A-Za-z0-9_]|$)/ { override = 1 }
 {
     line = $0; gsub(/"[^"]*"/, "", line); sub(/\/\/.*$/, "", line)
+    sub(/^[[:space:]]*(@[A-Za-z_][A-Za-z0-9_.]*(\([^)]*\))?[[:space:]]+)+/, "", line)
     if (!match(line, /^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*[[:space:]]+)*[A-Za-z_][][A-Za-z0-9_.<>,? ]*[[:space:]]+[a-z][A-Za-z0-9_]*[[:space:]]*\(/)) next
     decl = substr(line, RSTART, RLENGTH); sub(/[[:space:]]*\($/, "", decl)
     n = split(decl, word, /[[:space:]]+/); name = word[n]
