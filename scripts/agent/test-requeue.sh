@@ -74,9 +74,7 @@ case_ no-marker       ""           5 o:c
 case_ second-question ""           5 o:q o:c o:q
 case_ owner-then-third-party ""    5 o:q o:c x:c
 
-# An agent/pr-ready issue whose newest comment is the marker: a stage asked after the hand-over
-# and could not read its question back, so the label is put on here; anything after the marker
-# may be the runner's own hand-over comment, so only the newest comment counts.
+# --- an agent/pr-ready issue whose newest comment is the marker gets agent/needs-input; nothing else does ---
 label_5="gh issue edit 5 --add-label agent/needs-input"
 
 LIST=pr-ready case_ lost-question          "$label_5" 5 o:q
