@@ -20,7 +20,8 @@ note() { stamp "$@" | tee -a "$log" >&2; }
 
 mkdir -p "$STATE"
 exec 9>"$STATE/runner.lock"
-flock -n 9 || { say "tick skipped: lock held"; exit 0; }
+rc=0; flock -n 9 || rc=$?
+case "$rc" in 0) ;; 1) say "tick skipped: lock held"; exit 0 ;; *) say "tick failed: flock exit $rc"; exit "$rc" ;; esac
 say "tick start"
 trap 'say "tick end (exit $?)"' EXIT
 cd "$MAIN"

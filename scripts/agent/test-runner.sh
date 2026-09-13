@@ -459,4 +459,13 @@ ok=1; why="rc=$rc stderr=$err actions=$actions"
 check dead-tick "$ok" "$why"
 rm -rf "$tmp"
 
+# --- flock fails for a reason other than a held lock: the tick dies and names the exit, not a holder ---
+setup
+printf '#!/usr/bin/env bash\nexit 127\n' > "$tmp/bin/flock"; chmod +x "$tmp/bin/flock"
+run
+ok=1; why="rc=$rc stdout=$out stderr=$err events=$(cat "$SHIM_EVENTS" 2>/dev/null | tr '\n' '|')"
+[ "$rc" = 127 ] && [ -z "$out" ] && [ ! -s "$SHIM_EVENTS" ] && [ "$said" = "tick failed: flock exit 127|" ] || ok=0
+check flock-failure "$ok" "$why"
+rm -rf "$tmp"
+
 exit "$failed"
