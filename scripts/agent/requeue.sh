@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Move every agent/needs-input issue whose question the repository owner has answered back to
 # agent/queued, and label agent/needs-input every agent/pr-ready issue whose newest comment is a
-# question: a stage that could not read its own question back left the label off (stage.sh).
+# question: the runner's agent/fix stages post nothing on the issue, so one they asked and could
+# not read back (stage.sh) stays newest; on the pipeline path the hand-over or failure comment
+# follows it, and the maintainer reads it there.
 # Usage: scripts/agent/requeue.sh    (one tick; cwd = any checkout of the repository)
 set -euo pipefail
 
