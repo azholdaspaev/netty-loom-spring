@@ -21,7 +21,8 @@ export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 # gh shim serves that state back, inline comments
 # only through pr-comments.sh's own call, and answers each GraphQL thread query with the count
 # SHIM_OPEN holds for the latest review round ("2,0" = two open threads after the first review,
-# none after the second); every call whose arguments start with SHIM_GH_FAIL exits 1 instead.
+# none after the second); every call whose arguments start with SHIM_GH_FAIL exits 1 instead, from
+# the first event line starting with SHIM_GH_FAIL_AFTER on when that is set.
 setup() {
   tmp=$(mktemp -d)
   mkdir -p "$tmp/scripts/agent" "$tmp/.claude/scripts" "$tmp/bin" "$tmp/home" "$tmp/state"
@@ -68,7 +69,9 @@ SHIM
   cat > "$tmp/bin/gh" <<'SHIM'
 #!/usr/bin/env bash
 echo "gh $*" >> "$SHIM_EVENTS"
-[ -z "${SHIM_GH_FAIL:-}" ] || case "$*" in "$SHIM_GH_FAIL"*) echo "gh: dial tcp: no route to host" >&2; exit 1 ;; esac
+if [ -n "${SHIM_GH_FAIL:-}" ] && { [ -z "${SHIM_GH_FAIL_AFTER:-}" ] || grep -q "^$SHIM_GH_FAIL_AFTER" "$SHIM_EVENTS"; }; then
+  case "$*" in "$SHIM_GH_FAIL"*) echo "gh: dial tcp: no route to host" >&2; exit 1 ;; esac
+fi
 case "$*" in
   "pr list --head NL-999-x "*) if [ -n "${SHIM_PR_URL:-}" ]; then echo "$SHIM_PR_URL"; fi ;;
   "pr view "*" --json url "*) echo "$3" ;;
@@ -299,6 +302,16 @@ unset SHIM_QUESTION SHIM_GH_FAIL
 ok=1; why="rc=$rc stderr=$err stages=$stages comment=$comment"
 [ "$rc" = 1 ] && [ -z "$comment" ] && [ "$stages" = "$IMPLEMENT$R1$F1$R2$NEEDS_INPUT" ] || ok=0
 check question-label-failure "$ok" "$why"
+rm -rf "$tmp"
+
+# --- the head check after a fix fails on its gh call: the same class, and no next round ---
+setup
+export SHIM_GH_FAIL="pr view $PR_URL --json headRefOid" SHIM_GH_FAIL_AFTER="stage 999 fix"
+run 1,0 ""
+unset SHIM_GH_FAIL SHIM_GH_FAIL_AFTER
+ok=1; why="rc=$rc stderr=$err stages=$stages comment=$comment"
+[ "$rc" = 2 ] && contains "$err" "gh pr view failed" && [ -z "$comment" ] && [ "$stages" = "$IMPLEMENT$R1$F1" ] || ok=0
+check head-check-failure "$ok" "$why"
 rm -rf "$tmp"
 
 # --- pr-comments.sh fails on its gh call: the same class ---

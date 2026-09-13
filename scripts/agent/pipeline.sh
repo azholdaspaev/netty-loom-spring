@@ -61,7 +61,8 @@ for round in $(seq 1 "$ROUNDS"); do
   before=$(pr_head)
   stage fix "$url" "$round"
   moved=0
-  [ "$(pr_head)" = "$before" ] || moved=1
+  after=$(pr_head)
+  [ "$after" = "$before" ] || moved=1
 done
 
 stage test "$url"
