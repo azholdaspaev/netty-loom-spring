@@ -14,10 +14,11 @@ decisions behind it: #211.
 | --- | --- | --- | --- |
 | `agent/queued` | waiting for a tick | maintainer; `requeue.sh` after an answer | runner, on pick-up |
 | `agent/running` | a pipeline is running in the issue's worktree | runner | runner, when the pipeline returns; the next tick, when the tick died — to `agent/failed`, or just off when `agent/pr-ready` or `agent/queued` is already there |
-| `agent/needs-input` | a question is posted on the issue | `pipeline.sh` | `requeue.sh`, once the owner has answered |
+| `agent/needs-input` | a question is posted on the issue | `pipeline.sh`; `requeue.sh`, when an `agent/pr-ready` issue's newest comment is a question the stage could not read back | `requeue.sh`, once the owner has answered |
 | `agent/pr-ready` | the pull request is ready for review | `pipeline.sh` | runner, after the merge, or on pick-up when the issue is queued again |
 | `agent/fix` | on a pull request: run a fix stage, then a review stage | maintainer | runner, after those stages |
-| `agent/failed` | a stage failed, or a tick died with the issue on `agent/running`; the comment has the log tail | runner | maintainer |
+| `agent/retried` | the pipeline's one infrastructure failure — a stage timeout, a dropped API connection, a failed `gh` call — was retried from the worktree | runner | runner, after the merge |
+| `agent/failed` | the work failed, the infrastructure failed twice, or a tick died with the issue on `agent/running`; the comment has the class and the log tail | runner | maintainer |
 
 One tick, in order: sweep — every open `agent/running` issue to `agent/failed` with the usual
 comment, since the lock proves no pipeline is running (one that also carries `agent/pr-ready`
@@ -40,9 +41,13 @@ time; the next queued issue waits for the next free tick.
    waits for the next `agent/fix`; no test stage runs on this path. Merge when satisfied: the
    next tick removes the worktree and branch and clears the labels.
 
-After `agent/failed`, the comment on the issue (or pull request) holds the last 30 lines of stderr
-and the log path. Replace it with `agent/queued` to retry: the worktree is reused and, once a pull
-request exists, the pipeline resumes at the review stage.
+A pipeline that fails on the infrastructure — `stage.sh` exits 124 on a timeout, 2 when a `gh`
+call failed or `claude` ended with `error_during_execution` — goes back to `agent/queued` with
+`agent/retried` and no comment, once; every other failure, and a second infrastructure failure,
+is `agent/failed`. The comment on the issue (or pull request) then names the class and holds the
+last 30 lines of stderr and the log path. Replace `agent/failed` with `agent/queued` to retry: the
+worktree is reused and, once a pull request exists, the pipeline resumes at the review stage.
+`agent/retried` stays on until the merge, so a hand retry after it gets no second automatic one.
 
 ## Logs
 
