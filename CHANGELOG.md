@@ -39,7 +39,8 @@ First release. Not yet published to Maven Central; a `0.1.0-SNAPSHOT` is on
   path-based `RequestDispatcher.forward` with its `FORWARD` dispatcher state,
   error-page dispatch to Boot's `/error` with its `ERROR` dispatcher state,
   and all seven `addListener` listener types, over `NettyHttpServletRequest`,
-  `NettyHttpServletResponse` and `DefaultNettyServletContext`.
+  `NettyHttpServletResponse` and `DefaultNettyServletContext`, whose `getServletContextName()`
+  is `server.servlet.application-display-name`.
 - **In-memory sessions** with the standard `server.servlet.session.*` cookie and timeout
   properties, plus `CookieSameSiteSupplier` support.
 - **Two SPI seams for extension** — `HttpRequestDispatcher` for the layer above the channel

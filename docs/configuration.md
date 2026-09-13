@@ -37,6 +37,7 @@ in favour of `server.port`.
 | `server.servlet.session.cookie.*` | `name`, `domain`, `path`, `http-only`, `secure`, `max-age`, `same-site`, `partitioned` |
 | `server.servlet.session.tracking-modes` | Only `cookie`; an empty set is legal and disables the cookie |
 | `server.servlet.context-parameters.*` | Become `ServletContext` init parameters |
+| `server.servlet.application-display-name` | Returned by `ServletContext.getServletContextName()`, as under Tomcat |
 | `spring.servlet.encoding.*` | Works because Boot implements it as a `CharacterEncodingFilter` bean, not a container setting |
 
 Two extension points also work: `WebServerFactoryCustomizer<ConfigurableServletWebServerFactory>`
@@ -65,7 +66,6 @@ Everything below is set on the factory and never read again — **no warning, no
 | `server.server-header` | Never written to a response | |
 | `server.max-http-request-header-size` | Superseded by the fixed 10,000-byte header limit | [#42](https://github.com/azholdaspaev/netty-loom-spring/issues/42) |
 | `server.mime-mappings.*` | Never read; `ServletContext.getMimeType` throws | |
-| `server.servlet.application-display-name` | `getServletContextName()` is hardcoded | [#86](https://github.com/azholdaspaev/netty-loom-spring/issues/86) |
 | `server.servlet.register-default-servlet` | Only the `DispatcherServlet` is ever initialized | |
 | `server.servlet.jsp.*` | No JSP servlet | |
 | `server.servlet.encoding.mapping.*` | Locale-to-charset mappings are never read. Note this is a different property from `spring.servlet.encoding.*`, which *is* honoured because Boot implements it as a filter | |
