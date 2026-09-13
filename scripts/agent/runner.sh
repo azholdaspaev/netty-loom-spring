@@ -33,11 +33,12 @@ RETRY='Replace `agent/failed` with `agent/queued` to retry from the worktree as 
 # --- sweep ---
 # The lock held above proves no pipeline is running, so agent/running on an open issue is a tick
 # that died without reaching its own label handling; beside agent/pr-ready it died after
-# pipeline.sh had handed over, and only the label is stale.
+# pipeline.sh had handed over, beside agent/queued the maintainer has already requeued it, and
+# either way only the label is stale.
 gh issue list --label agent/running --state open --json number,labels \
-  --jq '.[] | "\(.number) \(any(.labels[]; .name == "agent/pr-ready"))"' \
-| while read -r n ready; do
-  if [ "$ready" = true ]; then
+  --jq '.[] | "\(.number) \(any(.labels[]; .name == "agent/pr-ready" or .name == "agent/queued"))"' \
+| while read -r n settled; do
+  if [ "$settled" = true ]; then
     gh issue edit "$n" --remove-label agent/running >/dev/null
     continue
   fi

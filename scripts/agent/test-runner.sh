@@ -314,6 +314,18 @@ ok=1; why="rc=$rc stderr=$err actions=$actions"
 check orphan-pr-ready "$ok" "$why"
 rm -rf "$tmp"
 
+# --- agent/running beside agent/queued: the maintainer requeued it by hand, so the label comes off, no comment, and the queued section picks it up clean ---
+setup
+running 7 "Fix the Thing: quickly!" "agent/running,agent/queued"
+listed 7 queued
+run
+wt=$(cd "$tmp/$WT7" 2>/dev/null && pwd -P || echo missing)
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" = 0 ] && [ "$actions" = "gh issue edit 7 --remove-label agent/running|requeue|${PICK7}gradlew dependencySources in $wt|pipeline 7 in $wt|gh issue edit 7 --remove-label agent/running|" ] || ok=0
+[ ! -e "$tmp/state/issue-comment-7" ] || { ok=0; why="$why a comment was posted"; }
+check orphan-queued "$ok" "$why"
+rm -rf "$tmp"
+
 # --- queued again with agent/pr-ready still on (failed at hand-over, or its pull request closed unmerged): pick-up sheds it, so beside agent/running it means the pipeline finished ---
 setup
 issue 7 "Fix the Thing: quickly!" "agent/queued,agent/pr-ready"
