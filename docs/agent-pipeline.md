@@ -15,7 +15,7 @@ decisions behind it: #211.
 | `agent/queued` | waiting for a tick | maintainer; `requeue.sh` after an answer | runner, on pick-up |
 | `agent/running` | a pipeline is running in the issue's worktree | runner | runner, when the pipeline returns; the next tick, when the tick died — to `agent/failed`, or just off when `agent/pr-ready` is already there |
 | `agent/needs-input` | a question is posted on the issue | `pipeline.sh` | `requeue.sh`, once the owner has answered |
-| `agent/pr-ready` | the pull request is ready for review | `pipeline.sh` | runner, after the merge |
+| `agent/pr-ready` | the pull request is ready for review | `pipeline.sh` | runner, after the merge, or on pick-up when the issue is queued again |
 | `agent/fix` | on a pull request: run a fix stage, then a review stage | maintainer | runner, after those stages |
 | `agent/failed` | a stage failed; the comment has the log tail | runner | maintainer |
 

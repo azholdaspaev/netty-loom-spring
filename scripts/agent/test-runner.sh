@@ -314,6 +314,17 @@ ok=1; why="rc=$rc stderr=$err actions=$actions"
 check orphan-pr-ready "$ok" "$why"
 rm -rf "$tmp"
 
+# --- queued again with agent/pr-ready still on (failed at hand-over, or its pull request closed unmerged): pick-up sheds it, so beside agent/running it means the pipeline finished ---
+setup
+issue 7 "Fix the Thing: quickly!" "agent/queued,agent/pr-ready"
+listed 7 queued
+run
+wt=$(cd "$tmp/$WT7" 2>/dev/null && pwd -P || echo missing)
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" = 0 ] && [ "$actions" = "requeue|gh issue edit 7 --remove-label agent/queued,agent/pr-ready --add-label agent/running|gradlew dependencySources in $wt|pipeline 7 in $wt|gh issue edit 7 --remove-label agent/running|" ] || ok=0
+check requeued-pr-ready "$ok" "$why"
+rm -rf "$tmp"
+
 # --- a closed issue still carrying agent/* labels loses them, nothing else ---
 setup
 closed 5 "enhancement,agent/pr-ready"
