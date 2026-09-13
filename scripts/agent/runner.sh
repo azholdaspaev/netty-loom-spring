@@ -14,9 +14,15 @@ WT="$(cd "$MAIN/.." && pwd)/netty-loom-wt"
 STATE="$HOME/.netty-loom-agent"
 TAIL=30
 
+stamp() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) runner.sh: $*"; }
+say() { stamp "$@" >&2; }
+note() { stamp "$@" | tee -a "$log" >&2; }
+
 mkdir -p "$STATE"
 exec 9>"$STATE/runner.lock"
-flock -n 9 || exit 0
+flock -n 9 || { say "tick skipped: lock held"; exit 0; }
+say "tick start"
+trap 'say "tick end (exit $?)"' EXIT
 cd "$MAIN"
 git fetch -q origin
 
@@ -40,9 +46,11 @@ gh issue list --label agent/running --state open --json number,labels \
   --jq '.[] | "\(.number) \(any(.labels[]; .name == "agent/pr-ready" or .name == "agent/queued"))"' \
 | while read -r n settled; do
   if [ "$settled" = true ]; then
+    say "sweep: NL-$n agent/running off"
     gh issue edit "$n" --remove-label agent/running >/dev/null
     continue
   fi
+  say "sweep: NL-$n agent/running -> agent/failed"
   gh issue edit "$n" --remove-label agent/running --add-label agent/failed >/dev/null
   { failure 'A tick died with this issue on `agent/running`' "$(log_of "$n")"
     echo "$RETRY"
@@ -54,7 +62,7 @@ gh issue list --state closed --search "label:$agent_labels" --json number --jq '
 | while read -r n; do
   labels=$(gh issue view "$n" --json state,labels \
     --jq 'select(.state == "CLOSED") | [.labels[].name | select(startswith("agent/"))] | join(",")')
-  [ -z "$labels" ] || gh issue edit "$n" --remove-label "$labels" >/dev/null
+  [ -z "$labels" ] || { say "sweep: NL-$n closed, $labels off"; gh issue edit "$n" --remove-label "$labels" >/dev/null; }
 done
 
 # --- merged ---
@@ -62,6 +70,7 @@ for wt in "$WT"/NL-*/; do
   [ -d "$wt" ] || continue
   branch=$(basename "$wt")
   [ "$(gh pr list --head "$branch" --state merged --json number --jq length)" != 0 ] || continue
+  say "merged: $branch removed"
   git worktree remove --force "$wt"
   git branch -q -D "$branch"
   n=$(issue_of "$branch")
@@ -69,6 +78,7 @@ for wt in "$WT"/NL-*/; do
   [ -z "$labels" ] || gh issue edit "$n" --remove-label "$labels" >/dev/null
 done
 
+say "requeue"
 "$HERE/requeue.sh"
 
 # --- fix ---
@@ -76,6 +86,7 @@ gh pr list --label agent/fix --state open --json url,headRefName --jq '.[] | "\(
 | while read -r url branch; do
   n=$(issue_of "$branch")
   log=$(log_of "$n")
+  note "fix: NL-$n $url"
   [ -d "$WT/$branch" ] || git worktree add -q "$WT/$branch" "$branch"
   rc=0
   for stage in fix review; do
@@ -87,6 +98,7 @@ gh pr list --label agent/fix --state open --json url,headRefName --jq '.[] | "\(
     gh pr edit "$url" --remove-label agent/fix --add-label agent/failed >/dev/null
     failure "The $stage stage failed (exit $rc)" "$log" | gh pr comment "$url" --body-file - >/dev/null
   fi
+  note "fix: NL-$n exit $rc"
 done
 
 # --- queued ---
@@ -98,22 +110,24 @@ log=$(log_of "$n")
 # A stale agent/pr-ready (failed at hand-over, or its pull request closed unmerged) comes off
 # here, so beside agent/running it means the pipeline finished, as the sweep reads it.
 stale=$(gh issue view "$n" --json labels --jq '.labels[].name | select(. == "agent/pr-ready")')
+note "queued: NL-$n picked up on $branch"
 gh issue edit "$n" --remove-label "agent/queued${stale:+,$stale}" --add-label agent/running >/dev/null
 [ -d "$WT/$branch" ] || git worktree add -q "$WT/$branch" -b "$branch" origin/main
 rc=0
 (cd "$WT/$branch" && { ./gradlew dependencySources || exit 2; } && "$HERE/pipeline.sh" "$n") 2>>"$log" || rc=$?
 if [ "$rc" = 0 ]; then
   gh issue edit "$n" --remove-label agent/running >/dev/null
-  exit 0
-fi
-# 124 and 2 are stage.sh's infrastructure codes (its header), passed through by pipeline.sh.
-class=work; case "$rc" in 124|2) class=infrastructure ;; esac
-retried=$(gh issue view "$n" --json labels --jq '.labels[].name | select(. == "agent/retried")')
-if [ "$class" = infrastructure ] && [ -z "$retried" ]; then
-  gh issue edit "$n" --remove-label agent/running --add-label agent/queued,agent/retried >/dev/null
 else
-  gh issue edit "$n" --remove-label agent/running --add-label agent/failed >/dev/null
-  { failure "Pipeline failed (exit $rc, $class${retried:+, retried once already})" "$log"
-    echo "$RETRY"
-  } | gh issue comment "$n" --body-file - >/dev/null
+  # 124 and 2 are stage.sh's infrastructure codes (its header), passed through by pipeline.sh.
+  class=work; case "$rc" in 124|2) class=infrastructure ;; esac
+  retried=$(gh issue view "$n" --json labels --jq '.labels[].name | select(. == "agent/retried")')
+  if [ "$class" = infrastructure ] && [ -z "$retried" ]; then
+    gh issue edit "$n" --remove-label agent/running --add-label agent/queued,agent/retried >/dev/null
+  else
+    gh issue edit "$n" --remove-label agent/running --add-label agent/failed >/dev/null
+    { failure "Pipeline failed (exit $rc, $class${retried:+, retried once already})" "$log"
+      echo "$RETRY"
+    } | gh issue comment "$n" --body-file - >/dev/null
+  fi
 fi
+note "queued: NL-$n pipeline exit $rc"
