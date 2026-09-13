@@ -64,6 +64,9 @@ case "$SHIM_MODE" in
   question-crash) ask; echo boom; exit 1 ;;
   dirty)    echo y >> src.txt; result success false ;;
   crash)    commit; echo boom; exit 1 ;;
+  api-error) result success true | jq -c '. + {terminal_reason: "api_error", result: "API Error: 403 blocked"}'; exit 1 ;;
+  is-error) commit; result success true ;;
+  exit-1)   commit; result success false; exit 1 ;;
   hang)     sleep 5 ;;
 esac
 SHIM
@@ -207,6 +210,32 @@ run crash "$PR_URL" 999 implement
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "no result (claude exited 1)" || ok=0
 check crash "$ok" "$why"
+rm -rf "$tmp"
+
+# --- api error: is_error decides, not a subtype of success ---
+setup
+run api-error "" 999 review "$PR_URL" 1
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 1 ] && contains "$err" "claude ended with api_error: API Error: 403 blocked" || ok=0
+check api-error "$ok" "$why"
+rm -rf "$tmp"
+
+# --- is_error with a success subtype and a clean exit ---
+setup
+run is-error "$PR_URL" 999 implement
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 1 ] && contains "$err" "claude ended with success (exited 0)" || ok=0
+[ -z "$out" ] || { ok=0; why="stdout=$out"; }
+check is-error "$ok" "$why"
+rm -rf "$tmp"
+
+# --- success result, non-zero exit ---
+setup
+run exit-1 "$PR_URL" 999 implement
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 1 ] && contains "$err" "claude ended with success (exited 1)" || ok=0
+[ -z "$out" ] || { ok=0; why="stdout=$out"; }
+check success-exit-1 "$ok" "$why"
 rm -rf "$tmp"
 
 # --- timeout ---
