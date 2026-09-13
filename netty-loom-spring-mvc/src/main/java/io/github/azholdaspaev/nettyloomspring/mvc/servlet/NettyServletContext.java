@@ -42,6 +42,12 @@ public interface NettyServletContext extends ServletContext, AutoCloseable {
     void setContextPath(String contextPath);
 
     /**
+     * Sets what {@link #getServletContextName()} answers, resolved from
+     * {@code server.servlet.application-display-name} (issue #86); {@code null} restores the default.
+     */
+    void setServletContextName(String servletContextName);
+
+    /**
      * Sets the container-wide {@code SameSite} policy for cookies the application writes (issue #85): the
      * route Boot's {@code CookieSameSiteSupplier} beans take to the request path, since no servlet API
      * carries them.

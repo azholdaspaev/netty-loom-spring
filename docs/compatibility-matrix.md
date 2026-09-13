@@ -184,7 +184,7 @@ fired on an object bound into a session, and passing one to `addListener` throws
 | `getResource`, `getResourceAsStream`, `getResourcePaths`, `getRealPath` | `none` | All return `null` ([#15](https://github.com/azholdaspaev/netty-loom-spring/issues/15)). `getResourcePaths` returns `null` rather than an empty set |
 | `getRequestDispatcher` | `partial` | Same resolution as the request method above, except that the path must be context-absolute: a relative one returns `null` |
 | `getMimeType`, `getNamedDispatcher`, `getContext`, `addJspFile`, `createServlet`, `createFilter`, `getJspConfigDescriptor`, `declareRoles`, `getVirtualServerName`, `get/setRequestCharacterEncoding`, `get/setResponseCharacterEncoding` | `none` | Throw `UnsupportedOperationException`, which surfaces as **501** if it reaches the pipeline unwrapped, or 500 once Spring wraps it |
-| `getServletContextName()` | `ignored` | Hardcoded, so `server.servlet.application-display-name` has no effect ([#86](https://github.com/azholdaspaev/netty-loom-spring/issues/86)) |
+| `getServletContextName()` | `works` | Returns `server.servlet.application-display-name`, which Boot defaults to `application` |
 | `getServerInfo()` | `works` | Returns `Netty-Loom` |
 | `getMajorVersion` / `getMinorVersion` | `works` | Reports Servlet 6.0 |
 

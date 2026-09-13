@@ -66,6 +66,7 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
         // that reads ServletContext.getContextPath() during onStartup/init sees the configured value,
         // as the Jakarta contract requires (rather than the default "").
         servletContext.setContextPath(getContextPath());
+        servletContext.setServletContextName(getSettings().getDisplayName());
         configureSessions();
         configureCookieSameSite();
         configureErrorPages();
