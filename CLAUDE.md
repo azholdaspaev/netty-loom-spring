@@ -51,7 +51,7 @@ All source code changes must strictly follow TDD (Test-Driven Development): writ
 
 Tests use JUnit 6 (`org.junit.jupiter.api`, via `org.junit.jupiter:junit-jupiter`) on JUnit Platform. All test tasks are configured with `useJUnitPlatform()` and run with `--enable-native-access=ALL-UNNAMED`.
 
-`AGENTS.md` names the commit, pull request and issue templates, and is normative for their use. `.githooks/commit-msg` enforces the commit shape once `core.hooksPath` points at it (`CONTRIBUTING.md` § Commits); a clone without it has only the template. `.claude/scripts/check-comments.sh` enforces the part of rule 5 a script can count — the three numeric budgets at their ceilings, and the block form for multi-line comments — as the `commentBudget` task under `check` and as a `PostToolUse` hook; whether a class javadoc earned its raised ceiling, and the triggers, stay with the reviewer. The hook remaps the script's exit 1 to 2 because on `PostToolUse` only exit 2 puts the hook's stderr in front of the agent (Claude Code hooks reference, § Hook exit codes: https://code.claude.com/docs/en/hooks).
+`AGENTS.md` names the commit, pull request and issue templates, and is normative for their use. `.githooks/commit-msg` enforces the commit shape once `core.hooksPath` points at it (`CONTRIBUTING.md` § Commits); a clone without it has only the template. `.claude/scripts/check-comments.sh` enforces the part of rule 5 a script can count — the three numeric budgets at their ceilings, and the block form for multi-line comments — as the `commentBudget` task under `check` and as a `PostToolUse` hook; whether a class javadoc earned its raised ceiling, and the triggers, stay with the reviewer. `.claude/scripts/check-naming.sh` is its sibling for rule 7 — article, test prefix, the 60-character budget, a production method starting with a verb from the table's **Not** column, a case collision — and is under neither `check` nor the hook until the test renames land (#282); run it by hand over the files a change touches. The hook remaps `check-comments.sh`'s exit 1 to 2 because on `PostToolUse` only exit 2 puts the hook's stderr in front of the agent (Claude Code hooks reference, § Hook exit codes: https://code.claude.com/docs/en/hooks).
 
 `.claude/settings.json` tracks the permission rules every session starts with; the body and review threads of #230, the pull request that added them, record why each rule has the shape it does, and which tidier spelling would strand the pipeline.
 
@@ -63,7 +63,7 @@ Tests use JUnit 6 (`org.junit.jupiter.api`, via `org.junit.jupiter:junit-jupiter
 
 ## Code Review
 
-Review runs in two passes. The bug pass (`/code-review`) is tuned for correctness recall: it requires a concrete failure scenario per finding and discards style and quality findings. The maintainability pass is the `maintainability-pass` skill, which owns the lenses for naming consistency, magic constants, duplication, comment budget, simplicity and scope, and module boundaries. State-dependent correctness — concurrency, lifecycle, time arithmetic — is rule 6 below, so that either pass can quote it. `/flow:review` runs both and posts what survives as inline comments, whether a maintainer invokes it or the agent pipeline does.
+Review runs in two passes. The bug pass (`/code-review`) is tuned for correctness recall: it requires a concrete failure scenario per finding and discards style and quality findings. The maintainability pass is the `maintainability-pass` skill, which owns the lenses for naming consistency, method naming, magic constants, duplication, comment budget, simplicity and scope, and module boundaries. State-dependent correctness — concurrency, lifecycle, time arithmetic — is rule 6 below, so that either pass can quote it. `/flow:review` runs both and posts what survives as inline comments, whether a maintainer invokes it or the agent pipeline does.
 
 ## Guidelines
 
@@ -117,3 +117,34 @@ When code and comment conflict, the code is right and the comment is a bug. Comm
 Keep `#NN` issue citations and `// --- Name ---` section banners. Neither is prose, and neither is what this rule bounds.
 
 6. **Concurrency and time.** Shared mutable state reachable from more than one thread must name what guards it. Do not synchronize on an object that callers can also reach — lock on a private, dedicated monitor. Re-check a condition after taking the lock that protects it; a check made before the lock is already stale when acted on. Eviction, cleanup and shutdown paths must be safe to run twice and safe to run concurrently with what they are tearing down, and anything registered at startup must survive a stop/start cycle in the same JVM without duplicate registration or a listener left bound to a dead context. Durations, deadlines and timeouts must not overflow or turn negative when a configured value is large, zero or unset. Compare instants by elapsed difference, never by a sum that can wrap. A review finding here is in scope precisely *because* it depends on timing, interleaving or accumulated state.
+
+7. **Name methods for the reader.** An identifier is not prose. The rationale, and why the migration runs per module (#280–#283), is recorded in `docs/adr/0003-method-naming.md`.
+
+Applies to every method, production and test:
+
+- **No articles.** `a`, `an`, `the` never appear as a word in a method name: `rejectHeaderOverLimit`, not `rejectAHeaderOverTheLimit`.
+- **No filler prefix.** `test`, `verify`, `check`, `ensure` do not start a test name; `should` is the only prefix a test carries.
+- **Budget: 60 characters.** Past it the name is carrying a condition the class name or a parameterized test should carry.
+
+Production:
+
+- Imperative verb first: `applyTo`, `awaitDrained`, `closeIfIdle`. A noun-only name is an accessor and nothing else.
+- Accessors: `getX`/`setX`/`isX`/`hasX` on classes; bare `x()` only on records and their wrappers. Never both on one class.
+- One verb per concept. The vocabulary is closed; extend it in this table, not in a file:
+
+  | Concept | Verb | Not |
+  | --- | --- | --- |
+  | throw unless a precondition holds | `require*` | `verify*`, `check*` |
+  | notify registered listeners | `fire*` | `notify*` |
+  | record a state transition | `mark*` | a past participle as a command (`*Started`, `*Finished`) |
+  | construct a fresh instance | `new*` | `create*`, `build*` |
+  | convert from or to another type | `from(x)` / `toX()` | `as*` |
+  | lazily initialise, idempotent | `ensure*` | — |
+
+- Names an external interface dictates (`shutDownGracefully`, `initChannel`, Servlet `getInitParameter`) are outside the rule; the method implementing it must not share the name in another case. An inbound event callback the caller names (`exchangeStarted`) is not a `mark*` command; the ADR lists the ones that stay.
+
+Tests:
+
+- Shape: `should<Verb><Outcome>[<When|Once|After|While><Condition>]` — verb in base form, outcome before condition: `shouldRejectHeaderOverLimitWith431`, `shouldCloseConnectionOnceLastOwedResponseIsWritten`.
+- The subject is the class under test. When the name is ambiguous without a method name, the method becomes the condition: `shouldCommitResponseOnSendError`, not `shouldSendErrorCommitResponse`.
+- No `@DisplayName`: the method name is the display name, so the budget cannot be evaded by moving prose into an annotation.

@@ -113,10 +113,11 @@ claude
 $comments_call
 gh pr list --head NL-999-x --json url --jq .[0].url
 gradlew --stop" ] || { ok=0; why="events=$(tr '\n' '|' 2>/dev/null < "$SHIM_EVENTS" || true)"; }
-for flag in --permission-mode acceptEdits --permission-prompts none --max-budget-usd 16 --output-format json \
+for flag in --permission-mode acceptEdits --permission-prompts none --output-format json \
             "NL-999 implement" "/flow:implement 999"; do
   argv_has "$flag" || { ok=0; why="argv lacks $flag"; }
 done
+[ "$(argv_after --max-budget-usd)" = 16 ] || { ok=0; why="budget=$(argv_after --max-budget-usd)"; }
 settings=$(grep '/\.claude/agent/settings\.json$' "$SHIM_ARGV" 2>/dev/null || true)
 [ -n "$settings" ] || { ok=0; why="argv lacks the agent settings file"; }
 for verb in DELETE PATCH; do

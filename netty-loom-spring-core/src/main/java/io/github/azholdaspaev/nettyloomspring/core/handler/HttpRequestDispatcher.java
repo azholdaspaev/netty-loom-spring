@@ -16,6 +16,8 @@ public interface HttpRequestDispatcher {
      * {@code HttpObject} the writer takes: the parts it hands out are reference-counted, and keeping
      * that inside this module is what makes releasing each one exactly once provable here (issue #51).
      */
-    void handle(HttpRequest request, InputStream body, HttpConnectionMetadata connection,
+    void handle(HttpRequest request,
+                InputStream body,
+                HttpConnectionMetadata connection,
                 HttpResponseWriter writer) throws Exception;
 }
