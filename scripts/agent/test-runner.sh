@@ -13,7 +13,9 @@ export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 # runner.sh takes the main clone and its siblings from its own path, so each case gets a copy of
 # it inside $tmp/main/scripts/agent beside shims for the scripts it chains, a gradlew shim
 # committed on main so every new worktree carries it, gh first on PATH and a fresh HOME. The gh
-# shim applies the runner's own --jq expression to a state file, so the expressions are exercised.
+# shim applies the runner's own --jq expression to a state file, so the expressions are exercised;
+# its label list is the repository's, area/agent included, and the closed-issue search answers
+# only when the runner built its label: qualifier from the agent/* names in it.
 setup() {
   tmp=$(mktemp -d)
   mkdir -p "$tmp/bin" "$tmp/home/.netty-loom-agent" "$tmp/state"
@@ -58,14 +60,18 @@ SHIM
   echo '[]' > "$tmp/state/closed.json"
   echo '[]' > "$tmp/state/fix-prs.json"
   : > "$tmp/state/merged"
+  jq -n '["agent/running", "agent/queued", "agent/needs-input", "agent/fix", "agent/failed", "agent/pr-ready", "area/agent"] | map({name: .})' \
+    > "$tmp/state/labels.json"
   cat > "$tmp/bin/gh" <<'SHIM'
 #!/usr/bin/env bash
 echo "gh $*" >> "$SHIM_EVENTS"
 jqarg() { local prev=; for a in "$@"; do [ "$prev" = --jq ] && { printf '%s' "$a"; return; }; prev=$a; done; }
+agent_labels=$(jq -r '[.[].name | select(startswith("agent/"))] | join(",")' "$SHIM_STATE/labels.json")
 case "$*" in
+  "label list --search agent/ --json name --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/labels.json" ;;
   "issue list --label agent/queued --state open --json number --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/queued.json" ;;
   "issue list --label agent/running --state open --json number,labels --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/running.json" ;;
-  "issue list --state closed --search label:agent/"*" --json number --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/closed.json" ;;
+  "issue list --state closed --search label:$agent_labels --json number --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/closed.json" ;;
   "issue view "*" --json "*" --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/issue-$3.json" ;;
   "issue edit "*) echo "https://github.com/o/r/issues/$3" ;;
   "issue comment "*" --body-file -") cat > "$SHIM_STATE/issue-comment-$3"; echo "https://github.com/o/r/issues/$3#issuecomment-1" ;;
