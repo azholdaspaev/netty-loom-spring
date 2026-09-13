@@ -291,6 +291,16 @@ ok=1; why="rc=$rc stderr=$err stages=$stages comment=$comment"
 check gh-failure "$ok" "$why"
 rm -rf "$tmp"
 
+# --- the question's own label edit fails: the work's code, not 2, so a retry cannot rerun the stage past its pending question ---
+setup
+export SHIM_QUESTION="review 2" SHIM_GH_FAIL="issue edit 999 --remove-label agent/running --add-label agent/needs-input"
+run 1,1 ""
+unset SHIM_QUESTION SHIM_GH_FAIL
+ok=1; why="rc=$rc stderr=$err stages=$stages comment=$comment"
+[ "$rc" = 1 ] && [ -z "$comment" ] && [ "$stages" = "$IMPLEMENT$R1$F1$R2$NEEDS_INPUT" ] || ok=0
+check question-label-failure "$ok" "$why"
+rm -rf "$tmp"
+
 # --- pr-comments.sh fails on its gh call: the same class ---
 setup
 export SHIM_GH_FAIL="pr view $PR_URL --json url"
