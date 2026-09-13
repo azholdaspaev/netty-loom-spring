@@ -12,7 +12,7 @@ PR_COMMENTS="$HERE/../../.claude/scripts/pr-comments.sh"
 LOG="$HOME/.netty-loom-agent/logs/NL-$N"
 ROUNDS=3
 
-reset_tree() { git checkout -- . && git clean -fdq; }
+reset_tree() { git reset -q --hard && git clean -fdq; }
 
 # stage <stage> [<pr url> [<round>]] -- runs stage.sh with its stdout in $stage_out rather than
 # echoed for a $(...) caller: an exit inside a command substitution ends only the subshell, and the
@@ -79,7 +79,7 @@ gh issue comment "$N" --body-file - >/dev/null <<BODY
 Pull request: $url
 Review/fix rounds: $round, $outcome
 Cost: $(printf '%.2f' "$cost") USD, wall time: $minutes min, from $results stage results in $LOG.
-${dirty:+Tree was dirty after the test stage and was reset with \`git checkout -- . && git clean -fd\`:
+${dirty:+Tree was dirty after the test stage and was reset with \`git reset --hard && git clean -fd\`:
 \`\`\`
 $dirty
 \`\`\`}
