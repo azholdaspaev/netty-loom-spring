@@ -13,6 +13,9 @@ LOG="$HOME/.netty-loom-agent/logs/NL-$N"
 ROUNDS=3
 
 reset_tree() { git reset -q --hard && git clean -fdq; }
+fail() { echo "pipeline.sh: NL-$N: $1 failed" >&2; exit 2; }
+gh() { command gh "$@" || fail "gh $1 $2"; }
+pr_comments() { "$PR_COMMENTS" "$url" || fail pr-comments.sh; }
 
 # stage <stage> [<pr url> [<round>]] -- runs stage.sh with its stdout in $stage_out rather than
 # echoed for a $(...) caller: an exit inside a command substitution ends only the subshell, and the
@@ -24,7 +27,11 @@ stage() {
     0) ;;
     3) # Implement's edits stay for its resumed self; any later stage's would stop the review that resumes.
        [ "$1" = implement ] || reset_tree
-       gh issue edit "$N" --remove-label agent/running --add-label agent/needs-input >/dev/null; exit 0 ;;
+       # command gh, not the wrapper: a retry reruns the stage, which stops on its own pending question and exits 0.
+       command gh issue edit "$N" --remove-label agent/running --add-label agent/needs-input >/dev/null; exit 0 ;;
+    124|2) # Killed or dropped mid-edit and retried by the runner, so the same reset; a work failure's tree stays for the maintainer.
+       [ "$1" = implement ] || reset_tree
+       exit "$rc" ;;
     *) exit "$rc" ;;
   esac
 }
@@ -43,9 +50,9 @@ converged=0
 stalled=0
 moved=1
 for round in $(seq 1 "$ROUNDS"); do
-  since=$("$PR_COMMENTS" "$url" | jq -r '[.inline[].created_at] | max // ""')
+  since=$(pr_comments | jq -r '[.inline[].created_at] | max // ""')
   stage review "$url" "$round"
-  comments=$("$PR_COMMENTS" "$url")
+  comments=$(pr_comments)
   posted=$(jq --arg me "$me" --arg since "$since" \
     '[.inline[] | select(.author == $me and .created_at > $since)] | length' <<<"$comments")
   open=$(jq '[.threads[] | select(.isResolved | not)] | length' <<<"$comments")
@@ -54,7 +61,8 @@ for round in $(seq 1 "$ROUNDS"); do
   before=$(pr_head)
   stage fix "$url" "$round"
   moved=0
-  [ "$(pr_head)" = "$before" ] || moved=1
+  after=$(pr_head)
+  [ "$after" = "$before" ] || moved=1
 done
 
 stage test "$url"

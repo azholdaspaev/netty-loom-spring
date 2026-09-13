@@ -17,11 +17,12 @@ export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 # pushes), posts inline comments as the runner on the review rounds SHIM_REVIEW_POSTS counts
 # ("0,1" = review 2 posts one; unset = none), edits src.txt -- staged and unstaged -- and adds
 # scratch.txt in the stage SHIM_DIRTY names, and
-# exits 1 from the stage SHIM_FAIL names or 3 from the one SHIM_QUESTION names ("review 2"). The
+# exits SHIM_FAIL_RC (1 unset) from the stage SHIM_FAIL names or 3 from the one SHIM_QUESTION names ("review 2"). The
 # gh shim serves that state back, inline comments
 # only through pr-comments.sh's own call, and answers each GraphQL thread query with the count
 # SHIM_OPEN holds for the latest review round ("2,0" = two open threads after the first review,
-# none after the second).
+# none after the second); every call whose arguments start with SHIM_GH_FAIL exits 1 instead, from
+# the first event line starting with SHIM_GH_FAIL_AFTER on when that is set.
 setup() {
   tmp=$(mktemp -d)
   mkdir -p "$tmp/scripts/agent" "$tmp/.claude/scripts" "$tmp/bin" "$tmp/home" "$tmp/state"
@@ -43,7 +44,7 @@ if [ "$stage" = "${SHIM_DIRTY:-}" ]; then
   echo staged >> src.txt; git add src.txt; echo mutated >> src.txt; touch scratch.txt
 fi
 if [ "$stage${round:+ $round}" = "${SHIM_FAIL:-}" ]; then
-  echo "stage.sh: NL-$1 $stage: claude ended with error_max_budget_usd" >&2; exit 1
+  echo "stage.sh: NL-$1 $stage: claude ended with error_max_budget_usd" >&2; exit "${SHIM_FAIL_RC:-1}"
 fi
 if [ "$stage${round:+ $round}" = "${SHIM_QUESTION:-}" ]; then
   echo "stage.sh: NL-$1 $stage: asked a question: https://github.com/o/r/issues/999#issuecomment-2" >&2; exit 3
@@ -68,6 +69,9 @@ SHIM
   cat > "$tmp/bin/gh" <<'SHIM'
 #!/usr/bin/env bash
 echo "gh $*" >> "$SHIM_EVENTS"
+if [ -n "${SHIM_GH_FAIL:-}" ] && { [ -z "${SHIM_GH_FAIL_AFTER:-}" ] || grep -q "^$SHIM_GH_FAIL_AFTER" "$SHIM_EVENTS"; }; then
+  case "$*" in "$SHIM_GH_FAIL"*) echo "gh: dial tcp: no route to host" >&2; exit 1 ;; esac
+fi
 case "$*" in
   "pr list --head NL-999-x "*) if [ -n "${SHIM_PR_URL:-}" ]; then echo "$SHIM_PR_URL"; fi ;;
   "pr view "*" --json url "*) echo "$3" ;;
@@ -277,6 +281,82 @@ ok=1; why="rc=$rc stderr=$err"
 [ "$stages" = "$IMPLEMENT$R1$F1$R2" ] || { ok=0; why="stages=$stages"; }
 [ -z "$comment" ] || { ok=0; why="issue comment posted: $comment"; }
 check stage-failure "$ok" "$why"
+rm -rf "$tmp"
+
+# --- a gh call of the pipeline's own fails: infrastructure, exit 2, no hand-off ---
+setup
+export SHIM_GH_FAIL="pr ready"
+run 0 ""
+unset SHIM_GH_FAIL
+ok=1; why="rc=$rc stderr=$err stages=$stages comment=$comment"
+[ "$rc" = 2 ] && contains "$err" "gh pr ready failed" && [ -z "$comment" ] \
+  && [ "$stages" = "$IMPLEMENT$R1${TEST}gh pr ready $PR_URL|" ] || ok=0
+check gh-failure "$ok" "$why"
+rm -rf "$tmp"
+
+# --- the question's own label edit fails: the work's code, not 2, so a retry cannot rerun the stage past its pending question ---
+setup
+export SHIM_QUESTION="review 2" SHIM_GH_FAIL="issue edit 999 --remove-label agent/running --add-label agent/needs-input"
+run 1,1 ""
+unset SHIM_QUESTION SHIM_GH_FAIL
+ok=1; why="rc=$rc stderr=$err stages=$stages comment=$comment"
+[ "$rc" = 1 ] && [ -z "$comment" ] && [ "$stages" = "$IMPLEMENT$R1$F1$R2$NEEDS_INPUT" ] || ok=0
+check question-label-failure "$ok" "$why"
+rm -rf "$tmp"
+
+# --- the head check after a fix fails on its gh call: the same class, and no next round ---
+setup
+export SHIM_GH_FAIL="pr view $PR_URL --json headRefOid" SHIM_GH_FAIL_AFTER="stage 999 fix"
+run 1,0 ""
+unset SHIM_GH_FAIL SHIM_GH_FAIL_AFTER
+ok=1; why="rc=$rc stderr=$err stages=$stages comment=$comment"
+[ "$rc" = 2 ] && contains "$err" "gh pr view failed" && [ -z "$comment" ] && [ "$stages" = "$IMPLEMENT$R1$F1" ] || ok=0
+check head-check-failure "$ok" "$why"
+rm -rf "$tmp"
+
+# --- pr-comments.sh fails on its gh call: the same class ---
+setup
+export SHIM_GH_FAIL="pr view $PR_URL --json url"
+run 0 ""
+unset SHIM_GH_FAIL
+ok=1; why="rc=$rc stderr=$err stages=$stages"
+[ "$rc" = 2 ] && contains "$err" "pr-comments.sh failed" && [ "$stages" = "$IMPLEMENT" ] || ok=0
+check pr-comments-failure "$ok" "$why"
+rm -rf "$tmp"
+
+# --- a later stage is killed or dropped mid-edit (124, 2): the tree is reset, so the retry's review starts clean ---
+for stage_rc in 124 2; do
+  setup
+  export SHIM_FAIL=test SHIM_FAIL_RC=$stage_rc SHIM_DIRTY=test
+  run 0 ""
+  unset SHIM_FAIL SHIM_FAIL_RC SHIM_DIRTY
+  ok=1; why="rc=$rc stderr=$err stages=$stages tree=$(git -C "$tmp/work" status --porcelain)"
+  [ "$rc" = "$stage_rc" ] && [ -z "$(git -C "$tmp/work" status --porcelain)" ] \
+    && [ "$stages" = "$IMPLEMENT$R1$TEST" ] && [ -z "$comment" ] || ok=0
+  check "test-exit-$stage_rc-dirty" "$ok" "$why"
+  rm -rf "$tmp"
+done
+
+# --- implement killed mid-edit: its edits stay for its retried self, as on a question ---
+setup
+export SHIM_IMPLEMENT_RC=124 SHIM_DIRTY=implement
+run 0 ""
+unset SHIM_IMPLEMENT_RC SHIM_DIRTY
+ok=1; why="rc=$rc stderr=$err stages=$stages tree=$(git -C "$tmp/work" status --porcelain)"
+[ "$rc" = 124 ] && [ "$(git -C "$tmp/work" status --porcelain)" = $'MM src.txt\n?? scratch.txt' ] \
+  && [ "$stages" = "$IMPLEMENT" ] || ok=0
+check implement-exit-124-dirty "$ok" "$why"
+rm -rf "$tmp"
+
+# --- a later stage fails on the work mid-edit: the tree stays for the maintainer to read ---
+setup
+export SHIM_FAIL=test SHIM_DIRTY=test
+run 0 ""
+unset SHIM_FAIL SHIM_DIRTY
+ok=1; why="rc=$rc stderr=$err stages=$stages tree=$(git -C "$tmp/work" status --porcelain)"
+[ "$rc" = 1 ] && [ "$(git -C "$tmp/work" status --porcelain)" = $'MM src.txt\n?? scratch.txt' ] \
+  && [ "$stages" = "$IMPLEMENT$R1$TEST" ] || ok=0
+check test-exit-1-dirty "$ok" "$why"
 rm -rf "$tmp"
 
 # --- the test stage leaves the tree dirty ---

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Run one pipeline stage for a GitHub issue as an unattended claude -p and report how it ended:
-# exit 0 (with the pull request URL after implement), 3 when the stage posted a question, 124 on
-# timeout, else 1.
+# exit 0 (with the pull request URL after implement), 3 when a question is pending -- this stage's,
+# or an earlier run's still newest on the issue -- 124 on timeout, 2 when the infrastructure failed
+# (a gh call, or claude's error_during_execution), else 1.
 # Usage (cwd = the issue's worktree): scripts/agent/stage.sh <issue number> implement
 #                                     scripts/agent/stage.sh <issue number> review|fix|test <pr url> [<round>]
 set -euo pipefail
@@ -14,6 +15,7 @@ STAGE_TIMEOUT="${STAGE_TIMEOUT:-45m}"
 AGENT="$(cd "$(dirname "$0")/../../.claude/agent" && pwd)"
 
 fail() { echo "stage.sh: NL-$N $STAGE: $1" >&2; exit "${2:-1}"; }
+gh() { command gh "$@" || fail "gh $1 $2 failed" 2; }
 
 branch=$(git branch --show-current)
 case "$branch" in
@@ -76,7 +78,11 @@ trap './gradlew --stop >&2 || true' EXIT
 
 # The newest comment's own timestamp rather than date -u: GitHub's clock on both sides, so a
 # skewed local clock cannot hide this stage's question inside a "no commits" failure.
-since=$(comments | jq -r 'map(.created_at) | max // ""')
+before=$(comments)
+pending=$(jq -r --arg me "$me" --arg marker "$MARKER" \
+  '.[-1] // empty | select(.user.login == $me and (.body | startswith($marker))) | .html_url' <<<"$before")
+[ -z "$pending" ] || fail "question pending: $pending" 3
+since=$(jq -r 'map(.created_at) | max // ""' <<<"$before")
 
 SYSTEM=$(cat "$AGENT/unattended.md")
 [ -z "$TAIL" ] || SYSTEM="$SYSTEM"$'\n\n'"$TAIL"
@@ -93,7 +99,8 @@ timeout "$STAGE_TIMEOUT" claude -p "$PROMPT" \
 
 question=$(comments | jq -r --arg me "$me" --arg since "$since" --arg marker "$MARKER" \
   '[.[] | select(.user.login == $me and (.body | startswith($marker)) and .created_at > $since)]
-   | first // empty | .html_url')
+   | first // empty | .html_url') \
+  || { question=; echo "stage.sh: NL-$N $STAGE: comments unreadable after the stage; the pull request and commits decide" >&2; }
 [ -z "$question" ] || fail "asked a question: $question" 3
 
 [ "$rc" = 124 ] && fail "timed out after $STAGE_TIMEOUT" 124
@@ -104,8 +111,9 @@ is_error=$(jq -r '.is_error' "$OUT.json")
 outcome=$(jq -r '[(.terminal_reason | select(. != "completed"))
                   // (if .subtype == "success" and .is_error == true then "is_error" else .subtype end),
                   (.result // "" | split("\n")[0] // empty | select(. != ""))] | join(": ")' "$OUT.json")
+code=1; [ "$subtype" != error_during_execution ] || code=2
 [ "$subtype" = success ] && [ "$is_error" != true ] && [ "$rc" = 0 ] \
-  || fail "claude ended with $outcome (exited $rc), see $OUT.json"
+  || fail "claude ended with $outcome (exited $rc), see $OUT.json" "$code"
 
 case "$STAGE" in
   implement)

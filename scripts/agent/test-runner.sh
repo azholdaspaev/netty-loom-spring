@@ -24,6 +24,7 @@ setup() {
   cat > "$tmp/main/gradlew" <<'SHIM'
 #!/usr/bin/env bash
 echo "gradlew $* in $(pwd -P)" >> "$SHIM_EVENTS"
+exit "${SHIM_GRADLEW_RC:-0}"
 SHIM
   chmod +x "$tmp/main/gradlew"
   echo root > "$tmp/main/src.txt"
@@ -60,7 +61,7 @@ SHIM
   echo '[]' > "$tmp/state/closed.json"
   echo '[]' > "$tmp/state/fix-prs.json"
   : > "$tmp/state/merged"
-  jq -n '["agent/running", "agent/queued", "agent/needs-input", "agent/fix", "agent/failed", "agent/pr-ready", "area/agent"] | map({name: .})' \
+  jq -n '["agent/running", "agent/queued", "agent/needs-input", "agent/fix", "agent/failed", "agent/pr-ready", "agent/retried", "area/agent"] | map({name: .})' \
     > "$tmp/state/labels.json"
   cat > "$tmp/bin/gh" <<'SHIM'
 #!/usr/bin/env bash
@@ -190,7 +191,7 @@ ok=1; why="rc=$rc stderr=$err actions=$actions"
 check retry "$ok" "$why"
 rm -rf "$tmp"
 
-# --- the pipeline fails: agent/failed, the last 30 stderr lines and the log path on the issue ---
+# --- the pipeline fails on the work: agent/failed, the class, the last 30 stderr lines and the log path on the issue ---
 setup
 queue 7 "Fix the Thing: quickly!"
 export SHIM_PIPELINE_RC=1
@@ -202,11 +203,59 @@ ok=1; why="rc=$rc stderr=$err actions=$actions comment=$comment"
 [ "$rc" = 0 ] || ok=0
 contains "$actions" "pipeline 7 in" || ok=0
 contains "$actions" "gh issue edit 7 --remove-label agent/running --add-label agent/failed|gh issue comment 7 --body-file -|" || ok=0
+contains "$comment" "Pipeline failed (exit 1, work)" || ok=0
 contains "$comment" "pipeline stderr line 11" && contains "$comment" "pipeline stderr line 40" \
   && ! contains "$comment" "pipeline stderr line 10" || ok=0
 contains "$comment" "$log" || ok=0
 [ "$(grep -c 'pipeline stderr line' "$log" 2>/dev/null)" = 40 ] || { ok=0; why="$why log=$(wc -l < "$log" 2>&1 || true)"; }
 check failure "$ok" "$why"
+rm -rf "$tmp"
+
+# --- the pipeline fails on the infrastructure (124 from timeout, 2 from stage.sh): back to agent/queued with agent/retried, no comment ---
+for code in 124 2; do
+  setup
+  queue 7 "Fix the Thing: quickly!"
+  export SHIM_PIPELINE_RC=$code
+  run
+  unset SHIM_PIPELINE_RC
+  wt=$(cd "$tmp/$WT7" 2>/dev/null && pwd -P || echo missing)
+  ok=1; why="rc=$rc stderr=$err actions=$actions"
+  [ "$rc" = 0 ] || ok=0
+  [ "$actions" = "requeue|${PICK7}gradlew dependencySources in $wt|pipeline 7 in $wt|gh issue edit 7 --remove-label agent/running --add-label agent/queued,agent/retried|" ] || ok=0
+  [ ! -e "$tmp/state/issue-comment-7" ] || { ok=0; why="$why a comment was posted"; }
+  check "infrastructure-retry-$code" "$ok" "$why"
+  rm -rf "$tmp"
+done
+
+# --- dependencySources fails to resolve: infrastructure too, and the pipeline never starts ---
+setup
+queue 7 "Fix the Thing: quickly!"
+export SHIM_GRADLEW_RC=1
+run
+unset SHIM_GRADLEW_RC
+wt=$(cd "$tmp/$WT7" 2>/dev/null && pwd -P || echo missing)
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" = 0 ] || ok=0
+[ "$actions" = "requeue|${PICK7}gradlew dependencySources in $wt|gh issue edit 7 --remove-label agent/running --add-label agent/queued,agent/retried|" ] || ok=0
+[ ! -e "$tmp/state/issue-comment-7" ] || { ok=0; why="$why a comment was posted"; }
+check infrastructure-retry-sources "$ok" "$why"
+rm -rf "$tmp"
+
+# --- a second infrastructure failure, agent/retried already on: agent/failed, and the comment names the class ---
+setup
+issue 7 "Fix the Thing: quickly!" "agent/queued,agent/retried"
+listed 7 queued
+export SHIM_PIPELINE_RC=124
+run
+unset SHIM_PIPELINE_RC
+comment=$(cat "$tmp/state/issue-comment-7" 2>/dev/null || true)
+wt=$(cd "$tmp/$WT7" 2>/dev/null && pwd -P || echo missing)
+ok=1; why="rc=$rc stderr=$err actions=$actions comment=$comment"
+[ "$rc" = 0 ] || ok=0
+[ "$actions" = "requeue|${PICK7}gradlew dependencySources in $wt|pipeline 7 in $wt|gh issue edit 7 --remove-label agent/running --add-label agent/failed|gh issue comment 7 --body-file -|" ] || ok=0
+contains "$comment" "Pipeline failed (exit 124, infrastructure, retried once already)" \
+  && contains "$comment" "pipeline stderr line 40" && contains "$comment" 'Replace `agent/failed` with `agent/queued`' || ok=0
+check infrastructure-twice "$ok" "$why"
 rm -rf "$tmp"
 
 # --- agent/fix on a pull request: a fix stage then a review stage in its worktree, no test stage, then the label comes off ---

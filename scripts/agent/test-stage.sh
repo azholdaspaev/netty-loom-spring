@@ -30,6 +30,9 @@ SHIM
   cat > "$tmp/bin/gh" <<'SHIM'
 #!/usr/bin/env bash
 echo "gh $*" >> "$SHIM_EVENTS"
+if [ -n "${SHIM_GH_FAIL:-}" ] && { [ -z "${SHIM_GH_FAIL_AFTER:-}" ] || grep -qx claude "$SHIM_EVENTS"; }; then
+  case "$*" in "$SHIM_GH_FAIL"*) echo "gh: dial tcp: no route to host" >&2; exit 1 ;; esac
+fi
 case "$*" in
   "repo view --json nameWithOwner --jq .nameWithOwner") echo o/r ;;
   "api user --jq .login") echo runner ;;
@@ -66,6 +69,7 @@ case "$SHIM_MODE" in
   crash)    commit; echo boom; exit 1 ;;
   api-error) result success true | jq -c '. + {terminal_reason: "api_error", result: "API Error: 403 blocked"}'; exit 1 ;;
   is-error) commit; result success true ;;
+  dropped)  commit; result error_during_execution true; exit 1 ;;
   exit-1)   commit; result success false | jq -c '. + {result: "Done.\n```\nsecond line\n```"}'; exit 1 ;;
   hang)     sleep 5 ;;
 esac
@@ -190,13 +194,33 @@ ok=1; why="rc=$rc stderr=$err"
 check question "$ok" "$why"
 rm -rf "$tmp"
 
-# --- stale question: a marker comment older than the stage is not this stage's question ---
+# --- stale question: an answered marker comment older than the stage is not this stage's question ---
 setup
-echo '[{"user":{"login":"runner"},"body":"<!-- agent:question -->\nOld?","created_at":"2026-09-12T11:00:00Z","html_url":"u1"}]' > "$SHIM_COMMENTS"
+echo '[{"user":{"login":"runner"},"body":"<!-- agent:question -->\nOld?","created_at":"2026-09-12T11:00:00Z","html_url":"u1"},
+       {"user":{"login":"o"},"body":"The first.","created_at":"2026-09-12T11:30:00Z","html_url":"u2"}]' > "$SHIM_COMMENTS"
 run nocommit "$PR_URL" 999 implement
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "no commits" || ok=0
 check stale-question "$ok" "$why"
+rm -rf "$tmp"
+
+# --- pending question: the runner's marker is the newest comment before the stage, so the stage does not run ---
+setup
+echo '[{"user":{"login":"runner"},"body":"<!-- agent:question -->\nWhich one?","created_at":"2026-09-12T11:00:00Z","html_url":"u1"}]' > "$SHIM_COMMENTS"
+run success "$PR_URL" 999 implement
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 3 ] && contains "$err" "question pending: u1" || ok=0
+[ ! -e "$SHIM_ARGV" ] || { ok=0; why="claude ran with a question pending"; }
+check pending-question "$ok" "$why"
+rm -rf "$tmp"
+
+# --- pending question from a third party: not the runner's, so the stage runs ---
+setup
+echo '[{"user":{"login":"o"},"body":"<!-- agent:question -->\nMine?","created_at":"2026-09-12T11:00:00Z","html_url":"u1"}]' > "$SHIM_COMMENTS"
+run success "$PR_URL" 999 implement
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] || ok=0
+check third-party-marker "$ok" "$why"
 rm -rf "$tmp"
 
 # --- question, then a crash: the comment decides, not claude's exit ---
@@ -240,6 +264,36 @@ ok=1; why="rc=$rc stderr=$err"
 ! contains "$err" "second line" || { ok=0; why="whole .result in stderr: $err"; }
 [ -z "$out" ] || { ok=0; why="stdout=$out"; }
 check success-exit-1 "$ok" "$why"
+rm -rf "$tmp"
+
+# --- error_during_execution: infrastructure, so exit 2 ---
+setup
+run dropped "$PR_URL" 999 implement
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 2 ] && contains "$err" "claude ended with error_during_execution" || ok=0
+[ -z "$out" ] || { ok=0; why="stdout=$out"; }
+check dropped "$ok" "$why"
+rm -rf "$tmp"
+
+# --- gh fails before the stage: infrastructure, exit 2, claude never runs ---
+setup
+export SHIM_GH_FAIL="api --paginate"
+run success "$PR_URL" 999 implement
+unset SHIM_GH_FAIL
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 2 ] && contains "$err" "gh api --paginate failed" || ok=0
+[ ! -e "$SHIM_ARGV" ] || { ok=0; why="claude ran after gh failed"; }
+check gh-before "$ok" "$why"
+rm -rf "$tmp"
+
+# --- comments unreadable after the stage: logged, and the pull request and commits decide ---
+setup
+export SHIM_GH_FAIL="api --paginate" SHIM_GH_FAIL_AFTER=1
+run success "$PR_URL" 999 implement
+unset SHIM_GH_FAIL SHIM_GH_FAIL_AFTER
+ok=1; why="rc=$rc stdout=$out stderr=$err"
+[ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] && contains "$err" "comments unreadable after the stage" || ok=0
+check comments-unread "$ok" "$why"
 rm -rf "$tmp"
 
 # --- timeout ---
