@@ -27,7 +27,8 @@ stage() {
     0) ;;
     3) # Implement's edits stay for its resumed self; any later stage's would stop the review that resumes.
        [ "$1" = implement ] || reset_tree
-       gh issue edit "$N" --remove-label agent/running --add-label agent/needs-input >/dev/null; exit 0 ;;
+       # command gh, not the wrapper: a retry reruns the stage, which stops on its own pending question and exits 0.
+       command gh issue edit "$N" --remove-label agent/running --add-label agent/needs-input >/dev/null; exit 0 ;;
     124|2) # Killed or dropped mid-edit and retried by the runner, so the same reset; a work failure's tree stays for the maintainer.
        [ "$1" = implement ] || reset_tree
        exit "$rc" ;;
