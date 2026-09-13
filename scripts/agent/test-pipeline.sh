@@ -15,7 +15,8 @@ export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 # The stage shim writes the result file pipeline.sh sums, moves the pull request head on the fix
 # rounds SHIM_FIX_PUSHES lists ("1,0" = fix 1 pushes a commit, fix 2 does not; unset = every fix
 # pushes), posts inline comments as the runner on the review rounds SHIM_REVIEW_POSTS counts
-# ("0,1" = review 2 posts one; unset = none), edits src.txt in the stage SHIM_DIRTY names, and
+# ("0,1" = review 2 posts one; unset = none), edits src.txt and adds scratch.txt in the stage
+# SHIM_DIRTY names, and
 # exits 1 from the stage SHIM_FAIL names or 3 from the one SHIM_QUESTION names ("review 2"). The
 # gh shim serves that state back, inline comments
 # only through pr-comments.sh's own call, and answers each GraphQL thread query with the count
@@ -38,7 +39,7 @@ setup() {
 #!/usr/bin/env bash
 echo "stage $*" >> "$SHIM_EVENTS"
 stage=$2; round=${4:-}
-if [ "$stage" = "${SHIM_DIRTY:-}" ]; then echo mutated >> src.txt; fi
+if [ "$stage" = "${SHIM_DIRTY:-}" ]; then echo mutated >> src.txt; touch scratch.txt; fi
 if [ "$stage${round:+ $round}" = "${SHIM_FAIL:-}" ]; then
   echo "stage.sh: NL-$1 $stage: claude ended with error_max_budget_usd" >&2; exit 1
 fi
@@ -247,7 +248,7 @@ export SHIM_QUESTION=implement SHIM_DIRTY=implement
 run 0 ""
 unset SHIM_QUESTION SHIM_DIRTY
 ok=1; why="rc=$rc stderr=$err stages=$stages tree=$(git -C "$tmp/work" status --porcelain)"
-[ "$rc" = 0 ] && [ "$(git -C "$tmp/work" status --porcelain)" = " M src.txt" ] \
+[ "$rc" = 0 ] && [ "$(git -C "$tmp/work" status --porcelain)" = $' M src.txt\n?? scratch.txt' ] \
   && [ "$stages" = "$IMPLEMENT$NEEDS_INPUT" ] || ok=0
 check implement-question-dirty "$ok" "$why"
 rm -rf "$tmp"
@@ -284,7 +285,7 @@ unset SHIM_DIRTY
 ok=1; why=""
 [ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
 [ -z "$(git -C "$tmp/work" status --porcelain)" ] || { ok=0; why="tree still dirty: $(git -C "$tmp/work" status --porcelain)"; }
-for needle in "git checkout -- ." " M src.txt"; do
+for needle in "git checkout -- . && git clean -fd" " M src.txt" "?? scratch.txt"; do
   contains "$comment" "$needle" || { ok=0; why="comment lacks '$needle': $comment"; }
 done
 check dirty-after-test "$ok" "$why"
