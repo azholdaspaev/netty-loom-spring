@@ -534,8 +534,24 @@ class DefaultNettyServletContextTest {
     }
 
     @Test
-    void shouldReturnServletContextName() {
+    void shouldDefaultTheServletContextNameWhenNoDisplayNameIsSet() {
         assertEquals("NettyServletContext", context.getServletContextName());
+    }
+
+    @Test
+    void shouldReturnTheConfiguredDisplayNameAsTheServletContextName() {
+        context.setServletContextName("orders");
+
+        assertEquals("orders", context.getServletContextName());
+    }
+
+    @Test
+    void shouldFallBackToTheDefaultServletContextNameForANullDisplayName() {
+        context.setServletContextName("orders");
+        context.setServletContextName(null);
+
+        assertEquals("NettyServletContext", context.getServletContextName(),
+            "a factory built outside Boot has no display name; null must restore the default, not become the name");
     }
 
     @Test

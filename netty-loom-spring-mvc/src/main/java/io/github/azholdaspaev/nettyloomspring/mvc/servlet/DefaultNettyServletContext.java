@@ -38,6 +38,7 @@ public final class DefaultNettyServletContext implements NettyServletContext {
     // ServletContext expresses the session timeout in minutes while HttpSession and the manager use
     // seconds, so the session-timeout methods below convert.
     private static final int SECONDS_PER_MINUTE = 60;
+    private static final String DEFAULT_SERVLET_CONTEXT_NAME = "NettyServletContext";
 
     // Constructed here rather than injected: both need a ServletContext -- the manager for
     // HttpSession.getServletContext(), the registry to name the source of every event it fires -- so a
@@ -55,6 +56,7 @@ public final class DefaultNettyServletContext implements NettyServletContext {
     // server start, so the volatile field is sufficient for safe publication.
     private volatile List<RegisteredFilter> registeredFiltersSnapshot;
     private volatile String contextPath = ROOT_CONTEXT_PATH;
+    private volatile String servletContextName = DEFAULT_SERVLET_CONTEXT_NAME;
     private volatile NettyDispatchFactory dispatchFactory;
     private volatile NettyCookieSameSiteResolver cookieSameSiteResolver = NettyCookieSameSiteResolver.NO_OPINION;
     private volatile NettyErrorPageResolver errorPageResolver = NettyErrorPageResolver.NO_PAGES;
@@ -398,8 +400,13 @@ public final class DefaultNettyServletContext implements NettyServletContext {
     }
 
     @Override
+    public void setServletContextName(String servletContextName) {
+        this.servletContextName = servletContextName == null ? DEFAULT_SERVLET_CONTEXT_NAME : servletContextName;
+    }
+
+    @Override
     public String getServletContextName() {
-        return "NettyServletContext";
+        return servletContextName;
     }
 
     @Override
