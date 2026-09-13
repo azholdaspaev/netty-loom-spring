@@ -68,9 +68,13 @@ deliberate deviation from what the surrounding code predicts.
 `CLAUDE.md` § Guidelines rule 5 has the closed list of triggers and the hard line budgets. Read it
 before adding any comment; reviewers quote it.
 
+A comment longer than one line is a block: `/** */` on a declaration, `/* */` inside a body. A run
+of `//` lines is not a paragraph — it reads as disabled code, and the budgets cannot see it.
+
 `./gradlew build` runs [`.claude/scripts/check-comments.sh`](.claude/scripts/check-comments.sh),
-which rejects a javadoc past its budget's numeric ceiling, naming the file and line; whether a
-trigger fired, and whether a class javadoc earned its raised ceiling, stay with the author.
+which rejects a javadoc past its budget's numeric ceiling and two consecutive full-line `//`
+comments, naming the file and line; whether a trigger fired, and whether a class javadoc earned
+its raised ceiling, stay with the author.
 
 ## Commits
 
