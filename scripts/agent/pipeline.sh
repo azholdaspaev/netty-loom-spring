@@ -19,7 +19,9 @@ stage() {
   stage_out=$("$HERE/stage.sh" "$N" "$@") || rc=$?
   case "$rc" in
     0) ;;
-    3) gh issue edit "$N" --remove-label agent/running --add-label agent/needs-input >/dev/null; exit 0 ;;
+    3) # Implement's edits stay for its resumed self; any later stage's would stop the review that resumes.
+       [ "$1" = implement ] || git checkout -- .
+       gh issue edit "$N" --remove-label agent/running --add-label agent/needs-input >/dev/null; exit 0 ;;
     *) exit "$rc" ;;
   esac
 }
