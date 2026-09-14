@@ -5,12 +5,14 @@ set -euo pipefail
 
 STAGE_SH="$(cd "$(dirname "$0")" && pwd)/stage.sh"
 PR_URL="https://github.com/o/r/pull/7"
+RUN=20260912T120000Z
 failed=0
 
 export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.invalid
 export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 
-# Each case gets a bare origin with main, a clone on NL-999-x, shims first on PATH, and a fresh HOME.
+# Each case gets a bare origin with main, a clone on NL-999-x, shims first on PATH, a fresh HOME and
+# the run id $RUN.
 setup() {
   tmp=$(mktemp -d)
   mkdir -p "$tmp/bin" "$tmp/home"
@@ -75,7 +77,7 @@ case "$SHIM_MODE" in
 esac
 SHIM
   chmod +x "$tmp/bin/gh" "$tmp/bin/claude"
-  export SHIM_EVENTS="$tmp/events" SHIM_ARGV="$tmp/argv" SHIM_COMMENTS="$tmp/comments"
+  export SHIM_EVENTS="$tmp/events" SHIM_ARGV="$tmp/argv" SHIM_COMMENTS="$tmp/comments" RUN_ID="$RUN"
 }
 
 TS='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z'
@@ -154,8 +156,8 @@ for needle in "# Unattended run" $'\n\n## Stage: implement\n' "git push -u origi
               "--body-file build/pr-body.md" ".github/PULL_REQUEST_TEMPLATE.md" "NL-999 "; do
   contains "$system" "$needle" || { ok=0; why="system prompt lacks '$needle'"; }
 done
-log="$tmp/home/.netty-loom-agent/logs/NL-999"
-[ "$(jq -r .subtype "$log/implement.json" 2>/dev/null)" = success ] || { ok=0; why="implement.json missing or wrong"; }
+log="$tmp/home/.netty-loom-agent/logs/NL-999/$RUN"
+[ "$(jq -r .subtype "$log/implement.json" 2>/dev/null)" = success ] || { ok=0; why="$RUN/implement.json missing or wrong"; }
 grep -q "shim stderr line" "$log/implement.log" 2>/dev/null || { ok=0; why="implement.log lacks claude's stderr"; }
 [ "$said" = "NL-999 implement: start|NL-999 implement: end (exit 0)|" ] || { ok=0; why="said=$said"; }
 check success "$ok" "$why"
@@ -169,7 +171,7 @@ setup
 run budget "$PR_URL" 999 implement
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "ended with error_max_budget_usd" || ok=0
-[ "$(jq -r .subtype "$tmp/home/.netty-loom-agent/logs/NL-999/implement.json" 2>/dev/null || true)" = error_max_budget_usd ] || ok=0
+[ "$(jq -r .subtype "$tmp/home/.netty-loom-agent/logs/NL-999/$RUN/implement.json" 2>/dev/null || true)" = error_max_budget_usd ] || ok=0
 case "$said" in "NL-999 implement: start|NL-999 implement: claude ended with error_max_budget_usd"*"|NL-999 implement: end (exit 1)|") ;; *) ok=0; why="$why said=$said" ;; esac
 check budget "$ok" "$why"
 rm -rf "$tmp"
@@ -310,7 +312,7 @@ run hang "$PR_URL" 999 implement
 unset STAGE_TIMEOUT
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 124 ] && contains "$err" "timed out" || ok=0
-[ ! -s "$tmp/home/.netty-loom-agent/logs/NL-999/implement.json" ] || { ok=0; why="implement.json is not empty"; }
+[ ! -s "$tmp/home/.netty-loom-agent/logs/NL-999/$RUN/implement.json" ] || { ok=0; why="implement.json is not empty"; }
 case "$said" in *"|NL-999 implement: end (exit 124)|") ;; *) ok=0; why="$why said=$said" ;; esac
 check timeout "$ok" "$why"
 rm -rf "$tmp"
@@ -356,8 +358,8 @@ done
 system=$(cat "$SHIM_ARGV.system" 2>/dev/null || true)
 contains "$system" "# Unattended run" || { ok=0; why="system prompt lacks unattended.md"; }
 contains "$system" "--draft" && { ok=0; why="system prompt carries the implement tail"; }
-log="$tmp/home/.netty-loom-agent/logs/NL-999"
-[ "$(jq -r .subtype "$log/review-2.json" 2>/dev/null)" = success ] || { ok=0; why="review-2.json missing or wrong"; }
+log="$tmp/home/.netty-loom-agent/logs/NL-999/$RUN"
+[ "$(jq -r .subtype "$log/review-2.json" 2>/dev/null)" = success ] || { ok=0; why="$RUN/review-2.json missing or wrong"; }
 [ "$said" = "NL-999 review 2: start|NL-999 review 2: end (exit 0)|" ] || { ok=0; why="said=$said"; }
 check review "$ok" "$why"
 rm -rf "$tmp"
@@ -374,8 +376,8 @@ for flag in "NL-999 fix 1" "/flow:fix $PR_URL"; do
 done
 grep -qxF -- "gh pr view $PR_URL --json headRefOid --jq .headRefOid" "$SHIM_EVENTS" 2>/dev/null \
   || { ok=0; why="events=$(tr '\n' '|' 2>/dev/null < "$SHIM_EVENTS" || true)"; }
-[ "$(jq -r .subtype "$tmp/home/.netty-loom-agent/logs/NL-999/fix-1.json" 2>/dev/null)" = success ] \
-  || { ok=0; why="fix-1.json missing or wrong"; }
+[ "$(jq -r .subtype "$tmp/home/.netty-loom-agent/logs/NL-999/$RUN/fix-1.json" 2>/dev/null)" = success ] \
+  || { ok=0; why="$RUN/fix-1.json missing or wrong"; }
 check fix "$ok" "$why"
 rm -rf "$tmp"
 
@@ -407,9 +409,21 @@ ok=1; why=""
 for flag in "NL-999 test" "/flow:test $PR_URL"; do
   argv_has "$flag" || { ok=0; why="argv lacks $flag"; }
 done
-[ "$(jq -r .subtype "$tmp/home/.netty-loom-agent/logs/NL-999/test.json" 2>/dev/null)" = success ] \
-  || { ok=0; why="test.json missing or wrong"; }
+[ "$(jq -r .subtype "$tmp/home/.netty-loom-agent/logs/NL-999/$RUN/test.json" 2>/dev/null)" = success ] \
+  || { ok=0; why="$RUN/test.json missing or wrong"; }
 check test "$ok" "$why"
+rm -rf "$tmp"
+
+# --- no run id given: the stage picks one from its start time, so a hand run overwrites nothing ---
+setup
+unset RUN_ID
+run nocommit "" 999 test "$PR_URL"
+export RUN_ID="$RUN"
+runs=$(cd "$tmp/home/.netty-loom-agent/logs/NL-999" 2>/dev/null && printf '%s|' * || true)
+ok=1; why="rc=$rc stderr=$err runs=$runs"
+[ "$rc" = 0 ] && [[ "$runs" =~ ^[0-9]{8}T[0-9]{6}Z\|$ ]] \
+  && [ "$(jq -r .subtype "$tmp/home/.netty-loom-agent/logs/NL-999/${runs%|}/test.json" 2>/dev/null)" = success ] || ok=0
+check run-id-default "$ok" "$why"
 rm -rf "$tmp"
 
 # --- pull request stage without a pull request ---

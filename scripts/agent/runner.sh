@@ -92,8 +92,9 @@ gh pr list --label agent/fix --state open --json url,headRefName --jq '.[] | "\(
   note "fix: NL-$n $url"
   [ -d "$WT/$branch" ] || git worktree add -q "$WT/$branch" "$branch"
   rc=0
+  run_id=$(date -u +%Y%m%dT%H%M%SZ)
   for stage in fix review; do
-    (cd "$WT/$branch" && "$HERE/stage.sh" "$n" "$stage" "$url") </dev/null 2>>"$log" || { rc=$?; break; }
+    (cd "$WT/$branch" && RUN_ID=$run_id "$HERE/stage.sh" "$n" "$stage" "$url") </dev/null 2>>"$log" || { rc=$?; break; }
   done
   if [ "$rc" = 0 ]; then
     gh pr edit "$url" --remove-label agent/fix >/dev/null

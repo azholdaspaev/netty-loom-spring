@@ -14,7 +14,9 @@ N="${1:?usage: pipeline.sh <issue number>}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PR_COMMENTS="$HERE/../../.claude/scripts/pr-comments.sh"
 PR_TEMPLATE="$HERE/../../.github/PULL_REQUEST_TEMPLATE.md"
-LOG="$HOME/.netty-loom-agent/logs/NL-$N"
+RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)
+export RUN_ID
+LOG="$HOME/.netty-loom-agent/logs/NL-$N/$RUN_ID"
 ROUNDS=3
 MARKER='<!-- agent:question -->'
 

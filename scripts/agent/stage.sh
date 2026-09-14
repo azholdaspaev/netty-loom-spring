@@ -2,7 +2,8 @@
 # Run one pipeline stage for a GitHub issue as an unattended claude -p and report how it ended:
 # exit 0 (with the pull request URL after implement), 3 when a question is pending -- this stage's,
 # or an earlier run's still newest on the issue -- 124 on timeout, 2 when the infrastructure failed
-# (a gh call, or claude's error_during_execution), else 1.
+# (a gh call, or claude's error_during_execution), else 1. The result and stderr land under
+# $RUN_ID, the directory of the run the caller chose, or of this stage alone when none was.
 # Usage (cwd = the issue's worktree): scripts/agent/stage.sh <issue number> implement
 #                                     scripts/agent/stage.sh <issue number> review|fix|test <pr url> [<round>]
 set -euo pipefail
@@ -13,6 +14,7 @@ PR="${3:-}"
 ROUND="${4:-}"
 NAME="$STAGE${ROUND:+ $ROUND}"
 STAGE_TIMEOUT="${STAGE_TIMEOUT:-45m}"
+RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 AGENT="$(cd "$(dirname "$0")/../../.claude/agent" && pwd)"
 
 say() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) stage.sh: NL-$N $NAME: $*" >&2; }
@@ -68,7 +70,7 @@ No label, and never mark it ready for review."
 esac
 [ "$STAGE" = implement ] || [ -n "$PR" ] || fail "no pull request given"
 
-LOG="$HOME/.netty-loom-agent/logs/NL-$N"
+LOG="$HOME/.netty-loom-agent/logs/NL-$N/$RUN_ID"
 mkdir -p "$LOG"
 OUT="$LOG/$STAGE${ROUND:+-$ROUND}"
 

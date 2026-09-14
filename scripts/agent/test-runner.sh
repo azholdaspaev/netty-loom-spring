@@ -45,6 +45,7 @@ SHIM
   cat > "$tmp/main/scripts/agent/stage.sh" <<'SHIM'
 #!/usr/bin/env bash
 echo "stage $* in $(pwd -P)" >> "$SHIM_EVENTS"
+echo "${RUN_ID:-}" >> "$SHIM_STATE/run-ids"
 [ "$2" != "${SHIM_STAGE_COMMIT:-}" ] || git commit -q --allow-empty -m "NL-$1 $2"
 if [ -n "${SHIM_STAGE_RC:-}" ] && [ "$2" = "${SHIM_FAIL_STAGE:-$2}" ]; then
   for i in $(seq 1 40); do echo "stage stderr line $i" >&2; done
@@ -271,14 +272,16 @@ contains "$comment" "Pipeline failed (exit 124, infrastructure, retried once alr
 check infrastructure-twice "$ok" "$why"
 rm -rf "$tmp"
 
-# --- agent/fix on a pull request: a fix stage then a review stage in its worktree, no test stage, then the label comes off ---
+# --- agent/fix on a pull request: a fix stage then a review stage in its worktree under one run id, no test stage, then the label comes off ---
 setup
 fixpr "$PR_URL" NL-7-fix-the-thing
 worktree NL-7-fix-the-thing
 run
 wt=$(cd "$tmp/$WT7" && pwd -P)
+ids=$(cat "$tmp/state/run-ids" 2>/dev/null || true); id=${ids%%$'\n'*}
 ok=1; why="rc=$rc stderr=$err actions=$actions"
 [ "$rc" = 0 ] && [ "$actions" = "requeue|stage 7 fix $PR_URL in $wt|stage 7 review $PR_URL in $wt|gh pr edit $PR_URL --remove-label agent/fix|" ] || ok=0
+[[ "$id" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] && [ "$ids" = "$id"$'\n'"$id" ] || { ok=0; why="$why run ids=$ids"; }
 [ "$said" = "tick start|requeue|fix: NL-7 $PR_URL|fix: NL-7 exit 0|tick end (exit 0)|" ] || { ok=0; why="$why said=$said"; }
 [ "$(said_in "$tmp/home/.netty-loom-agent/logs/NL-7/runner.log")" = "fix: NL-7 $PR_URL|fix: NL-7 exit 0|" ] || { ok=0; why="$why issue log=$(said_in "$tmp/home/.netty-loom-agent/logs/NL-7/runner.log")"; }
 check fix "$ok" "$why"
