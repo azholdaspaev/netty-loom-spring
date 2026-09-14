@@ -386,6 +386,24 @@ contains "$actions" "gh issue edit 7 " && { ok=0; why="$why labels of NL-7 touch
 check merged-not-removable "$ok" "$why"
 rm -rf "$tmp"
 
+# --- the next tick removes a worktree git unregistered while failing to delete it, then the branch and the labels ---
+setup
+worktree NL-7-fix-the-thing
+merged NL-7-fix-the-thing
+issue 7 "Fix the Thing: quickly!" "enhancement,agent/running,agent/pr-ready"
+chmod a-w "$tmp/$WT7"
+run
+chmod u+w "$tmp/$WT7"
+run
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" = 0 ] && contains "$said" "|merged: NL-7-fix-the-thing removed|requeue|tick end (exit 0)|" || ok=0
+contains "$said" "not removed" && { ok=0; why="$why said=$said"; }
+contains "$actions" "gh issue edit 7 --remove-label agent/running,agent/pr-ready|" || { ok=0; why="$why labels of NL-7 kept"; }
+[ ! -d "$tmp/$WT7" ] || { ok=0; why="$why worktree still there"; }
+[ -z "$(git -C "$tmp/main" branch --list NL-7-fix-the-thing)" ] || { ok=0; why="$why branch still there"; }
+check merged-not-removable-retried "$ok" "$why"
+rm -rf "$tmp"
+
 # --- an open agent/running issue at tick start is an orphan: agent/failed, one comment with the log path and the retry line, then the tick goes on ---
 setup
 running 7 "Fix the Thing: quickly!"
