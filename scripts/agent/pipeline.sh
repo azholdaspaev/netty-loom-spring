@@ -39,7 +39,7 @@ stage() {
   stage_out=$("$HERE/stage.sh" "$N" "$@") || rc=$?
   case "$rc" in
     0) ;;
-    3) # Implement's edits stay for the retry's stash; any later stage's would stop the review that resumes.
+    3) # Implement's edits stay for the retry's stash; a later stage's are discarded rather than stashed: scratch from a stage that only asked.
        [ "$1" = implement ] || reset_tree
        # command gh, not the wrapper: a retry reruns the stage, which stops on its own pending question and exits 0.
        command gh issue edit "$N" --remove-label agent/running --add-label agent/needs-input >/dev/null; exit 0 ;;
