@@ -57,7 +57,9 @@ in `git stash list` for the maintainer; nothing is discarded. Commits on the bra
 request — a stage that committed but never pushed — are pushed and get a draft pull request
 opened by the script, whose body is the template with a note that no implement stage wrote it, and
 the pipeline goes on to review without an implement stage. Once a pull request exists, the
-pipeline resumes at the review stage. The answer to a question comes back through the same path.
+pipeline resumes at the review stage. The answer to a question comes back through the same path,
+with one difference: commits with no pull request go to an implement stage, not a script-opened
+pull request, because the implement stage is the one that reads the answer.
 `agent/retried` stays on until the merge, so a hand retry after it gets no second automatic one.
 The `agent/fix` stages are not classified: any failure there is `agent/failed` on the pull request,
 with the stderr tail and the log path, and no retry.
