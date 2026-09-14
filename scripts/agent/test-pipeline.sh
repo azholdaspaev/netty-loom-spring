@@ -378,19 +378,34 @@ run 1,1 ""
 unset SHIM_QUESTION SHIM_DIRTY
 ok=1; why="rc=$rc stdout=$out stderr=$err stages=$stages comment=$comment tree=$(git -C "$tmp/work" status --porcelain)"
 [ "$rc" = 0 ] && [ -z "$out" ] && [ -z "$comment" ] && [ -z "$(git -C "$tmp/work" status --porcelain)" ] \
-  && [ "$stages" = "$IMPLEMENT$R1$F1$NEEDS_INPUT" ] || ok=0
+  && [ "$stages" = "$IMPLEMENT$R1$F1$NEEDS_INPUT" ] && ! contains "$err" "discarded" || ok=0
 check fix-question-dirty "$ok" "$why"
 rm -rf "$tmp"
 
-# --- a fix committed, then asked before pushing: HEAD goes back to the pull request head, so the resume reviews that ---
+# --- a fix committed, then asked before pushing: HEAD goes back to the pull request head, so the resume reviews that, and the log names the commit ---
 setup
 export SHIM_QUESTION="fix 1" SHIM_COMMIT=fix
 run 1,1 ""
 unset SHIM_QUESTION SHIM_COMMIT
 ok=1; why="rc=$rc stderr=$err stages=$stages ahead=$(git -C "$tmp/work" log --oneline origin/NL-999-x..HEAD | tr '\n' '|')"
 [ "$rc" = 0 ] && [ "$(git -C "$tmp/work" rev-parse HEAD)" = "$(git -C "$tmp/origin" rev-parse refs/heads/NL-999-x)" ] \
-  && [ -z "$(git -C "$tmp/work" status --porcelain)" ] && [ "$stages" = "$IMPLEMENT$R1$F1$NEEDS_INPUT" ] || ok=0
+  && [ -z "$(git -C "$tmp/work" status --porcelain)" ] && [ "$stages" = "$IMPLEMENT$R1$F1$NEEDS_INPUT" ] \
+  && contains "$err" "discarded by the reset to origin/NL-999-x: " && contains "$err" " NL-999 fix" || ok=0
 check fix-question-committed "$ok" "$why"
+rm -rf "$tmp"
+
+# --- a hand commit on a reused worktree, pull request open, and review 1 stops on a pending question: the log names what the reset dropped ---
+setup
+git -C "$tmp/work" push -q origin NL-999-x
+echo hand >> "$tmp/work/src.txt"; git -C "$tmp/work" commit -qam "NL-999 hand fix"
+export SHIM_QUESTION="review 1"
+run 1 "$PR_URL"
+unset SHIM_QUESTION
+ok=1; why="rc=$rc stderr=$err stages=$stages ahead=$(git -C "$tmp/work" log --oneline origin/NL-999-x..HEAD | tr '\n' '|')"
+[ "$rc" = 0 ] && [ "$(git -C "$tmp/work" rev-parse HEAD)" = "$(git -C "$tmp/origin" rev-parse refs/heads/NL-999-x)" ] \
+  && [ "$stages" = "$R1$NEEDS_INPUT" ] && contains "$err" "discarded by the reset to origin/NL-999-x: " \
+  && contains "$err" " NL-999 hand fix" || ok=0
+check resume-review-question-hand-commit "$ok" "$why"
 rm -rf "$tmp"
 
 # --- the test stage asked a question ---
@@ -512,7 +527,8 @@ for stage_rc in 124 2; do
   unset SHIM_FAIL SHIM_FAIL_RC SHIM_COMMIT
   ok=1; why="rc=$rc stderr=$err stages=$stages ahead=$(git -C "$tmp/work" log --oneline origin/NL-999-x..HEAD | tr '\n' '|')"
   [ "$rc" = "$stage_rc" ] && [ "$(git -C "$tmp/work" rev-parse HEAD)" = "$(git -C "$tmp/origin" rev-parse refs/heads/NL-999-x)" ] \
-    && [ "$stages" = "$IMPLEMENT$R1$F1" ] && [ -z "$comment" ] || ok=0
+    && [ "$stages" = "$IMPLEMENT$R1$F1" ] && [ -z "$comment" ] \
+    && contains "$err" "discarded by the reset to origin/NL-999-x: " && contains "$err" " NL-999 fix" || ok=0
   check "fix-exit-$stage_rc-committed" "$ok" "$why"
   rm -rf "$tmp"
 done
