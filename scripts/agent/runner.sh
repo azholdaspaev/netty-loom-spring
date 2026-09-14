@@ -73,7 +73,8 @@ for wt in "$WT"/NL-*/; do
   [ "$(gh pr list --head "$branch" --state merged --json number --jq length)" != 0 ] || continue
   # --force twice: the lock is another tool's (supacode locks every worktree of the clone), and
   # nothing the pipeline owns is behind it once the pull request is merged.
-  git worktree remove --force --force "$wt"
+  rc=0; git worktree remove --force --force "$wt" || rc=$?
+  [ "$rc" = 0 ] || { say "merged: $branch not removed (git exit $rc)"; continue; }
   say "merged: $branch removed"
   git branch -q -D "$branch"
   n=$(issue_of "$branch")

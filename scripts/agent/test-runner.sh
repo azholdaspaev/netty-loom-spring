@@ -370,6 +370,22 @@ ok=1; why="rc=$rc stderr=$err actions=$actions"
 check merged-locked "$ok" "$why"
 rm -rf "$tmp"
 
+# --- a merged pull request whose worktree cannot be removed: named in the log, branch and labels kept for a later tick, and the tick goes on ---
+setup
+worktree NL-7-fix-the-thing
+merged NL-7-fix-the-thing
+issue 7 "Fix the Thing: quickly!" "enhancement,agent/running,agent/pr-ready"
+queue 8 "New work"
+chmod a-w "$tmp/$WT7"
+run
+chmod u+w "$tmp/$WT7"
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" = 0 ] && contains "$said" "|merged: NL-7-fix-the-thing not removed (git exit " && contains "$said" "|requeue|queued: NL-8 picked up on NL-8-new-work|" || ok=0
+contains "$actions" "gh issue edit 7 " && { ok=0; why="$why labels of NL-7 touched"; }
+[ -n "$(git -C "$tmp/main" branch --list NL-7-fix-the-thing)" ] || { ok=0; why="$why branch gone"; }
+check merged-not-removable "$ok" "$why"
+rm -rf "$tmp"
+
 # --- an open agent/running issue at tick start is an orphan: agent/failed, one comment with the log path and the retry line, then the tick goes on ---
 setup
 running 7 "Fix the Thing: quickly!"

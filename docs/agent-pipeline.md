@@ -25,7 +25,9 @@ comment, since the lock proves no pipeline is running (one that also carries `ag
 finished its pipeline, one that also carries `agent/queued` was requeued by hand, and either
 way only `agent/running` comes off), and every closed issue's `agent/*`
 labels off — then clean up every merged pull request (worktree, local branch, the issue's `agent/*`
-labels), `requeue.sh`, a fix stage then a review stage per `agent/fix` pull request, then one
+labels; the worktree goes through any lock another tool put on it, and one the tick still cannot
+remove is logged as `not removed`, keeps its branch and labels for a later tick, and does not stop
+the tick), `requeue.sh`, a fix stage then a review stage per `agent/fix` pull request, then one
 `agent/queued` issue. A tick that finds the lock held exits at once, so one pipeline runs at a
 time; the next queued issue waits for the next free tick.
 
@@ -63,7 +65,7 @@ with the stderr tail and the log path, and no retry.
 Every line the scripts write themselves starts with an ISO-8601 UTC timestamp and the script's
 name; what `gh`, `git` and Gradle print passes through unchanged. The tick's log gets
 `2026-09-13T10:00:03Z runner.sh: tick start`, one line per step (`sweep: NL-7 agent/running ->
-agent/failed`, `merged: NL-5-done removed`, `requeue`, `fix: NL-7 <pull request url>`,
+agent/failed`, `merged: NL-5-done removed` or `merged: NL-5-done not removed (git exit 255)`, `requeue`, `fix: NL-7 <pull request url>`,
 `queued: NL-7 picked up on NL-7-<slug>`) and `tick end (exit 0)`; a tick that finds the lock held
 writes only `tick skipped: lock held`, so a gap with no line at all means launchd did not fire. The
 issue's log gets the pick-up and the `queued: NL-7 pipeline exit 0` / `fix: NL-7 exit 0` outcome
