@@ -227,6 +227,17 @@ ok=1; why="rc=$rc stderr=$err"
 check pending-question "$ok" "$why"
 rm -rf "$tmp"
 
+# --- pending question, then the runner's failure comment: no owner reply, so the stage still does not run ---
+setup
+echo '[{"user":{"login":"runner"},"body":"<!-- agent:question -->\nWhich one?","created_at":"2026-09-12T11:00:00Z","html_url":"u1"},
+       {"user":{"login":"runner"},"body":"Pipeline failed (exit 1, work).","created_at":"2026-09-12T11:30:00Z","html_url":"u2"}]' > "$SHIM_COMMENTS"
+run success "$PR_URL" 999 implement
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 3 ] && contains "$err" "question pending: u1" || ok=0
+[ ! -e "$SHIM_ARGV" ] || { ok=0; why="claude ran with a question pending"; }
+check pending-question-then-commented "$ok" "$why"
+rm -rf "$tmp"
+
 # --- pending question from a third party: not the runner's, so the stage runs ---
 setup
 echo '[{"user":{"login":"o"},"body":"<!-- agent:question -->\nMine?","created_at":"2026-09-12T11:00:00Z","html_url":"u1"}]' > "$SHIM_COMMENTS"

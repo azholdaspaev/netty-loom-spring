@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run one pipeline stage for a GitHub issue as an unattended claude -p and report how it ended:
 # exit 0 (with the pull request URL after implement), 3 when a question is pending -- this stage's,
-# or an earlier run's still newest on the issue -- 124 on timeout, 2 when the infrastructure failed
+# or an earlier run's the owner has not replied to -- 124 on timeout, 2 when the infrastructure failed
 # (a gh call, or claude's error_during_execution), else 1. The result and stderr land under
 # $RUN_ID, the directory of the run the caller chose, or of this stage alone when none was.
 # Usage (cwd = the issue's worktree): scripts/agent/stage.sh <issue number> implement
@@ -83,8 +83,12 @@ trap 'status=$?; ./gradlew --stop >&2 || true; say "end (exit $status)"' EXIT
 # The newest comment's own timestamp rather than date -u: GitHub's clock on both sides, so a
 # skewed local clock cannot hide this stage's question inside a "no commits" failure.
 before=$(comments)
-pending=$(jq -r --arg me "$me" --arg marker "$MARKER" \
-  '.[-1] // empty | select(.user.login == $me and (.body | startswith($marker))) | .html_url' <<<"$before")
+# pipeline.sh's answered_at: the owner's reply ends a question, not any newer comment, so the
+# runner's failure comment after an unanswered one does not let the stage run past it.
+pending=$(jq -r --arg me "$me" --arg owner "${repo%%/*}" --arg marker "$MARKER" '
+  (map(.user.login == $me and (.body | startswith($marker))) | rindex(true)) as $question
+  | select($question != null)
+  | select(.[$question + 1:] | all(.user.login != $owner)) | .[$question].html_url' <<<"$before")
 [ -z "$pending" ] || fail "question pending: $pending" 3
 since=$(jq -r 'map(.created_at) | max // ""' <<<"$before")
 
