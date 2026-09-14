@@ -89,6 +89,13 @@ say "requeue"
 gh pr list --label agent/fix --state open --json url,headRefName --jq '.[] | "\(.url) \(.headRefName)"' \
 | while read -r url branch; do
   n=$(issue_of "$branch")
+  case "$n" in
+    ''|*[!0-9]*)
+      say "fix: $branch names no issue, agent/failed"
+      gh pr edit "$url" --remove-label agent/fix --add-label agent/failed >/dev/null
+      echo "\`agent/fix\` runs on a branch named \`NL-<issue>-<slug>\`; this one is \`$branch\`." | gh pr comment "$url" --body-file - >/dev/null
+      continue ;;
+  esac
   waiting=$(gh issue view "$n" --json labels --jq '.labels[].name | select(. == "agent/needs-input")')
   [ -z "$waiting" ] || continue
   log=$(log_of "$n")

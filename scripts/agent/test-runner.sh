@@ -361,6 +361,21 @@ ok=1; why="rc=$rc stderr=$err actions=$actions"
 check fix-waiting "$ok" "$why"
 rm -rf "$tmp"
 
+# --- agent/fix on a pull request whose branch names no issue (opened by hand): agent/failed with the reason, and the tick goes on ---
+setup
+fixpr "https://github.com/o/r/pull/9" feature-x
+queue 8 "New work"
+run
+comment=$(cat "$tmp/state/pr-comment" 2>/dev/null || true)
+wt8=$(cd "$tmp/netty-loom-wt/NL-8-new-work" 2>/dev/null && pwd -P || echo missing)
+ok=1; why="rc=$rc stderr=$err actions=$actions comment=$comment"
+[ "$rc" = 0 ] || ok=0
+[ "$actions" = "requeue|gh pr edit https://github.com/o/r/pull/9 --remove-label agent/fix --add-label agent/failed|gh pr comment https://github.com/o/r/pull/9 --body-file -|gh issue edit 8 --remove-label agent/queued --add-label agent/running|gradlew dependencySources in $wt8|pipeline 8 in $wt8|gh issue edit 8 --remove-label agent/running|" ] || ok=0
+contains "$comment" '`feature-x`' && contains "$comment" 'NL-<issue>-<slug>' || ok=0
+contains "$said" "|requeue|fix: feature-x names no issue, agent/failed|queued: NL-8 picked up" || { ok=0; why="$why said=$said"; }
+check fix-no-issue-number "$ok" "$why"
+rm -rf "$tmp"
+
 # --- agent/fix on a pull request whose branch has no worktree yet: one is added from origin ---
 setup
 fixpr "$PR_URL" NL-7-fix-the-thing
