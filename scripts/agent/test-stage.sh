@@ -150,6 +150,15 @@ for verb in DELETE PATCH; do
       || { ok=0; why="agent settings deny lacks $rule"; }
   done
 done
+for rule in "Bash(gh issue create *--label*agent/*)" "Bash(gh issue create *-l *agent/*)" \
+            "Bash(gh issue create *-l=*agent/*)"; do
+  jq -e --arg rule "$rule" '.permissions.deny | index($rule)' "$settings" >/dev/null 2>&1 \
+    || { ok=0; why="agent settings deny lacks $rule"; }
+done
+for rule in "Bash(gh issue create *--label*)" "Bash(gh issue create *-l *)" "Bash(gh issue create *-l=*)"; do
+  ! jq -e --arg rule "$rule" '.permissions.deny | index($rule)' "$settings" >/dev/null 2>&1 \
+    || { ok=0; why="agent settings deny still has $rule"; }
+done
 [ "$(argv_after --allowedTools)" = "$allowed" ] || { ok=0; why="allowedTools=$(argv_after --allowedTools)"; }
 prompt_line=$(grep -nxF -- '/flow:implement 999' "$SHIM_ARGV" 2>/dev/null | cut -d: -f1 || true)
 allowed_line=$(grep -nxF -- '--allowedTools' "$SHIM_ARGV" 2>/dev/null | cut -d: -f1 || true)
