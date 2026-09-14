@@ -404,6 +404,52 @@ contains "$actions" "gh issue edit 7 --remove-label agent/running,agent/pr-ready
 check merged-not-removable-retried "$ok" "$why"
 rm -rf "$tmp"
 
+# --- a merged pull request whose worktree fails git's validation (its .git file is gone): git keeps it registered, so the directory, branch and labels stay, and the tick goes on ---
+setup
+worktree NL-7-fix-the-thing
+rm "$tmp/$WT7/.git"
+merged NL-7-fix-the-thing
+issue 7 "Fix the Thing: quickly!" "enhancement,agent/running,agent/pr-ready"
+queue 8 "New work"
+run
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" = 0 ] && contains "$said" "|merged: NL-7-fix-the-thing not removed (git exit 128)|requeue|queued: NL-8 picked up on NL-8-new-work|" || ok=0
+contains "$actions" "gh issue edit 7 " && { ok=0; why="$why labels of NL-7 touched"; }
+[ -d "$tmp/$WT7" ] || { ok=0; why="$why directory gone"; }
+[ -d "$tmp/main/.git/worktrees/NL-7-fix-the-thing" ] || { ok=0; why="$why worktree unregistered"; }
+[ -n "$(git -C "$tmp/main" branch --list NL-7-fix-the-thing)" ] || { ok=0; why="$why branch gone"; }
+check merged-validation-failed "$ok" "$why"
+rm -rf "$tmp"
+
+# --- a merged pull request whose worktree git refuses but keeps registered (its gitdir file points elsewhere): the directory, branch and labels stay, and the tick goes on ---
+setup
+worktree NL-7-fix-the-thing
+echo "$tmp/elsewhere/.git" > "$tmp/main/.git/worktrees/NL-7-fix-the-thing/gitdir"
+merged NL-7-fix-the-thing
+issue 7 "Fix the Thing: quickly!" "enhancement,agent/running,agent/pr-ready"
+run
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" = 0 ] && contains "$said" "|merged: NL-7-fix-the-thing not removed (git exit 128)|requeue|tick end (exit 0)|" || ok=0
+contains "$actions" "gh issue edit 7 " && { ok=0; why="$why labels of NL-7 touched"; }
+[ -f "$tmp/$WT7/.git" ] || { ok=0; why="$why directory gone"; }
+[ -n "$(git -C "$tmp/main" branch --list NL-7-fix-the-thing)" ] || { ok=0; why="$why branch gone"; }
+check merged-still-registered "$ok" "$why"
+rm -rf "$tmp"
+
+# --- a directory under a merged branch's name that is not a worktree of the clone (a separate clone): left as it is, and the tick goes on ---
+setup
+git clone -q "$tmp/origin" "$tmp/$WT7" 2>/dev/null
+echo keep > "$tmp/$WT7/keep"
+merged NL-7-fix-the-thing
+issue 7 "Fix the Thing: quickly!" "enhancement,agent/running,agent/pr-ready"
+run
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" = 0 ] && contains "$said" "|merged: NL-7-fix-the-thing not removed (git exit 128)|requeue|tick end (exit 0)|" || ok=0
+contains "$actions" "gh issue edit 7 " && { ok=0; why="$why labels of NL-7 touched"; }
+[ -f "$tmp/$WT7/keep" ] || { ok=0; why="$why directory removed"; }
+check merged-not-a-worktree "$ok" "$why"
+rm -rf "$tmp"
+
 # --- an open agent/running issue at tick start is an orphan: agent/failed, one comment with the log path and the retry line, then the tick goes on ---
 setup
 running 7 "Fix the Thing: quickly!"
