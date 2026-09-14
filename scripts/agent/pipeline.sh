@@ -21,7 +21,12 @@ LOG="$HOME/.netty-loom-agent/logs/NL-$N/$RUN_ID"
 ROUNDS=3
 MARKER='<!-- agent:question -->'
 
-reset_tree() { git reset -q --hard "$1" && git clean -fdq; }
+reset_tree() {
+  local dropped
+  dropped=$(git log --format='%h %s' "$1..HEAD" | paste -sd ';' -)
+  [ -z "$dropped" ] || say "unpushed commits discarded by the reset to $1: $dropped"
+  git reset -q --hard "$1" && git clean -fdq
+}
 say() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) pipeline.sh: NL-$N: $*" >&2; }
 fail() { say "$1 failed"; exit 2; }
 gh() { command gh "$@" || fail "gh $1 $2"; }
