@@ -383,6 +383,7 @@ ok=1; why="rc=$rc stderr=$err actions=$actions"
 [ "$rc" = 0 ] && contains "$said" "|merged: NL-7-fix-the-thing not removed (git exit " && contains "$said" "|requeue|queued: NL-8 picked up on NL-8-new-work|" || ok=0
 contains "$actions" "gh issue edit 7 " && { ok=0; why="$why labels of NL-7 touched"; }
 [ -n "$(git -C "$tmp/main" branch --list NL-7-fix-the-thing)" ] || { ok=0; why="$why branch gone"; }
+contains "$err" "rm: " || { ok=0; why="$why rm's reason missing"; }
 check merged-not-removable "$ok" "$why"
 rm -rf "$tmp"
 

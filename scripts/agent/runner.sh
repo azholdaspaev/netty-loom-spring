@@ -82,7 +82,7 @@ for wt in "$WT"/NL-*/; do
     # registers, or never did, is not the runner's to delete.
     admin=; [ ! -f "$wt/.git" ] || admin=$(sed -n 's/^gitdir: //p' "$wt/.git")
     unregistered=0; case "$admin" in "$gitdir/worktrees/"*) [ -d "$admin" ] || unregistered=1 ;; esac
-    if [ "$unregistered" != 1 ] || ! rm -rf "$wt" 2>/dev/null; then say "merged: $branch not removed (git exit $rc)"; continue; fi
+    if [ "$unregistered" != 1 ] || ! rm -rf "$wt"; then say "merged: $branch not removed (git exit $rc)"; continue; fi
   fi
   say "merged: $branch removed"
   git branch -q -D "$branch"
