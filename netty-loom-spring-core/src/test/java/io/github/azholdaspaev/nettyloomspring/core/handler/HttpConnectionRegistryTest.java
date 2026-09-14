@@ -44,7 +44,7 @@ class HttpConnectionRegistryTest {
     }
 
     @Test
-    void shouldOnlyCloseAfterTheLastPipelinedExchangeFinishes() {
+    void shouldOnlyCloseAfterLastPipelinedExchangeFinishes() {
         HttpConnectionRegistry registry = newRegistry();
         EmbeddedChannel connection = register(registry);
         registry.exchangeStarted(connection);
@@ -78,7 +78,7 @@ class HttpConnectionRegistryTest {
     }
 
     @Test
-    void shouldCloseAConnectionThatArrivesAfterTheDrainHasBegun() {
+    void shouldCloseConnectionThatArrivesAfterDrainHasBegun() {
         HttpConnectionRegistry registry = newRegistry();
         registry.beginDrain();
 
@@ -90,7 +90,7 @@ class HttpConnectionRegistryTest {
     }
 
     @Test
-    void shouldCloseAConnectionThatArrivesAfterTheDrainIsAborted() {
+    void shouldCloseConnectionThatArrivesAfterDrainIsAborted() {
         HttpConnectionRegistry registry = newRegistry();
         registry.abortDrain();
 
@@ -103,7 +103,7 @@ class HttpConnectionRegistryTest {
     }
 
     @Test
-    void shouldClearDrainingOnResetSoARestartedServerKeepsConnectionsAlive() {
+    void shouldClearDrainingOnResetSoRestartKeepsConnectionsAlive() {
         HttpConnectionRegistry registry = newRegistry();
         registry.beginDrain();
 
@@ -120,7 +120,7 @@ class HttpConnectionRegistryTest {
     }
 
     @Test
-    void shouldWaitOutTheTimeoutWhileADispatchIsStillRunning() throws Exception {
+    void shouldWaitOutTimeoutWhileDispatchIsStillRunning() throws Exception {
         HttpConnectionRegistry registry = newRegistry();
         registry.dispatchStarted();
 
@@ -134,7 +134,7 @@ class HttpConnectionRegistryTest {
     }
 
     @Test
-    void shouldWakeTheDrainAsSoonAsTheLastDispatchFinishes() throws Exception {
+    void shouldWakeDrainAsSoonAsLastDispatchFinishes() throws Exception {
         HttpConnectionRegistry registry = newRegistry();
         registry.dispatchStarted();
         registry.beginDrain();
@@ -153,7 +153,7 @@ class HttpConnectionRegistryTest {
     }
 
     @Test
-    void shouldStopWaitingForDispatchesWhenTheDrainIsAborted() throws Exception {
+    void shouldStopWaitingForDispatchesWhenDrainIsAborted() throws Exception {
         HttpConnectionRegistry registry = newRegistry();
         registry.dispatchStarted();
         registry.beginDrain();
@@ -172,7 +172,7 @@ class HttpConnectionRegistryTest {
     }
 
     @Test
-    void shouldWaitForDispatchesAgainOnceResetFollowsAnAbort() throws Exception {
+    void shouldWaitForDispatchesAgainOnceResetFollowsAbort() throws Exception {
         HttpConnectionRegistry registry = newRegistry();
         registry.dispatchStarted();
         registry.abortDrain();

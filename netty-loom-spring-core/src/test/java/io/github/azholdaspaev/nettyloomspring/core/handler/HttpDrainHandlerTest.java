@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class HttpDrainHandlerTest {
 
     @Test
-    void shouldNotTreatAConnectionWithAPartlyReceivedRequestAsIdle() {
+    void shouldNotTreatConnectionWithPartlyReceivedRequestAsIdle() {
         HttpConnectionRegistry registry = newRegistry();
         EmbeddedChannel channel = register(registry);
 
@@ -37,7 +37,7 @@ class HttpDrainHandlerTest {
     }
 
     @Test
-    void shouldCloseTheConnectionAfterTheLastOwedResponseWhileDraining() {
+    void shouldCloseConnectionAfterLastOwedResponseWhileDraining() {
         HttpConnectionRegistry registry = newRegistry();
         EmbeddedChannel channel = register(registry);
         receiveRequest(channel);
@@ -80,7 +80,7 @@ class HttpDrainHandlerTest {
     }
 
     @Test
-    void shouldKeepTheConnectionOpenWhenNotDraining() {
+    void shouldKeepConnectionOpenWhenNotDraining() {
         HttpConnectionRegistry registry = newRegistry();
         EmbeddedChannel channel = register(registry);
         receiveRequest(channel);
@@ -96,7 +96,7 @@ class HttpDrainHandlerTest {
     }
 
     @Test
-    void shouldNotCountAResponseForARequestItNeverSaw() {
+    void shouldNotCountResponseForRequestItNeverSawAgainstInFlight() {
         HttpConnectionRegistry registry = newRegistry();
         EmbeddedChannel channel = register(registry);
 

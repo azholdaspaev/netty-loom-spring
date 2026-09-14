@@ -18,46 +18,46 @@ class NettyTransportTest {
     // --- Pure resolution logic (no mocks, no OS dependency) ---
 
     @Test
-    void autoPrefersEpollWhenAvailable() {
+    void shouldResolveAutoToEpollWhenAvailable() {
         assertEquals(NettyTransport.EPOLL, NettyTransport.resolve(NettyTransportPreference.AUTO, true, true));
         assertEquals(NettyTransport.EPOLL, NettyTransport.resolve(NettyTransportPreference.AUTO, true, false));
     }
 
     @Test
-    void autoFallsBackToKqueueWhenOnlyKqueueAvailable() {
+    void shouldResolveAutoToKqueueWhenOnlyKqueueAvailable() {
         assertEquals(NettyTransport.KQUEUE, NettyTransport.resolve(NettyTransportPreference.AUTO, false, true));
     }
 
     @Test
-    void autoFallsBackToNioWhenNoNativeAvailable() {
+    void shouldResolveAutoToNioWhenNoNativeAvailable() {
         assertEquals(NettyTransport.NIO, NettyTransport.resolve(NettyTransportPreference.AUTO, false, false));
     }
 
     @Test
-    void nioIsAlwaysSelectedRegardlessOfAvailability() {
+    void shouldResolveNioToNioRegardlessOfAvailability() {
         assertEquals(NettyTransport.NIO, NettyTransport.resolve(NettyTransportPreference.NIO, true, true));
         assertEquals(NettyTransport.NIO, NettyTransport.resolve(NettyTransportPreference.NIO, false, false));
     }
 
     @Test
-    void explicitEpollSelectedWhenAvailable() {
+    void shouldResolveExplicitEpollWhenAvailable() {
         assertEquals(NettyTransport.EPOLL, NettyTransport.resolve(NettyTransportPreference.EPOLL, true, false));
     }
 
     @Test
-    void explicitKqueueSelectedWhenAvailable() {
+    void shouldResolveExplicitKqueueWhenAvailable() {
         assertEquals(NettyTransport.KQUEUE, NettyTransport.resolve(NettyTransportPreference.KQUEUE, false, true));
     }
 
     @Test
-    void explicitEpollFailsFastWhenUnavailable() {
+    void shouldFailFastOnExplicitEpollWhenUnavailable() {
         IllegalStateException ex = assertThrows(IllegalStateException.class,
             () -> NettyTransport.resolve(NettyTransportPreference.EPOLL, false, false));
         assertTrue(ex.getMessage().contains("epoll"));
     }
 
     @Test
-    void explicitKqueueFailsFastWhenUnavailable() {
+    void shouldFailFastOnExplicitKqueueWhenUnavailable() {
         IllegalStateException ex = assertThrows(IllegalStateException.class,
             () -> NettyTransport.resolve(NettyTransportPreference.KQUEUE, false, false));
         assertTrue(ex.getMessage().contains("kqueue"));
@@ -67,7 +67,7 @@ class NettyTransportTest {
 
     @Test
     @EnabledOnOs(OS.LINUX)
-    void selectsEpollOnLinux() {
+    void shouldSelectEpollOnLinux() {
         assertTrue(Epoll.isAvailable(), "epoll native library must be on the classpath on Linux");
         NettyIoHandlerFactory factory = new NettyIoHandlerFactory(NettyTransportPreference.AUTO);
         assertEquals(EpollServerSocketChannel.class, factory.getServerChannelClass());
@@ -75,14 +75,14 @@ class NettyTransportTest {
 
     @Test
     @EnabledOnOs(OS.MAC)
-    void selectsKqueueOnMac() {
+    void shouldSelectKqueueOnMac() {
         assertTrue(KQueue.isAvailable(), "kqueue native library must be on the classpath on macOS");
         NettyIoHandlerFactory factory = new NettyIoHandlerFactory(NettyTransportPreference.AUTO);
         assertEquals(KQueueServerSocketChannel.class, factory.getServerChannelClass());
     }
 
     @Test
-    void nioFactorySelectsNioServerChannel() {
+    void shouldSelectNioServerChannelForNioFactory() {
         NettyIoHandlerFactory factory = new NettyIoHandlerFactory(NettyTransportPreference.NIO);
         assertEquals(NioServerSocketChannel.class, factory.getServerChannelClass());
     }

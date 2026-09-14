@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class HttpConnectionMetadataTest {
 
     @Test
-    void mapsFieldsAndDerivesScheme() {
+    void shouldMapFieldsAndDeriveScheme() {
         HttpConnectionMetadata insecure = new HttpConnectionMetadata("[::1]", 54321, "10.0.0.1", 8080, false, "c1");
 
         assertEquals("[::1]", insecure.remoteAddr());
@@ -29,13 +29,13 @@ class HttpConnectionMetadataTest {
     }
 
     @Test
-    void defaultPortMatchesScheme() {
+    void shouldMatchDefaultPortToScheme() {
         assertEquals(80, new HttpConnectionMetadata("", 0, "", 0, false, "").defaultPort());
         assertEquals(443, new HttpConnectionMetadata("", 0, "", 0, true, "").defaultPort());
     }
 
     @Test
-    void fromEmbeddedChannelYieldsDefaults() {
+    void shouldYieldDefaultsFromEmbeddedChannel() {
         ChannelHandlerContext ctx =
             new EmbeddedChannel(new ChannelInboundHandlerAdapter() {}).pipeline().firstContext();
 
@@ -43,7 +43,7 @@ class HttpConnectionMetadataTest {
     }
 
     @Test
-    void fromChannelTakesTheLongChannelIdAsConnectionId() {
+    void shouldTakeLongChannelIdAsConnectionIdFromChannel() {
         ChannelId channelId = DefaultChannelId.newInstance();
         ChannelHandlerContext ctx =
             new EmbeddedChannel(channelId, new ChannelInboundHandlerAdapter() {}).pipeline().firstContext();

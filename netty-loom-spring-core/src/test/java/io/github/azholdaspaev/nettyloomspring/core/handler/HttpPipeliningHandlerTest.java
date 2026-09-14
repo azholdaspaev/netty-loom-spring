@@ -46,7 +46,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class HttpPipeliningHandlerTest {
 
     @Test
-    void shouldWithholdAPipelinedRequestUntilTheOneBeforeItIsAnswered() {
+    void shouldWithholdPipelinedRequestUntilOneBeforeItIsAnswered() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpPipeliningHandler());
 
         channel.writeInbound(request("/first"), request("/second"));
@@ -64,7 +64,7 @@ class HttpPipeliningHandlerTest {
     }
 
     @Test
-    void shouldNotEndTheExchangeOnANonFinalPartOfTheResponse() {
+    void shouldNotEndExchangeOnNonFinalResponsePartWithRequestQueued() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpPipeliningHandler());
         channel.writeInbound(request("/first"), request("/second"));
         uriOf(channel.readInbound());
@@ -79,7 +79,7 @@ class HttpPipeliningHandlerTest {
     }
 
     @Test
-    void shouldReleaseARequestStillQueuedWhenTheConnectionDies() {
+    void shouldReleaseRequestStillQueuedWhenConnectionDies() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpPipeliningHandler());
         FullHttpRequest serving = request("/serving");
         FullHttpRequest queued = request("/queued");
@@ -95,7 +95,7 @@ class HttpPipeliningHandlerTest {
     }
 
     @Test
-    void shouldReleaseAQueuedRequestEvenWhenTheResponseIsNeverAcceptedBySocket() {
+    void shouldReleaseQueuedRequestWhenSocketNeverAcceptsResponse() {
         // issue #76 review
         EmbeddedChannel channel = new EmbeddedChannel(new NeverCompletingWrite(), new HttpPipeliningHandler());
         channel.writeInbound(request("/first"), request("/second"));
@@ -110,7 +110,7 @@ class HttpPipeliningHandlerTest {
     }
 
     @Test
-    void shouldNotRecurseWhenABurstIsAnsweredSynchronously() {
+    void shouldNotRecurseWhenBurstIsAnsweredSynchronously() {
         HoldFirstThenAnswerInLoop responder = new HoldFirstThenAnswerInLoop();
         EmbeddedChannel channel = new EmbeddedChannel(new HttpPipeliningHandler(), responder);
 
@@ -130,7 +130,7 @@ class HttpPipeliningHandlerTest {
     }
 
     @Test
-    void shouldForwardEveryPartOfTheRequestItIsServing() {
+    void shouldForwardEveryPartOfRequestItIsServing() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpPipeliningHandler());
 
         channel.writeInbound(head("/upload"), content("body"), lastContent());
@@ -145,7 +145,7 @@ class HttpPipeliningHandlerTest {
     }
 
     @Test
-    void shouldKeepForwardingTheBodyOfARequestItHasAlreadyAnswered() {
+    void shouldKeepForwardingBodyOfRequestItHasAlreadyAnswered() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpPipeliningHandler());
         channel.writeInbound(head("/upload"));
         assertEquals("/upload", ((HttpRequest) channel.readInbound()).uri());
@@ -170,7 +170,7 @@ class HttpPipeliningHandlerTest {
     }
 
     @Test
-    void shouldNotLetALaterRequestJumpTheOnesAlreadyWaiting() {
+    void shouldNotLetLaterRequestJumpOnesAlreadyWaiting() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpPipeliningHandler());
         channel.writeInbound(request("/first"), request("/second"));
         uriOf(channel.readInbound());
@@ -191,7 +191,7 @@ class HttpPipeliningHandlerTest {
     }
 
     @Test
-    void shouldNotStartASecondExchangeWhenTheQueueHasAlreadyMovedOn() {
+    void shouldNotStartSecondExchangeWhenQueueHasAlreadyMovedOn() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpPipeliningHandler());
         channel.writeInbound(request("/first"));
         assertEquals("/first", uriOf(channel.readInbound()));
@@ -213,7 +213,7 @@ class HttpPipeliningHandlerTest {
     }
 
     @Test
-    void shouldNotEndTheExchangeOnAnInterimResponse() {
+    void shouldNotEndExchangeOnInterimResponse() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpPipeliningHandler());
         channel.writeInbound(head("/upload"));
         assertEquals("/upload", ((HttpRequest) channel.readInbound()).uri());
@@ -235,7 +235,7 @@ class HttpPipeliningHandlerTest {
     }
 
     @Test
-    void shouldReleaseQueuedContentWhenTheConnectionDies() {
+    void shouldReleaseQueuedContentWhenConnectionDies() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpPipeliningHandler());
         channel.writeInbound(request("/serving"));
         channel.readInbound();
@@ -250,7 +250,7 @@ class HttpPipeliningHandlerTest {
     }
 
     @Test
-    void shouldReleaseTheQueuedContentBehindOneThatFailsItsRelease() {
+    void shouldReleaseQueuedContentBehindOneThatFailsItsRelease() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpPipeliningHandler());
         channel.writeInbound(request("/serving"));
         channel.readInbound();
