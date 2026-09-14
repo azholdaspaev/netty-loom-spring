@@ -65,8 +65,9 @@ with the stderr tail and the log path, and no retry.
 Every line the scripts write themselves starts with an ISO-8601 UTC timestamp and the script's
 name; what `gh`, `git` and Gradle print passes through unchanged. The tick's log gets
 `2026-09-13T10:00:03Z runner.sh: tick start`, one line per step (`sweep: NL-7 agent/running ->
-agent/failed`, `merged: NL-5-done removed` or `merged: NL-5-done not removed (git exit 255)`, `requeue`, `fix: NL-7 <pull request url>`,
-`queued: NL-7 picked up on NL-7-<slug>`) and `tick end (exit 0)`; a tick that finds the lock held
+agent/failed`, `merged: NL-5-done removed` or `merged: NL-5-done not removed (git exit 255)`,
+`requeue`, `fix: NL-7 <pull request url>`, `queued: NL-7 picked up on NL-7-<slug>`) and
+`tick end (exit 0)`; a tick that finds the lock held
 writes only `tick skipped: lock held`, so a gap with no line at all means launchd did not fire. The
 issue's log gets the pick-up and the `queued: NL-7 pipeline exit 0` / `fix: NL-7 exit 0` outcome
 lines as well, and from `stage.sh` a `stage.sh: NL-7 review 2: start` and `end (exit 0)` pair per
