@@ -41,7 +41,10 @@ next free tick.
    `<!-- agent:question -->` and the issue moves to `agent/needs-input`. Reply on the issue; the
    next tick moves it back to `agent/queued` and the pipeline starts over on the same worktree.
    An `agent/fix` stage asks the same way, and the pull request keeps its label; the tick after
-   your reply runs the fix stage and the review stage again.
+   your reply runs the fix stage and the review stage again. `requeue.sh` tells the two apart by
+   that label alone, so put `agent/fix` on a draft only once its `pipeline.sh` question is off
+   `agent/needs-input`: labelled while the question waits, the answer runs the fix stages instead
+   and the pipeline does not resume — `agent/queued` by hand is the recovery.
 2. **The review.** On `agent/pr-ready`, review the pull request. Inline comments plus the
    `agent/fix` label on the pull request run one fix stage, which replies in every thread with a
    sha or the reason nothing changed, then one review stage, which verifies each fix blind and
