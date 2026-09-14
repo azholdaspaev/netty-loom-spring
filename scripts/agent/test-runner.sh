@@ -355,6 +355,21 @@ ok=1; why="rc=$rc stderr=$err actions=$actions"
 check merged "$ok" "$why"
 rm -rf "$tmp"
 
+# --- a merged pull request whose worktree another tool locked (supacode locks every worktree of the clone): removed all the same ---
+setup
+worktree NL-7-fix-the-thing
+git -C "$tmp/main" worktree lock --reason '{"owner":"supacode"}' "$tmp/$WT7"
+merged NL-7-fix-the-thing
+issue 7 "Fix the Thing: quickly!" "enhancement,agent/running,agent/pr-ready"
+run
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" = 0 ] && [ "$actions" = "gh issue edit 7 --remove-label agent/running,agent/pr-ready|requeue|" ] || ok=0
+[ ! -d "$tmp/$WT7" ] || { ok=0; why="$why worktree still there"; }
+[ -z "$(git -C "$tmp/main" branch --list NL-7-fix-the-thing)" ] || { ok=0; why="$why branch still there"; }
+[ "$said" = "tick start|merged: NL-7-fix-the-thing removed|requeue|tick end (exit 0)|" ] || { ok=0; why="$why said=$said"; }
+check merged-locked "$ok" "$why"
+rm -rf "$tmp"
+
 # --- an open agent/running issue at tick start is an orphan: agent/failed, one comment with the log path and the retry line, then the tick goes on ---
 setup
 running 7 "Fix the Thing: quickly!"
