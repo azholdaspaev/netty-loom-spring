@@ -12,22 +12,25 @@ export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 
 # pipeline.sh finds stage.sh and pr-comments.sh relative to itself, so each case gets a copy of
 # the tree's layout beside a stage.sh shim, a clone on NL-999-x, gh first on PATH and a fresh HOME.
-# The stage shim writes the result file pipeline.sh sums, moves the pull request head on the fix
+# The stage shim records the tree it found in tree-<stage>, writes the result file pipeline.sh
+# sums, moves the pull request head on the fix
 # rounds SHIM_FIX_PUSHES lists ("1,0" = fix 1 pushes a commit, fix 2 does not; unset = every fix
 # pushes), posts inline comments as the runner on the review rounds SHIM_REVIEW_POSTS counts
 # ("0,1" = review 2 posts one; unset = none), edits src.txt -- staged and unstaged -- and adds
 # scratch.txt in the stage SHIM_DIRTY names, and
 # exits SHIM_FAIL_RC (1 unset) from the stage SHIM_FAIL names or 3 from the one SHIM_QUESTION names ("review 2"). The
 # gh shim serves that state back, inline comments
-# only through pr-comments.sh's own call, and answers each GraphQL thread query with the count
+# only through pr-comments.sh's own call, keeps the body of a pull request pipeline.sh opens
+# itself in pr-body, and answers each GraphQL thread query with the count
 # SHIM_OPEN holds for the latest review round ("2,0" = two open threads after the first review,
 # none after the second); every call whose arguments start with SHIM_GH_FAIL exits 1 instead, from
 # the first event line starting with SHIM_GH_FAIL_AFTER on when that is set.
 setup() {
   tmp=$(mktemp -d)
-  mkdir -p "$tmp/scripts/agent" "$tmp/.claude/scripts" "$tmp/bin" "$tmp/home" "$tmp/state"
+  mkdir -p "$tmp/scripts/agent" "$tmp/.claude/scripts" "$tmp/.github" "$tmp/bin" "$tmp/home" "$tmp/state"
   cp "$HERE/pipeline.sh" "$tmp/scripts/agent/pipeline.sh"
   cp "$HERE/../../.claude/scripts/pr-comments.sh" "$tmp/.claude/scripts/pr-comments.sh"
+  cp "$HERE/../../.github/PULL_REQUEST_TEMPLATE.md" "$tmp/.github/PULL_REQUEST_TEMPLATE.md"
   git init -q --bare -b main "$tmp/origin"
   git clone -q "$tmp/origin" "$tmp/work" 2>/dev/null
   echo root > "$tmp/work/src.txt"
@@ -40,6 +43,7 @@ setup() {
 #!/usr/bin/env bash
 echo "stage $*" >> "$SHIM_EVENTS"
 stage=$2; round=${4:-}
+git status --porcelain > "$SHIM_STATE/tree-$stage"
 if [ "$stage" = "${SHIM_DIRTY:-}" ]; then
   echo staged >> src.txt; git add src.txt; echo mutated >> src.txt; touch scratch.txt
 fi
@@ -74,6 +78,7 @@ if [ -n "${SHIM_GH_FAIL:-}" ] && { [ -z "${SHIM_GH_FAIL_AFTER:-}" ] || grep -q "
 fi
 case "$*" in
   "pr list --head NL-999-x "*) if [ -n "${SHIM_PR_URL:-}" ]; then echo "$SHIM_PR_URL"; fi ;;
+  "pr create --draft --title "*" --body-file -") cat > "$SHIM_STATE/pr-body"; echo "$SHIM_URL" ;;
   "pr view "*" --json url "*) echo "$3" ;;
   "pr view "*" --json headRefOid "*) cat "$SHIM_STATE/head" ;;
   "api user --jq .login") echo runner ;;
@@ -84,6 +89,7 @@ case "$*" in
     open=$(echo "$SHIM_OPEN" | cut -d, -f"$round")
     [ -n "$open" ] || { echo "gh shim: SHIM_OPEN exhausted" >&2; exit 1; }
     jq -n --argjson n "$open" '[range($n) | {id: "T\(.)", isResolved: false, isOutdated: false, firstCommentId: .}]' ;;
+  "issue view 999 --json title --jq .title") echo "Decide the retry" ;;
   "issue edit 999 "*) echo "https://github.com/o/r/issues/999" ;;
   "issue comment 999 --body-file -") cat > "$SHIM_STATE/comment"; echo "https://github.com/o/r/issues/999#issuecomment-1" ;;
 esac
@@ -101,7 +107,7 @@ run() {
         "$tmp/scripts/agent/pipeline.sh" 999 2> "$tmp/stderr") || rc=$?
   err=$(cat "$tmp/stderr")
   comment=$(cat "$SHIM_STATE/comment" 2>/dev/null || true)
-  stages=$(grep '^stage \|^gh pr ready\|^gh issue' "$SHIM_EVENTS" 2>/dev/null | tr '\n' '|' || true)
+  stages=$(grep '^stage \|^gh pr create\|^gh pr ready\|^gh issue' "$SHIM_EVENTS" 2>/dev/null | tr '\n' '|' || true)
 }
 
 check() {
@@ -116,6 +122,7 @@ R1="stage 999 review $PR_URL 1|"; F1="stage 999 fix $PR_URL 1|"
 R2="stage 999 review $PR_URL 2|"; F2="stage 999 fix $PR_URL 2|"
 R3="stage 999 review $PR_URL 3|"; F3="stage 999 fix $PR_URL 3|"
 TEST="stage 999 test $PR_URL|"
+CREATE="gh issue view 999 --json title --jq .title|gh pr create --draft --title NL-999 Decide the retry --body-file -|"
 HANDOFF="gh pr ready $PR_URL|gh issue edit 999 --add-label agent/pr-ready|gh issue comment 999 --body-file -|"
 NEEDS_INPUT="gh issue edit 999 --remove-label agent/running --add-label agent/needs-input|"
 
@@ -130,7 +137,38 @@ for needle in "$PR_URL" "rounds: 2" "converged" "2.50 USD" "5 min"; do
   contains "$comment" "$needle" || { ok=0; why="comment lacks '$needle': $comment"; }
 done
 contains "$comment" "did not converge" && { ok=0; why="comment says it did not converge"; }
+contains "$comment" "stash" && { ok=0; why="comment names a stash on a clean pick-up: $comment"; }
 check converges "$ok" "$why"
+rm -rf "$tmp"
+
+# --- a retry on a dirty worktree: stashed by name, so the stage starts clean and the maintainer can find the hunks ---
+setup
+echo staged >> "$tmp/work/src.txt"; git -C "$tmp/work" add src.txt
+echo mutated >> "$tmp/work/src.txt"; touch "$tmp/work/scratch.txt"
+run 0 ""
+stash=$(git -C "$tmp/work" stash list --format=%gs)
+tree=$(cat "$SHIM_STATE/tree-implement" 2>/dev/null || echo unread)
+ok=1; why="rc=$rc stderr=$err stages=$stages stash=$stash tree=$tree comment=$comment"
+[ "$rc" = 0 ] && [ "$stages" = "$IMPLEMENT$R1$TEST$HANDOFF" ] && [ -z "$tree" ] \
+  && [ "$(git -C "$tmp/work" stash list | wc -l | tr -d ' ')" = 1 ] \
+  && contains "$stash" "NL-999 retry 20" \
+  && contains "$err" "${stash#On NL-999-x: }" && contains "$comment" "${stash#On NL-999-x: }" || ok=0
+check retry-dirty "$ok" "$why"
+rm -rf "$tmp"
+
+# --- a retry on commits without a pull request: pushed and opened by the script, no implement stage ---
+setup
+echo work >> "$tmp/work/src.txt"; git -C "$tmp/work" commit -qam "NL-999 work"
+run 0 ""
+body=$(cat "$SHIM_STATE/pr-body" 2>/dev/null || true)
+ok=1; why="rc=$rc stderr=$err stages=$stages body=$body"
+[ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] && [ "$stages" = "$CREATE$R1$TEST$HANDOFF" ] \
+  && [ "$(git -C "$tmp/origin" rev-parse refs/heads/NL-999-x)" = "$(git -C "$tmp/work" rev-parse HEAD)" ] || ok=0
+for needle in "Closes #999." "no implement stage wrote" "## Problem" "## What changed" "## Verification" "## Checklist"; do
+  contains "$body" "$needle" || { ok=0; why="body lacks '$needle': $body"; }
+done
+contains "$comment" "1.00 USD" || { ok=0; why="comment lacks '1.00 USD': $comment"; }
+check retry-unpushed "$ok" "$why"
 rm -rf "$tmp"
 
 # --- never converges ---

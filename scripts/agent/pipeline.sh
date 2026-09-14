@@ -3,17 +3,22 @@
 # and fix until no review thread is left open or a round changed nothing -- the fix pushed no
 # commit and the review after it posted no comment -- three rounds at most, then verify by test
 # and hand over. A stage that asked a question moves the issue to agent/needs-input instead.
+# A reused worktree is settled first: uncommitted edits go to a named stash, and commits without
+# a pull request get one opened here, with the template as its body, rather than a second
+# implement stage on a branch that already carries the work.
 # Usage: scripts/agent/pipeline.sh <issue number>    (cwd = the issue's worktree)
 set -euo pipefail
 
 N="${1:?usage: pipeline.sh <issue number>}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PR_COMMENTS="$HERE/../../.claude/scripts/pr-comments.sh"
+PR_TEMPLATE="$HERE/../../.github/PULL_REQUEST_TEMPLATE.md"
 LOG="$HOME/.netty-loom-agent/logs/NL-$N"
 ROUNDS=3
 
 reset_tree() { git reset -q --hard && git clean -fdq; }
-fail() { echo "pipeline.sh: NL-$N: $1 failed" >&2; exit 2; }
+say() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) pipeline.sh: NL-$N: $*" >&2; }
+fail() { say "$1 failed"; exit 2; }
 gh() { command gh "$@" || fail "gh $1 $2"; }
 pr_comments() { "$PR_COMMENTS" "$url" || fail pr-comments.sh; }
 
@@ -25,7 +30,7 @@ stage() {
   stage_out=$("$HERE/stage.sh" "$N" "$@") || rc=$?
   case "$rc" in
     0) ;;
-    3) # Implement's edits stay for its resumed self; any later stage's would stop the review that resumes.
+    3) # Implement's edits stay for the retry's stash; any later stage's would stop the review that resumes.
        [ "$1" = implement ] || reset_tree
        # command gh, not the wrapper: a retry reruns the stage, which stops on its own pending question and exits 0.
        command gh issue edit "$N" --remove-label agent/running --add-label agent/needs-input >/dev/null; exit 0 ;;
@@ -37,8 +42,25 @@ stage() {
 }
 
 branch=$(git branch --show-current)
+stash=""
+if [ -n "$(git status --porcelain)" ]; then
+  stash="NL-$N retry $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  git stash push -q -u -m "$stash"
+  say "uncommitted edits found on pick-up, stashed as '$stash'"
+fi
 url=$(gh pr list --head "$branch" --json url --jq '.[0].url')
-if [ -z "$url" ]; then
+if [ -z "$url" ] && [ -n "$(git log --oneline origin/main..HEAD)" ]; then
+  git push -q -u origin "$branch" || fail "git push"
+  title=$(gh issue view "$N" --json title --jq .title)
+  body="$(sed "s/#NN/#$N/" "$PR_TEMPLATE")
+
+---
+
+Opened by \`pipeline.sh\` on a retry that found these commits on the branch and no pull request:
+no implement stage wrote this body, so the sections above are the template's."
+  url=$(gh pr create --draft --title "NL-$N $title" --body-file - <<<"$body")
+  say "commits found on pick-up without a pull request, opened $url"
+elif [ -z "$url" ]; then
   stage implement
   url=$stage_out
 fi
@@ -87,6 +109,7 @@ gh issue comment "$N" --body-file - >/dev/null <<BODY
 Pull request: $url
 Review/fix rounds: $round, $outcome
 Cost: $(printf '%.2f' "$cost") USD, wall time: $minutes min, from $results stage results in $LOG.
+${stash:+Uncommitted edits found on pick-up are stashed in the worktree as \`$stash\`.}
 ${dirty:+Tree was dirty after the test stage and was reset with \`reset_tree\` (\`pipeline.sh\`):
 \`\`\`
 $dirty
