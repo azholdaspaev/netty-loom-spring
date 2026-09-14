@@ -5,8 +5,9 @@
 # and hand over. A stage that asked a question moves the issue to agent/needs-input instead.
 # A reused worktree is settled first: uncommitted edits go to a named stash, and commits without
 # a pull request get one opened here, with the template as its body, rather than a second
-# implement stage on a branch that already carries the work -- unless the owner's answer to the
-# issue's last question is newer than every commit, so no implement stage has read it yet.
+# implement stage on a branch that already carries the work -- unless the issue's last question is
+# still pending, or the owner's answer to it is newer than every commit, so no implement stage has
+# read it yet.
 # Usage: scripts/agent/pipeline.sh <issue number>    (cwd = the issue's worktree)
 set -euo pipefail
 
@@ -28,14 +29,15 @@ pr_comments() { "$PR_COMMENTS" "$url" || fail pr-comments.sh; }
 # requeue.sh's marker and rindex, so the two agree on which comment is the question. The answer is
 # the owner's first comment after it, not the newest as in requeue.sh: the runner's failure comment
 # on a killed retry follows the answer, and must not hide it.
-# Prints when the answer was posted, in epoch seconds, or nothing.
+# Prints when the answer was posted, in epoch seconds; "pending" for a question without one; nothing
+# when no question was asked.
 answered_at() {
   gh api --paginate "repos/$repo/issues/$N/comments?per_page=100" | jq -s 'add // []' \
     | jq -r --arg me "$me" --arg owner "${repo%%/*}" --arg marker "$MARKER" '
         (map(.user.login == $me and (.body | startswith($marker))) | rindex(true)) as $question
         | select($question != null)
-        | .[$question + 1:] | map(select(.user.login == $owner)) | first // empty
-        | .created_at | fromdateiso8601'
+        | .[$question + 1:] | map(select(.user.login == $owner)) | first
+        | if . == null then "pending" else .created_at | fromdateiso8601 end'
 }
 
 # stage <stage> [<pr url> [<round>]] -- runs stage.sh with its stdout in $stage_out rather than
@@ -68,8 +70,9 @@ fi
 url=$(gh pr list --head "$branch" --json url --jq '.[0].url')
 answered=$(answered_at)
 newest=$(git log -1 --format=%ct origin/main..HEAD)
-# An answer older than the newest commit was read by the implement stage that made the commit.
-if [ -z "$url" ] && [ -n "$newest" ] && [ "${answered:-0}" -lt "$newest" ]; then
+# An answer older than the newest commit was read by the implement stage that made the commit; a
+# pending question has none to read, so implement runs and stops on it.
+if [ -z "$url" ] && [ -n "$newest" ] && [ "$answered" != pending ] && [ "${answered:-0}" -lt "$newest" ]; then
   git push -q -u origin "$branch" || fail "git push"
   title=$(gh issue view "$N" --json title --jq .title)
   body="$(sed "s/#NN/#$N/" "$PR_TEMPLATE")

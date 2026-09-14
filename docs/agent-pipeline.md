@@ -63,6 +63,8 @@ with one difference: commits with no pull request, all older than the answer, go
 stage, not a script-opened pull request, because the implement stage is the one that reads the
 answer; a commit newer than the answer was made by the implement stage that read it, and the
 retry after that stage is killed opens the pull request as above rather than running it again.
+A question still pending beside such commits goes to an implement stage too, which stops on it
+and moves the issue to `agent/needs-input` with nothing pushed.
 `agent/retried` stays on until the merge, so a hand retry after it gets no second automatic one.
 The `agent/fix` stages are not classified: any failure there is `agent/failed` on the pull request,
 with the stderr tail and the log path, and no retry.
