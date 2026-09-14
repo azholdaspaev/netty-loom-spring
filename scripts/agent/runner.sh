@@ -38,6 +38,8 @@ $(tail -n "$TAIL" "$2")
 BODY
 }
 RETRY='Replace `agent/failed` with `agent/queued` to retry from the worktree as it is.'
+# fail_fix <pr url> <log line>: agent/fix off, agent/failed on, and stdin as the comment
+fail_fix() { say "fix: $2, agent/failed"; gh pr edit "$1" --remove-label agent/fix --add-label agent/failed >/dev/null; gh pr comment "$1" --body-file - >/dev/null; }
 
 # --- sweep ---
 # The lock held above proves no pipeline is running, so agent/running on an open issue is a tick
@@ -91,14 +93,13 @@ gh pr list --label agent/fix --state open --json url,headRefName --jq '.[] | "\(
   n=$(issue_of "$branch")
   case "$n" in
     ''|*[!0-9]*)
-      say "fix: $branch names no issue, agent/failed"
-      gh pr edit "$url" --remove-label agent/fix --add-label agent/failed >/dev/null
-      echo "\`agent/fix\` runs on a branch named \`NL-<issue>-<slug>\`; this one is \`$branch\`." | gh pr comment "$url" --body-file - >/dev/null
+      echo "\`agent/fix\` runs on a branch named \`NL-<issue>-<slug>\`; this one is \`$branch\`." | fail_fix "$url" "$branch names no issue"
       continue ;;
   esac
-  waiting=$(gh issue view "$n" --json labels --jq '.labels[].name | select(. == "agent/needs-input")')
-  [ -z "$waiting" ] || continue
   log=$(log_of "$n")
+  waiting=$(gh issue view "$n" --json labels --jq '.labels[].name | select(. == "agent/needs-input")' 2>>"$log") \
+    || { failure "Issue #$n, which the branch names, could not be read" "$log" | fail_fix "$url" "NL-$n unreadable"; continue; }
+  [ -z "$waiting" ] || continue
   note "fix: NL-$n $url"
   [ -d "$WT/$branch" ] || git worktree add -q "$WT/$branch" "$branch"
   rc=0

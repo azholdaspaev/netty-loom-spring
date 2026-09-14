@@ -376,6 +376,22 @@ contains "$said" "|requeue|fix: feature-x names no issue, agent/failed|queued: N
 check fix-no-issue-number "$ok" "$why"
 rm -rf "$tmp"
 
+# --- agent/fix on a pull request whose branch names an issue gh cannot read (NL-99-typo, opened by hand): agent/failed with the stderr tail, and the tick goes on ---
+setup
+fixpr "$PR_URL" NL-99-typo
+queue 8 "New work"
+run
+comment=$(cat "$tmp/state/pr-comment" 2>/dev/null || true)
+log="$tmp/home/.netty-loom-agent/logs/NL-99/runner.log"
+wt8=$(cd "$tmp/netty-loom-wt/NL-8-new-work" 2>/dev/null && pwd -P || echo missing)
+ok=1; why="rc=$rc stderr=$err actions=$actions comment=$comment"
+[ "$rc" = 0 ] || ok=0
+[ "$actions" = "requeue|gh pr edit $PR_URL --remove-label agent/fix --add-label agent/failed|gh pr comment $PR_URL --body-file -|gh issue edit 8 --remove-label agent/queued --add-label agent/running|gradlew dependencySources in $wt8|pipeline 8 in $wt8|gh issue edit 8 --remove-label agent/running|" ] || ok=0
+contains "$comment" "Issue #99" && contains "$comment" "Could not open" && contains "$comment" "$log" || ok=0
+contains "$said" "|requeue|fix: NL-99 unreadable, agent/failed|queued: NL-8 picked up" || { ok=0; why="$why said=$said"; }
+check fix-issue-unreadable "$ok" "$why"
+rm -rf "$tmp"
+
 # --- agent/fix on a pull request whose branch has no worktree yet: one is added from origin ---
 setup
 fixpr "$PR_URL" NL-7-fix-the-thing
