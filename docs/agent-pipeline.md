@@ -72,8 +72,11 @@ with the stderr tail and the log path, and no retry.
 - `~/.netty-loom-agent/runner.log` — every tick's output, from launchd.
 - `~/.netty-loom-agent/logs/NL-<n>/runner.log` — what the pipeline and the `agent/fix` stages
   wrote to stderr for that issue, appended across ticks.
-- `~/.netty-loom-agent/logs/NL-<n>/<stage>[-<round>].json` and `.log` — each `claude -p` result
-  (cost, duration, subtype) and its stderr, written by `stage.sh`.
+- `~/.netty-loom-agent/logs/NL-<n>/<run>/<stage>[-<round>].json` and `.log` — each `claude -p`
+  result (cost, duration, subtype) and its stderr, written by `stage.sh`. `<run>` is the UTC
+  start time of the `pipeline.sh` run or the `agent/fix` tick that ran the stage
+  (`20260913T100003Z`), so a requeue or a retry writes beside the earlier run's results rather
+  than over them, and the hand-off comment sums and names its own run's directory only.
 
 Every line the scripts write themselves starts with an ISO-8601 UTC timestamp and the script's
 name; what `gh`, `git` and Gradle print passes through unchanged. The tick's log gets

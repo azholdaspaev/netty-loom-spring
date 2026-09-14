@@ -12,8 +12,8 @@ export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 
 # pipeline.sh finds stage.sh and pr-comments.sh relative to itself, so each case gets a copy of
 # the tree's layout beside a stage.sh shim, a clone on NL-999-x, gh first on PATH and a fresh HOME.
-# The stage shim records the tree it found in tree-<stage>, writes the result file pipeline.sh
-# sums, moves the pull request head on the fix
+# The stage shim records the tree it found in tree-<stage> and the run id it was given in run-id,
+# writes the result file pipeline.sh sums under that id, moves the pull request head on the fix
 # rounds SHIM_FIX_PUSHES lists ("1,0" = fix 1 pushes a commit, fix 2 does not; unset = every fix
 # pushes), posts inline comments as the runner on the review rounds SHIM_REVIEW_POSTS counts
 # ("0,1" = review 2 posts one; unset = none), edits src.txt -- staged and unstaged -- and adds
@@ -54,9 +54,10 @@ if [ "$stage${round:+ $round}" = "${SHIM_QUESTION:-}" ]; then
   echo "stage.sh: NL-$1 $stage: asked a question: https://github.com/o/r/issues/999#issuecomment-2" >&2; exit 3
 fi
 if [ "$stage" = implement ] && [ "${SHIM_IMPLEMENT_RC:-0}" != 0 ]; then exit "$SHIM_IMPLEMENT_RC"; fi
-mkdir -p "$HOME/.netty-loom-agent/logs/NL-$1"
+echo "${RUN_ID:-}" > "$SHIM_STATE/run-id"
+mkdir -p "$HOME/.netty-loom-agent/logs/NL-$1/${RUN_ID:-}"
 echo '{"subtype":"success","total_cost_usd":0.5,"duration_ms":60000}' \
-  > "$HOME/.netty-loom-agent/logs/NL-$1/$stage${round:+-$round}.json"
+  > "$HOME/.netty-loom-agent/logs/NL-$1/${RUN_ID:-}/$stage${round:+-$round}.json"
 case "$stage" in
   implement) echo "$SHIM_URL" ;;
   review)
@@ -103,13 +104,14 @@ SHIM
   export SHIM_EVENTS="$tmp/events" SHIM_STATE="$tmp/state" SHIM_URL="$PR_URL"
 }
 
-# run <open counts> <pr-url-or-empty>; sets rc, out, err, comment, stages
+# run <open counts> <pr-url-or-empty>; sets rc, out, err, comment, run_id, stages
 run() {
   rc=0
   out=$(cd "$tmp/work" && SHIM_OPEN=$1 SHIM_PR_URL=$2 HOME=$tmp/home PATH="$tmp/bin:$PATH" \
         "$tmp/scripts/agent/pipeline.sh" 999 2> "$tmp/stderr") || rc=$?
   err=$(cat "$tmp/stderr")
   comment=$(cat "$SHIM_STATE/comment" 2>/dev/null || true)
+  run_id=$(cat "$SHIM_STATE/run-id" 2>/dev/null || true)
   stages=$(grep '^stage \|^gh pr create\|^gh pr ready\|^gh issue' "$SHIM_EVENTS" 2>/dev/null | tr '\n' '|' || true)
 }
 
@@ -136,9 +138,11 @@ ok=1; why=""
 [ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
 [ "$out" = "$PR_URL" ] || { ok=0; why="stdout=$out"; }
 [ "$stages" = "$IMPLEMENT$R1$F1$R2$TEST$HANDOFF" ] || { ok=0; why="stages=$stages"; }
-for needle in "$PR_URL" "rounds: 2" "converged" "2.50 USD" "5 min"; do
+for needle in "$PR_URL" "rounds: 2" "converged" "2.50 USD" "5 min" \
+              "from 5 stage results in $tmp/home/.netty-loom-agent/logs/NL-999/$run_id."; do
   contains "$comment" "$needle" || { ok=0; why="comment lacks '$needle': $comment"; }
 done
+[[ "$run_id" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || { ok=0; why="run id '$run_id' is not a UTC start timestamp"; }
 contains "$comment" "did not converge" && { ok=0; why="comment says it did not converge"; }
 contains "$comment" "stash" && { ok=0; why="comment names a stash on a clean pick-up: $comment"; }
 check converges "$ok" "$why"
@@ -310,6 +314,20 @@ ok=1; why=""
 [ "$stages" = "$R1$TEST$HANDOFF" ] || { ok=0; why="stages=$stages"; }
 contains "$comment" "1.00 USD" || { ok=0; why="comment lacks '1.00 USD': $comment"; }
 check resumes "$ok" "$why"
+rm -rf "$tmp"
+
+# --- a second run on the same issue: two run directories, and each hand-off sums only its own ---
+setup
+run 0 ""
+first=$run_id; first_comment=$comment
+sleep 1 # the run id is a whole-second timestamp
+run 0 "$PR_URL"
+runs=$(cd "$tmp/home/.netty-loom-agent/logs/NL-999" 2>/dev/null && printf '%s|' * || true)
+ok=1; why="rc=$rc stderr=$err runs=$runs first=$first_comment second=$comment"
+[ "$rc" = 0 ] && [ "$runs" = "$first|$run_id|" ] && [ "$first" != "$run_id" ] \
+  && contains "$first_comment" "1.50 USD, wall time: 3 min, from 3 stage results in $tmp/home/.netty-loom-agent/logs/NL-999/$first." \
+  && contains "$comment" "1.00 USD, wall time: 2 min, from 2 stage results in $tmp/home/.netty-loom-agent/logs/NL-999/$run_id." || ok=0
+check rerun-sums-own-run "$ok" "$why"
 rm -rf "$tmp"
 
 # --- implement asked a question ---
