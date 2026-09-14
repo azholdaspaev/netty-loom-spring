@@ -5,7 +5,8 @@
 # and hand over. A stage that asked a question moves the issue to agent/needs-input instead.
 # A reused worktree is settled first: uncommitted edits go to a named stash, and commits without
 # a pull request get one opened here, with the template as its body, rather than a second
-# implement stage on a branch that already carries the work.
+# implement stage on a branch that already carries the work -- unless the issue's newest comment
+# answers a question, which only an implement stage reads.
 # Usage: scripts/agent/pipeline.sh <issue number>    (cwd = the issue's worktree)
 set -euo pipefail
 
@@ -15,12 +16,20 @@ PR_COMMENTS="$HERE/../../.claude/scripts/pr-comments.sh"
 PR_TEMPLATE="$HERE/../../.github/PULL_REQUEST_TEMPLATE.md"
 LOG="$HOME/.netty-loom-agent/logs/NL-$N"
 ROUNDS=3
+MARKER='<!-- agent:question -->'
 
 reset_tree() { git reset -q --hard && git clean -fdq; }
 say() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) pipeline.sh: NL-$N: $*" >&2; }
 fail() { say "$1 failed"; exit 2; }
 gh() { command gh "$@" || fail "gh $1 $2"; }
 pr_comments() { "$PR_COMMENTS" "$url" || fail pr-comments.sh; }
+# requeue.sh's test, so the two agree on what an answer is: the owner's comment is the newest, after the agent's question.
+answered() {
+  gh api --paginate "repos/$repo/issues/$N/comments?per_page=100" | jq -s 'add // []' \
+    | jq -r --arg me "$me" --arg owner "${repo%%/*}" --arg marker "$MARKER" '
+        (map(.user.login == $me and (.body | startswith($marker))) | rindex(true)) as $question
+        | $question != null and $question < length - 1 and .[-1].user.login == $owner'
+}
 
 # stage <stage> [<pr url> [<round>]] -- runs stage.sh with its stdout in $stage_out rather than
 # echoed for a $(...) caller: an exit inside a command substitution ends only the subshell, and the
@@ -42,6 +51,8 @@ stage() {
 }
 
 branch=$(git branch --show-current)
+repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+me=$(gh api user --jq .login)
 stash=""
 if [ -n "$(git status --porcelain)" ]; then
   stash="NL-$N retry $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -49,7 +60,7 @@ if [ -n "$(git status --porcelain)" ]; then
   say "uncommitted edits found on pick-up, stashed as '$stash'"
 fi
 url=$(gh pr list --head "$branch" --json url --jq '.[0].url')
-if [ -z "$url" ] && [ -n "$(git log --oneline origin/main..HEAD)" ]; then
+if [ -z "$url" ] && [ -n "$(git log --oneline origin/main..HEAD)" ] && [ "$(answered)" != true ]; then
   git push -q -u origin "$branch" || fail "git push"
   title=$(gh issue view "$N" --json title --jq .title)
   body="$(sed "s/#NN/#$N/" "$PR_TEMPLATE")
@@ -65,7 +76,6 @@ elif [ -z "$url" ]; then
   url=$stage_out
 fi
 
-me=$(gh api user --jq .login)
 pr_head() { gh pr view "$url" --json headRefOid --jq .headRefOid; }
 
 converged=0

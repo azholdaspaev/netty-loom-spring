@@ -20,8 +20,8 @@ export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 # scratch.txt in the stage SHIM_DIRTY names, and
 # exits SHIM_FAIL_RC (1 unset) from the stage SHIM_FAIL names or 3 from the one SHIM_QUESTION names ("review 2"). The
 # gh shim serves that state back, inline comments
-# only through pr-comments.sh's own call, keeps the body of a pull request pipeline.sh opens
-# itself in pr-body, and answers each GraphQL thread query with the count
+# only through pr-comments.sh's own call, the issue's comments from issue-comments, keeps the
+# body of a pull request pipeline.sh opens itself in pr-body, and answers each GraphQL thread query with the count
 # SHIM_OPEN holds for the latest review round ("2,0" = two open threads after the first review,
 # none after the second); every call whose arguments start with SHIM_GH_FAIL exits 1 instead, from
 # the first event line starting with SHIM_GH_FAIL_AFTER on when that is set.
@@ -83,7 +83,9 @@ case "$*" in
   "pr view "*" --json headRefOid "*) cat "$SHIM_STATE/head" ;;
   "api user --jq .login") echo runner ;;
   "api --paginate repos/o/r/pulls/7/comments?per_page=100 --jq "*) jq "$5" "$SHIM_STATE/comments" ;;
+  "api --paginate repos/o/r/issues/999/comments?per_page=100") cat "$SHIM_STATE/issue-comments" ;;
   "api --paginate "*) echo "[]" ;;
+  "repo view --json nameWithOwner --jq .nameWithOwner") echo o/r ;;
   "api graphql "*)
     round=$(cat "$SHIM_STATE/review-round" 2>/dev/null || echo 1)
     open=$(echo "$SHIM_OPEN" | cut -d, -f"$round")
@@ -97,6 +99,7 @@ SHIM
   chmod +x "$tmp/scripts/agent/stage.sh" "$tmp/bin/gh"
   echo implement > "$tmp/state/head"
   echo '[{"user": {"login": "maintainer"}, "created_at": "2025-12-31T00:00:00Z"}]' > "$tmp/state/comments"
+  echo '[]' > "$tmp/state/issue-comments"
   export SHIM_EVENTS="$tmp/events" SHIM_STATE="$tmp/state" SHIM_URL="$PR_URL"
 }
 
@@ -169,6 +172,18 @@ for needle in "Closes #999." "no implement stage wrote" "## Problem" "## What ch
 done
 contains "$comment" "1.00 USD" || { ok=0; why="comment lacks '1.00 USD': $comment"; }
 check retry-unpushed "$ok" "$why"
+rm -rf "$tmp"
+
+# --- the same commits after an answered question: implement runs, the one stage that reads the answer ---
+setup
+echo work >> "$tmp/work/src.txt"; git -C "$tmp/work" commit -qam "NL-999 work"
+echo '[{"user": {"login": "runner"}, "body": "<!-- agent:question --> Which?"},
+       {"user": {"login": "o"}, "body": "The first."}]' > "$tmp/state/issue-comments"
+run 0 ""
+ok=1; why="rc=$rc stderr=$err stages=$stages"
+[ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] && [ "$stages" = "$IMPLEMENT$R1$TEST$HANDOFF" ] \
+  && [ -z "$(git -C "$tmp/origin" rev-parse -q --verify refs/heads/NL-999-x)" ] || ok=0
+check retry-unpushed-answered "$ok" "$why"
 rm -rf "$tmp"
 
 # --- never converges ---
