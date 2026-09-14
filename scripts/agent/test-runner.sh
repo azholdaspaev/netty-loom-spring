@@ -376,6 +376,23 @@ contains "$said" "|requeue|fix: feature-x names no issue, agent/failed|queued: N
 check fix-no-issue-number "$ok" "$why"
 rm -rf "$tmp"
 
+# --- agent/fix on a pull request whose issue was closed while its question waited: the sweep has stripped agent/needs-input, so agent/failed rather than a stage that asks again every tick ---
+setup
+fixpr "$PR_URL" NL-7-fix-the-thing
+worktree NL-7-fix-the-thing
+issue 7 "Fix the Thing: quickly!" "" CLOSED
+export SHIM_STAGE_RC=3
+run
+unset SHIM_STAGE_RC
+comment=$(cat "$tmp/state/pr-comment" 2>/dev/null || true)
+ok=1; why="rc=$rc stderr=$err actions=$actions comment=$comment"
+[ "$rc" = 0 ] || ok=0
+[ "$actions" = "requeue|gh pr edit $PR_URL --remove-label agent/fix --add-label agent/failed|gh pr comment $PR_URL --body-file -|" ] || ok=0
+contains "$comment" "#7 is closed" || ok=0
+[ "$said" = "tick start|requeue|fix: NL-7 closed, agent/failed|tick end (exit 0)|" ] || { ok=0; why="$why said=$said"; }
+check fix-issue-closed "$ok" "$why"
+rm -rf "$tmp"
+
 # --- agent/fix on a pull request whose branch names an issue gh cannot read (NL-99-typo, opened by hand): agent/failed with the stderr tail, and the tick goes on ---
 setup
 fixpr "$PR_URL" NL-99-typo

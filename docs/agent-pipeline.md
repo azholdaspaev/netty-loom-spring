@@ -18,7 +18,7 @@ decisions behind it: #211.
 | `agent/pr-ready` | the pull request is ready for review | `pipeline.sh` | runner, after the merge, or on pick-up when the issue is queued again |
 | `agent/fix` | on a pull request: run a fix stage, then a review stage; stays on while a question from either waits on the issue, and the runner skips the pull request until the answer | maintainer | runner, after those stages |
 | `agent/retried` | the pipeline's one infrastructure failure — a stage timeout, a dropped API connection, a failed `gh` call — was retried from the worktree | runner | runner, after the merge |
-| `agent/failed` | the work failed, the infrastructure failed twice, an `agent/fix` stage failed or its pull request's branch is not `NL-<issue>-<slug>`, or a tick died with the issue on `agent/running`; the comment has the log tail | runner | maintainer |
+| `agent/failed` | the work failed, the infrastructure failed twice, an `agent/fix` stage failed or its pull request's issue is closed, unreadable or not named by the branch (`NL-<issue>-<slug>`), or a tick died with the issue on `agent/running`; the comment has the log tail | runner | maintainer |
 
 One tick, in order: sweep — every open `agent/running` issue to `agent/failed` with the usual
 comment, since the lock proves no pipeline is running (one that also carries `agent/pr-ready`
@@ -29,9 +29,11 @@ labels; the worktree goes through any lock another tool put on it, and one the t
 remove is logged as `not removed`, every tick, and does not stop it — that directory, its branch
 and the labels are the maintainer's to clean up, because git drops the registration even when the
 delete fails, so no later tick can), `requeue.sh`, a fix stage then a review stage per `agent/fix`
-pull request whose issue is not on `agent/needs-input`, then one `agent/queued` issue. A tick that
-finds the lock held exits at once, so one pipeline runs at a time; the next queued issue waits for
-the next free tick.
+pull request whose issue is open and not on `agent/needs-input` (one closed or unreadable goes to
+`agent/failed`: the sweep strips a closed issue's labels every tick, so a question waiting there
+would otherwise be asked again on every tick), then one `agent/queued` issue. A tick that finds
+the lock held exits at once, so one pipeline runs at a time; the next queued issue waits for the
+next free tick.
 
 ## The maintainer's two touch points
 
