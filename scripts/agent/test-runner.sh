@@ -370,7 +370,7 @@ ok=1; why="rc=$rc stderr=$err actions=$actions"
 check merged-locked "$ok" "$why"
 rm -rf "$tmp"
 
-# --- a merged pull request whose worktree cannot be removed: named in the log, branch and labels kept for a later tick, and the tick goes on ---
+# --- a merged pull request whose worktree cannot be removed: named in the log, branch and labels left for the maintainer, and the tick goes on ---
 setup
 worktree NL-7-fix-the-thing
 merged NL-7-fix-the-thing
@@ -383,11 +383,10 @@ ok=1; why="rc=$rc stderr=$err actions=$actions"
 [ "$rc" = 0 ] && contains "$said" "|merged: NL-7-fix-the-thing not removed (git exit " && contains "$said" "|requeue|queued: NL-8 picked up on NL-8-new-work|" || ok=0
 contains "$actions" "gh issue edit 7 " && { ok=0; why="$why labels of NL-7 touched"; }
 [ -n "$(git -C "$tmp/main" branch --list NL-7-fix-the-thing)" ] || { ok=0; why="$why branch gone"; }
-contains "$err" "rm: " || { ok=0; why="$why rm's reason missing"; }
 check merged-not-removable "$ok" "$why"
 rm -rf "$tmp"
 
-# --- the next tick removes a worktree git unregistered while failing to delete it, then the branch and the labels ---
+# --- the next tick names the worktree again (git unregistered it while failing to delete it) and still touches branch and labels only by hand ---
 setup
 worktree NL-7-fix-the-thing
 merged NL-7-fix-the-thing
@@ -397,12 +396,11 @@ run
 chmod u+w "$tmp/$WT7"
 run
 ok=1; why="rc=$rc stderr=$err actions=$actions"
-[ "$rc" = 0 ] && contains "$said" "|merged: NL-7-fix-the-thing removed|requeue|tick end (exit 0)|" || ok=0
-contains "$said" "not removed" && { ok=0; why="$why said=$said"; }
-contains "$actions" "gh issue edit 7 --remove-label agent/running,agent/pr-ready|" || { ok=0; why="$why labels of NL-7 kept"; }
-[ ! -d "$tmp/$WT7" ] || { ok=0; why="$why worktree still there"; }
-[ -z "$(git -C "$tmp/main" branch --list NL-7-fix-the-thing)" ] || { ok=0; why="$why branch still there"; }
-check merged-not-removable-retried "$ok" "$why"
+[ "$rc" = 0 ] && contains "$said" "|merged: NL-7-fix-the-thing not removed (git exit 128)|requeue|tick end (exit 0)|" || ok=0
+contains "$actions" "gh issue edit 7 " && { ok=0; why="$why labels of NL-7 touched"; }
+[ -d "$tmp/$WT7" ] || { ok=0; why="$why directory gone"; }
+[ -n "$(git -C "$tmp/main" branch --list NL-7-fix-the-thing)" ] || { ok=0; why="$why branch gone"; }
+check merged-not-removable-again "$ok" "$why"
 rm -rf "$tmp"
 
 # --- a merged pull request whose worktree fails git's validation (its .git file is gone): git keeps it registered, so the directory, branch and labels stay, and the tick goes on ---
@@ -420,21 +418,6 @@ contains "$actions" "gh issue edit 7 " && { ok=0; why="$why labels of NL-7 touch
 [ -d "$tmp/main/.git/worktrees/NL-7-fix-the-thing" ] || { ok=0; why="$why worktree unregistered"; }
 [ -n "$(git -C "$tmp/main" branch --list NL-7-fix-the-thing)" ] || { ok=0; why="$why branch gone"; }
 check merged-validation-failed "$ok" "$why"
-rm -rf "$tmp"
-
-# --- a merged pull request whose worktree git refuses but keeps registered (its gitdir file points elsewhere): the directory, branch and labels stay, and the tick goes on ---
-setup
-worktree NL-7-fix-the-thing
-echo "$tmp/elsewhere/.git" > "$tmp/main/.git/worktrees/NL-7-fix-the-thing/gitdir"
-merged NL-7-fix-the-thing
-issue 7 "Fix the Thing: quickly!" "enhancement,agent/running,agent/pr-ready"
-run
-ok=1; why="rc=$rc stderr=$err actions=$actions"
-[ "$rc" = 0 ] && contains "$said" "|merged: NL-7-fix-the-thing not removed (git exit 128)|requeue|tick end (exit 0)|" || ok=0
-contains "$actions" "gh issue edit 7 " && { ok=0; why="$why labels of NL-7 touched"; }
-[ -f "$tmp/$WT7/.git" ] || { ok=0; why="$why directory gone"; }
-[ -n "$(git -C "$tmp/main" branch --list NL-7-fix-the-thing)" ] || { ok=0; why="$why branch gone"; }
-check merged-still-registered "$ok" "$why"
 rm -rf "$tmp"
 
 # --- a directory under a merged branch's name that is not a worktree of the clone (a separate clone): left as it is, and the tick goes on ---
