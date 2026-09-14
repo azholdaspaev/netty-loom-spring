@@ -123,11 +123,11 @@ stage as well. With both passes running under the 6 USD review budget, no review
 Of the 26 denied calls, 21 were Bash commands that no allow rule matches as a whole — `;`, `|`,
 `&&`, `for`, a heredoc, a `VAR=… ./gradlew` prefix — and the stage got the same facts another
 way each time; three were `gh api` reads of pull request comments (#245); one was
-`gh issue create --label`, denied by design, so the ticket named its labels in its body; one an
-IntelliJ terminal call, not on the tool list. Two more findings: inside the stage's sandbox
-`/usr/bin/java` resolves no JDK, so the implement stage compiled and ran the tests by hand until
-the plist below named one; and a re-run test stage does not see the tickets its earlier run
-opened (#250 and #252 are the same gap; #254).
+`gh issue create --label`, denied until #317 narrowed the rule to `agent/*` values, so the ticket
+named its labels in its body; one an IntelliJ terminal call, not on the tool list. Two more
+findings: inside the stage's sandbox `/usr/bin/java` resolves no JDK, so the implement stage
+compiled and ran the tests by hand until the plist below named one; and a re-run test stage does
+not see the tickets its earlier run opened (#250 and #252 are the same gap; #254).
 
 ## launchd
 
