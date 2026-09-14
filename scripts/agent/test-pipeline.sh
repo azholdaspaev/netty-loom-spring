@@ -207,6 +207,21 @@ ok=1; why="rc=$rc stderr=$err stages=$stages"
 check retry-unpushed-answered "$ok" "$why"
 rm -rf "$tmp"
 
+# --- the same commits, and the question still pending: implement runs and stops on it, nothing pushed or opened ---
+setup
+echo work >> "$tmp/work/src.txt"
+GIT_COMMITTER_DATE=2026-01-01T00:00:00Z git -C "$tmp/work" commit -qam "NL-999 work"
+echo '[{"user": {"login": "runner"}, "body": "<!-- agent:question --> Which?", "created_at": "2026-01-02T00:00:00Z"}]' > "$tmp/state/issue-comments"
+export SHIM_QUESTION=implement
+run 0 ""
+unset SHIM_QUESTION
+ok=1; why="rc=$rc stdout=$out stderr=$err stages=$stages comment=$comment"
+[ "$rc" = 0 ] && [ -z "$out" ] && [ -z "$comment" ] && [ "$stages" = "$IMPLEMENT$NEEDS_INPUT" ] \
+  && [ -z "$(git -C "$tmp/origin" rev-parse -q --verify refs/heads/NL-999-x)" ] \
+  && ! contains "$err" "integer expression expected" || ok=0
+check pending-question "$ok" "$why"
+rm -rf "$tmp"
+
 # --- an answered question, then commits: the implement stage that made them read the answer, so no second one ---
 setup
 echo '[{"user": {"login": "runner"}, "body": "<!-- agent:question --> Which?", "created_at": "2026-01-02T00:00:00Z"},
