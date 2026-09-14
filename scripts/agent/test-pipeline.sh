@@ -301,7 +301,7 @@ ok=1; why="rc=$rc stderr=$err stages=$stages tree=$(git -C "$tmp/work" status --
 check test-question-dirty "$ok" "$why"
 rm -rf "$tmp"
 
-# --- implement asked a question mid-work: its edits stay for the resumed implement ---
+# --- implement asked a question mid-work: its edits are left for the resume's pick-up stash ---
 setup
 export SHIM_QUESTION=implement SHIM_DIRTY=implement
 run 0 ""
@@ -390,7 +390,7 @@ for stage_rc in 124 2; do
   rm -rf "$tmp"
 done
 
-# --- implement killed mid-edit: its edits stay for its retried self, as on a question ---
+# --- implement killed mid-edit: its edits are left for the retry's pick-up stash, as on a question ---
 setup
 export SHIM_IMPLEMENT_RC=124 SHIM_DIRTY=implement
 run 0 ""
