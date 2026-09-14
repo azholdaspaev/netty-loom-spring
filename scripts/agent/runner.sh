@@ -2,9 +2,10 @@
 # One launchd tick of the agent pipeline, under a lock: fail every issue a dead tick left on
 # agent/running and strip agent/* labels from closed issues, drop the worktree, branch and agent/*
 # labels of every merged pull request, requeue answered questions, run a fix stage then a review
-# stage per agent/fix pull request, then take the oldest agent/queued issue to a worktree of its
-# own and run pipeline.sh there; its first infrastructure failure goes back to agent/queued with
-# agent/retried, any other to agent/failed.
+# stage per agent/fix pull request whose issue is not on agent/needs-input (a question from either
+# stage puts it there, and the label stays on the pull request), then take the oldest agent/queued
+# issue to a worktree of its own and run pipeline.sh there; its first infrastructure failure goes
+# back to agent/queued with agent/retried, any other to agent/failed.
 # Usage: scripts/agent/runner.sh    (any cwd; the main clone is this script's grandparent)
 set -euo pipefail
 
@@ -88,6 +89,8 @@ say "requeue"
 gh pr list --label agent/fix --state open --json url,headRefName --jq '.[] | "\(.url) \(.headRefName)"' \
 | while read -r url branch; do
   n=$(issue_of "$branch")
+  waiting=$(gh issue view "$n" --json labels --jq '.labels[].name | select(. == "agent/needs-input")')
+  [ -z "$waiting" ] || continue
   log=$(log_of "$n")
   note "fix: NL-$n $url"
   [ -d "$WT/$branch" ] || git worktree add -q "$WT/$branch" "$branch"
@@ -96,12 +99,13 @@ gh pr list --label agent/fix --state open --json url,headRefName --jq '.[] | "\(
   for stage in fix review; do
     (cd "$WT/$branch" && RUN_ID=$run_id "$HERE/stage.sh" "$n" "$stage" "$url") </dev/null 2>>"$log" || { rc=$?; break; }
   done
-  if [ "$rc" = 0 ]; then
-    gh pr edit "$url" --remove-label agent/fix >/dev/null
-  else
-    gh pr edit "$url" --remove-label agent/fix --add-label agent/failed >/dev/null
-    failure "The $stage stage failed (exit $rc)" "$log" | gh pr comment "$url" --body-file - >/dev/null
-  fi
+  case "$rc" in
+    0) gh pr edit "$url" --remove-label agent/fix >/dev/null ;;
+    3) # agent/fix stays on rather than requeue.sh putting it back with the answer: that would need the pull request found from the issue number.
+       gh issue edit "$n" --add-label agent/needs-input >/dev/null ;;
+    *) gh pr edit "$url" --remove-label agent/fix --add-label agent/failed >/dev/null
+       failure "The $stage stage failed (exit $rc)" "$log" | gh pr comment "$url" --body-file - >/dev/null ;;
+  esac
   note "fix: NL-$n exit $rc"
 done
 

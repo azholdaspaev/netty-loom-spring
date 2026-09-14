@@ -277,6 +277,7 @@ rm -rf "$tmp"
 setup
 fixpr "$PR_URL" NL-7-fix-the-thing
 worktree NL-7-fix-the-thing
+issue 7 "Fix the Thing: quickly!" "agent/pr-ready"
 run
 wt=$(cd "$tmp/$WT7" && pwd -P)
 ids=$(cat "$tmp/state/run-ids" 2>/dev/null || true); id=${ids%%$'\n'*}
@@ -292,6 +293,7 @@ rm -rf "$tmp"
 setup
 fixpr "$PR_URL" NL-7-fix-the-thing
 worktree NL-7-fix-the-thing
+issue 7 "Fix the Thing: quickly!" "agent/pr-ready"
 export SHIM_STAGE_RC=1
 run
 unset SHIM_STAGE_RC
@@ -312,6 +314,7 @@ rm -rf "$tmp"
 setup
 fixpr "$PR_URL" NL-7-fix-the-thing
 worktree NL-7-fix-the-thing
+issue 7 "Fix the Thing: quickly!" "agent/pr-ready"
 export SHIM_STAGE_COMMIT=fix SHIM_FAIL_STAGE=review SHIM_STAGE_RC=1
 run
 unset SHIM_STAGE_COMMIT SHIM_FAIL_STAGE SHIM_STAGE_RC
@@ -326,10 +329,43 @@ contains "$comment" "review stage failed (exit 1)" && contains "$comment" "stage
 check fix-review-failure "$ok" "$why"
 rm -rf "$tmp"
 
+# --- a fix-path stage asks a question: the issue goes to agent/needs-input, the pull request keeps agent/fix, no comment ---
+for stage in fix review; do
+  setup
+  fixpr "$PR_URL" NL-7-fix-the-thing
+  worktree NL-7-fix-the-thing
+  issue 7 "Fix the Thing: quickly!" "agent/pr-ready"
+  export SHIM_FAIL_STAGE=$stage SHIM_STAGE_RC=3
+  run
+  unset SHIM_FAIL_STAGE SHIM_STAGE_RC
+  wt=$(cd "$tmp/$WT7" && pwd -P)
+  review=; [ "$stage" = fix ] || review="stage 7 review $PR_URL in $wt|"
+  ok=1; why="rc=$rc stderr=$err actions=$actions"
+  [ "$rc" = 0 ] || ok=0
+  [ "$actions" = "requeue|stage 7 fix $PR_URL in $wt|${review}gh issue edit 7 --add-label agent/needs-input|" ] || ok=0
+  [ ! -e "$tmp/state/pr-comment" ] || { ok=0; why="$why a comment was posted"; }
+  contains "$said" "fix: NL-7 exit 3|" || { ok=0; why="$why said=$said"; }
+  check "fix-question-$stage" "$ok" "$why"
+  rm -rf "$tmp"
+done
+
+# --- an agent/fix pull request whose issue waits on an answer: no stage runs, nothing is edited ---
+setup
+fixpr "$PR_URL" NL-7-fix-the-thing
+worktree NL-7-fix-the-thing
+issue 7 "Fix the Thing: quickly!" "agent/pr-ready,agent/needs-input"
+run
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" = 0 ] && [ "$actions" = "requeue|" ] || ok=0
+[ "$said" = "tick start|requeue|tick end (exit 0)|" ] || { ok=0; why="$why said=$said"; }
+check fix-waiting "$ok" "$why"
+rm -rf "$tmp"
+
 # --- agent/fix on a pull request whose branch has no worktree yet: one is added from origin ---
 setup
 fixpr "$PR_URL" NL-7-fix-the-thing
 worktree NL-7-fix-the-thing
+issue 7 "Fix the Thing: quickly!" "agent/pr-ready"
 echo work > "$tmp/$WT7/work.txt"
 git -C "$tmp/$WT7" add work.txt
 git -C "$tmp/$WT7" commit -q -m "NL-7 Work"
@@ -521,6 +557,7 @@ merged NL-5-done
 issue 5 "Done" "agent/pr-ready"
 fixpr "$PR_URL" NL-7-fix-the-thing
 worktree NL-7-fix-the-thing
+issue 7 "Fix the Thing: quickly!" "agent/pr-ready"
 queue 8 "New work"
 run
 comment=$(cat "$tmp/state/issue-comment-6" 2>/dev/null || true)
