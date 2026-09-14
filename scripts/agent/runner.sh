@@ -2,8 +2,9 @@
 # One launchd tick of the agent pipeline, under a lock: fail every issue a dead tick left on
 # agent/running and strip agent/* labels from closed issues, drop the worktree, branch and agent/*
 # labels of every merged pull request, requeue answered questions, run a fix stage then a review
-# stage per agent/fix pull request whose issue is not on agent/needs-input (a question from either
-# stage puts it there, and the label stays on the pull request), then take the oldest agent/queued
+# stage per agent/fix pull request whose issue is open and not on agent/needs-input (a question
+# from either stage puts it there, and the label stays on the pull request; an issue closed,
+# unreadable or not named by the branch fails the pull request), then take the oldest agent/queued
 # issue to a worktree of its own and run pipeline.sh there; its first infrastructure failure goes
 # back to agent/queued with agent/retried, any other to agent/failed.
 # Usage: scripts/agent/runner.sh    (any cwd; the main clone is this script's grandparent)
@@ -97,9 +98,18 @@ gh pr list --label agent/fix --state open --json url,headRefName --jq '.[] | "\(
       continue ;;
   esac
   log=$(log_of "$n")
-  waiting=$(gh issue view "$n" --json labels --jq '.labels[].name | select(. == "agent/needs-input")' 2>>"$log") \
-    || { failure "Issue #$n, which the branch names, could not be read" "$log" | fail_fix "$url" "NL-$n unreadable"; continue; }
-  [ -z "$waiting" ] || continue
+  state=$(gh issue view "$n" --json state,labels 2>>"$log" \
+    --jq 'if .state == "CLOSED" then "closed" elif any(.labels[]; .name == "agent/needs-input") then "waiting" else "open" end') \
+    || state=unreadable
+  case "$state" in
+    waiting) continue ;;
+    closed)
+      echo "\`agent/fix\` needs its issue open; #$n is closed." | fail_fix "$url" "NL-$n closed"
+      continue ;;
+    unreadable)
+      failure "Issue #$n, which the branch names, could not be read" "$log" | fail_fix "$url" "NL-$n unreadable"
+      continue ;;
+  esac
   note "fix: NL-$n $url"
   [ -d "$WT/$branch" ] || git worktree add -q "$WT/$branch" "$branch"
   rc=0
