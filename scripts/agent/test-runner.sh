@@ -117,6 +117,7 @@ merged() { echo "$1" >> "$tmp/state/merged"; }
 worktree() { git -C "$tmp/main" worktree add -q "$tmp/netty-loom-wt/$1" -b "$1" origin/main; }
 
 TS='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z'
+RUN_TS='[0-9]{8}T[0-9]{6}Z'
 
 # runs the tick from outside the clone; sets rc, out, err, actions (everything but reads, in order)
 # and said (stderr with the runner's own timestamped prefix stripped, so a line without it stands out)
@@ -281,7 +282,7 @@ wt=$(cd "$tmp/$WT7" && pwd -P)
 ids=$(cat "$tmp/state/run-ids" 2>/dev/null || true); id=${ids%%$'\n'*}
 ok=1; why="rc=$rc stderr=$err actions=$actions"
 [ "$rc" = 0 ] && [ "$actions" = "requeue|stage 7 fix $PR_URL in $wt|stage 7 review $PR_URL in $wt|gh pr edit $PR_URL --remove-label agent/fix|" ] || ok=0
-[[ "$id" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] && [ "$ids" = "$id"$'\n'"$id" ] || { ok=0; why="$why run ids=$ids"; }
+[[ "$id" =~ ^$RUN_TS$ ]] && [ "$ids" = "$id"$'\n'"$id" ] || { ok=0; why="$why run ids=$ids"; }
 [ "$said" = "tick start|requeue|fix: NL-7 $PR_URL|fix: NL-7 exit 0|tick end (exit 0)|" ] || { ok=0; why="$why said=$said"; }
 [ "$(said_in "$tmp/home/.netty-loom-agent/logs/NL-7/runner.log")" = "fix: NL-7 $PR_URL|fix: NL-7 exit 0|" ] || { ok=0; why="$why issue log=$(said_in "$tmp/home/.netty-loom-agent/logs/NL-7/runner.log")"; }
 check fix "$ok" "$why"
