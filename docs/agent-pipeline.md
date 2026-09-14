@@ -26,10 +26,11 @@ finished its pipeline, one that also carries `agent/queued` was requeued by hand
 way only `agent/running` comes off), and every closed issue's `agent/*`
 labels off — then clean up every merged pull request (worktree, local branch, the issue's `agent/*`
 labels; the worktree goes through any lock another tool put on it, and one the tick still cannot
-remove is logged as `not removed`, keeps its branch and labels for a later tick, and does not stop
-the tick), `requeue.sh`, a fix stage then a review stage per `agent/fix` pull request, then one
-`agent/queued` issue. A tick that finds the lock held exits at once, so one pipeline runs at a
-time; the next queued issue waits for the next free tick.
+remove is logged as `not removed`, every tick, and does not stop it — that directory, its branch
+and the labels are the maintainer's to clean up, because git drops the registration even when the
+delete fails, so no later tick can), `requeue.sh`, a fix stage then a review stage per `agent/fix`
+pull request, then one `agent/queued` issue. A tick that finds the lock held exits at once, so one
+pipeline runs at a time; the next queued issue waits for the next free tick.
 
 ## The maintainer's two touch points
 

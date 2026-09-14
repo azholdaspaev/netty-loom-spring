@@ -67,23 +67,13 @@ gh issue list --state closed --search "label:$agent_labels" --json number --jq '
 done
 
 # --- merged ---
-gitdir=$(git rev-parse --path-format=absolute --git-common-dir)
 for wt in "$WT"/NL-*/; do
   [ -d "$wt" ] || continue
   branch=$(basename "$wt")
   [ "$(gh pr list --head "$branch" --state merged --json number --jq length)" != 0 ] || continue
   # --force twice: the lock is another tool's (supacode locks every worktree of the clone), and
   # nothing the pipeline owns is behind it once the pull request is merged.
-  rc=0; git worktree remove --force --force "$wt" || rc=$?
-  if [ "$rc" != 0 ]; then
-    # git drops .git/worktrees/<id> before it reports the directory it could not delete (builtin/worktree.c,
-    # remove_worktree), so a failed removal can leave a directory git no longer knows: rm that one by hand,
-    # known by a .git file naming an admin directory of this clone that is gone. A directory git still
-    # registers, or never did, is not the runner's to delete.
-    admin=; [ ! -f "$wt/.git" ] || admin=$(sed -n 's/^gitdir: //p' "$wt/.git")
-    unregistered=0; case "$admin" in "$gitdir/worktrees/"*) [ -d "$admin" ] || unregistered=1 ;; esac
-    if [ "$unregistered" != 1 ] || ! rm -rf "$wt"; then say "merged: $branch not removed (git exit $rc)"; continue; fi
-  fi
+  rc=0; git worktree remove --force --force "$wt" || { rc=$?; say "merged: $branch not removed (git exit $rc)"; continue; }
   say "merged: $branch removed"
   git branch -q -D "$branch"
   n=$(issue_of "$branch")
