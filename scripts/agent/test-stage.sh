@@ -81,6 +81,7 @@ SHIM
 }
 
 TS='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z'
+RUN_TS='[0-9]{8}T[0-9]{6}Z'
 
 # run <mode> <pr-url-or-empty> <stage args...>; sets rc, out, err and said (stderr with the stage's
 # own timestamped prefix stripped, so a line without it stands out)
@@ -421,7 +422,7 @@ run nocommit "" 999 test "$PR_URL"
 export RUN_ID="$RUN"
 runs=$(cd "$tmp/home/.netty-loom-agent/logs/NL-999" 2>/dev/null && printf '%s|' * || true)
 ok=1; why="rc=$rc stderr=$err runs=$runs"
-[ "$rc" = 0 ] && [[ "$runs" =~ ^[0-9]{8}T[0-9]{6}Z\|$ ]] \
+[ "$rc" = 0 ] && [[ "$runs" =~ ^$RUN_TS\|$ ]] \
   && [ "$(jq -r .subtype "$tmp/home/.netty-loom-agent/logs/NL-999/${runs%|}/test.json" 2>/dev/null)" = success ] || ok=0
 check run-id-default "$ok" "$why"
 rm -rf "$tmp"

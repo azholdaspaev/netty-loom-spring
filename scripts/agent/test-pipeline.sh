@@ -5,6 +5,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PR_URL="https://github.com/o/r/pull/7"
+RUN_TS='[0-9]{8}T[0-9]{6}Z'
 failed=0
 
 export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.invalid
@@ -142,7 +143,7 @@ for needle in "$PR_URL" "rounds: 2" "converged" "2.50 USD" "5 min" \
               "from 5 stage results in $tmp/home/.netty-loom-agent/logs/NL-999/$run_id."; do
   contains "$comment" "$needle" || { ok=0; why="comment lacks '$needle': $comment"; }
 done
-[[ "$run_id" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || { ok=0; why="run id '$run_id' is not a UTC start timestamp"; }
+[[ "$run_id" =~ ^$RUN_TS$ ]] || { ok=0; why="run id '$run_id' is not a UTC start timestamp"; }
 contains "$comment" "did not converge" && { ok=0; why="comment says it did not converge"; }
 contains "$comment" "stash" && { ok=0; why="comment names a stash on a clean pick-up: $comment"; }
 check converges "$ok" "$why"
