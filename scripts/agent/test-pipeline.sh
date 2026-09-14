@@ -200,6 +200,20 @@ ok=1; why="rc=$rc stderr=$err stages=$stages"
 check retry-unpushed-answer-read "$ok" "$why"
 rm -rf "$tmp"
 
+# --- the same commits, an answered question, then the runner's failure comment: the answer still counts ---
+setup
+echo work >> "$tmp/work/src.txt"
+GIT_COMMITTER_DATE=2026-01-01T00:00:00Z git -C "$tmp/work" commit -qam "NL-999 work"
+echo '[{"user": {"login": "runner"}, "body": "<!-- agent:question --> Which?", "created_at": "2026-01-02T00:00:00Z"},
+       {"user": {"login": "o"}, "body": "The first.", "created_at": "2026-01-03T00:00:00Z"},
+       {"user": {"login": "runner"}, "body": "Failed: infrastructure.", "created_at": "2026-01-05T00:00:00Z"}]' > "$tmp/state/issue-comments"
+run 0 ""
+ok=1; why="rc=$rc stderr=$err stages=$stages"
+[ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] && [ "$stages" = "$IMPLEMENT$R1$TEST$HANDOFF" ] \
+  && [ -z "$(git -C "$tmp/origin" rev-parse -q --verify refs/heads/NL-999-x)" ] || ok=0
+check retry-unpushed-answered-then-commented "$ok" "$why"
+rm -rf "$tmp"
+
 # --- the same commits, and the answer check's gh call fails: infrastructure, exit 2, nothing pushed or opened ---
 setup
 echo work >> "$tmp/work/src.txt"; git -C "$tmp/work" commit -qam "NL-999 work"

@@ -5,8 +5,8 @@
 # and hand over. A stage that asked a question moves the issue to agent/needs-input instead.
 # A reused worktree is settled first: uncommitted edits go to a named stash, and commits without
 # a pull request get one opened here, with the template as its body, rather than a second
-# implement stage on a branch that already carries the work -- unless the issue's newest comment
-# answers a question and is newer than every commit, so no implement stage has read it yet.
+# implement stage on a branch that already carries the work -- unless the owner's answer to the
+# issue's last question is newer than every commit, so no implement stage has read it yet.
 # Usage: scripts/agent/pipeline.sh <issue number>    (cwd = the issue's worktree)
 set -euo pipefail
 
@@ -23,14 +23,17 @@ say() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) pipeline.sh: NL-$N: $*" >&2; }
 fail() { say "$1 failed"; exit 2; }
 gh() { command gh "$@" || fail "gh $1 $2"; }
 pr_comments() { "$PR_COMMENTS" "$url" || fail pr-comments.sh; }
-# requeue.sh's test, so the two agree on what an answer is: the owner's comment is the newest, after the agent's question.
+# requeue.sh's marker and rindex, so the two agree on which comment is the question. The answer is
+# the owner's first comment after it, not the newest as in requeue.sh: the runner's failure comment
+# on a killed retry follows the answer, and must not hide it.
 # Prints when the answer was posted, in epoch seconds, or nothing.
 answered_at() {
   gh api --paginate "repos/$repo/issues/$N/comments?per_page=100" | jq -s 'add // []' \
     | jq -r --arg me "$me" --arg owner "${repo%%/*}" --arg marker "$MARKER" '
         (map(.user.login == $me and (.body | startswith($marker))) | rindex(true)) as $question
-        | select($question != null and $question < length - 1 and .[-1].user.login == $owner)
-        | .[-1].created_at | fromdateiso8601'
+        | select($question != null)
+        | .[$question + 1:] | map(select(.user.login == $owner)) | first // empty
+        | .created_at | fromdateiso8601'
 }
 
 # stage <stage> [<pr url> [<round>]] -- runs stage.sh with its stdout in $stage_out rather than
