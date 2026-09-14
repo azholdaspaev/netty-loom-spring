@@ -219,7 +219,7 @@ ok=1; why="rc=$rc stdout=$out stderr=$err stages=$stages comment=$comment"
 [ "$rc" = 0 ] && [ -z "$out" ] && [ -z "$comment" ] && [ "$stages" = "$IMPLEMENT$NEEDS_INPUT" ] \
   && [ -z "$(git -C "$tmp/origin" rev-parse -q --verify refs/heads/NL-999-x)" ] \
   && ! contains "$err" "integer expression expected" || ok=0
-check pending-question "$ok" "$why"
+check retry-unpushed-pending "$ok" "$why"
 rm -rf "$tmp"
 
 # --- an answered question, then commits: the implement stage that made them read the answer, so no second one ---
