@@ -58,7 +58,6 @@ stage() {
 branch=$(git branch --show-current)
 repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 me=$(gh api user --jq .login)
-stash=""
 if [ -n "$(git status --porcelain)" ]; then
   stash="NL-$N retry $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   git stash push -q -u -m "$stash"
@@ -120,6 +119,8 @@ fi
 cost=$(jq -s '[.[].total_cost_usd] | add' "$LOG"/*.json)
 minutes=$(jq -s '([.[].duration_ms] | add) / 60000 | round' "$LOG"/*.json)
 results=$(jq -s length "$LOG"/*.json)
+# Every retry stash still on the worktree, not this run's: a run that stashed and ended on a question posted no hand-off.
+stashes=$(git stash list --format=%gs | grep -o "NL-$N retry .*" || true)
 
 gh pr ready "$url"
 gh issue edit "$N" --add-label agent/pr-ready >/dev/null
@@ -127,7 +128,10 @@ gh issue comment "$N" --body-file - >/dev/null <<BODY
 Pull request: $url
 Review/fix rounds: $round, $outcome
 Cost: $(printf '%.2f' "$cost") USD, wall time: $minutes min, from $results stage results in $LOG.
-${stash:+Uncommitted edits found on pick-up are stashed in the worktree as \`$stash\`.}
+${stashes:+Uncommitted edits found on pick-up are stashed in the worktree:
+\`\`\`
+$stashes
+\`\`\`}
 ${dirty:+Tree was dirty after the test stage and was reset with \`reset_tree\` (\`pipeline.sh\`):
 \`\`\`
 $dirty
