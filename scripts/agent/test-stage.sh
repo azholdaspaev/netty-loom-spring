@@ -71,6 +71,9 @@ case "$SHIM_MODE" in
   crash)    commit; echo boom; exit 1 ;;
   api-error) result success true | jq -c '. + {terminal_reason: "api_error", result: "API Error: 403 blocked"}'; exit 1 ;;
   is-error) commit; result success true ;;
+  subtype-only) commit; result error_max_turns false ;;
+  no-is-error) commit; result success false | jq -c 'del(.is_error)' ;;
+  no-terminal-reason) commit; result error_max_budget_usd true | jq -c 'del(.terminal_reason)' ;;
   dropped)  commit; result error_during_execution true; exit 1 ;;
   exit-1)   commit; result success false | jq -c '. + {result: "Done.\n```\nsecond line\n```"}'; exit 1 ;;
   hang)     sleep 5 ;;
@@ -275,6 +278,31 @@ ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "claude ended with is_error (exited 0)" || ok=0
 [ -z "$out" ] || { ok=0; why="stdout=$out"; }
 check is-error "$ok" "$why"
+rm -rf "$tmp"
+
+# --- non-success subtype with is_error false and a clean exit: the subtype alone decides ---
+setup
+run subtype-only "$PR_URL" 999 implement
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 1 ] && contains "$err" "claude ended with error_max_turns (exited 0)" || ok=0
+[ -z "$out" ] || { ok=0; why="stdout=$out"; }
+check subtype-only "$ok" "$why"
+rm -rf "$tmp"
+
+# --- no is_error field: a CLI that predates it is not an error ---
+setup
+run no-is-error "$PR_URL" 999 implement
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] || ok=0
+check no-is-error "$ok" "$why"
+rm -rf "$tmp"
+
+# --- no terminal_reason field: the subtype names the outcome ---
+setup
+run no-terminal-reason "$PR_URL" 999 implement
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 1 ] && contains "$err" "claude ended with error_max_budget_usd (exited 0)" || ok=0
+check no-terminal-reason "$ok" "$why"
 rm -rf "$tmp"
 
 # --- success result, non-zero exit: only the first line of .result reaches the failure line ---
