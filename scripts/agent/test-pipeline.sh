@@ -174,16 +174,30 @@ contains "$comment" "1.00 USD" || { ok=0; why="comment lacks '1.00 USD': $commen
 check retry-unpushed "$ok" "$why"
 rm -rf "$tmp"
 
-# --- the same commits after an answered question: implement runs, the one stage that reads the answer ---
+# --- the same commits, then an answered question: implement runs, the one stage that reads the answer ---
 setup
-echo work >> "$tmp/work/src.txt"; git -C "$tmp/work" commit -qam "NL-999 work"
-echo '[{"user": {"login": "runner"}, "body": "<!-- agent:question --> Which?"},
-       {"user": {"login": "o"}, "body": "The first."}]' > "$tmp/state/issue-comments"
+echo work >> "$tmp/work/src.txt"
+GIT_COMMITTER_DATE=2026-01-01T00:00:00Z git -C "$tmp/work" commit -qam "NL-999 work"
+echo '[{"user": {"login": "runner"}, "body": "<!-- agent:question --> Which?", "created_at": "2026-01-02T00:00:00Z"},
+       {"user": {"login": "o"}, "body": "The first.", "created_at": "2026-01-03T00:00:00Z"}]' > "$tmp/state/issue-comments"
 run 0 ""
 ok=1; why="rc=$rc stderr=$err stages=$stages"
 [ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] && [ "$stages" = "$IMPLEMENT$R1$TEST$HANDOFF" ] \
   && [ -z "$(git -C "$tmp/origin" rev-parse -q --verify refs/heads/NL-999-x)" ] || ok=0
 check retry-unpushed-answered "$ok" "$why"
+rm -rf "$tmp"
+
+# --- an answered question, then commits: the implement stage that made them read the answer, so no second one ---
+setup
+echo '[{"user": {"login": "runner"}, "body": "<!-- agent:question --> Which?", "created_at": "2026-01-02T00:00:00Z"},
+       {"user": {"login": "o"}, "body": "The first.", "created_at": "2026-01-03T00:00:00Z"}]' > "$tmp/state/issue-comments"
+echo work >> "$tmp/work/src.txt"
+GIT_COMMITTER_DATE=2026-01-04T00:00:00Z git -C "$tmp/work" commit -qam "NL-999 work"
+run 0 ""
+ok=1; why="rc=$rc stderr=$err stages=$stages"
+[ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] && [ "$stages" = "$CREATE$R1$TEST$HANDOFF" ] \
+  && [ "$(git -C "$tmp/origin" rev-parse refs/heads/NL-999-x)" = "$(git -C "$tmp/work" rev-parse HEAD)" ] || ok=0
+check retry-unpushed-answer-read "$ok" "$why"
 rm -rf "$tmp"
 
 # --- the same commits, and the answer check's gh call fails: infrastructure, exit 2, nothing pushed or opened ---
