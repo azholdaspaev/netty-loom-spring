@@ -368,6 +368,17 @@ ok=1; why="rc=$rc stdout=$out stderr=$err stages=$stages comment=$comment"
 check review-question "$ok" "$why"
 rm -rf "$tmp"
 
+# --- a fix asked a question with the tree dirty: same label move, and the tree reset ---
+setup
+export SHIM_QUESTION="fix 1" SHIM_DIRTY=fix
+run 1,1 ""
+unset SHIM_QUESTION SHIM_DIRTY
+ok=1; why="rc=$rc stdout=$out stderr=$err stages=$stages comment=$comment tree=$(git -C "$tmp/work" status --porcelain)"
+[ "$rc" = 0 ] && [ -z "$out" ] && [ -z "$comment" ] && [ -z "$(git -C "$tmp/work" status --porcelain)" ] \
+  && [ "$stages" = "$IMPLEMENT$R1$F1$NEEDS_INPUT" ] || ok=0
+check fix-question-dirty "$ok" "$why"
+rm -rf "$tmp"
+
 # --- the test stage asked a question ---
 setup
 export SHIM_QUESTION=test
