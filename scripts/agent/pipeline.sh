@@ -60,7 +60,8 @@ if [ -n "$(git status --porcelain)" ]; then
   say "uncommitted edits found on pick-up, stashed as '$stash'"
 fi
 url=$(gh pr list --head "$branch" --json url --jq '.[0].url')
-if [ -z "$url" ] && [ -n "$(git log --oneline origin/main..HEAD)" ] && [ "$(answered)" != true ]; then
+answered=$(answered)
+if [ -z "$url" ] && [ -n "$(git log --oneline origin/main..HEAD)" ] && [ "$answered" != true ]; then
   git push -q -u origin "$branch" || fail "git push"
   title=$(gh issue view "$N" --json title --jq .title)
   body="$(sed "s/#NN/#$N/" "$PR_TEMPLATE")
