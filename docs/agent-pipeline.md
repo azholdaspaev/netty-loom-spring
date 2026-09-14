@@ -50,7 +50,14 @@ own `gh` calls failed, the runner when `./gradlew dependencySources` did — goe
 `agent/queued` with `agent/retried` and no comment, once; every other failure, and a second
 infrastructure failure, is `agent/failed`. The comment on the issue then names the class and holds
 the last 30 lines of stderr and the log path. Replace `agent/failed` with `agent/queued` to retry:
-the worktree is reused and, once a pull request exists, the pipeline resumes at the review stage.
+the worktree is reused as it is, and `pipeline.sh` settles it before any stage runs. Uncommitted
+edits — a stage killed mid-edit — go to a stash named `NL-<n> retry <timestamp>`, named again in
+the issue's log and the hand-off comment, so the stage starts on a clean tree and the hunks wait
+in `git stash list` for the maintainer; nothing is discarded. Commits on the branch with no pull
+request — a stage that committed but never pushed — are pushed and get a draft pull request
+opened by the script, whose body is the template with a note that no implement stage wrote it, and
+the pipeline goes on to review without an implement stage. Once a pull request exists, the
+pipeline resumes at the review stage. The answer to a question comes back through the same path.
 `agent/retried` stays on until the merge, so a hand retry after it gets no second automatic one.
 The `agent/fix` stages are not classified: any failure there is `agent/failed` on the pull request,
 with the stderr tail and the log path, and no retry.
