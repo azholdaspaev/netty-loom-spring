@@ -186,6 +186,18 @@ ok=1; why="rc=$rc stderr=$err stages=$stages"
 check retry-unpushed-answered "$ok" "$why"
 rm -rf "$tmp"
 
+# --- the same commits, and the answer check's gh call fails: infrastructure, exit 2, nothing pushed or opened ---
+setup
+echo work >> "$tmp/work/src.txt"; git -C "$tmp/work" commit -qam "NL-999 work"
+export SHIM_GH_FAIL="api --paginate repos/o/r/issues"
+run 0 ""
+unset SHIM_GH_FAIL
+ok=1; why="rc=$rc stderr=$err stages=$stages"
+[ "$rc" = 2 ] && contains "$err" "gh api --paginate failed" && [ -z "$stages" ] \
+  && [ -z "$(git -C "$tmp/origin" rev-parse -q --verify refs/heads/NL-999-x)" ] || ok=0
+check answer-check-failure "$ok" "$why"
+rm -rf "$tmp"
+
 # --- never converges ---
 setup
 run 1,1,1 ""
