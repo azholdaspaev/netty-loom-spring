@@ -159,6 +159,21 @@ ok=1; why="rc=$rc stderr=$err stages=$stages stash=$stash tree=$tree comment=$co
 check retry-dirty "$ok" "$why"
 rm -rf "$tmp"
 
+# --- a dirty pick-up whose run ends on a question: the next run's hand-off still names the stash ---
+setup
+echo mutated >> "$tmp/work/src.txt"
+export SHIM_QUESTION=implement
+run 0 ""
+unset SHIM_QUESTION
+run 0 ""
+stash=$(git -C "$tmp/work" stash list --format=%gs)
+ok=1; why="rc=$rc stderr=$err stages=$stages stash=$stash comment=$comment"
+[ "$rc" = 0 ] && [ "$stages" = "$IMPLEMENT$NEEDS_INPUT$IMPLEMENT$R1$TEST$HANDOFF" ] \
+  && [ "$(git -C "$tmp/work" stash list | wc -l | tr -d ' ')" = 1 ] \
+  && contains "$comment" "${stash#On NL-999-x: }" || ok=0
+check retry-dirty-then-question "$ok" "$why"
+rm -rf "$tmp"
+
 # --- a retry on commits without a pull request: pushed and opened by the script, no implement stage ---
 setup
 echo work >> "$tmp/work/src.txt"; git -C "$tmp/work" commit -qam "NL-999 work"
