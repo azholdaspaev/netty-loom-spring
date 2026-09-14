@@ -12,7 +12,7 @@ decisions behind it: #211.
 
 | Label | Meaning | Set by | Cleared by |
 | --- | --- | --- | --- |
-| `agent/queued` | waiting for a tick | maintainer; `requeue.sh` after an answer to a `pipeline.sh` stage's question | runner, on pick-up |
+| `agent/queued` | waiting for a tick | maintainer; `requeue.sh` after an answer, unless an `agent/fix` pull request is open on the issue's branch — then only `agent/needs-input` comes off and the runner reruns its stages | runner, on pick-up |
 | `agent/running` | a pipeline is running in the issue's worktree | runner | runner, when the pipeline returns; the next tick, when the tick died — to `agent/failed`, or just off when `agent/pr-ready` or `agent/queued` is already there |
 | `agent/needs-input` | a question is posted on the issue | `pipeline.sh`; runner, when an `agent/fix` stage asked; `requeue.sh`, when an `agent/pr-ready` issue's newest comment is a question — one an `agent/fix` stage asked and could not read back, since those post nothing else on the issue | `requeue.sh`, once the owner has answered |
 | `agent/pr-ready` | the pull request is ready for review | `pipeline.sh` | runner, after the merge, or on pick-up when the issue is queued again |

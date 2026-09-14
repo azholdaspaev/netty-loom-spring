@@ -9,8 +9,9 @@ failed=0
 setup() {
   tmp=$(mktemp -d)
   mkdir -p "$tmp/bin"
-  echo '[]' > "$tmp/issues.json"
+  : > "$tmp/issues"
   : > "$tmp/pr-ready"
+  echo '[]' > "$tmp/fix-prs.json"
   cat > "$tmp/bin/gh" <<'SHIM'
 #!/usr/bin/env bash
 echo "gh $*" >> "$SHIM_EVENTS"
@@ -18,8 +19,9 @@ jqarg() { local prev=; for a in "$@"; do [ "$prev" = --jq ] && { printf '%s' "$a
 case "$*" in
   "repo view --json nameWithOwner --jq .nameWithOwner") echo o/r ;;
   "api user --jq .login") echo o ;;
-  "issue list --label agent/needs-input --state open --json number,labels --jq "*) jq -r "$(jqarg "$@")" "$SHIM_DIR/issues.json" ;;
+  "issue list --label agent/needs-input --state open --json number --jq .[].number") cat "$SHIM_DIR/issues" ;;
   "issue list --label agent/pr-ready --state open --json number --jq .[].number") cat "$SHIM_DIR/pr-ready" ;;
+  "pr list --label agent/fix --state open --json headRefName --jq "*) jq -r "$(jqarg "$@")" "$SHIM_DIR/fix-prs.json" ;;
   "api --paginate repos/o/r/issues/"*"/comments?per_page=100") n=${3#repos/o/r/issues/}; cat "$SHIM_DIR/comments-${n%%/*}.json" ;;
 esac
 SHIM
@@ -28,18 +30,12 @@ SHIM
 }
 
 # thread <issue> <login:q|c>...  -- q posts the marker, c a plain comment; order is chronological;
-# the issue is listed as agent/needs-input with the labels in LABELS beside it, or as agent/pr-ready
-# under LIST=pr-ready
+# the issue is listed as agent/needs-input, or as agent/pr-ready under LIST=pr-ready; FIXPR names
+# the head branch of the one open agent/fix pull request
 thread() {
   local n=$1 i=0 list='[]'; shift
-  if [ "${LIST:-issues}" = issues ]; then
-    jq --argjson n "$n" --arg labels "${LABELS:-}" \
-      '. + [{number: $n, labels: ($labels | split(",") | map(select(. != "")) | map({name: .}))}]' \
-      "$tmp/issues.json" > "$tmp/issues.new"
-    mv "$tmp/issues.new" "$tmp/issues.json"
-  else
-    echo "$n" >> "$tmp/$LIST"
-  fi
+  echo "$n" >> "$tmp/${LIST:-issues}"
+  [ -z "${FIXPR:-}" ] || echo "[{\"headRefName\": \"$FIXPR\"}]" > "$tmp/fix-prs.json"
   for spec in "$@"; do
     i=$((i + 1))
     local body="comment $i"
@@ -83,9 +79,10 @@ case_ no-marker       ""           5 o:c
 case_ second-question ""           5 o:q o:c o:q
 case_ owner-then-third-party ""    5 o:q o:c x:c
 
-# --- the question came from an agent/fix stage (the issue is agent/pr-ready): the answer takes agent/needs-input off alone ---
-LABELS=agent/needs-input,agent/pr-ready case_ answered-on-fix-path "gh issue edit 5 --remove-label agent/needs-input" 5 o:q o:c
-LABELS=agent/needs-input,agent/pr-ready case_ pending-on-fix-path  ""                                                 5 o:q
+# --- an agent/fix pull request is open on the issue's branch, so its stages rerun: the answer takes agent/needs-input off alone ---
+FIXPR=NL-5-the-thing case_ answered-on-fix-path "gh issue edit 5 --remove-label agent/needs-input" 5 o:q o:c
+FIXPR=NL-5-the-thing case_ pending-on-fix-path  ""                                                 5 o:q
+FIXPR=NL-55-other    case_ answered-other-fix-pr "$requeue_5"                                      5 o:q o:c
 
 # --- an agent/pr-ready issue whose newest comment is the marker gets agent/needs-input; nothing else does ---
 label_5="gh issue edit 5 --add-label agent/needs-input"

@@ -101,7 +101,7 @@ gh pr list --label agent/fix --state open --json url,headRefName --jq '.[] | "\(
   done
   case "$rc" in
     0) gh pr edit "$url" --remove-label agent/fix >/dev/null ;;
-    3) # agent/fix stays on rather than requeue.sh putting it back with the answer: that would need the pull request found from the issue number.
+    3) # agent/fix stays on rather than requeue.sh putting it back with the answer: requeue.sh reads it to tell this question from pipeline.sh's.
        gh issue edit "$n" --add-label agent/needs-input >/dev/null ;;
     *) gh pr edit "$url" --remove-label agent/fix --add-label agent/failed >/dev/null
        failure "The $stage stage failed (exit $rc)" "$log" | gh pr comment "$url" --body-file - >/dev/null ;;
