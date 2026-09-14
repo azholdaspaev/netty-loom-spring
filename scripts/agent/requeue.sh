@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Move every agent/needs-input issue whose question the repository owner has answered back to
-# agent/queued, and label agent/needs-input every agent/pr-ready issue whose newest comment is a
-# question: the runner's agent/fix stages post nothing on the issue, so one they asked and could
-# not read back (stage.sh) stays newest; on the pipeline path the hand-over or failure comment
-# follows it, and the maintainer reads it there.
+# agent/queued -- or, when the issue is also agent/pr-ready, so an agent/fix stage asked, take
+# agent/needs-input off alone and leave the pull request's agent/fix label to the runner -- and
+# label agent/needs-input every agent/pr-ready issue whose newest comment is a question: the
+# runner's agent/fix stages post nothing on the issue, so one they asked and could not read back
+# (stage.sh) stays newest; on the pipeline path the hand-over or failure comment follows it, and
+# the maintainer reads it there.
 # Usage: scripts/agent/requeue.sh    (one tick; cwd = any checkout of the repository)
 set -euo pipefail
 
@@ -13,11 +15,16 @@ owner=${repo%%/*}
 me=$(gh api user --jq .login)
 comments() { gh api --paginate "repos/$repo/issues/$1/comments?per_page=100" | jq -s 'add // []'; }
 
-for n in $(gh issue list --label agent/needs-input --state open --json number --jq '.[].number'); do
+gh issue list --label agent/needs-input --state open --json number,labels \
+  --jq '.[] | "\(.number) \(any(.labels[]; .name == "agent/pr-ready"))"' \
+| while read -r n fixing; do
   answered=$(comments "$n" | jq -r --arg me "$me" --arg owner "$owner" --arg marker "$MARKER" '
         (map(.user.login == $me and (.body | startswith($marker))) | rindex(true)) as $question
         | $question != null and $question < length - 1 and .[-1].user.login == $owner')
-  if [ "$answered" = true ]; then
+  [ "$answered" = true ] || continue
+  if [ "$fixing" = true ]; then
+    gh issue edit "$n" --remove-label agent/needs-input
+  else
     gh issue edit "$n" --remove-label agent/needs-input --add-label agent/queued
   fi
 done
