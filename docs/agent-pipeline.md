@@ -12,11 +12,11 @@ decisions behind it: #211.
 
 | Label | Meaning | Set by | Cleared by |
 | --- | --- | --- | --- |
-| `agent/queued` | waiting for a tick | maintainer; `requeue.sh` after an answer | runner, on pick-up |
+| `agent/queued` | waiting for a tick | maintainer; `requeue.sh` after an answer to a `pipeline.sh` stage's question | runner, on pick-up |
 | `agent/running` | a pipeline is running in the issue's worktree | runner | runner, when the pipeline returns; the next tick, when the tick died — to `agent/failed`, or just off when `agent/pr-ready` or `agent/queued` is already there |
-| `agent/needs-input` | a question is posted on the issue | `pipeline.sh`; `requeue.sh`, when an `agent/pr-ready` issue's newest comment is a question — one an `agent/fix` stage asked, since those post nothing else on the issue | `requeue.sh`, once the owner has answered |
+| `agent/needs-input` | a question is posted on the issue | `pipeline.sh`; runner, when an `agent/fix` stage asked; `requeue.sh`, when an `agent/pr-ready` issue's newest comment is a question — one an `agent/fix` stage asked and could not read back, since those post nothing else on the issue | `requeue.sh`, once the owner has answered |
 | `agent/pr-ready` | the pull request is ready for review | `pipeline.sh` | runner, after the merge, or on pick-up when the issue is queued again |
-| `agent/fix` | on a pull request: run a fix stage, then a review stage | maintainer | runner, after those stages |
+| `agent/fix` | on a pull request: run a fix stage, then a review stage; stays on while a question from either waits on the issue, and the runner skips the pull request until the answer | maintainer | runner, after those stages |
 | `agent/retried` | the pipeline's one infrastructure failure — a stage timeout, a dropped API connection, a failed `gh` call — was retried from the worktree | runner | runner, after the merge |
 | `agent/failed` | the work failed, the infrastructure failed twice, an `agent/fix` stage failed, or a tick died with the issue on `agent/running`; the comment has the log tail | runner | maintainer |
 
@@ -29,14 +29,17 @@ labels; the worktree goes through any lock another tool put on it, and one the t
 remove is logged as `not removed`, every tick, and does not stop it — that directory, its branch
 and the labels are the maintainer's to clean up, because git drops the registration even when the
 delete fails, so no later tick can), `requeue.sh`, a fix stage then a review stage per `agent/fix`
-pull request, then one `agent/queued` issue. A tick that finds the lock held exits at once, so one
-pipeline runs at a time; the next queued issue waits for the next free tick.
+pull request whose issue is not on `agent/needs-input`, then one `agent/queued` issue. A tick that
+finds the lock held exits at once, so one pipeline runs at a time; the next queued issue waits for
+the next free tick.
 
 ## The maintainer's two touch points
 
 1. **A question.** A stage of `pipeline.sh` posts one comment starting with
    `<!-- agent:question -->` and the issue moves to `agent/needs-input`. Reply on the issue; the
    next tick moves it back to `agent/queued` and the pipeline starts over on the same worktree.
+   An `agent/fix` stage asks the same way, and the pull request keeps its label; the tick after
+   your reply runs the fix stage and the review stage again.
 2. **The review.** On `agent/pr-ready`, review the pull request. Inline comments plus the
    `agent/fix` label on the pull request run one fix stage, which replies in every thread with a
    sha or the reason nothing changed, then one review stage, which verifies each fix blind and
@@ -67,7 +70,7 @@ A question still pending beside such commits goes to an implement stage too, whi
 and moves the issue to `agent/needs-input` with nothing pushed.
 `agent/retried` stays on until the merge, so a hand retry after it gets no second automatic one.
 The `agent/fix` stages are not classified: any failure there is `agent/failed` on the pull request,
-with the stderr tail and the log path, and no retry.
+with the stderr tail and the log path, and no retry; a question is not a failure, and goes as above.
 
 ## Logs
 
