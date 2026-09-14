@@ -132,7 +132,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldWriteAStreamedResponseAsHeadChunksAndLastContent() {
+    void shouldWriteStreamedResponseAsHeadChunksAndLastContent() {
         HttpResponse head = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
                 writer.write(head);
@@ -155,7 +155,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldFrameAnUnframedStreamingHeadAsChunkedForHttp11() {
+    void shouldFrameUnframedStreamingHeadAsChunkedForHttp11() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
                 writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
                 writer.write(LastHttpContent.EMPTY_LAST_CONTENT);
@@ -172,7 +172,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldNotReframeAHeadThatAlreadySetContentLength() {
+    void shouldNotReframeHeadThatAlreadySetContentLength() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
                 HttpResponse head = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
                 head.headers().setInt(HttpHeaderNames.CONTENT_LENGTH, 3);
@@ -194,7 +194,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldLeaveAnHttp10StreamingHeadUnframedSoTheConnectionDelimitsIt() {
+    void shouldLeaveHttp10StreamingHeadUnframedSoConnectionDelimitsIt() {
         EmbeddedChannel channel = keepAliveChannel((_, _, _, writer) -> {
             writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
             writer.write(LastHttpContent.EMPTY_LAST_CONTENT);
@@ -215,7 +215,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldReportAGoneClientAsADisconnectAndReleaseTheChunk() throws Exception {
+    void shouldReportGoneClientAsDisconnectAndReleaseChunk() throws Exception {
         ByteBuf orphan = Unpooled.copiedBuffer("gone", StandardCharsets.UTF_8);
         CountDownLatch connectionClosed = new CountDownLatch(1);
         AtomicReference<Thread> worker = new AtomicReference<>();
@@ -247,7 +247,7 @@ class HttpRequestHandlerTest {
 
     @Test
     @Timeout(value = 30, unit = TimeUnit.SECONDS)
-    void shouldParkTheDispatchThreadWhileTheConnectionIsUnwritable() throws Exception {
+    void shouldParkDispatchThreadWhileConnectionIsUnwritable() throws Exception {
         CountDownLatch responseFinished = new CountDownLatch(1);
         AtomicReference<Thread> worker = new AtomicReference<>();
         /*
@@ -277,7 +277,7 @@ class HttpRequestHandlerTest {
 
     @Test
     @Timeout(value = 30, unit = TimeUnit.SECONDS)
-    void shouldGiveUpOnAConnectionThatStaysUnwritable() throws Exception {
+    void shouldGiveUpOnConnectionThatStaysUnwritable() throws Exception {
         AtomicReference<Thread> worker = new AtomicReference<>();
         AtomicReference<Throwable> failure = new AtomicReference<>();
         try (StalledConnection connection = new StalledConnection(new HttpRequestHandler((_, _, _, writer) -> {
@@ -302,7 +302,7 @@ class HttpRequestHandlerTest {
 
     @Test
     @Timeout(value = 30, unit = TimeUnit.SECONDS)
-    void shouldWaitWithoutBoundWhenTheWriteStallTimeoutIsDisabled() throws Exception {
+    void shouldWaitWithoutBoundWhenWriteStallTimeoutIsDisabled() throws Exception {
         CountDownLatch responseFinished = new CountDownLatch(1);
         AtomicReference<Thread> worker = new AtomicReference<>();
         AtomicReference<Throwable> failure = new AtomicReference<>();
@@ -337,7 +337,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldCloseInsteadOfFiringExceptionCaughtWhenTheDispatcherFailsAfterCommitting() {
+    void shouldCloseNotFireExceptionCaughtWhenDispatchFailsPostCommit() {
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         EmbeddedChannel channel = new EmbeddedChannel(
             new HttpRequestHandler((_, _, _, writer) -> {
@@ -358,7 +358,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldFailAnExchangeTheDispatcherLeftUnanswered() {
+    void shouldFailExchangeDispatcherLeftUnanswered() {
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         EmbeddedChannel channel = new EmbeddedChannel(
             new HttpRequestHandler((_, _, _, _) -> { }, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT),
@@ -373,7 +373,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldCloseAnExchangeTheDispatcherLeftHalfWritten() {
+    void shouldCloseExchangeDispatcherLeftHalfWritten() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK)),
             DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
@@ -443,7 +443,7 @@ class HttpRequestHandlerTest {
 
     @Test
     @Timeout(value = 30, unit = TimeUnit.SECONDS)
-    void shouldNotRecordAClientDisconnectMidResponseAsAFailure() throws Exception {
+    void shouldNotRecordClientDisconnectMidResponseAsFailure() throws Exception {
         CountDownLatch connectionClosed = new CountDownLatch(1);
         AtomicReference<Thread> worker = new AtomicReference<>();
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
@@ -475,7 +475,7 @@ class HttpRequestHandlerTest {
 
     @ParameterizedTest
     @ValueSource(ints = {100, 204, 205, 304})
-    void shouldLeaveAStatusThatCanNeverCarryABodyUnframed(int status) {
+    void shouldLeaveStatusThatCanNeverCarryBodyUnframed(int status) {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
                 writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(status)));
                 writer.write(LastHttpContent.EMPTY_LAST_CONTENT);
@@ -501,7 +501,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldPassThroughTheIncomingRequestToDispatcher() {
+    void shouldPassThroughIncomingRequestToDispatcher() {
         CapturingDispatcher dispatcher = new CapturingDispatcher();
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
         HttpRequest request = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/submit");
@@ -518,7 +518,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void passesHttpConnectionMetadataToDispatcher() {
+    void shouldPassHttpConnectionMetadataToDispatcher() {
         CapturingDispatcher dispatcher = new CapturingDispatcher();
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
@@ -573,7 +573,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldHandOnTheBodyOfAnAggregatedRequestRatherThanLoseIt() {
+    void shouldHandOnBodyOfAggregatedRequestRatherThanLoseIt() {
         CompletableFuture<String> read = new CompletableFuture<>();
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
             (_, body, _, writer) -> {
@@ -594,7 +594,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldReleaseEveryPartOfABodyNobodyRead() {
+    void shouldReleaseEveryPartOfBodyNobodyRead() {
         CapturingDispatcher dispatcher = new CapturingDispatcher();
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
         HttpContent unread = bodyPart("ignored");
@@ -614,7 +614,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldCloseRatherThanAnswerAFailureOnceTheResponseHasGoneOut() {
+    void shouldCloseRatherThanAnswerFailureOnceResponseHasGoneOut() {
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         CompletableFuture<Runnable> submitted = new CompletableFuture<>();
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
@@ -632,7 +632,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldNotLetADispatchAnswerAnExchangeThePipelineHasAlreadyRefused() throws Exception {
+    void shouldNotLetDispatchAnswerExchangePipelineHasAlreadyRefused() throws Exception {
         CompletableFuture<Runnable> submitted = new CompletableFuture<>();
         CompletableFuture<IOException> refusedToAnswer = new CompletableFuture<>();
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
@@ -667,7 +667,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldStillAnswerAFailureArrivingBetweenExchangesOnAReusedConnection() {
+    void shouldAnswerFailureBetweenExchangesOnReusedConnection() {
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
             (_, _, _, writer) -> writer.write(emptyOkResponse()), DIRECT, connectionRegistry,
@@ -686,7 +686,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldStillAnswerAFailureWhenTheDispatchOutlivesItsRequestTerminator() {
+    void shouldAnswerFailureWhenDispatchOutlivesRequestTerminator() {
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         CompletableFuture<Runnable> submitted = new CompletableFuture<>();
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
@@ -712,7 +712,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldStillAnswerAFailureWhenTheRequestTerminatorOutlivesItsDispatch() {
+    void shouldAnswerFailureWhenRequestTerminatorOutlivesDispatch() {
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         CompletableFuture<Runnable> submitted = new CompletableFuture<>();
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
@@ -737,7 +737,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldNotAnswerAFailureThatLandsWhileTheDispatchIsWritingItsResponseHead() {
+    void shouldNotAnswerFailureWhileDispatchIsWritingResponseHead() {
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         AtomicReference<Runnable> preemption = new AtomicReference<>();
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
@@ -760,7 +760,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldCloseOnAFailureWhileTheAlreadyAnsweredRequestIsStillArriving() {
+    void shouldCloseOnFailureWhileAnsweredRequestIsStillArriving() {
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         CompletableFuture<Runnable> submitted = new CompletableFuture<>();
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
@@ -784,7 +784,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldTakeOverEveryReadOfTheConnectionItJoins() {
+    void shouldTakeOverEveryReadOfConnectionItJoins() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
             new CapturingDispatcher(), NEVER_RUN, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
@@ -794,7 +794,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldStopReadingWhileTheHandlerIsBehindOnTheBody() {
+    void shouldStopReadingWhileHandlerIsBehindOnBody() {
         RecordingReads reads = new RecordingReads();
         EmbeddedChannel channel = new EmbeddedChannel(reads, new HttpRequestHandler(
             (_, _, _, writer) -> writer.write(emptyOkResponse()), NEVER_RUN, connectionRegistry,
@@ -812,7 +812,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldAskForAReadAgainOnceTheDispatchAbandonsAnUndrainedBody() {
+    void shouldAskForReadAgainOnceDispatchAbandonsUndrainedBody() {
         RecordingReads reads = new RecordingReads();
         CompletableFuture<Runnable> submitted = new CompletableFuture<>();
         EmbeddedChannel channel = new EmbeddedChannel(reads, new HttpRequestHandler(
@@ -833,7 +833,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldReopenTheReadValveWhenCleaningUpAnAbandonedBodyThrows() {
+    void shouldReopenReadValveWhenCleaningUpAbandonedBodyThrows() {
         RecordingReads reads = new RecordingReads();
         CompletableFuture<Runnable> submitted = new CompletableFuture<>();
         EmbeddedChannel channel = new EmbeddedChannel(reads, new HttpRequestHandler(
@@ -855,7 +855,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldStillReportARejectedDispatchWhenCleaningUpItsBodyThrows() {
+    void shouldStillReportRejectedDispatchWhenCleaningUpItsBodyThrows() {
         RejectedExecutionException rejection = new RejectedExecutionException("shutting down");
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
@@ -871,7 +871,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldKeepReadingWhileTheHandlerIsKeepingUp() {
+    void shouldKeepReadingWhileHandlerIsKeepingUp() {
         RecordingReads reads = new RecordingReads();
         EmbeddedChannel channel = new EmbeddedChannel(reads, new HttpRequestHandler(
             (_, _, _, writer) -> writer.write(emptyOkResponse()), NEVER_RUN, connectionRegistry,
@@ -886,7 +886,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldReleaseAQueuedBodyWhenTheDispatcherThrows() {
+    void shouldReleaseQueuedBodyWhenDispatcherThrows() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
             (_, _, _, _) -> { throw new IllegalStateException("handler failed"); },
             DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT),
@@ -901,7 +901,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldReleaseAQueuedBodyWhenTheConnectionDies() {
+    void shouldReleaseQueuedBodyWhenConnectionDies() {
         CompletableFuture<Runnable> submitted = new CompletableFuture<>();
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
             (_, _, _, writer) -> writer.write(emptyOkResponse()), submitted::complete, connectionRegistry,
@@ -916,7 +916,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldReleaseBodyPartsThatArriveAfterTheDispatchIsOver() {
+    void shouldReleaseBodyPartsThatArriveAfterDispatchIsOver() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
             (_, _, _, writer) -> writer.write(emptyOkResponse()), DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
         channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/"));
@@ -931,7 +931,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldCountADispatchThatIsSubmittedButNotYetRunning() throws InterruptedException {
+    void shouldCountDispatchThatIsSubmittedButNotYetRunning() throws InterruptedException {
         CompletableFuture<Runnable> submitted = new CompletableFuture<>();
         EmbeddedChannel channel = new EmbeddedChannel(
             new HttpRequestHandler((_, _, _, writer) -> writer.write(emptyOkResponse()), submitted::complete, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
@@ -951,7 +951,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldCountADispatchOutExactlyOnceWhenCleaningUpItsBodyThrows() throws Exception {
+    void shouldCountDispatchOutExactlyOnceWhenCleaningUpItsBodyThrows() throws Exception {
         CompletableFuture<Runnable> submitted = new CompletableFuture<>();
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
             (_, _, _, writer) -> writer.write(emptyOkResponse()), submitted::complete, connectionRegistry,
@@ -980,7 +980,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldReleaseTheBodyAndPropagateWhenExecutorRejects() throws InterruptedException {
+    void shouldReleaseBodyAndPropagateWhenExecutorRejects() throws InterruptedException {
         RejectedExecutionException rejection = new RejectedExecutionException("shutting down");
         Executor rejecting = _ -> { throw rejection; };
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
@@ -1004,7 +1004,7 @@ class HttpRequestHandlerTest {
 
     @Test
     @Timeout(value = 30, unit = TimeUnit.SECONDS)
-    void shouldReportAnAbandonedDispatchItselfWhenTheEventLoopHasTerminated() throws Exception {
+    void shouldReportAbandonedDispatchItselfWhenEventLoopTerminated() throws Exception {
         MultiThreadIoEventLoopGroup group = new MultiThreadIoEventLoopGroup(1, LocalIoHandler.newFactory());
         try {
             LocalChannel connection = new LocalChannel();
@@ -1046,7 +1046,7 @@ class HttpRequestHandlerTest {
 
     @Test
     @Timeout(value = 30, unit = TimeUnit.SECONDS)
-    void shouldNotFailAReadWhoseAskForMoreOutlivesTheEventLoop() throws Exception {
+    void shouldNotFailReadWhoseAskForMoreOutlivesEventLoop() throws Exception {
         MultiThreadIoEventLoopGroup group = new MultiThreadIoEventLoopGroup(1, LocalIoHandler.newFactory());
         try {
             LocalChannel connection = new LocalChannel();
@@ -1090,7 +1090,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void http11WithoutConnectionHeaderKeepsChannelOpen() {
+    void shouldKeepChannelOpenForHttp11WithoutConnectionHeader() {
         EmbeddedChannel channel = keepAliveChannel((_, _, _, writer) -> writer.write(emptyOkResponse()));
 
         receive(channel, HttpMethod.GET, "/");
@@ -1105,7 +1105,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void http11ConnectionCloseEchoesCloseAndClosesChannel() {
+    void shouldEchoCloseAndCloseChannelOnHttp11ConnectionClose() {
         EmbeddedChannel channel = keepAliveChannel((_, _, _, writer) -> writer.write(emptyOkResponse()));
         HttpRequest request = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/");
         request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
@@ -1122,7 +1122,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void http10WithoutConnectionHeaderClosesChannel() {
+    void shouldCloseChannelForHttp10WithoutConnectionHeader() {
         EmbeddedChannel channel = keepAliveChannel((_, _, _, writer) -> writer.write(emptyOkResponse()));
 
         receive(channel, new DefaultHttpRequest(HttpVersion.HTTP_1_0, HttpMethod.GET, "/"));
@@ -1137,7 +1137,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void http10WithKeepAliveEchoesKeepAliveAndKeepsChannelOpen() {
+    void shouldEchoKeepAliveAndKeepChannelOpenForHttp10KeepAlive() {
         EmbeddedChannel channel = keepAliveChannel((_, _, _, writer) -> writer.write(emptyOkResponse()));
         HttpRequest request = new DefaultHttpRequest(HttpVersion.HTTP_1_0, HttpMethod.GET, "/");
         request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
@@ -1154,7 +1154,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void dispatcherConnectionCloseWinsOverKeepAliveRequest() {
+    void shouldPreferDispatcherConnectionCloseOverKeepAliveRequest() {
         EmbeddedChannel channel = keepAliveChannel((_, _, _, writer) -> writer.write(closingResponse()));
 
         receive(channel, HttpMethod.GET, "/");
@@ -1169,7 +1169,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void dispatcherConnectionCloseWinsOverHttp10KeepAliveRequest() {
+    void shouldPreferDispatcherConnectionCloseOverHttp10KeepAlive() {
         EmbeddedChannel channel = keepAliveChannel((_, _, _, writer) -> writer.write(closingResponse()));
         HttpRequest request = new DefaultHttpRequest(HttpVersion.HTTP_1_0, HttpMethod.GET, "/");
         request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);

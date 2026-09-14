@@ -39,7 +39,7 @@ class HttpDecoderFailureHandlerTest {
     private static final int MAX_CHUNK_SIZE = 256;
 
     @Test
-    void shouldRejectAHeaderOverTheLimitWith431() {
+    void shouldRejectHeaderOverLimitWith431() {
         DispatchProbe probe = new DispatchProbe();
         EmbeddedChannel channel = newChannel(probe);
 
@@ -56,7 +56,7 @@ class HttpDecoderFailureHandlerTest {
     }
 
     @Test
-    void shouldRejectAnInitialLineOverTheLimitWith414() {
+    void shouldRejectInitialLineOverLimitWith414() {
         DispatchProbe probe = new DispatchProbe();
         EmbeddedChannel channel = newChannel(probe);
 
@@ -72,7 +72,7 @@ class HttpDecoderFailureHandlerTest {
     }
 
     @Test
-    void shouldPassAValidRequestThroughToTheDispatcher() {
+    void shouldPassValidRequestThroughToDispatcher() {
         DispatchProbe probe = new DispatchProbe();
         EmbeddedChannel channel = newChannel(probe);
 
@@ -84,7 +84,7 @@ class HttpDecoderFailureHandlerTest {
     }
 
     @Test
-    void shouldReleaseTheRejectedRequest() {
+    void shouldReleaseRejectedRequest() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpDecoderFailureHandler(), new HttpExceptionHandler());
         FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/ping");
         request.setDecoderResult(DecoderResult.failure(new TooLongHttpHeaderException("header too big")));

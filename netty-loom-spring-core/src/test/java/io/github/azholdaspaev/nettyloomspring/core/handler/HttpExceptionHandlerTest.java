@@ -135,7 +135,7 @@ class HttpExceptionHandlerTest {
     }
 
     @Test
-    void shouldCloseWithoutResponseWhenTheClientVanishedMidHeaders() {
+    void shouldCloseWithoutResponseWhenClientVanishedMidHeaders() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpExceptionHandler());
 
         channel.pipeline().fireExceptionCaught(

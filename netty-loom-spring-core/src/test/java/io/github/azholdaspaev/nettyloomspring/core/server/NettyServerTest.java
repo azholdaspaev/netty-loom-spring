@@ -45,7 +45,7 @@ class NettyServerTest {
     }
 
     @Test
-    void shouldDeliverInboundBytesToAPipelineThatAsksForNoReadsItself() throws Exception {
+    void shouldDeliverInboundBytesToPipelineThatAsksForNoReadsItself() throws Exception {
         CompletableFuture<String> received = new CompletableFuture<>();
         nettyServer = NettyServerFixture.newServer(
             new NettyServerConfiguration(0, null, 1, 1, true),

@@ -31,7 +31,7 @@ class HttpRequestBodyLimitHandlerTest {
     private static final int MAX_BODY_BYTES = 16;
 
     @Test
-    void shouldInviteTheBodyWhenTheClientExpectsContinue() {
+    void shouldInviteBodyWhenClientExpectsContinue() {
         EmbeddedChannel channel = newChannel();
 
         channel.writeInbound(expecting("100-continue", 4));
@@ -49,7 +49,7 @@ class HttpRequestBodyLimitHandlerTest {
     }
 
     @Test
-    void shouldRejectAnUnsupportedExpectationWith417() {
+    void shouldRejectUnsupportedExpectationWith417() {
         EmbeddedChannel channel = newChannel();
 
         channel.writeInbound(expecting("something-else", 4));
@@ -62,7 +62,7 @@ class HttpRequestBodyLimitHandlerTest {
     }
 
     @Test
-    void shouldRejectADeclaredBodyOverTheLimitWith413BeforeItIsSent() {
+    void shouldRejectDeclaredBodyOverLimitWith413BeforeItIsSent() {
         EmbeddedChannel channel = newChannel();
 
         channel.writeInbound(expecting("100-continue", MAX_BODY_BYTES + 1));
@@ -75,7 +75,7 @@ class HttpRequestBodyLimitHandlerTest {
     }
 
     @Test
-    void shouldRejectADeclaredBodyOverTheLimitEvenWhenTheClientAsksNothing() {
+    void shouldRejectDeclaredBodyOverLimitEvenWhenClientAsksNothing() {
         EmbeddedChannel channel = newChannel();
         HttpRequest declaredTooLarge = post();
         declaredTooLarge.headers().setInt(HttpHeaderNames.CONTENT_LENGTH, MAX_BODY_BYTES + 1);
@@ -92,7 +92,7 @@ class HttpRequestBodyLimitHandlerTest {
     }
 
     @Test
-    void shouldSayNothingToARequestThatExpectsNothing() {
+    void shouldSayNothingToRequestThatExpectsNothing() {
         EmbeddedChannel channel = newChannel();
 
         channel.writeInbound(post());
@@ -102,7 +102,7 @@ class HttpRequestBodyLimitHandlerTest {
     }
 
     @Test
-    void shouldRejectABodyThatOutgrowsTheLimitAsItArrives() {
+    void shouldRejectBodyThatOutgrowsLimitAsItArrives() {
         EmbeddedChannel channel = newChannel();
         channel.writeInbound(post());
         channel.readInbound();
@@ -116,7 +116,7 @@ class HttpRequestBodyLimitHandlerTest {
     }
 
     @Test
-    void shouldReleaseTheContentItRejects() {
+    void shouldReleaseContentItRejects() {
         EmbeddedChannel channel = newChannel();
         channel.writeInbound(post());
         channel.readInbound();
@@ -128,7 +128,7 @@ class HttpRequestBodyLimitHandlerTest {
     }
 
     @Test
-    void shouldDropWhatFollowsARejectedBodyRatherThanServeIt() {
+    void shouldDropWhatFollowsRejectedBodyRatherThanServeIt() {
         EmbeddedChannel channel = newChannel();
         channel.writeInbound(post());
         channel.readInbound();
@@ -143,7 +143,7 @@ class HttpRequestBodyLimitHandlerTest {
     }
 
     @Test
-    void shouldAllowABodyThatExactlyReachesTheLimit() {
+    void shouldAllowBodyThatExactlyReachesLimit() {
         EmbeddedChannel channel = newChannel();
         channel.writeInbound(post());
         channel.readInbound();
@@ -156,7 +156,7 @@ class HttpRequestBodyLimitHandlerTest {
     }
 
     @Test
-    void shouldCountEachRequestAgainstTheLimitOnItsOwn() {
+    void shouldCountEachRequestAgainstLimitOnItsOwn() {
         EmbeddedChannel channel = newChannel();
 
         for (int request = 0; request < 3; request++) {
@@ -170,7 +170,7 @@ class HttpRequestBodyLimitHandlerTest {
     }
 
     @Test
-    void shouldTellTheClientAboutTheCloseItsRefusalCarries() {
+    void shouldTellClientAboutCloseItsRefusalCarries() {
         EmbeddedChannel channel = newChannel();
 
         channel.writeInbound(expecting("something-else", 4));
@@ -182,7 +182,7 @@ class HttpRequestBodyLimitHandlerTest {
     }
 
     @Test
-    void shouldStillInviteTheBodyWithoutAskingForACloseItIsNotMaking() {
+    void shouldStillInviteBodyWithoutAskingForCloseItIsNotMaking() {
         EmbeddedChannel channel = newChannel();
 
         channel.writeInbound(expecting("100-continue", 4));

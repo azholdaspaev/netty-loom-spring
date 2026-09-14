@@ -43,7 +43,7 @@ class HttpReadTimeoutHandlerTest {
     private static final long TIMEOUT_MILLIS = 1_000;
 
     @Test
-    void shouldCloseAConnectionThatHasGoneQuietForTheTimeout() {
+    void shouldCloseConnectionThatHasGoneQuietForTimeout() {
         EmbeddedChannel channel = newChannel();
 
         elapse(channel, TIMEOUT_MILLIS);
@@ -52,7 +52,7 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
-    void shouldNotCloseAConnectionThatIsStillWaitingForTheTimeoutToElapse() {
+    void shouldNotCloseConnectionStillWaitingForTimeoutToElapse() {
         EmbeddedChannel channel = newChannel();
 
         elapse(channel, TIMEOUT_MILLIS / 2);
@@ -61,7 +61,7 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
-    void shouldNotCloseWhileARequestIsStillBeingServed() {
+    void shouldNotCloseWhileRequestIsStillBeingServed() {
         // issue #76
         EmbeddedChannel channel = newChannel();
         receiveRequest(channel);
@@ -72,7 +72,7 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
-    void shouldCloseOneTimeoutAfterTheResponseHasBeenWritten() {
+    void shouldCloseOneTimeoutAfterResponseHasBeenWritten() {
         EmbeddedChannel channel = newChannel();
         receiveRequest(channel);
         elapse(channel, TIMEOUT_MILLIS * 5);
@@ -87,7 +87,7 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
-    void shouldRestartTheClockForEveryExchange() {
+    void shouldRestartClockForEveryExchange() {
         EmbeddedChannel channel = newChannel();
 
         for (int exchange = 0; exchange < 3; exchange++) {
@@ -124,7 +124,7 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
-    void shouldFireReadTimeoutExceptionSoTheExceptionHandlerCanMapIt() {
+    void shouldFireReadTimeoutExceptionSoExceptionHandlerCanMapIt() {
         EmbeddedChannel channel = newChannel();
 
         elapse(channel, TIMEOUT_MILLIS);
@@ -133,7 +133,7 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
-    void shouldNotCountAResponseForARequestItNeverSaw() {
+    void shouldNotCountResponseForRequestItNeverSawAgainstTimeout() {
         EmbeddedChannel channel = newChannel();
 
         respond(channel);
@@ -144,7 +144,7 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
-    void shouldNotCountAStrayAnswerAgainstTheNextRequest() {
+    void shouldNotCountStrayAnswerAgainstNextRequest() {
         EmbeddedChannel channel = newChannel();
         receiveRequest(channel);
         respond(channel);
@@ -159,7 +159,7 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
-    void shouldNotHoldOpenAConnectionAnsweredBeforeItsRequestBodyArrived() {
+    void shouldNotHoldOpenConnectionAnsweredBeforeItsBodyArrived() {
         EmbeddedChannel channel = newChannel();
         receiveRequestHead(channel);
 
@@ -173,7 +173,7 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
-    void shouldCloseWhenThePeerNeverAcceptsTheResponseBytes() {
+    void shouldCloseWhenPeerNeverAcceptsResponseBytes() {
         EmbeddedChannel channel = new EmbeddedChannel(
             new NeverCompletingWrite(),
             new HttpReadTimeoutHandler(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS));
@@ -199,7 +199,7 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
-    void shouldNotEndTheExchangeOnANonFinalPartOfTheResponse() {
+    void shouldNotEndExchangeOnNonFinalResponsePartOnceTimeoutElapses() {
         EmbeddedChannel channel = newChannel();
         receiveRequest(channel);
 
@@ -217,7 +217,7 @@ class HttpReadTimeoutHandlerTest {
 
     @ParameterizedTest
     @ValueSource(longs = {0, -1})
-    void shouldDisableItselfWhenTheTimeoutIsNotPositive(long timeoutMillis) {
+    void shouldDisableItselfWhenTimeoutIsNotPositive(long timeoutMillis) {
         EmbeddedChannel channel = newChannel(timeoutMillis);
 
         elapse(channel, TIMEOUT_MILLIS * 5);
@@ -226,7 +226,7 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
-    void shouldPassLifecycleEventsOnDownThePipeline() {
+    void shouldPassLifecycleEventsOnDownPipeline() {
         RecordingEvents downstream = new RecordingEvents();
         EmbeddedChannel channel = new EmbeddedChannel(
             new HttpReadTimeoutHandler(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS), downstream);
@@ -238,7 +238,7 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
-    void shouldCloseAPipelinedBurstWhosePeerNeverAcceptsTheResponseBytes() {
+    void shouldClosePipelinedBurstWhosePeerNeverAcceptsResponseBytes() {
         EmbeddedChannel channel = new EmbeddedChannel(
             new NeverCompletingWrite(),
             new HttpReadTimeoutHandler(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS),
@@ -254,7 +254,7 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
-    void shouldCloseAConnectionWhoseRequestBodyStopsArriving() {
+    void shouldCloseConnectionWhoseRequestBodyStopsArriving() {
         EmbeddedChannel channel = newChannel();
         receiveRequestHead(channel);
 
@@ -265,7 +265,7 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
-    void shouldNotCloseWhileTheHandlerIsBehindOnARequestBodyStillArriving() {
+    void shouldNotCloseWhileHandlerIsBehindOnArrivingRequestBody() {
         EmbeddedChannel channel = new EmbeddedChannel(
             new HttpReadTimeoutHandler(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS), new WithholdReads());
         channel.freezeTime();
@@ -279,7 +279,7 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
-    void shouldGiveTheClientAWholeIntervalOnceTheConnectionAsksAgain() {
+    void shouldGiveClientWholeIntervalOnceConnectionAsksAgain() {
         WithholdReads valve = new WithholdReads();
         EmbeddedChannel channel = new EmbeddedChannel(
             new HttpReadTimeoutHandler(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS), valve);
@@ -297,7 +297,7 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
-    void shouldMeasureTheResumedIntervalFromTheReadRatherThanFromTheTickBeforeIt() {
+    void shouldMeasureResumedIntervalFromReadNotFromTickBeforeIt() {
         WithholdReads valve = new WithholdReads();
         EmbeddedChannel channel = new EmbeddedChannel(
             new HttpReadTimeoutHandler(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS), valve);
@@ -321,7 +321,7 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
-    void shouldNotCountAnInterimResponseAsTheAnswerToARequest() {
+    void shouldNotCountInterimResponseAsAnswerToRequest() {
         EmbeddedChannel channel = newChannel();
         receiveRequest(channel);
 
@@ -334,7 +334,7 @@ class HttpReadTimeoutHandlerTest {
     }
 
     @Test
-    void shouldNotLeaveATimerArmedAfterItIsRemovedFromThePipeline() {
+    void shouldNotLeaveTimerArmedAfterItIsRemovedFromPipeline() {
         EmbeddedChannel channel = newChannel();
 
         channel.pipeline().remove(HttpReadTimeoutHandler.class);

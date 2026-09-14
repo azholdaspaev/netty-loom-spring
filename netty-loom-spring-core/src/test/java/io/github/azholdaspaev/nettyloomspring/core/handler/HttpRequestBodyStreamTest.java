@@ -27,7 +27,7 @@ class HttpRequestBodyStreamTest {
     private static final Duration LIMIT = Duration.ofSeconds(5);
 
     @Test
-    void shouldReadWhatWasOfferedBeforeTheReadBegan() throws Exception {
+    void shouldReadWhatWasOfferedBeforeReadBegan() throws Exception {
         HttpRequestBodyStream body = new HttpRequestBodyStream(() -> { });
         body.offer(content("hello "));
         body.offer(last("world"));
@@ -36,7 +36,7 @@ class HttpRequestBodyStreamTest {
     }
 
     @Test
-    void shouldReportEndOfBodyOnceTheLastContentIsDrained() throws Exception {
+    void shouldReportEndOfBodyOnceLastContentIsDrained() throws Exception {
         HttpRequestBodyStream body = new HttpRequestBodyStream(() -> { });
         body.offer(last("ab"));
 
@@ -60,7 +60,7 @@ class HttpRequestBodyStreamTest {
     }
 
     @Test
-    void shouldBlockTheReaderUntilContentArrives() throws Exception {
+    void shouldBlockReaderUntilContentArrives() throws Exception {
         HttpRequestBodyStream body = new HttpRequestBodyStream(() -> { });
         AtomicInteger read = new AtomicInteger(Integer.MIN_VALUE);
         Thread reader = Thread.ofVirtual().start(() -> read.set(readOne(body)));
@@ -86,7 +86,7 @@ class HttpRequestBodyStreamTest {
     }
 
     @Test
-    void shouldReleaseQueuedContentWhenTheClientDisappears() {
+    void shouldReleaseQueuedContentWhenClientDisappears() {
         HttpRequestBodyStream body = new HttpRequestBodyStream(() -> { });
         HttpContent queued = content("unread");
         body.offer(queued);
@@ -97,7 +97,7 @@ class HttpRequestBodyStreamTest {
     }
 
     @Test
-    void shouldRaiseTheFailureItWasGivenRatherThanReportACleanEnd() {
+    void shouldRaiseFailureItWasGivenRatherThanReportCleanEnd() {
         HttpRequestBodyStream body = new HttpRequestBodyStream(() -> { });
         body.fail(new ClosedChannelException());
 
@@ -107,7 +107,7 @@ class HttpRequestBodyStreamTest {
     }
 
     @Test
-    void shouldWakeABlockedReaderWhenItFails() throws Exception {
+    void shouldWakeBlockedReaderWhenItFails() throws Exception {
         HttpRequestBodyStream body = new HttpRequestBodyStream(() -> { });
         AtomicReference<Throwable> raised = new AtomicReference<>();
         Thread reader = Thread.ofVirtual().start(() -> {
@@ -126,7 +126,7 @@ class HttpRequestBodyStreamTest {
     }
 
     @Test
-    void shouldReleaseContentOfferedAfterTheDispatchClosedIt() throws Exception {
+    void shouldReleaseContentOfferedAfterDispatchClosedIt() throws Exception {
         HttpRequestBodyStream body = new HttpRequestBodyStream(() -> { });
         body.close();
 
@@ -137,7 +137,7 @@ class HttpRequestBodyStreamTest {
     }
 
     @Test
-    void shouldReleaseTheChunkItWasPartWayThroughWhenClosed() throws Exception {
+    void shouldReleaseChunkItWasPartWayThroughWhenClosed() throws Exception {
         HttpRequestBodyStream body = new HttpRequestBodyStream(() -> { });
         HttpContent partlyRead = content("abcd");
         body.offer(partlyRead);
@@ -149,7 +149,7 @@ class HttpRequestBodyStreamTest {
     }
 
     @Test
-    void shouldReleaseTheRestOfTheQueueWhenOneChunkFailsItsRelease() {
+    void shouldReleaseRestOfQueueWhenOneChunkFailsItsRelease() {
         HttpRequestBodyStream body = new HttpRequestBodyStream(() -> { });
         body.offer(new ReleaseFailingContent());
         HttpContent behindIt = content("still queued");
@@ -162,7 +162,7 @@ class HttpRequestBodyStreamTest {
     }
 
     @Test
-    void shouldReleaseTheChunkItWasPartWayThroughWhenTheQueueFailsItsRelease() throws Exception {
+    void shouldReleaseChunkPartWayThroughWhenQueueFailsItsRelease() throws Exception {
         HttpRequestBodyStream body = new HttpRequestBodyStream(() -> { });
         HttpContent partlyRead = content("abcd");
         body.offer(partlyRead);
@@ -176,7 +176,7 @@ class HttpRequestBodyStreamTest {
     }
 
     @Test
-    void shouldNotQueueAnEmptyLastContentButStillEndTheBody() throws Exception {
+    void shouldNotQueueEmptyLastContentButStillEndBody() throws Exception {
         HttpRequestBodyStream body = new HttpRequestBodyStream(() -> { });
         body.offer(LastHttpContent.EMPTY_LAST_CONTENT);
 
@@ -185,7 +185,7 @@ class HttpRequestBodyStreamTest {
     }
 
     @Test
-    void shouldWithholdRoomOnceTheQueuePassesItsHighWatermark() {
+    void shouldWithholdRoomOnceQueuePassesItsHighWatermark() {
         HttpRequestBodyStream body = new HttpRequestBodyStream(() -> { });
         assertTrue(body.hasRoom());
 
@@ -195,7 +195,7 @@ class HttpRequestBodyStreamTest {
     }
 
     @Test
-    void shouldAskForMoreOnlyWhenTheQueueDrainsBelowTheLowWatermark() throws Exception {
+    void shouldAskForMoreOnlyWhenQueueDrainsBelowLowWatermark() throws Exception {
         AtomicInteger requests = new AtomicInteger();
         HttpRequestBodyStream body = new HttpRequestBodyStream(requests::incrementAndGet);
         body.offer(content("x".repeat(HttpRequestBodyStream.HIGH_WATERMARK_BYTES)));

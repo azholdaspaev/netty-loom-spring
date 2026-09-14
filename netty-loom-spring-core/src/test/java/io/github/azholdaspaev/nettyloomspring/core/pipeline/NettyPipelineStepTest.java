@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class NettyPipelineStepTest {
 
     @Test
-    void sharedShouldReturnSameInstanceOnEveryFactoryCall() {
+    void shouldReturnSameInstanceOnEveryFactoryCall() {
         ChannelHandler handler = new SharableHandler();
 
         NettyPipelineStep step = NettyPipelineStep.shared("name", handler);
@@ -21,7 +21,7 @@ class NettyPipelineStepTest {
     }
 
     @Test
-    void sharedShouldRejectNonSharableHandler() {
+    void shouldRejectNonSharableHandler() {
         ChannelHandler nonSharable = new ChannelInboundHandlerAdapter();
 
         assertThrows(IllegalArgumentException.class,

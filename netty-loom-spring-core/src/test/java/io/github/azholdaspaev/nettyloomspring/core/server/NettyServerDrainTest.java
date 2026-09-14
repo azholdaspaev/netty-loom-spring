@@ -94,7 +94,7 @@ class NettyServerDrainTest {
     }
 
     @Test
-    void shouldAnswerAnInFlightRequestBeforeCompletingShutdown() throws Exception {
+    void shouldAnswerInFlightRequestBeforeCompletingShutdown() throws Exception {
         try (Socket client = connect()) {
             send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
             assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
@@ -115,7 +115,7 @@ class NettyServerDrainTest {
     }
 
     @Test
-    void shouldAnswerARequestWhoseBodyArrivesAfterTheDrainBegins() throws Exception {
+    void shouldAnswerRequestWhoseBodyArrivesAfterDrainBegins() throws Exception {
         releaseDispatcher.countDown();
         try (Socket client = connect()) {
             send(client, "POST /upload HTTP/1.1\r\nHost: localhost\r\nContent-Length: 5\r\n\r\n");
@@ -161,7 +161,7 @@ class NettyServerDrainTest {
     }
 
     @Test
-    void shouldWaitForADispatchWhoseClientHasAlreadyDisconnected() throws Exception {
+    void shouldWaitForDispatchWhoseClientHasAlreadyDisconnected() throws Exception {
         try (Socket client = connect()) {
             send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
             assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
@@ -179,7 +179,7 @@ class NettyServerDrainTest {
     }
 
     @Test
-    void shouldReportRequestsActiveWhenARequestOutlastsTheGracePeriod() throws Exception {
+    void shouldReportRequestsActiveWhenRequestOutlastsGracePeriod() throws Exception {
         try (Socket client = connect()) {
             send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
             assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
@@ -192,7 +192,7 @@ class NettyServerDrainTest {
     }
 
     @Test
-    void shouldCutTheDrainShortWhenShutdownIsCalledAgainWithNoGrace() throws Exception {
+    void shouldCutDrainShortWhenShutdownIsCalledAgainWithNoGrace() throws Exception {
         releaseAbort.countDown();
         try (Socket client = connect()) {
             send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
@@ -218,7 +218,7 @@ class NettyServerDrainTest {
     }
 
     @Test
-    void shouldGiveASecondShutdownItsOwnGraceBeforeAborting() throws Exception {
+    void shouldGiveSecondShutdownItsOwnGraceBeforeAborting() throws Exception {
         try (Socket client = connect()) {
             send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
             assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
@@ -244,7 +244,7 @@ class NettyServerDrainTest {
     }
 
     @Test
-    void shouldNotLetAJoinerWhoseDeadlineExpiredAbortARestartedServer() throws Exception {
+    void shouldNotLetJoinerWhoseDeadlineExpiredAbortRestartedServer() throws Exception {
         Future<NettyShutdownResult> graceful;
         Future<NettyShutdownResult> immediate;
         try (Socket client = connect()) {

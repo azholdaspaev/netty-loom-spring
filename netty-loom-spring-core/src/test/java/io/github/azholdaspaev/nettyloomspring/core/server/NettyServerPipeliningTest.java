@@ -95,7 +95,7 @@ class NettyServerPipeliningTest {
     }
 
     @Test
-    void shouldSequenceAnInterimResponseBehindAnEarlierPipelinedResponse() throws Exception {
+    void shouldSequenceInterimResponseBehindEarlierPipelinedResponse() throws Exception {
         // issue #78
         try (Socket client = connect()) {
             send(client, "GET /first HTTP/1.1\r\nHost: localhost\r\n\r\n"
