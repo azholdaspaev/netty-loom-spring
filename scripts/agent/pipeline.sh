@@ -53,7 +53,7 @@ stage() {
        # command gh, not the wrapper: a retry reruns the stage, which stops on its own pending question and exits 0.
        command gh issue edit "$N" --remove-label agent/running --add-label agent/needs-input >/dev/null; exit 0 ;;
     124|2) # Killed or dropped mid-edit and retried by the runner, so the same reset; a work failure's tree stays for the maintainer.
-       [ "$1" = implement ] || reset_tree HEAD
+       [ "$1" = implement ] || reset_tree "origin/$branch"
        exit "$rc" ;;
     *) exit "$rc" ;;
   esac
