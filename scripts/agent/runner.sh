@@ -74,7 +74,9 @@ for wt in "$WT"/NL-*/; do
   # --force twice: the lock is another tool's (supacode locks every worktree of the clone), and
   # nothing the pipeline owns is behind it once the pull request is merged.
   rc=0; git worktree remove --force --force "$wt" || rc=$?
-  [ "$rc" = 0 ] || { say "merged: $branch not removed (git exit $rc)"; continue; }
+  # git drops .git/worktrees/<id> before it reports the directory it could not delete (builtin/worktree.c,
+  # remove_worktree), so a failed removal leaves a directory git no longer knows: rm it by hand.
+  [ "$rc" = 0 ] || rm -rf "$wt" 2>/dev/null || { say "merged: $branch not removed (git exit $rc)"; continue; }
   say "merged: $branch removed"
   git branch -q -D "$branch"
   n=$(issue_of "$branch")
