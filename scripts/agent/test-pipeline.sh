@@ -14,10 +14,12 @@ export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 # pipeline.sh finds stage.sh and pr-comments.sh relative to itself, so each case gets a copy of
 # the tree's layout beside a stage.sh shim, a clone on NL-999-x, gh first on PATH and a fresh HOME.
 # The stage shim records the tree it found in tree-<stage> and the run id it was given in run-id,
-# writes the result file pipeline.sh sums under that id, moves the pull request head on the fix
+# writes the result file pipeline.sh sums under that id, pushes the branch on implement as the
+# real stage does before it opens the pull request, moves the pull request head on the fix
 # rounds SHIM_FIX_PUSHES lists ("1,0" = fix 1 pushes a commit, fix 2 does not; unset = every fix
 # pushes), posts inline comments as the runner on the review rounds SHIM_REVIEW_POSTS counts
-# ("0,1" = review 2 posts one; unset = none), edits src.txt -- staged and unstaged -- and adds
+# ("0,1" = review 2 posts one; unset = none), commits an edit to src.txt in the stage SHIM_COMMIT
+# names, edits src.txt -- staged and unstaged -- and adds
 # scratch.txt in the stage SHIM_DIRTY names, and
 # exits SHIM_FAIL_RC (1 unset) from the stage SHIM_FAIL names or 3 from the one SHIM_QUESTION names ("review 2"). The
 # gh shim serves that state back, inline comments
@@ -45,6 +47,9 @@ setup() {
 echo "stage $*" >> "$SHIM_EVENTS"
 stage=$2; round=${4:-}
 git status --porcelain > "$SHIM_STATE/tree-$stage"
+if [ "$stage" = "${SHIM_COMMIT:-}" ]; then
+  echo committed >> src.txt; git commit -qam "NL-999 $stage"
+fi
 if [ "$stage" = "${SHIM_DIRTY:-}" ]; then
   echo staged >> src.txt; git add src.txt; echo mutated >> src.txt; touch scratch.txt
 fi
@@ -60,7 +65,7 @@ mkdir -p "$HOME/.netty-loom-agent/logs/NL-$1/${RUN_ID:-}"
 echo '{"subtype":"success","total_cost_usd":0.5,"duration_ms":60000}' \
   > "$HOME/.netty-loom-agent/logs/NL-$1/${RUN_ID:-}/$stage${round:+-$round}.json"
 case "$stage" in
-  implement) echo "$SHIM_URL" ;;
+  implement) git push -q origin NL-999-x; echo "$SHIM_URL" ;;
   review)
     echo "$round" > "$SHIM_STATE/review-round"
     posts=$(echo "${SHIM_REVIEW_POSTS:-}" | cut -d, -f"$round")
@@ -202,8 +207,7 @@ echo '[{"user": {"login": "runner"}, "body": "<!-- agent:question --> Which?", "
        {"user": {"login": "o"}, "body": "The first.", "created_at": "2026-01-03T00:00:00Z"}]' > "$tmp/state/issue-comments"
 run 0 ""
 ok=1; why="rc=$rc stderr=$err stages=$stages"
-[ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] && [ "$stages" = "$IMPLEMENT$R1$TEST$HANDOFF" ] \
-  && [ -z "$(git -C "$tmp/origin" rev-parse -q --verify refs/heads/NL-999-x)" ] || ok=0
+[ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] && [ "$stages" = "$IMPLEMENT$R1$TEST$HANDOFF" ] || ok=0
 check retry-unpushed-answered "$ok" "$why"
 rm -rf "$tmp"
 
@@ -244,8 +248,7 @@ echo '[{"user": {"login": "runner"}, "body": "<!-- agent:question --> Which?", "
        {"user": {"login": "runner"}, "body": "Failed: infrastructure.", "created_at": "2026-01-05T00:00:00Z"}]' > "$tmp/state/issue-comments"
 run 0 ""
 ok=1; why="rc=$rc stderr=$err stages=$stages"
-[ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] && [ "$stages" = "$IMPLEMENT$R1$TEST$HANDOFF" ] \
-  && [ -z "$(git -C "$tmp/origin" rev-parse -q --verify refs/heads/NL-999-x)" ] || ok=0
+[ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] && [ "$stages" = "$IMPLEMENT$R1$TEST$HANDOFF" ] || ok=0
 check retry-unpushed-answered-then-commented "$ok" "$why"
 rm -rf "$tmp"
 
@@ -377,6 +380,17 @@ ok=1; why="rc=$rc stdout=$out stderr=$err stages=$stages comment=$comment tree=$
 [ "$rc" = 0 ] && [ -z "$out" ] && [ -z "$comment" ] && [ -z "$(git -C "$tmp/work" status --porcelain)" ] \
   && [ "$stages" = "$IMPLEMENT$R1$F1$NEEDS_INPUT" ] || ok=0
 check fix-question-dirty "$ok" "$why"
+rm -rf "$tmp"
+
+# --- a fix committed, then asked before pushing: HEAD goes back to the pull request head, so the resume reviews that ---
+setup
+export SHIM_QUESTION="fix 1" SHIM_COMMIT=fix
+run 1,1 ""
+unset SHIM_QUESTION SHIM_COMMIT
+ok=1; why="rc=$rc stderr=$err stages=$stages ahead=$(git -C "$tmp/work" log --oneline origin/NL-999-x..HEAD | tr '\n' '|')"
+[ "$rc" = 0 ] && [ "$(git -C "$tmp/work" rev-parse HEAD)" = "$(git -C "$tmp/origin" rev-parse refs/heads/NL-999-x)" ] \
+  && [ -z "$(git -C "$tmp/work" status --porcelain)" ] && [ "$stages" = "$IMPLEMENT$R1$F1$NEEDS_INPUT" ] || ok=0
+check fix-question-committed "$ok" "$why"
 rm -rf "$tmp"
 
 # --- the test stage asked a question ---

@@ -21,7 +21,7 @@ LOG="$HOME/.netty-loom-agent/logs/NL-$N/$RUN_ID"
 ROUNDS=3
 MARKER='<!-- agent:question -->'
 
-reset_tree() { git reset -q --hard && git clean -fdq; }
+reset_tree() { git reset -q --hard "$1" && git clean -fdq; }
 say() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) pipeline.sh: NL-$N: $*" >&2; }
 fail() { say "$1 failed"; exit 2; }
 gh() { command gh "$@" || fail "gh $1 $2"; }
@@ -48,12 +48,12 @@ stage() {
   stage_out=$("$HERE/stage.sh" "$N" "$@") || rc=$?
   case "$rc" in
     0) ;;
-    3) # Implement's edits stay for the retry's stash; a later stage's are discarded rather than stashed: scratch from a stage that only asked.
-       [ "$1" = implement ] || reset_tree
+    3) # Implement's edits stay for the retry's stash; a later stage's, and a commit it left unpushed, are discarded: scratch from a stage that only asked, and the resume reviews the pull request head.
+       [ "$1" = implement ] || reset_tree "origin/$branch"
        # command gh, not the wrapper: a retry reruns the stage, which stops on its own pending question and exits 0.
        command gh issue edit "$N" --remove-label agent/running --add-label agent/needs-input >/dev/null; exit 0 ;;
     124|2) # Killed or dropped mid-edit and retried by the runner, so the same reset; a work failure's tree stays for the maintainer.
-       [ "$1" = implement ] || reset_tree
+       [ "$1" = implement ] || reset_tree HEAD
        exit "$rc" ;;
     *) exit "$rc" ;;
   esac
@@ -111,7 +111,8 @@ done
 
 stage test "$url"
 dirty=$(git status --porcelain)
-[ -z "$dirty" ] || reset_tree
+# HEAD rather than origin/$branch: the hand-off lists what this reset discards, and $dirty holds no commit.
+[ -z "$dirty" ] || reset_tree HEAD
 
 threads="$open thread$([ "$open" = 1 ] || echo s) open."
 if [ "$converged" = 1 ]; then
