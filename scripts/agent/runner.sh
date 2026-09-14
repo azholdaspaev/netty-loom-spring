@@ -71,8 +71,10 @@ for wt in "$WT"/NL-*/; do
   [ -d "$wt" ] || continue
   branch=$(basename "$wt")
   [ "$(gh pr list --head "$branch" --state merged --json number --jq length)" != 0 ] || continue
+  # --force twice: the lock is another tool's (supacode locks every worktree of the clone), and
+  # nothing the pipeline owns is behind it once the pull request is merged.
+  git worktree remove --force --force "$wt"
   say "merged: $branch removed"
-  git worktree remove --force "$wt"
   git branch -q -D "$branch"
   n=$(issue_of "$branch")
   labels=$(gh issue view "$n" --json labels --jq '[.labels[].name | select(startswith("agent/"))] | join(",")')
