@@ -504,6 +504,19 @@ for stage_rc in 124 2; do
   rm -rf "$tmp"
 done
 
+# --- a fix is killed or dropped after committing, before its push: the same reset, back to the pull request head ---
+for stage_rc in 124 2; do
+  setup
+  export SHIM_FAIL="fix 1" SHIM_FAIL_RC=$stage_rc SHIM_COMMIT=fix
+  run 1,1 ""
+  unset SHIM_FAIL SHIM_FAIL_RC SHIM_COMMIT
+  ok=1; why="rc=$rc stderr=$err stages=$stages ahead=$(git -C "$tmp/work" log --oneline origin/NL-999-x..HEAD | tr '\n' '|')"
+  [ "$rc" = "$stage_rc" ] && [ "$(git -C "$tmp/work" rev-parse HEAD)" = "$(git -C "$tmp/origin" rev-parse refs/heads/NL-999-x)" ] \
+    && [ "$stages" = "$IMPLEMENT$R1$F1" ] && [ -z "$comment" ] || ok=0
+  check "fix-exit-$stage_rc-committed" "$ok" "$why"
+  rm -rf "$tmp"
+done
+
 # --- implement killed mid-edit: its edits are left for the retry's pick-up stash, as on a question ---
 setup
 export SHIM_IMPLEMENT_RC=124 SHIM_DIRTY=implement
