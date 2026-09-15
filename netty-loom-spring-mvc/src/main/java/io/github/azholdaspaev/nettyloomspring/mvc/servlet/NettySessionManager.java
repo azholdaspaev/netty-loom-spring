@@ -530,6 +530,10 @@ public class NettySessionManager {
      * from any request handler via {@code ServletContext.getSessionManager()}, and wiping the store
      * belongs to whoever owns the context, not to request-handling code.
      */
+    boolean isClosed() {
+        return closed;
+    }
+
     void close() {
         ScheduledExecutorService running;
         synchronized (this) {
