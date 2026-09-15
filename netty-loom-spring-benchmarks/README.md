@@ -223,7 +223,7 @@ overridable with `--env USERNAME=... --env PASSWORD=...`).
   Tomcat targets, and raises `threads.max` to match on the **virtual** target (its executor isn't
   pool-bounded, but this forecloses the "you throttled the VT path" objection). The **platform** target
   keeps `threads.max=200` — the bounded thread-per-request pool *is* the architecture under test. The
-  OS backlog (`accept-count=100`) is left at its default, ≈ Netty core's hardcoded `SO_BACKLOG=128`,
+  OS backlog (`accept-count=100`) is left at its default, ≈ the Netty target's default `server.netty.accept-count=128`,
   and isn't the bottleneck under the 15s gradual ramp — verified on loopback, where
   `TcpExtListenOverflows` stays flat across a 10,000-VU run. Untested off-box, because no sweep has
   managed to generate that load remotely

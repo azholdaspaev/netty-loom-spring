@@ -17,6 +17,7 @@ The rule for which namespace a knob belongs to — Spring Boot's `server.*` vers
 | `server.netty.boss-threads` | `int` | `1` | Threads in the boss event-loop group, which accepts connections. One is normally enough |
 | `server.netty.worker-threads` | `int` | `0` | Threads in the worker event-loop group. `0` applies Netty's default of `2 × availableProcessors()` |
 | `server.netty.tcp-keep-alive` | `boolean` | `true` | Socket-level `SO_KEEPALIVE` on accepted channels. Unrelated to HTTP keep-alive, which is protocol behaviour and always on |
+| `server.netty.accept-count` | `int` | `128` | Listen backlog (`SO_BACKLOG`): how many connections that have completed the TCP handshake may queue before the boss loop accepts them. The effective depth is `min(value, net.core.somaxconn)` on Linux, and the kernel clamps silently — `8192` where `somaxconn` is `4096` yields `4096`, with no error and no log. `ss -tln` shows the effective depth as `Send-Q` on the listening socket. Same concept as `server.tomcat.accept-count` |
 | `server.netty.shutdown-grace-period` | `Duration` | `30s` | How long graceful shutdown waits for in-flight requests before force-closing. See [Graceful shutdown](#graceful-shutdown) |
 | `server.netty.read-timeout` | `Duration` | `30s` | Client-progress deadline. See [The read timeout](#the-read-timeout). `0` or negative disables it |
 | `server.netty.write-stall-timeout` | `Duration` | `60s` | How long a response may sit unsent against a client that has stopped reading. The clock starts only once the connection is unwritable — the outbound buffer past its high-water mark — not on every write, so a slow but progressing client is never cut off. On expiry the connection is closed mid-response. `0` or negative disables it, leaving a stalled dispatch waiting indefinitely |
@@ -93,7 +94,6 @@ Not configurable ([#42](https://github.com/azholdaspaev/netty-loom-spring/issues
 | Max chunk size | 10,000 bytes | — |
 | Max request body | 1 MiB | `413` |
 | Undrained request body before reads stop | 64 KiB | — (the read loop in flight still lands) |
-| Listen backlog (`SO_BACKLOG`) | 128 | — |
 
 These are 10,000 decimal bytes, not 10 KiB.
 
