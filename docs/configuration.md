@@ -112,6 +112,15 @@ before the store closes. What does outlive the store is the handler thread of a 
 cut off: its connection is closed, but the thread runs on, and its next session access fails
 ([#89](https://github.com/azholdaspaev/netty-loom-spring/issues/89)).
 
+Bean destruction, which follows the lifecycle phases, then interrupts that thread: the dispatch
+executor is destroyed with `shutdownNow()`, not the `close()` Spring would infer, which waits for
+every running dispatch with no bound and no interrupt. A handler parked in `Thread.sleep`,
+`Object.wait`, a `BlockingQueue` or `CountDownLatch` wait, or `Lock.lockInterruptibly` gets an
+`InterruptedException`, and a blocking socket read an `IOException`; one parked where the interrupt
+is ignored — `Lock.lock`, a `synchronized` block — is abandoned, and as a virtual thread it does not
+keep the JVM alive. Either way `context.close()`, and so JVM exit, does not wait on it
+([#205](https://github.com/azholdaspaev/netty-loom-spring/issues/205)).
+
 **Set `server.netty.shutdown-grace-period` strictly below
 `spring.lifecycle.timeout-per-shutdown-phase`**, or the phase timeout is the deadline that applies
 and the grace period is never reached. Both default to 30s in Spring Boot 4.

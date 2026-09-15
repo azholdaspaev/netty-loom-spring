@@ -130,7 +130,12 @@ public class NettyLoomAutoConfiguration {
         ));
     }
 
-    @Bean
+    /*
+     * shutdownNow rather than the inferred close(): ThreadPerTaskExecutor.close() awaits every running
+     * dispatch with no bound and no interrupt, so one parked in a call that never returns would hold
+     * context close, and JVM exit, forever (#205). shutdownNow interrupts them and returns at once.
+     */
+    @Bean(destroyMethod = "shutdownNow")
     public ExecutorService nettyLoomDispatchExecutor() {
         return Executors.newVirtualThreadPerTaskExecutor();
     }
