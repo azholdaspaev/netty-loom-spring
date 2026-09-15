@@ -226,6 +226,28 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
+    void shouldNotCorruptGetParameterOnceMergedMapArrayIsMutated() throws Exception {
+        var target = forward("/src?a=1", "/t", "a=2&b=3");
+
+        target.getParameterMap().get("a")[0] = "mutated";
+
+        assertEquals("2", target.getParameter("a"),
+            "the merged map is as immutable as the original's: Servlet 6.0 getParameterMap()");
+        assertArrayEquals(new String[] {"2", "1"}, target.getParameterValues("a"));
+    }
+
+    @Test
+    void shouldNotCorruptGetParameterOnceOriginalMapArrayIsMutated() throws Exception {
+        var target = forward("/src?a=1", "/t", null);
+
+        target.getParameterMap().get("a")[0] = "mutated";
+
+        assertEquals("1", target.getParameter("a"),
+            "with no query of its own the wrapper reads the original's accessors, not the map it exposes");
+        assertArrayEquals(new String[] {"1"}, target.getParameterValues("a"));
+    }
+
+    @Test
     void shouldNotExposeExtraParametersAfterForwardReturns() throws Exception {
         recordTerminal();
         var response = new NettyHttpServletResponse();

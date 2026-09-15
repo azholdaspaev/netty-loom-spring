@@ -25,6 +25,7 @@ class NettyDispatchRequestWrapper extends HttpServletRequestWrapper {
     private final DispatcherType dispatcherType;
     private final Map<String, Object> forwardAttributes;
     private Map<String, String[]> parameters;
+    private Map<String, String[]> parameterMapCopy;
 
     NettyDispatchRequestWrapper(NettyDispatchFactory factory, HttpServletRequest original,
                         String targetPath, String queryString, DispatcherType dispatcherType) {
@@ -108,19 +109,28 @@ class NettyDispatchRequestWrapper extends HttpServletRequestWrapper {
 
     @Override
     public String getParameter(String name) {
-        String[] values = getParameterMap().get(name);
+        if (queryString == null) {
+            return super.getParameter(name);
+        }
+        String[] values = parameters().get(name);
         return values == null || values.length == 0 ? null : values[0];
     }
 
     @Override
     public String[] getParameterValues(String name) {
-        String[] values = getParameterMap().get(name);
+        if (queryString == null) {
+            return super.getParameterValues(name);
+        }
+        String[] values = parameters().get(name);
         return values == null ? null : values.clone();
     }
 
     @Override
     public Enumeration<String> getParameterNames() {
-        return Collections.enumeration(getParameterMap().keySet());
+        if (queryString == null) {
+            return super.getParameterNames();
+        }
+        return Collections.enumeration(parameters().keySet());
     }
 
     @Override
@@ -128,6 +138,13 @@ class NettyDispatchRequestWrapper extends HttpServletRequestWrapper {
         if (queryString == null) {
             return super.getParameterMap();
         }
+        if (parameterMapCopy == null) {
+            parameterMapCopy = NettyHttpServletRequest.copyParameterMap(parameters());
+        }
+        return parameterMapCopy;
+    }
+
+    private Map<String, String[]> parameters() {
         if (parameters == null) {
             parameters = mergedParameters();
         }
