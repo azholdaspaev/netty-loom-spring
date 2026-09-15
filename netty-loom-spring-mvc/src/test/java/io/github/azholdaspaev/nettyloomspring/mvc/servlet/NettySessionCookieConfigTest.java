@@ -174,6 +174,35 @@ class NettySessionCookieConfigTest {
     }
 
     @Test
+    void shouldRejectNullOrEmptyName() {
+        IllegalArgumentException forNull = assertThrows(IllegalArgumentException.class, () -> config.setName(null));
+        IllegalArgumentException forEmpty = assertThrows(IllegalArgumentException.class, () -> config.setName(""));
+
+        assertTrue(forNull.getMessage().contains("Session cookie name"),
+            "the message names the misconfigured property, not the cookie parsing that would fail later: "
+                + forNull.getMessage());
+        assertTrue(forEmpty.getMessage().contains("Session cookie name"), forEmpty.getMessage());
+        assertEquals(NettySessionCookieConfig.DEFAULT_NAME, config.getName(),
+            "a rejected name leaves the previous one in place");
+    }
+
+    @Test
+    void shouldRejectNameWithReservedCharacters() {
+        assertThrows(IllegalArgumentException.class, () -> config.setName("SESSION ID"));
+        assertThrows(IllegalArgumentException.class, () -> config.setName("a;b"));
+        assertThrows(IllegalArgumentException.class, () -> config.setName("a=b"));
+        assertThrows(IllegalArgumentException.class, () -> config.setName("a" + (char) 0x7f + "b"));
+        assertEquals(NettySessionCookieConfig.DEFAULT_NAME, config.getName());
+    }
+
+    @Test
+    void shouldAcceptTokenName() {
+        config.setName("my_session-id.v2");
+
+        assertEquals("my_session-id.v2", config.getName());
+    }
+
+    @Test
     void shouldFreezeConfigurationOnceContextIsInitialized() {
         config.markInitialized();
 
