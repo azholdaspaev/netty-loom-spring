@@ -79,7 +79,7 @@ class NettyHttpSessionTest {
     // --- Attributes ---
 
     @Test
-    void attributeRoundTrips() {
+    void shouldRoundTripAttribute() {
         NettyHttpSession session = manager.create();
 
         session.setAttribute("user", "alice");
@@ -89,7 +89,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void settingAnAttributeToNullRemovesIt() {
+    void shouldRemoveSessionAttributeWhenSetToNull() {
         NettyHttpSession session = manager.create();
         session.setAttribute("user", "alice");
 
@@ -101,14 +101,14 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void getAttributeReturnsNullForAnUnknownName() {
+    void shouldReturnNullAttributeForUnknownName() {
         assertNull(manager.create().getAttribute("absent"));
     }
 
     // --- Binding listeners ---
 
     @Test
-    void bindingListenerIsNotifiedWhenBound() {
+    void shouldNotifyBindingListenerWhenBound() {
         NettyHttpSession session = manager.create();
         RecordingValue value = new RecordingValue();
 
@@ -118,7 +118,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void bindingListenerIsNotifiedWhenRemoved() {
+    void shouldNotifyBindingListenerWhenRemoved() {
         NettyHttpSession session = manager.create();
         RecordingValue value = new RecordingValue();
         session.setAttribute("callback", value);
@@ -129,7 +129,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void replacingAnAttributeUnbindsThePreviousValue() {
+    void shouldUnbindPreviousValueWhenReplacingAttribute() {
         NettyHttpSession session = manager.create();
         RecordingValue replaced = new RecordingValue();
         RecordingValue replacement = new RecordingValue();
@@ -142,7 +142,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void rebindingTheSameInstanceNotifiesNeitherSide() {
+    void shouldNotifyNeitherSideWhenRebindingSameInstance() {
         NettyHttpSession session = manager.create();
         RecordingValue value = new RecordingValue();
         session.setAttribute("callback", value);
@@ -157,7 +157,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void bindingAnInstanceTwiceBeforeEitherPublishesReleasesItOncePerBind() {
+    void shouldReleaseOncePerBindWhenBoundTwiceBeforePublishing() {
         /*
          * Two requests binding the same instance can both observe it absent before either publishes, so
          * both fire valueBound while only one of them is a real transition -- the second finds the value
@@ -193,7 +193,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void bindingEventsCarryTheValue() {
+    void shouldCarryValueInBindingEvents() {
         /*
          * The canonical HttpSessionBindingListener is a resource holder that reads event.getValue() to
          * know what to release; the two-argument HttpSessionBindingEvent leaves it null.
@@ -219,7 +219,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void invalidateUnbindsEveryAttribute() {
+    void shouldUnbindEveryAttributeOnInvalidate() {
         NettyHttpSession session = manager.create();
         RecordingValue value = new RecordingValue();
         session.setAttribute("callback", value);
@@ -230,7 +230,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void expiryUnbindsEveryAttribute() {
+    void shouldUnbindEveryAttributeOnExpiry() {
         NettyHttpSession session = manager.create();
         RecordingValue value = new RecordingValue();
         session.setAttribute("callback", value);
@@ -243,7 +243,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void aThrowingBindingListenerDoesNotAbortTheUnbindingOfOtherAttributes() {
+    void shouldKeepUnbindingOtherAttributesWhenBindingListenerThrows() {
         NettyHttpSession session = manager.create();
         RecordingValue survivor = new RecordingValue();
         session.setAttribute("bad", new HttpSessionBindingListener() {
@@ -261,7 +261,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void aLinkageErrorFromValueUnboundDoesNotAbortTheUnbindingOfOtherAttributes() {
+    void shouldKeepUnbindingOthersWhenValueUnboundThrowsLinkageError() {
         /*
          * The other shape the same listener fails in, and the one a value touching a lazily-loaded
          * release helper actually raises. It has to be swallowed for the same reason as the exception
@@ -285,7 +285,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void aVirtualMachineErrorFromValueUnboundIsNotSwallowed() {
+    void shouldNotSwallowVirtualMachineErrorFromValueUnbound() {
         NettyHttpSession session = manager.create();
         session.setAttribute("bad", new HttpSessionBindingListener() {
             @Override
@@ -298,7 +298,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void aThrowingValueBoundStillReleasesTheValueItDisplaced() {
+    void shouldStillReleaseDisplacedValueWhenValueBoundThrows() {
         /*
          * valueBound runs after the publish -- it has to, since only the publish knows what it displaced
          * -- so by the time it fails the previous value is already out of the map and nothing else can
@@ -323,7 +323,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void anErrorFromTheDisplacedValueDoesNotReplaceTheFailedBind() {
+    void shouldNotReplaceFailedBindWithErrorFromDisplacedValue() {
         /*
          * The bind failure is the one the caller needs to see -- propagating it is the whole reason
          * valueBound is not routed through the quiet path. The release it owes runs in a finally, and a
@@ -353,7 +353,7 @@ class NettyHttpSessionTest {
     // --- Invalidation ---
 
     @Test
-    void aSecondInvalidateThrows() {
+    void shouldThrowOnSecondInvalidate() {
         NettyHttpSession session = manager.create();
         session.invalidate();
 
@@ -361,7 +361,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void attributeAccessAfterInvalidateThrows() {
+    void shouldThrowOnAttributeAccessAfterInvalidate() {
         NettyHttpSession session = manager.create();
         session.invalidate();
 
@@ -372,7 +372,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void timeAndFreshnessAccessorsThrowAfterInvalidate() {
+    void shouldThrowFromTimeAndFreshnessAccessorsAfterInvalidate() {
         NettyHttpSession session = manager.create();
         session.invalidate();
 
@@ -382,7 +382,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void getIdStillWorksAfterInvalidate() {
+    void shouldStillAnswerGetIdAfterInvalidate() {
         NettyHttpSession session = manager.create();
         String id = session.getId();
 
@@ -392,7 +392,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void intervalAndContextAccessorsStillWorkAfterInvalidate() {
+    void shouldStillAnswerIntervalAndContextAccessorsAfterInvalidate() {
         NettyHttpSession session = manager.create();
         session.invalidate();
 
@@ -402,7 +402,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void anExpiredSessionBehavesAsInvalidated() {
+    void shouldTreatExpiredSessionAsInvalidated() {
         NettyHttpSession session = manager.create();
         clock.set(ONE_MINUTE * 1000L);
         manager.sweep(clock.get());
@@ -415,7 +415,7 @@ class NettyHttpSessionTest {
     // --- Times, freshness and interval ---
 
     @Test
-    void getLastAccessedTimeReportsThePreviousRequestNotTheCurrentOne() {
+    void shouldReportPreviousRequestNotCurrentAsLastAccessedTime() {
         NettyHttpSession session = manager.create();
 
         clock.set(5_000L);
@@ -429,7 +429,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void getCreationTimeIsFixedAtCreation() {
+    void shouldFixCreationTimeAtCreation() {
         NettyHttpSession session = manager.create();
 
         clock.set(5_000L);
@@ -439,7 +439,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void isNewStaysTrueForTheWholeRequestThatCreatedTheSession() {
+    void shouldStayNewForWholeRequestThatCreatedSession() {
         NettyHttpSession session = manager.create();
 
         clock.set(5_000L);
@@ -448,7 +448,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void setMaxInactiveIntervalOverridesTheManagerDefault() {
+    void shouldOverrideManagerDefaultOnSetMaxInactiveInterval() {
         NettyHttpSession session = manager.create();
 
         session.setMaxInactiveInterval(ONE_MINUTE * 10);
@@ -459,7 +459,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void setMaxInactiveIntervalToZeroDisablesExpiryForThatSessionOnly() {
+    void shouldDisableExpiryForThatSessionOnlyWhenIntervalIsZero() {
         NettyHttpSession immortal = manager.create();
         NettyHttpSession mortal = manager.create();
 
@@ -471,14 +471,14 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void getServletContextReturnsTheOwningContext() {
+    void shouldReturnOwningContextFromGetServletContext() {
         assertSame(servletContext, manager.create().getServletContext());
     }
 
     // --- Container-registered session listeners (issue #17) ---
 
     @Test
-    void sessionDestroyedFiresOnceOnInvalidate() {
+    void shouldFireSessionDestroyedOnceOnInvalidate() {
         var destroyed = new ArrayList<String>();
         servletContext.addListener(new HttpSessionListener() {
             @Override
@@ -495,7 +495,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void attributesAreStillReadableFromInsideSessionDestroyed() {
+    void shouldKeepAttributesReadableInsideSessionDestroyed() {
         /*
          * The window Tomcat's StandardSession.expiring opens. Spring Security's HttpSessionDestroyedEvent
          * walks getAttributeNames() to collect the SecurityContexts it is publishing the logout for, so a
@@ -519,7 +519,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void theDestroyWindowClosesOnceTeardownIsOver() {
+    void shouldCloseDestroyWindowOnceTeardownIsOver() {
         NettyHttpSession session = manager.create();
         session.setAttribute("user", "alice");
 
@@ -529,7 +529,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void attributeMutationsFireTheContainerAttributeListener() {
+    void shouldFireAttributeListenerOnSessionAttributeMutation() {
         var events = new ArrayList<String>();
         servletContext.addListener(new HttpSessionAttributeListener() {
             @Override
@@ -557,7 +557,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void tearingDownASessionRemovesItsAttributesThroughTheListener() {
+    void shouldRemoveAttributesThroughListenerOnTeardown() {
         /*
          * Tomcat's expire() removes each attribute with notification on, so an audit listener sees the
          * same "attribute gone" event whether the application removed it or the container did.
@@ -578,7 +578,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void anAttributeClaimedBackByInvalidationWasAnnouncedFirst() {
+    void shouldAnnounceAttributeBeforeInvalidationClaimsItBack() {
         /*
          * The claim-back branch: compute publishes while the session is still valid, the session is
          * invalidated a moment later, and setAttribute takes the value back -- notifying attributeRemoved.
@@ -621,7 +621,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void aValueInvalidatingTheSessionFromValueBoundWasAnnouncedFirst() {
+    void shouldAnnounceValueBeforeItInvalidatesSessionFromValueBound() {
         /*
          * The sibling of the case above, for the bound side: valueBound runs after compute has published,
          * so it too can invalidate and provoke the claim-back. Its add must already be announced, or the
@@ -654,7 +654,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void aRemovalUnbindsTheValueBeforeAnnouncingItGone() {
+    void shouldUnbindValueBeforeAnnouncingItGoneOnRemoval() {
         // A valueUnbound that reads the session must run before the container is told the value is gone.
         var events = new ArrayList<String>();
         servletContext.addListener(new HttpSessionAttributeListener() {
@@ -678,7 +678,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void removingAnAbsentSessionAttributeNotifiesNothing() {
+    void shouldFireNothingWhenRemovingAbsentSessionAttribute() {
         var events = new ArrayList<String>();
         servletContext.addListener(new HttpSessionAttributeListener() {
             @Override
@@ -694,7 +694,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void aThrowingSessionDestroyedListenerDoesNotAbortTheTeardown() {
+    void shouldNotAbortTeardownWhenSessionDestroyedListenerThrows() {
         /*
          * fireSessionDestroyed runs at the top of unbindAll, before the attribute unbind loop. If it
          * propagated, one bad listener would abort the rest of teardown -- no attribute unbound, so every
@@ -723,7 +723,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void aThrowingAttributeRemovedListenerDoesNotAbortTheTeardown() {
+    void shouldNotAbortTeardownWhenAttributeRemovedListenerThrows() {
         /*
          * fireSessionAttributeRemoved runs inside the unbind loop, so a propagating attributeRemoved would
          * abort the remaining unbinds and escape into invalidate(), the sweep and the shutdown drain.
@@ -753,7 +753,7 @@ class NettyHttpSessionTest {
     }
 
     @Test
-    void setAttributeToNullFiresRemovedRatherThanAdded() {
+    void shouldFireRemovedRatherThanAddedOnSetAttributeToNull() {
         var events = new ArrayList<String>();
         servletContext.addListener(new HttpSessionAttributeListener() {
             @Override

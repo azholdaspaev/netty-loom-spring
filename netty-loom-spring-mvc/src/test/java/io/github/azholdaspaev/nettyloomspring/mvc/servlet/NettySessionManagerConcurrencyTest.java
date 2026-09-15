@@ -54,7 +54,7 @@ class NettySessionManagerConcurrencyTest {
      * Spins until {@code thread} is blocked entering a monitor, so the interleaving under test is
      * established rather than hoped for: a sleep that lost would leave the assertions vacuously green.
      */
-    private static void awaitBlockedOnTheSessionLock(Thread thread) {
+    private static void awaitBlockedOnSessionLock(Thread thread) {
         long limit = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         while (thread.getState() != Thread.State.BLOCKED) {
             assertTrue(System.nanoTime() < limit, "the thread never blocked on the session lock");
@@ -114,7 +114,7 @@ class NettySessionManagerConcurrencyTest {
     }
 
     @Test
-    void concurrentRotationsLeaveExactlyOneReachableEntry() throws InterruptedException {
+    void shouldLeaveExactlyOneReachableEntryAfterConcurrentRotations() throws InterruptedException {
         /*
          * Two tabs submitting the same login form both reach ChangeSessionIdAuthenticationStrategy.
          * Rotating on a key the session carries means an unserialised pair can bind two ids and unbind
@@ -135,7 +135,7 @@ class NettySessionManagerConcurrencyTest {
     }
 
     @Test
-    void aRotationRacingInvalidationLeavesNothingBehind() throws InterruptedException {
+    void shouldLeaveNothingBehindWhenRotationRacesInvalidation() throws InterruptedException {
         /*
          * Login and logout in flight together. Whichever wins, an invalidated session must not remain
          * resolvable -- find() would keep refreshing it while every attribute access throws.
@@ -152,7 +152,7 @@ class NettySessionManagerConcurrencyTest {
     }
 
     @Test
-    void aValueBoundWhileTheSessionIsTornDownIsStillUnbound() throws InterruptedException {
+    void shouldStillUnbindValueBoundWhileSessionIsTornDown() throws InterruptedException {
         /*
          * The re-check in setAttribute exists for exactly this: checkValid() can pass and invalidation
          * land during the put, leaving a value in a session nothing will ever tear down. Pairing rather
@@ -174,7 +174,7 @@ class NettySessionManagerConcurrencyTest {
     }
 
     @Test
-    void reBindingAnInstanceWhileTheSessionIsTornDownDoesNotUnbindItTwice() throws InterruptedException {
+    void shouldNotUnbindTwiceWhenInstanceIsReBoundDuringTeardown() throws InterruptedException {
         /*
          * setAttribute skips valueBound when the identical instance is already bound, and separately
          * re-checks invalidation after its put. Combined naively those give one bind and *two* unbinds:
@@ -207,7 +207,7 @@ class NettySessionManagerConcurrencyTest {
     }
 
     @Test
-    void aReBindRacingARemovalReleasesTheValueOncePerBind() throws InterruptedException {
+    void shouldReleaseValueOncePerBindWhenReBindRacesRemoval() throws InterruptedException {
         /*
          * The @SessionAttributes write-through path with nothing exotic around it: one request re-stores
          * an instance that is already bound while another removes the key. Deciding "is it already
@@ -230,7 +230,7 @@ class NettySessionManagerConcurrencyTest {
     }
 
     @Test
-    void aReBindRacingAnotherValueReleasesTheValueOncePerBind() throws InterruptedException {
+    void shouldReleaseValueOncePerBindWhenReBindRacesAnotherValue() throws InterruptedException {
         /*
          * The same shape with a replacement rather than a removal: the racing request's own publish
          * claims the bound value and unbinds it, and the re-bind puts it back unannounced.
@@ -249,7 +249,7 @@ class NettySessionManagerConcurrencyTest {
     }
 
     @Test
-    void sweepingConcurrentlyWithFindLeavesTheStoreAndTheSessionAgreeing() throws InterruptedException {
+    void shouldKeepStoreAndSessionAgreeingWhenSweepRacesFind() throws InterruptedException {
         /*
          * Named for what it checks, which is weaker than the race it runs: every assertion here is made
          * after both threads have joined, so this pins the *outcome* invariant -- nothing invalidated
@@ -275,7 +275,7 @@ class NettySessionManagerConcurrencyTest {
     }
 
     @Test
-    void findRefusesAnInvalidatedSessionStillPresentInTheStore() {
+    void shouldRefuseInvalidatedSessionStillInStoreOnFind() {
         /*
          * find()'s in-lock isInvalidated() guard, without a race: the state it exists for -- marked but
          * not yet unbound from the store -- is what the teardown paths pass through, and can be
@@ -290,7 +290,7 @@ class NettySessionManagerConcurrencyTest {
     }
 
     @Test
-    void findWaitsForAnEvictionThatHasAlreadyTakenTheSessionLock() throws InterruptedException {
+    void shouldWaitOnFindForEvictionAlreadyHoldingSessionLock() throws InterruptedException {
         /*
          * That find() takes the *session's* lock rather than merely reading flags. Holding the production
          * monitor from the test thread is what makes this deterministic; asserting the finder actually
@@ -303,7 +303,7 @@ class NettySessionManagerConcurrencyTest {
         var resolved = new NettyHttpSession[1];
         synchronized (session.lock()) {
             finder = Thread.ofPlatform().start(() -> resolved[0] = manager.find(id));
-            awaitBlockedOnTheSessionLock(finder);
+            awaitBlockedOnSessionLock(finder);
             session.markInvalidated();
         }
         finder.join();
@@ -312,7 +312,7 @@ class NettySessionManagerConcurrencyTest {
     }
 
     @Test
-    void aSessionExtendedWhileTheSweeperWaitsForTheLockIsNotEvicted() throws InterruptedException {
+    void shouldNotEvictSessionExtendedWhileSweeperWaitsForLock() throws InterruptedException {
         /*
          * The widest form of the window, made deterministic by holding the lock: the sweeper judges the
          * session expired, blocks entering the eviction, and an ordinary setMaxInactiveInterval -- a
@@ -327,7 +327,7 @@ class NettySessionManagerConcurrencyTest {
         Thread sweeper;
         synchronized (session.lock()) {
             sweeper = Thread.ofPlatform().start(() -> manager.sweep(deadline));
-            awaitBlockedOnTheSessionLock(sweeper);
+            awaitBlockedOnSessionLock(sweeper);
             session.setMaxInactiveInterval(ONE_MINUTE * 60);
         }
         sweeper.join();

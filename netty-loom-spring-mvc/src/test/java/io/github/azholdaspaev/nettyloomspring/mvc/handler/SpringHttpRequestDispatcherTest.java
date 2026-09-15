@@ -104,7 +104,7 @@ class SpringHttpRequestDispatcherTest {
     }
 
     @Test
-    void aDispatchIsBracketedByTheRequestListener() throws Exception {
+    void shouldBracketDispatchWithRequestListener() throws Exception {
         recordRequests();
         var dispatcher = dispatcher((request, response) -> events.add("service"));
 
@@ -114,7 +114,7 @@ class SpringHttpRequestDispatcherTest {
     }
 
     @Test
-    void requestDestroyedStillFiresWhenTheDispatchThrows() {
+    void shouldStillFireRequestDestroyedWhenDispatchThrows() {
         /*
          * A handler that blows up is exactly when request scope most needs unbinding: without the
          * finally, RequestContextHolder would stay bound to a request that is already gone.
@@ -130,7 +130,7 @@ class SpringHttpRequestDispatcherTest {
     }
 
     @Test
-    void theEventNamesTheRequestBeingDispatched() throws Exception {
+    void shouldNameRequestBeingDispatchedInEvent() throws Exception {
         var seen = new Object[2];
         servletContext.addListener(new ServletRequestListener() {
             @Override
@@ -150,7 +150,7 @@ class SpringHttpRequestDispatcherTest {
     }
 
     @Test
-    void theContextsCookieSameSiteResolverReachesTheResponse() throws Exception {
+    void shouldPassContextsCookieSameSiteResolverToResponse() throws Exception {
         var dispatcher = dispatcher((request, response) -> response.addCookie(new Cookie("tracker", "t")));
         /*
          * Set after the dispatcher exists: the factory installs the resolver during getWebServer(), long
@@ -180,7 +180,7 @@ class SpringHttpRequestDispatcherTest {
     }
 
     @Test
-    void sendErrorIsAnsweredByTheErrorPage() throws Exception {
+    void shouldAnswerSendErrorWithErrorPage() throws Exception {
         errorPageIs("/error");
         var dispatcher = dispatcher((request, response) -> {
             if (request.getServletPath().equals("/error")) {
@@ -197,7 +197,7 @@ class SpringHttpRequestDispatcherTest {
     }
 
     @Test
-    void aHandlerExceptionWithAnErrorPageIsAnsweredInsteadOfPropagating() throws Exception {
+    void shouldAnswerHandlerExceptionWithErrorPageNotPropagate() throws Exception {
         errorPageIs("/error");
         var dispatcher = dispatcher((request, response) -> {
             if (request.getServletPath().equals("/error")) {
@@ -214,7 +214,7 @@ class SpringHttpRequestDispatcherTest {
     }
 
     @Test
-    void aHandlerExceptionWithNoErrorPageStillPropagates() {
+    void shouldStillPropagateHandlerExceptionWithNoErrorPage() {
         var dispatcher = dispatcher((request, response) -> {
             throw new IllegalStateException("boom");
         });
@@ -224,7 +224,7 @@ class SpringHttpRequestDispatcherTest {
     }
 
     @Test
-    void theErrorPageRunsBeforeTheRequestListenerIsToldTheRequestEnded() throws Exception {
+    void shouldRunErrorPageBeforeRequestListenerIsToldRequestEnded() throws Exception {
         errorPageIs("/error");
         recordRequests();
         var dispatcher = dispatcher((request, response) -> {
@@ -244,7 +244,7 @@ class SpringHttpRequestDispatcherTest {
     }
 
     @Test
-    void theErrorPageIsDispatchedOnlyOnceWhenItAlsoCallsSendError() throws Exception {
+    void shouldDispatchErrorPageOnlyOnceWhenItAlsoCallsSendError() throws Exception {
         errorPageIs("/error");
         var dispatched = new int[1];
         var dispatcher = dispatcher((request, response) -> {
@@ -263,7 +263,7 @@ class SpringHttpRequestDispatcherTest {
     }
 
     @Test
-    void anErrorPageThatThrowsPropagatesRatherThanAnsweringTwice() {
+    void shouldPropagateThrowingErrorPageRatherThanAnswerTwice() {
         errorPageIs("/error");
         var dispatcher = dispatcher((request, response) -> {
             if (request.getServletPath().equals("/error")) {
@@ -276,7 +276,7 @@ class SpringHttpRequestDispatcherTest {
     }
 
     @Test
-    void theOutOfContextFourOhFourNeverReachesAnErrorPage() throws Exception {
+    void shouldNeverDispatchOutOfContextFourOhFourToErrorPage() throws Exception {
         servletContext.setContextPath("/app");
         errorPageIs("/error");
         var dispatcher = dispatcher((request, response) -> write(response, "the error page"));
@@ -289,7 +289,7 @@ class SpringHttpRequestDispatcherTest {
     }
 
     @Test
-    void anOutOfContextRequestNeverEntersTheContext() throws Exception {
+    void shouldNeverLetOutOfContextRequestEnterContext() throws Exception {
         /*
          * A URI outside server.servlet.context-path is rejected with a bare 404 before filters or the
          * servlet run. Nothing was dispatched into this context, so nothing may be announced as if it was.
@@ -305,7 +305,7 @@ class SpringHttpRequestDispatcherTest {
     }
 
     @Test
-    void aFailingRequestListenerAbortsTheDispatch() {
+    void shouldAbortDispatchWhenRequestListenerFails() {
         /*
          * requestInitialized propagates: a listener that could not set up request scope has left the
          * servlet unable to run correctly, so the exception handler turns it into a status code rather
@@ -335,13 +335,13 @@ class SpringHttpRequestDispatcherTest {
     /**
      * The ordinary failure, and the linkage error a listener touching a missing class actually raises.
      */
-    static Stream<Throwable> theTwoFailureShapes() {
+    static Stream<Throwable> failureShapes() {
         return Stream.of(new IllegalStateException("boom"), new NoClassDefFoundError("com/example/Missing"));
     }
 
     @ParameterizedTest
-    @MethodSource("theTwoFailureShapes")
-    void aListenerInitializedBeforeAFailingOneIsStillReleased(Throwable failure) {
+    @MethodSource("failureShapes")
+    void shouldStillReleaseListenerInitializedBeforeFailingOne(Throwable failure) {
         /*
          * requestDestroyed is a release, not a notification: RequestContextListener.requestDestroyed runs
          * the destruction callbacks of every @RequestScope bean the dispatch created. fireRequestInitialized
@@ -375,7 +375,7 @@ class SpringHttpRequestDispatcherTest {
     }
 
     @Test
-    void aListenerThatNeverInitializedIsNotDestroyed() {
+    void shouldNotDestroyListenerThatNeverInitialized() {
         /*
          * The other half of the same rule: releasing a listener that was never set up is what the
          * symmetric contextInitialized fix exists to prevent, and it applies per request too.
@@ -405,7 +405,7 @@ class SpringHttpRequestDispatcherTest {
     }
 
     @Test
-    void aThrowingRequestDestroyedListenerDoesNotReplaceTheHandlersFailure() {
+    void shouldNotReplaceHandlersFailureWhenRequestDestroyedThrows() {
         /*
          * fireRequestDestroyed runs in the dispatcher's finally, so propagating there would replace any
          * in-flight exception -- losing the handler's failure on every request while the listener stayed
@@ -436,7 +436,7 @@ class SpringHttpRequestDispatcherTest {
     }
 
     @Test
-    void aThrowingRequestDestroyedListenerDoesNotBreakASuccessfulResponse() {
+    void shouldNotBreakSuccessfulResponseWhenRequestDestroyedThrows() {
         servletContext.addListener(new ServletRequestListener() {
             @Override
             public void requestDestroyed(ServletRequestEvent event) {
@@ -452,7 +452,7 @@ class SpringHttpRequestDispatcherTest {
     }
 
     @Test
-    void anErrorFromAReleasedListenerDoesNotReplaceTheOriginalFailure() {
+    void shouldNotReplaceOriginalFailureWithErrorFromReleasedListener() {
         /*
          * An Error escaping the release loop would replace the original failure -- the one the caller
          * needs to see -- and skip the listeners below it.
@@ -491,7 +491,7 @@ class SpringHttpRequestDispatcherTest {
     }
 
     @Test
-    void aHandlerThatFlushesMidDispatchStreamsThroughTheConnection() throws Exception {
+    void shouldStreamThroughConnectionWhenHandlerFlushesMidDispatch() throws Exception {
         var dispatcher = dispatcher((request, response) -> {
             // The stubbed servlet cannot throw, so the failure is surfaced unchecked.
             try {
@@ -535,7 +535,7 @@ class SpringHttpRequestDispatcherTest {
     }
 
     @Test
-    void aForwardedDispatchWritesExactlyOneResponse() throws Exception {
+    void shouldWriteExactlyOneResponseOnForwardedDispatch() throws Exception {
         FullHttpResponse response = dispatch(forwardingDispatcher(), get("/source"));
 
         assertEquals("target", response.content().toString(StandardCharsets.UTF_8),
@@ -543,7 +543,7 @@ class SpringHttpRequestDispatcherTest {
     }
 
     @Test
-    void aForwardDoesNotRefireTheRequestListener() throws Exception {
+    void shouldNotRefireRequestListenerOnForward() throws Exception {
         recordRequests();
 
         dispatch(forwardingDispatcher(), get("/source"));
