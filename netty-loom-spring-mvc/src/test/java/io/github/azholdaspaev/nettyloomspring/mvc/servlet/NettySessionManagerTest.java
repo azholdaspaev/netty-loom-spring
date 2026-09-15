@@ -410,15 +410,29 @@ class NettySessionManagerTest {
 
     @Test
     void shouldKeepFirstLiveIdOverLaterStaleDuplicateOnReadSessionId() {
-        /*
-         * The tie-break is "first live", not "last live": preferring a later candidate would make which
-         * session a request binds to depend on cookie order even when the first one is perfectly usable.
-         */
         NettyHttpSession live = manager.create();
 
         String resolved = manager.readSessionId(cookies(SESSION_COOKIE, live.getId(), SESSION_COOKIE, "DEADBEEF"));
 
         assertEquals(live.getId(), resolved);
+    }
+
+    @Test
+    void shouldPreferFirstOfTwoLiveDuplicatesOnReadSessionId() {
+        /*
+         * Two live candidates, not one live beside a dead one: with a single live id "first live" and
+         * "last live" select the same cookie, so the sibling tests pass against either (issue #99). The
+         * tie-break is "first live", as Tomcat's CoyoteAdapter.parseSessionCookiesId replaces its
+         * candidate only while isRequestedSessionIdValid() is false; preferring a later one would make
+         * which session a request binds to depend on cookie order even when the first is usable.
+         */
+        NettyHttpSession first = manager.create();
+        NettyHttpSession second = manager.create();
+
+        String resolved =
+            manager.readSessionId(cookies(SESSION_COOKIE, first.getId(), SESSION_COOKIE, second.getId()));
+
+        assertEquals(first.getId(), resolved, "with two live duplicates the first must win, not the last");
     }
 
     @Test
