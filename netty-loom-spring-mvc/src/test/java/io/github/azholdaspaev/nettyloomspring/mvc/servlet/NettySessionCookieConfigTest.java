@@ -191,6 +191,8 @@ class NettySessionCookieConfigTest {
         assertThrows(IllegalArgumentException.class, () -> config.setName("SESSION ID"));
         assertThrows(IllegalArgumentException.class, () -> config.setName("a;b"));
         assertThrows(IllegalArgumentException.class, () -> config.setName("a=b"));
+        assertThrows(IllegalArgumentException.class, () -> config.setName("a\\b"),
+            "backslash is in jakarta.servlet.http.Cookie.TSPECIALS, so the Cookie constructor rejects it");
         assertThrows(IllegalArgumentException.class, () -> config.setName("a" + (char) 0x7f + "b"));
         assertEquals(NettySessionCookieConfig.DEFAULT_NAME, config.getName());
     }

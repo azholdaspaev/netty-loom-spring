@@ -32,7 +32,7 @@ public final class NettySessionCookieConfig implements SessionCookieConfig {
     /**
      * RFC 6265 separators; {@code jakarta.servlet.http.Cookie} rejects the same set.
      */
-    private static final String RESERVED_NAME_CHARACTERS = ",; \t()<>@:\"/[]?={}";
+    private static final String RESERVED_NAME_CHARACTERS = ",; \t()<>@:\\\"/[]?={}";
 
     /**
      * How {@code Cookie} encodes a set flag; absent means unset.
