@@ -76,11 +76,11 @@ public class NettyLoomAutoConfiguration {
     public NettyWebServerFactory nettyWebServerFactory(NettyIoHandlerFactory nettyIoHandlerFactory,
                                                        NettyServerChannelInitializer nettyServerChannelInitializer,
                                                        HttpConnectionRegistry httpConnectionRegistry,
-                                                       NettyServletContext servletContext,
+                                                       NettyServletContext nettyServletContext,
                                                        DispatcherServlet dispatcherServlet,
                                                        NettyLoomProperties properties) {
         return new NettyWebServerFactory(nettyIoHandlerFactory, nettyServerChannelInitializer,
-            httpConnectionRegistry, servletContext, dispatcherServlet, properties);
+            httpConnectionRegistry, nettyServletContext, dispatcherServlet, properties);
     }
 
     @Bean
@@ -97,8 +97,8 @@ public class NettyLoomAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(search = SearchStrategy.CURRENT)
-    public SessionStoreLifecycle sessionStoreLifecycle(NettyServletContext servletContext) {
-        return new SessionStoreLifecycle(servletContext);
+    public SessionStoreLifecycle sessionStoreLifecycle(NettyServletContext nettyServletContext) {
+        return new SessionStoreLifecycle(nettyServletContext);
     }
 
     @Bean
@@ -175,7 +175,7 @@ public class NettyLoomAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(search = SearchStrategy.CURRENT)
     public HttpRequestDispatcher httpRequestDispatcher(DispatcherServlet dispatcherServlet,
-                                                       NettyServletContext servletContext) {
-        return new SpringHttpRequestDispatcher(dispatcherServlet, servletContext);
+                                                       NettyServletContext nettyServletContext) {
+        return new SpringHttpRequestDispatcher(dispatcherServlet, nettyServletContext);
     }
 }
