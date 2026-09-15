@@ -109,35 +109,23 @@ class NettyDispatchRequestWrapper extends HttpServletRequestWrapper {
 
     @Override
     public String getParameter(String name) {
-        if (queryString == null) {
-            return super.getParameter(name);
-        }
         String[] values = parameters().get(name);
         return values == null || values.length == 0 ? null : values[0];
     }
 
     @Override
     public String[] getParameterValues(String name) {
-        if (queryString == null) {
-            return super.getParameterValues(name);
-        }
         String[] values = parameters().get(name);
         return values == null ? null : values.clone();
     }
 
     @Override
     public Enumeration<String> getParameterNames() {
-        if (queryString == null) {
-            return super.getParameterNames();
-        }
         return Collections.enumeration(parameters().keySet());
     }
 
     @Override
     public Map<String, String[]> getParameterMap() {
-        if (queryString == null) {
-            return super.getParameterMap();
-        }
         if (parameterMapCopy == null) {
             parameterMapCopy = NettyHttpServletRequest.copyParameterMap(parameters());
         }
@@ -146,7 +134,7 @@ class NettyDispatchRequestWrapper extends HttpServletRequestWrapper {
 
     private Map<String, String[]> parameters() {
         if (parameters == null) {
-            parameters = mergedParameters();
+            parameters = queryString == null ? super.getParameterMap() : mergedParameters();
         }
         return parameters;
     }
