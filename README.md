@@ -88,8 +88,10 @@ controller knows it is running on Netty.
 ### Once published
 
 The starter will pull in `spring-boot-starter-web` with Tomcat excluded; the Netty
-`ServletWebServerFactory` takes over because it is the only factory on the classpath. Do not add
-Tomcat back.
+`ServletWebServerFactory` takes over because it is the only factory on the classpath. It serves only
+when it is the sole factory: with Tomcat, Jetty or Undertow also on the classpath, or a
+`ServletWebServerFactory` bean of your own, the auto-configuration yields and that server runs
+instead.
 
 ```kotlin
 implementation("io.github.azholdaspaev:netty-loom-spring-boot-starter:0.1.0")
@@ -263,11 +265,11 @@ The channel pipeline itself is not a seam but a bean: `NettyPipelineDefinition` 
 **starter**, not in core, so declaring your own replaces the entire list — frame limits and read
 timeout included.
 
-**Replacing `HttpRequestDispatcher` or `NettyPipelineDefinition` needs `@Primary`.** Nothing in the
-starter is declared `@ConditionalOnMissingBean`, so your bean does not displace the auto-configured
-one. Omit `@Primary` and the context still starts while your bean is **never used** — Spring settles
-the ambiguity by matching the injection point's parameter name against the auto-configuration's bean
-name, and that one wins.
+Every bean the starter declares is `@ConditionalOnMissingBean`, so declaring your own
+`HttpRequestDispatcher` or `NettyPipelineDefinition` replaces the auto-configured one; no `@Primary`
+is needed. The one exception is the virtual-thread dispatch executor, guarded by name rather than
+type: only a bean named `nettyLoomDispatchExecutor` replaces it, so an `ExecutorService` bean of your
+own does not silently take over request dispatch.
 
 The pipeline handler names above (`httpCodec`, `drain`, `dispatcher`, …) are the addressable handles
 for anyone reaching into the pipeline directly.
