@@ -252,6 +252,31 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
+    void shouldNotAnswerInterruptedDispatchWithErrorPage() throws Exception {
+        pageIs("/error");
+        var response = new NettyHttpServletResponse();
+        var request = requestFor("/stuck", response);
+        var cutOff = new ServletException("Request processing failed", new InterruptedException());
+
+        ByteArrayOutputStream captured = new ByteArrayOutputStream();
+        PrintStream standardError = System.err;
+        System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
+        boolean reported;
+        try {
+            reported = errorPages.report(request, response, cutOff);
+        } finally {
+            System.setErr(standardError);
+        }
+        String logged = captured.toString(StandardCharsets.UTF_8);
+
+        assertFalse(reported,
+            "an interrupt is the executor cutting the dispatch off at shutdown, not a failure a page answers");
+        assertTrue(reached.isEmpty(), "the connection is already closed; there is nobody to render a page for");
+        assertFalse(logged.contains("ERROR"),
+            "a cut-off is not an uncaught failure of the application; log was: " + logged);
+    }
+
+    @Test
     void shouldDiscardBodyWrittenBeforeFailureWhileHeadersSurvive() throws Exception {
         pageIs("/error");
         terminalIs((request, response) -> {
