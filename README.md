@@ -269,7 +269,9 @@ Every bean the starter declares is `@ConditionalOnMissingBean`, so declaring you
 `HttpRequestDispatcher` or `NettyPipelineDefinition` replaces the auto-configured one; no `@Primary`
 is needed. The one exception is the virtual-thread dispatch executor, guarded by name rather than
 type: only a bean named `nettyLoomDispatchExecutor` replaces it, so an `ExecutorService` bean of your
-own does not silently take over request dispatch.
+own does not silently take over request dispatch. Every guard searches the current application
+context only: a bean in a parent context neither replaces a default nor is inherited by a child that
+starts its own server, so each context that runs a Netty server owns its whole bean graph.
 
 The pipeline handler names above (`httpCodec`, `drain`, `dispatcher`, …) are the addressable handles
 for anyone reaching into the pipeline directly.

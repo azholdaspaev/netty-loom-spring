@@ -51,7 +51,10 @@ First release. Not yet published to Maven Central; a `0.1.0-SNAPSHOT` is on
   the classpath, ordered after Boot's Tomcat, Jetty and Undertow auto-configurations so any of
   them on the classpath serves instead, and every bean `@ConditionalOnMissingBean` so a
   `ServletWebServerFactory`, `HttpRequestDispatcher` or `NettyPipelineDefinition` of your own
-  replaces the starter's without `@Primary`.
+  replaces the starter's without `@Primary`. Every guard searches the current application context
+  only, so a child context that starts its own Netty server owns its own dispatcher, pipeline,
+  session store and executor rather than inheriting its parent's and serving through the parent's
+  `DispatcherServlet`.
 
 ### Known limitations
 
