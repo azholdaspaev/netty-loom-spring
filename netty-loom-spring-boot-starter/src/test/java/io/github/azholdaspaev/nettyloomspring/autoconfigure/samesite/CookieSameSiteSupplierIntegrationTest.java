@@ -47,21 +47,21 @@ class CookieSameSiteSupplierIntegrationTest {
     }
 
     @Test
-    void aSupplierMatchedCookieCarriesSameSiteOnTheWire() {
+    void shouldCarrySameSiteOnWireForSupplierMatchedCookie() {
         String setCookie = setCookie("/same-site/tracked", "tracker");
 
         assertTrue(setCookie.contains("SameSite=Strict"), "Actual: " + setCookie);
     }
 
     @Test
-    void anUnmatchedCookieCarriesNoSameSite() {
+    void shouldCarryNoSameSiteForUnmatchedCookie() {
         String setCookie = setCookie("/same-site/plain", "plain");
 
         assertFalse(setCookie.contains("SameSite"), "Actual: " + setCookie);
     }
 
     @Test
-    void theSessionSameSitePropertyWinsOverAMatchingSupplier() {
+    void shouldPreferSessionSameSitePropertyOverMatchingSupplier() {
         String setCookie = setCookie("/same-site/session", NettySessionCookieConfig.DEFAULT_NAME);
 
         assertTrue(setCookie.contains("SameSite=Lax"), "Actual: " + setCookie);

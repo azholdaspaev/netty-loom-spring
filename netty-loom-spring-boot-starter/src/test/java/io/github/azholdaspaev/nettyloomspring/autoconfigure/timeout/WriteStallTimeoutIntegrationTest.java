@@ -38,7 +38,7 @@ class WriteStallTimeoutIntegrationTest {
 
     @Test
     @Timeout(value = 60, unit = TimeUnit.SECONDS)
-    void shouldGiveUpOnAClientThatStopsReadingAfterTheConfiguredBound() throws Exception {
+    void shouldGiveUpOnClientThatStopsReadingAfterConfiguredBound() throws Exception {
         try (Socket socket = narrowWindowedClient()) {
             RawHttpClient.send(socket, "GET /streaming/large HTTP/1.1", "Host: localhost");
 
@@ -51,7 +51,7 @@ class WriteStallTimeoutIntegrationTest {
 
     @Test
     @Timeout(value = 60, unit = TimeUnit.SECONDS)
-    void shouldDeliverTheWholeBodyToAClientThatKeepsReading() throws Exception {
+    void shouldDeliverWholeBodyToClientThatKeepsReading() throws Exception {
         try (Socket socket = narrowWindowedClient()) {
             RawHttpClient.send(socket, "GET /streaming/large HTTP/1.1", "Host: localhost");
 
@@ -62,7 +62,7 @@ class WriteStallTimeoutIntegrationTest {
 
     @Test
     @Timeout(value = 60, unit = TimeUnit.SECONDS)
-    void shouldLeaveAnOrdinaryResponseUntouchedByTheBound() throws Exception {
+    void shouldLeaveOrdinaryResponseUntouchedByBound() throws Exception {
         try (Socket socket = narrowWindowedClient()) {
             RawHttpClient.send(socket, "GET /streaming/sized HTTP/1.1", "Host: localhost");
 

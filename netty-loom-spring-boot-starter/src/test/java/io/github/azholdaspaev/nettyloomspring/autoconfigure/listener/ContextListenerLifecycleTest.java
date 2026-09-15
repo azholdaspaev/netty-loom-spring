@@ -31,7 +31,7 @@ class ContextListenerLifecycleTest {
     }
 
     @Test
-    void contextInitializedFiresOnceOnStartupAndContextDestroyedOnceOnClose() {
+    void shouldFireInitializedOnceOnStartupAndDestroyedOnceOnClose() {
         RecordingListener listener;
         try (ConfigurableApplicationContext context = run()) {
             listener = context.getBean(RecordingListener.class);
@@ -47,7 +47,7 @@ class ContextListenerLifecycleTest {
     }
 
     @Test
-    void aStopStartCycleRebalancesBothEvents() {
+    void shouldRebalanceBothEventsAcrossStopStartCycle() {
         try (ConfigurableApplicationContext context = run()) {
             RecordingListener listener = context.getBean(RecordingListener.class);
 
@@ -63,7 +63,7 @@ class ContextListenerLifecycleTest {
     }
 
     @Test
-    void registrationIsRefusedOnceStartupHasFinished() {
+    void shouldRefuseRegistrationOnceStartupHasFinished() {
         /*
          * The ServletContext.addListener contract: a listener registered from here on would never see
          * contextInitialized and would begin observing requests midway through the application's life.

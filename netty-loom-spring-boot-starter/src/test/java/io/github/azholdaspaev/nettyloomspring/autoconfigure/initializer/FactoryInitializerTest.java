@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class FactoryInitializerTest {
 
     @Test
-    void factoryRegisteredInitializerRuns() {
+    void shouldRunFactoryRegisteredInitializer() {
         assertTrue(FactoryInitializerConfig.INITIALIZED.get(),
             "initializer added via factory.addInitializers should have run during getWebServer()");
     }

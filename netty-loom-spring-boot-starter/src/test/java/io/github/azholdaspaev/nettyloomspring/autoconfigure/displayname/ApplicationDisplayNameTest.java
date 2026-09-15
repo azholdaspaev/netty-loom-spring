@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class ApplicationDisplayNameTest {
 
     @Test
-    void bootsDefaultDisplayNameIsTheServletContextName() {
+    void shouldUseBootsDefaultDisplayNameAsServletContextName() {
         try (var context = run()) {
             assertEquals("application", servletContext(context).getServletContextName(),
                 "Boot defaults server.servlet.application-display-name to 'application', so that, not the "
@@ -26,7 +26,7 @@ class ApplicationDisplayNameTest {
     }
 
     @Test
-    void aConfiguredDisplayNameIsTheServletContextName() {
+    void shouldUseConfiguredDisplayNameAsServletContextName() {
         try (var context = run("server.servlet.application-display-name=orders")) {
             assertEquals("orders", servletContext(context).getServletContextName());
         }

@@ -26,7 +26,7 @@ class CookieIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void cookieValueResolvesSingleCookie() {
+    void shouldResolveSingleCookieWithCookieValue() {
         restTestClient.get().uri("/cookie/read")
             .header("Cookie", "foo=bar")
             .exchange()
@@ -36,7 +36,7 @@ class CookieIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void getCookiesPreservesOrderAcrossPairs() {
+    void shouldPreserveCookieOrderAcrossPairsInGetCookies() {
         restTestClient.get().uri("/cookie/read-all")
             .header("Cookie", "a=1; b=2; c=3")
             .exchange()
@@ -46,7 +46,7 @@ class CookieIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void missingRequiredCookieYields400() {
+    void shouldYield400WhenRequiredCookieIsMissing() {
         restTestClient.get().uri("/cookie/read")
             .exchange()
             .expectStatus().isBadRequest();
@@ -54,7 +54,7 @@ class CookieIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void writtenCookieRoundTripsOnSecondRequest() {
+    void shouldRoundTripWrittenCookieOnSecondRequest() {
         // RestTestClient does not persist cookies across exchanges; capture and resend manually.
         restTestClient.get().uri("/cookie/set")
             .exchange()
@@ -70,7 +70,7 @@ class CookieIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void cookieAttributesAreSerialisedFaithfully() {
+    void shouldSerialiseCookieAttributesFaithfully() {
         String setCookie = restTestClient.get().uri("/cookie/set-attrs")
             .exchange()
             .expectStatus().isOk()
@@ -87,7 +87,7 @@ class CookieIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void malformedCookieHeaderIsToleratedWithoutError() {
+    void shouldTolerateMalformedCookieHeaderWithoutError() {
         restTestClient.get().uri("/cookie/read-all")
             .header("Cookie", "=;;garbage")
             .exchange()

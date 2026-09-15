@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DrainPipelineOrderTest {
 
     @Test
-    void shouldPlaceTheDrainHandlerBelowKeepAliveAndAboveTheBodyLimit() {
+    void shouldPlaceDrainHandlerBelowKeepAliveAndAboveBodyLimit() {
         try (ConfigurableApplicationContext context = new SpringApplicationBuilder(SmokeNettyLoomApplication.class)
             .properties("server.port=0")
             .run()) {

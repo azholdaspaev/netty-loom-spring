@@ -34,7 +34,7 @@ class GracefulShutdownTest {
     private static final long PROMPT_SHUTDOWN_MILLIS = 5_000;
 
     @Test
-    void shouldShutDownPromptlyWhileAClientHoldsAnIdleKeepAliveConnection() throws Exception {
+    void shouldShutDownPromptlyWhileClientHoldsIdleKeepAlive() throws Exception {
         // Held for the lifetime of the test so the pooled connection stays open across the shutdown.
         HttpClient pooling = HttpClient.newHttpClient();
         ConfigurableApplicationContext context = new SpringApplicationBuilder(SmokeNettyLoomApplication.class)
@@ -64,7 +64,7 @@ class GracefulShutdownTest {
     }
 
     @Test
-    void shouldCutOffARequestOnceTheLifecyclePhaseTimeoutExpires() throws Exception {
+    void shouldCutOffRequestOnceLifecyclePhaseTimeoutExpires() throws Exception {
         HttpClient client = HttpClient.newHttpClient();
         ConfigurableApplicationContext context = new SpringApplicationBuilder(
             SmokeNettyLoomApplication.class, HoldingController.class)
