@@ -326,7 +326,7 @@ public class NettySessionManager {
             if (isValidId(cookie.getValue())) {
                 return cookie.getValue();
             }
-            if (lastMatch == null || !cookie.getValue().isEmpty()) {
+            if (lastMatch == null || !"".equals(cookie.getValue())) {
                 lastMatch = cookie.getValue();
             }
         }

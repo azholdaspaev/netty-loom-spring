@@ -534,6 +534,12 @@ class NettySessionManagerTest {
             "an empty value is skipped only in favour of another match, not dropped; whether it counts as presented at all is #94");
     }
 
+    @Test
+    void shouldTolerateNullDuplicateValueOnReadSessionId() {
+        assertNull(manager.readSessionId(cookies(SESSION_COOKIE, "DEADBEEF", SESSION_COOKIE, null)),
+            "a value a filter nulled through getCookies() must not throw; it stands as the last match, as before the empty guard");
+    }
+
     // --- Container-registered session listeners (issue #17) ---
 
     /**
