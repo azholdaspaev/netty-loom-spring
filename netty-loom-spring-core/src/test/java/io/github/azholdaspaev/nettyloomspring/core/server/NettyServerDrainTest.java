@@ -192,6 +192,24 @@ class NettyServerDrainTest {
     }
 
     @Test
+    void shouldTreatGraceBeyondLongNanosAsUnbounded() throws Exception {
+        try (Socket client = connect()) {
+            send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
+            assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
+
+            Future<NettyShutdownResult> shutdown = shutdownExecutor.submit(
+                () -> nettyServer.shutdown(Duration.ofDays(200_000)));
+            assertStillDraining(shutdown,
+                "a grace too large for long nanoseconds must wait for the request, not fail or expire at once");
+
+            releaseDispatcher.countDown();
+
+            assertEquals(NettyShutdownResult.IDLE, shutdown.get(5, TimeUnit.SECONDS),
+                "shutdown completes once the request is answered, however large the grace");
+        }
+    }
+
+    @Test
     void shouldCutDrainShortWhenShutdownIsCalledAgainWithNoGrace() throws Exception {
         releaseAbort.countDown();
         try (Socket client = connect()) {

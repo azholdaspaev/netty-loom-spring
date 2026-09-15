@@ -238,14 +238,21 @@ public class NettyServer {
     private record State(Channel serverChannel, EventLoopGroup bossGroup, EventLoopGroup workerGroup) {
     }
 
-    private record Deadline(long nanoTime) {
+    /**
+     * Start and budget, not their sum: {@code toNanos()} throws past {@code Long.MAX_VALUE}
+     * nanoseconds and a {@code nanoTime()} sum wraps below it, so a large grace expired at once (#251).
+     */
+    private record Deadline(long startNanos, long budgetNanos) {
+
+        private static final Duration MAX_BUDGET = Duration.ofNanos(Long.MAX_VALUE);
 
         private static Deadline in(Duration timeout) {
-            return new Deadline(System.nanoTime() + timeout.toNanos());
+            long budget = timeout.compareTo(MAX_BUDGET) > 0 ? Long.MAX_VALUE : timeout.toNanos();
+            return new Deadline(System.nanoTime(), budget);
         }
 
         private long remainingMillis() {
-            return Math.max(0L, (nanoTime - System.nanoTime()) / 1_000_000L);
+            return Math.max(0L, (budgetNanos - (System.nanoTime() - startNanos)) / 1_000_000L);
         }
     }
 
