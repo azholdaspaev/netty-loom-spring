@@ -195,6 +195,15 @@ class NettyLoomAutoConfigurationTest {
     }
 
     @Test
+    void shouldResolveOwnServletContextWhenParentNamesOneDifferently() {
+        newRunnerWithServlet(mock(DispatcherServlet.class))
+            .withBean("customServletContext", NettyServletContext.class, () -> mock(NettyServletContext.class))
+            .run(parent -> newRunnerWithServlet(mock(DispatcherServlet.class)).withParent(parent).run(child ->
+                assertThat(child).hasNotFailed()
+                    .getBean("nettyServletContext").isNotSameAs(parent.getBean("customServletContext"))));
+    }
+
+    @Test
     void shouldLeaveParentExecutorAndSessionsOpenAfterChildCloses() {
         newRunnerWithServlet(mock(DispatcherServlet.class)).run(parent -> {
             newRunnerWithServlet(mock(DispatcherServlet.class)).withParent(parent).run(child -> { });
