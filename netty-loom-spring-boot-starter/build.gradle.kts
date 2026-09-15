@@ -24,6 +24,7 @@ dependencies {
     testImplementation(libs.spring.boot.webmvc.test)
     testImplementation(libs.spring.boot.starter.restclient)
     testImplementation(libs.spring.boot.resttestclient)
+    testImplementation(libs.spring.boot.tomcat)
 
     // spring-boot-starter-test brings Mockito in transitively; load it as an agent.
     "mockitoAgent"(libs.mockito.core)
