@@ -114,10 +114,11 @@ cut off: its connection is closed, but the thread runs on, and its next session 
 
 Bean destruction, which follows the lifecycle phases, then interrupts that thread: the dispatch
 executor is destroyed with `shutdownNow()`, not the `close()` Spring would infer, which waits for
-every running dispatch with no bound and no interrupt. A handler parked in an interruptible call —
-a lock, a socket read, `Thread.sleep` — gets an `InterruptedException`; one that ignores the
-interrupt is abandoned, and as a virtual thread it does not keep the JVM alive. Either way
-`context.close()`, and so JVM exit, does not wait on it
+every running dispatch with no bound and no interrupt. A handler parked in `Thread.sleep`,
+`Object.wait`, a `BlockingQueue` or `CountDownLatch` wait, or `Lock.lockInterruptibly` gets an
+`InterruptedException`, and a blocking socket read an `IOException`; one parked where the interrupt
+is ignored — `Lock.lock`, a `synchronized` block — is abandoned, and as a virtual thread it does not
+keep the JVM alive. Either way `context.close()`, and so JVM exit, does not wait on it
 ([#205](https://github.com/azholdaspaev/netty-loom-spring/issues/205)).
 
 **Set `server.netty.shutdown-grace-period` strictly below
