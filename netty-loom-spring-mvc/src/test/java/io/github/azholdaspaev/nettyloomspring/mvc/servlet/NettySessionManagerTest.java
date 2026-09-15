@@ -521,6 +521,25 @@ class NettySessionManagerTest {
             manager.readSessionId(cookies(SESSION_COOKIE, "", SESSION_COOKIE, live.getId())));
     }
 
+    @Test
+    void shouldSkipTrailingEmptyDuplicateOnReadSessionIdFallback() {
+        String resolved = manager.readSessionId(cookies(SESSION_COOKIE, "DEADBEEF", SESSION_COOKIE, ""));
+
+        assertEquals("DEADBEEF", resolved, "an empty duplicate must not displace the id the client presented");
+    }
+
+    @Test
+    void shouldReportEmptyIdOnReadSessionIdWhenOnlyEmptyIsPresented() {
+        assertEquals("", manager.readSessionId(cookies(SESSION_COOKIE, "", SESSION_COOKIE, "")),
+            "an empty value is skipped only in favour of another match, never dropped: alone it is the id the client presented (issue #94)");
+    }
+
+    @Test
+    void shouldTolerateNullDuplicateValueOnReadSessionId() {
+        assertNull(manager.readSessionId(cookies(SESSION_COOKIE, "DEADBEEF", SESSION_COOKIE, null)),
+            "a value a filter nulled through getCookies() must not throw; it stands as the last match, as before the empty guard");
+    }
+
     // --- Container-registered session listeners (issue #17) ---
 
     /**
