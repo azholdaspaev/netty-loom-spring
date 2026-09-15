@@ -50,9 +50,7 @@ class NettyLoomAutoConfigurationTest {
 
     private static final Duration TIMEOUT = Duration.ofSeconds(5);
 
-    private final WebApplicationContextRunner runner = new WebApplicationContextRunner()
-        .withConfiguration(AutoConfigurations.of(NettyLoomAutoConfiguration.class))
-        .withBean(DispatcherServlet.class);
+    private final WebApplicationContextRunner runner = newRunnerWithServlet(mock(DispatcherServlet.class));
 
     @Test
     void shouldRegisterNettyWebServerFactoryInServletWebApplication() {
