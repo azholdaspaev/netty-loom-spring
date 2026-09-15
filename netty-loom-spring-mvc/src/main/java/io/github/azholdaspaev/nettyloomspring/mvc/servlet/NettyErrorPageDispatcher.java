@@ -43,6 +43,14 @@ public class NettyErrorPageDispatcher {
          * for, which is why StandardHostValve.throwable unwraps too.
          */
         Throwable rootCause = rootCauseOf(failure);
+        /*
+         * Left to the connection, not answered here: an interrupt is the dispatch executor cutting the
+         * request off at shutdown (#205), when its connection is closed and the context that would
+         * render the page is being destroyed. HttpRequestHandler reports the abandoned dispatch.
+         */
+        if (rootCause instanceof InterruptedException) {
+            return false;
+        }
         int status = statusFor(response, failure);
         String path = context.getErrorPageResolver().resolve(status, failure, rootCause);
         if (path == null) {
