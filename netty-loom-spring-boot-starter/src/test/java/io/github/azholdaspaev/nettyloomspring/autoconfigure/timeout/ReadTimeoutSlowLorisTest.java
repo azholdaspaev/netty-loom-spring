@@ -67,7 +67,7 @@ class ReadTimeoutSlowLorisTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void shouldCloseConnectionWhenClientDribblesARequestItNeverCompletes() throws Exception {
+    void shouldCloseConnectionWhenClientDribblesRequestNeverCompleted() throws Exception {
         int soTimeout = (DRIBBLE.length() * DRIBBLE_INTERVAL_MILLIS) * 2 / 3;
 
         /*
@@ -90,7 +90,7 @@ class ReadTimeoutSlowLorisTest {
         try (Socket socket = connect(soTimeout)) {
             Thread dribbler = Thread.ofVirtual().start(() -> dribble(socket, dribbling, flushed));
             try {
-                assertServerClosedTheConnection(socket);
+                assertServerClosedConnection(socket);
 
                 /*
                  * Without this, a dribbler slow to be scheduled sends nothing, and the test silently
@@ -109,7 +109,7 @@ class ReadTimeoutSlowLorisTest {
      * Catches {@link SocketException} and not {@link IOException}: a {@code soTimeout} expiry arrives as
      * {@code SocketTimeoutException extends InterruptedIOException}, so a server that never closes fails.
      */
-    private static void assertServerClosedTheConnection(Socket socket) throws IOException {
+    private static void assertServerClosedConnection(Socket socket) throws IOException {
         try {
             assertEquals(-1, socket.getInputStream().read(),
                 "a request that never completes must not hold the connection open");

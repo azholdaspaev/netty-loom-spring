@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ThrowableChainsTest {
 
     @Test
-    void chainMentionsFindsNeedleInWrapperCause() {
+    void shouldFindNeedleInWrapperCauseOnChainMentions() {
         Throwable top = new RuntimeException("outer", new IllegalStateException("mentions issue #16"));
 
         assertTrue(ThrowableChains.chainMentions(top, "issue #16"));
@@ -21,14 +21,14 @@ class ThrowableChainsTest {
     }
 
     @Test
-    void chainMentionsToleratesNullMessagesInChain() {
+    void shouldTolerateNullMessagesInChainOnChainMentions() {
         Throwable top = new RuntimeException(new IllegalStateException("issue #16"));
 
         assertTrue(ThrowableChains.chainMentions(top, "issue #16"));
     }
 
     @Test
-    void findInChainReturnsFirstMatchingType() {
+    void shouldReturnFirstMatchingTypeOnFindInChain() {
         BindException target = new BindException("port taken");
         Throwable top = new RuntimeException("outer", new IllegalStateException("mid", target));
 

@@ -41,7 +41,7 @@ class StreamingIntegrationTest {
 
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
-    void shouldDeliverEachEventBeforeTheNextIsProduced() throws Exception {
+    void shouldDeliverEachEventBeforeNextIsProduced() throws Exception {
         try (Socket socket = connect()) {
             RawHttpClient.send(socket, "GET /streaming/events HTTP/1.1", "Host: localhost");
 
@@ -62,7 +62,7 @@ class StreamingIntegrationTest {
 
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
-    void shouldStreamABodyLargerThanTheAggregatorLimit() throws Exception {
+    void shouldStreamBodyLargerThanAggregatorLimit() throws Exception {
         try (Socket socket = connect()) {
             RawHttpClient.send(socket, "GET /streaming/large HTTP/1.1", "Host: localhost");
             RawHttpResponse response = RawHttpResponse.read(socket.getInputStream());
@@ -81,7 +81,7 @@ class StreamingIntegrationTest {
 
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
-    void shouldStreamWithContentLengthWhenTheHandlerDeclaresOne() throws Exception {
+    void shouldStreamWithContentLengthWhenHandlerDeclaresOne() throws Exception {
         try (Socket socket = connect()) {
             RawHttpClient.send(socket, "GET /streaming/sized HTTP/1.1", "Host: localhost");
             RawHttpResponse response = RawHttpResponse.read(socket.getInputStream());
@@ -96,7 +96,7 @@ class StreamingIntegrationTest {
 
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
-    void shouldAnswerAHeadRequestForAStreamedBodyWithoutOne() throws Exception {
+    void shouldAnswerHeadRequestForStreamedBodyWithoutOne() throws Exception {
         try (Socket socket = connect()) {
             RawHttpClient.send(socket, "HEAD /streaming/large HTTP/1.1", "Host: localhost");
             RawHttpResponse response = RawHttpResponse.read(socket.getInputStream());
@@ -115,7 +115,7 @@ class StreamingIntegrationTest {
 
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
-    void shouldChunkAResponseEntityBody() throws Exception {
+    void shouldChunkResponseEntityBody() throws Exception {
         try (Socket socket = connect()) {
             RawHttpClient.send(socket, "GET /streaming/entity HTTP/1.1", "Host: localhost");
             RawHttpResponse response = RawHttpResponse.read(socket.getInputStream());
@@ -127,7 +127,7 @@ class StreamingIntegrationTest {
 
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
-    void shouldNotFrameANotModifiedResponse() throws Exception {
+    void shouldNotFrameNotModifiedResponse() throws Exception {
         try (Socket socket = connect()) {
             RawHttpClient.send(socket, "GET /streaming/not-modified HTTP/1.1", "Host: localhost");
             RawHttpResponse response = RawHttpResponse.read(socket.getInputStream());

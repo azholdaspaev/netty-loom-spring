@@ -28,7 +28,7 @@ class FilterChainIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void runsFilterThatSetsResponseHeader() {
+    void shouldRunFilterThatSetsResponseHeader() {
         restTestClient.get().uri("/api/greeting")
             .exchange()
             .expectStatus().isOk()
@@ -37,7 +37,7 @@ class FilterChainIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void shortCircuitingFilterReturns403AndControllerIsNotInvoked() {
+    void shouldReturn403AndSkipControllerWhenFilterShortCircuits() {
         restTestClient.get().uri("/secure/data")
             .exchange()
             .expectStatus().isForbidden()
@@ -48,7 +48,7 @@ class FilterChainIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void filterRunsOnlyOnMatchingUrlPattern() {
+    void shouldRunFilterOnlyOnMatchingUrlPattern() {
         restTestClient.get().uri("/filtered/data")
             .exchange()
             .expectStatus().isOk()
@@ -62,7 +62,7 @@ class FilterChainIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void exactPatternMatchesAgainstQueryStrippedPath() {
+    void shouldMatchExactPatternAgainstQueryStrippedPath() {
         /*
          * /api/greeting is an EXACT filter mapping; a query string must not defeat the match,
          * proving the dispatcher matches on getRequestURI() (path only), not the raw URI.
@@ -75,7 +75,7 @@ class FilterChainIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void filtersRunInOrderResolvedByOrderAnnotation() {
+    void shouldRunFiltersInOrderResolvedByOrderAnnotation() {
         restTestClient.get().uri("/api/greeting")
             .exchange()
             .expectStatus().isOk()
@@ -84,7 +84,7 @@ class FilterChainIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void midChainExceptionIsCaughtByUpstreamErrorFilter() {
+    void shouldCatchMidChainExceptionInUpstreamErrorFilter() {
         restTestClient.get().uri("/boom/data")
             .exchange()
             .expectStatus().is5xxServerError()
@@ -93,7 +93,7 @@ class FilterChainIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void headerFilterIsInitialisedExactlyOnce() {
+    void shouldInitialiseHeaderFilterExactlyOnce() {
         assertEquals(1, headerFilter.initCount());
     }
 }

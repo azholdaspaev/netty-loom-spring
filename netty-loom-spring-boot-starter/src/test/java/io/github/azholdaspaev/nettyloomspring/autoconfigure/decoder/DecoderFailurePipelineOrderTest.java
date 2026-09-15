@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DecoderFailurePipelineOrderTest {
 
     @Test
-    void shouldPlaceTheDecoderFailureHandlerBelowThePipeliningGateAndAboveTheDispatcher() {
+    void shouldPlaceDecoderFailureBelowPipeliningAndAboveDispatcher() {
         try (ConfigurableApplicationContext context = new SpringApplicationBuilder(SmokeNettyLoomApplication.class)
             .properties("server.port=0")
             .run()) {

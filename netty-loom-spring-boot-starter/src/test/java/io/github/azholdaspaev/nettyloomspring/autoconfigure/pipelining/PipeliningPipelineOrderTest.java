@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class PipeliningPipelineOrderTest {
 
     @Test
-    void shouldPlaceThePipeliningHandlerAboveTheBodyLimitAndTheDispatcher() {
+    void shouldPlacePipeliningHandlerAboveBodyLimitAndDispatcher() {
         try (ConfigurableApplicationContext context = new SpringApplicationBuilder(SmokeNettyLoomApplication.class)
             .properties("server.port=0")
             .run()) {

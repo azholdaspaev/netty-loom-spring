@@ -24,14 +24,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SessionConfigurationTest {
 
     @Test
-    void defaultTimeoutIsThirtyMinutes() {
+    void shouldDefaultTimeoutToThirtyMinutes() {
         try (var context = run()) {
             assertEquals(30 * 60, servletContext(context).getSessionManager().getDefaultMaxInactiveInterval());
         }
     }
 
     @Test
-    void aConfiguredTimeoutReachesTheSessionManager() {
+    void shouldApplyConfiguredTimeoutToSessionManager() {
         try (var context = run("server.servlet.session.timeout=45s")) {
             assertEquals(45, servletContext(context).getSessionManager().getDefaultMaxInactiveInterval());
             assertEquals(1, servletContext(context).getSessionTimeout(),
@@ -40,7 +40,7 @@ class SessionConfigurationTest {
     }
 
     @Test
-    void configuredCookiePropertiesReachTheCookieConfig() {
+    void shouldApplyConfiguredCookiePropertiesToCookieConfig() {
         try (var context = run(
             "server.servlet.session.cookie.name=SID",
             "server.servlet.session.cookie.path=/",
@@ -58,14 +58,14 @@ class SessionConfigurationTest {
     }
 
     @Test
-    void configuredSameSiteReachesTheCookieConfig() {
+    void shouldApplyConfiguredSameSiteToCookieConfig() {
         try (var context = run("server.servlet.session.cookie.same-site=lax")) {
             assertEquals("Lax", servletContext(context).getSessionCookieConfig().getAttribute("SameSite"));
         }
     }
 
     @Test
-    void urlTrackingModeFailsStartupRatherThanBeingSilentlyIgnored() {
+    void shouldFailStartupOnUrlTrackingModeNotIgnoreItSilently() {
         RuntimeException failure = assertThrows(RuntimeException.class,
             () -> run("server.servlet.session.tracking-modes=url").close());
 
@@ -74,7 +74,7 @@ class SessionConfigurationTest {
     }
 
     @Test
-    void sessionPersistenceFailsStartupRatherThanBeingSilentlyIgnored() {
+    void shouldFailStartupOnSessionPersistenceNotIgnoreItSilently() {
         RuntimeException failure = assertThrows(RuntimeException.class,
             () -> run("server.servlet.session.persistent=true").close());
 
@@ -83,7 +83,7 @@ class SessionConfigurationTest {
     }
 
     @Test
-    void aDisabledPartitionedFlagIsNotEmitted() {
+    void shouldNotEmitDisabledPartitionedFlag() {
         /*
          * Boot maps this property through Object::toString, so `false` reaches the cookie config as the
          * string "false" -- which, stored verbatim, is *present* and would emit the flag it disables.
@@ -94,14 +94,14 @@ class SessionConfigurationTest {
     }
 
     @Test
-    void anEnabledPartitionedFlagIsEmitted() {
+    void shouldEmitEnabledPartitionedFlag() {
         try (var context = run("server.servlet.session.cookie.partitioned=true")) {
             assertEquals("", servletContext(context).getSessionCookieConfig().getAttribute("Partitioned"));
         }
     }
 
     @Test
-    void theCookieConfigurationIsFrozenOnceTheContextHasStarted() {
+    void shouldFreezeCookieConfigurationOnceContextHasStarted() {
         /*
          * The cookie name is read live on every request, so a runtime rename from any bean holding the
          * ServletContext would orphan every logged-in user. The spec requires the refusal.

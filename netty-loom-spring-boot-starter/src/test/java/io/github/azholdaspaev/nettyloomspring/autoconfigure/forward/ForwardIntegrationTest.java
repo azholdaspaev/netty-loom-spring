@@ -25,7 +25,7 @@ class ForwardIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void aControllerForwardingToAnotherControllerReturnsTheTargetsBody() {
+    void shouldReturnTargetsBodyWhenControllerForwardsToAnother() {
         restTestClient.get().uri("/forward/source")
             .exchange()
             .expectStatus().isOk()
@@ -35,7 +35,7 @@ class ForwardIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void theTargetSeesTheForwardAttributesAndTheDispatchPathsQuery() {
+    void shouldExposeForwardAttributesAndDispatchPathsQueryToTarget() {
         restTestClient.get().uri("/forward/manual")
             .exchange()
             .expectStatus().isOk()
@@ -45,7 +45,7 @@ class ForwardIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void bytesWrittenBeforeTheForwardAreDiscarded() {
+    void shouldDiscardBytesWrittenBeforeForward() {
         restTestClient.get().uri("/forward/dirty")
             .exchange()
             .expectStatus().isOk()
@@ -55,7 +55,7 @@ class ForwardIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void forwardAfterCommitIsRejected() {
+    void shouldRejectForwardAfterCommit() {
         restTestClient.get().uri("/forward/committed")
             .exchange()
             .expectStatus().isOk()

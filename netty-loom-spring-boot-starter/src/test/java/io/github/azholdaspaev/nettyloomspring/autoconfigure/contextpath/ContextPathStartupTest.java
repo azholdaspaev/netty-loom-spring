@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class ContextPathStartupTest {
 
     @Test
-    void contextPathIsVisibleToStartupInitializers() {
+    void shouldExposeContextPathToStartupInitializers() {
         assertEquals("/app", CaptureConfig.CAPTURED.get(),
             "an initializer registered on the factory should see the configured context path at onStartup");
     }

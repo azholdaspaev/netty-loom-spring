@@ -58,7 +58,7 @@ class SessionCookieConfigIntegrationTest {
     }
 
     @Test
-    void theConfiguredNameAndAttributesAppearOnSetCookie() {
+    void shouldEmitConfiguredNameAndAttributesOnSetCookie() {
         String setCookie = createSessionSetCookie();
 
         assertTrue(setCookie.startsWith("SID="), "Actual: " + setCookie);
@@ -69,7 +69,7 @@ class SessionCookieConfigIntegrationTest {
     }
 
     @Test
-    void theConfiguredNameIsAlsoAcceptedOnTheFollowingRequest() {
+    void shouldAcceptConfiguredNameOnFollowingRequest() {
         restTestClient.get().uri("/session/get")
             .cookie("SID", createSessionId())
             .exchange()
@@ -78,7 +78,7 @@ class SessionCookieConfigIntegrationTest {
     }
 
     @Test
-    void theDefaultCookieNameNoLongerResolvesASession() {
+    void shouldNotResolveSessionFromDefaultCookieName() {
         restTestClient.get().uri("/session/get")
             .cookie("JSESSIONID", createSessionId())
             .exchange()

@@ -219,7 +219,7 @@ class SmokeControllerTest extends BaseIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void shouldResolvePathVariableContainingAnEncodedSlash() throws Exception {
+    void shouldResolvePathVariableContainingEncodedSlash() throws Exception {
         /*
          * RestTestClient re-encodes the '%' of a URI template, sending "a%252Fb" -- which the unfixed
          * server decodes twice back to "a/b", so the same test through it passes against the bug.
