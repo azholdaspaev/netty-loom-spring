@@ -23,6 +23,7 @@ import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.HttpServerKeepAliveHandler;
 import io.netty.util.concurrent.GlobalEventExecutor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -115,7 +116,7 @@ public class NettyLoomAutoConfiguration {
     @ConditionalOnMissingBean
     public NettyPipelineDefinition nettyPipelineDefinition(NettyLoomProperties properties,
                                                            HttpRequestDispatcher httpRequestDispatcher,
-                                                           ExecutorService nettyLoomDispatchExecutor,
+                                                           @Qualifier("nettyLoomDispatchExecutor") ExecutorService nettyLoomDispatchExecutor,
                                                            HttpConnectionRegistry httpConnectionRegistry) {
         /*
          * Nanoseconds, not millis: toMillis() truncates, so a sub-millisecond read-timeout would arrive as

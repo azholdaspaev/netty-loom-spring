@@ -8,7 +8,11 @@ import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineDefinit
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyIoHandlerFactory;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyServerChannelInitializer;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
+import io.netty.channel.embedded.EmbeddedChannel;
+import io.netty.handler.codec.http.DefaultFullHttpRequest;
+import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpServerCodec;
+import io.netty.handler.codec.http.HttpVersion;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -24,7 +28,10 @@ import org.springframework.web.servlet.DispatcherServlet;
 import java.util.concurrent.ExecutorService;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class NettyLoomAutoConfigurationTest {
 
@@ -105,6 +112,23 @@ class NettyLoomAutoConfigurationTest {
             .run(context -> assertThat(context)
                 .hasSingleBean(ExecutorService.class)
                 .getBean(DISPATCH_EXECUTOR_BEAN).isSameAs(userExecutor));
+    }
+
+    @Test
+    void shouldDispatchOnNamedExecutorWhenUserExecutorIsPrimary() {
+        ExecutorService namedExecutor = mock(ExecutorService.class);
+        ExecutorService primaryExecutor = mock(ExecutorService.class);
+        runner.withBean(DISPATCH_EXECUTOR_BEAN, ExecutorService.class, () -> namedExecutor)
+            .withBean("batchPool", ExecutorService.class, () -> primaryExecutor, definition -> definition.setPrimary(true))
+            .run(context -> {
+                EmbeddedChannel channel = new EmbeddedChannel();
+                context.getBean(NettyPipelineDefinition.class).applyTo(channel.pipeline());
+                channel.writeInbound(new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
+
+                verify(namedExecutor).execute(any());
+                verifyNoInteractions(primaryExecutor);
+                channel.finishAndReleaseAll();
+            });
     }
 
     @Test
