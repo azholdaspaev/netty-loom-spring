@@ -131,6 +131,8 @@ class GracefulShutdownTest {
         assertTrue(elapsedMillis < PROMPT_SHUTDOWN_MILLIS,
             "closing the context must not wait for a dispatch that never finishes on its own, took "
                 + elapsedMillis + "ms");
+        assertTrue(stuck.interrupted.await(5, TimeUnit.SECONDS),
+            "destroying the dispatch executor must interrupt the stuck dispatch, not just abandon it");
     }
 
     @RestController
@@ -152,12 +154,18 @@ class GracefulShutdownTest {
     static class StuckController {
 
         final CountDownLatch entered = new CountDownLatch(1);
+        final CountDownLatch interrupted = new CountDownLatch(1);
         private final CountDownLatch neverReleased = new CountDownLatch(1);
 
         @GetMapping("/stuck")
         String stuck() throws InterruptedException {
             entered.countDown();
-            neverReleased.await();
+            try {
+                neverReleased.await();
+            } catch (InterruptedException e) {
+                interrupted.countDown();
+                throw e;
+            }
             return "unreachable";
         }
     }
