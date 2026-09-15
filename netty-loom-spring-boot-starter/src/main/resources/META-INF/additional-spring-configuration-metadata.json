@@ -20,7 +20,7 @@
     },
     {
       "name": "server.netty.accept-count",
-      "description": "Maximum queue length for incoming connections that have completed the TCP handshake but not yet been accepted: the listen socket's SO_BACKLOG. The effective depth is min(value, net.core.somaxconn) on Linux; the kernel caps it silently, with no error and no log. Defaults to 128."
+      "description": "Maximum queue length for incoming connections that have completed the TCP handshake but not yet been accepted: the listen socket's SO_BACKLOG. The effective depth is min(value, net.core.somaxconn) on Linux; the kernel caps it silently, with no error and no log. 0 is not a default: the epoll and kqueue transports pass it to listen() verbatim, a queue of at most one pending connection on Linux, whereas the nio transport and server.tomcat.accept-count bind through the JDK, which substitutes 50 for any value below 1. Defaults to 128."
     },
     {
       "name": "server.netty.shutdown-grace-period",
@@ -46,6 +46,15 @@
         {
           "value": 0,
           "description": "Use Netty's default (2 x Runtime.getRuntime().availableProcessors())."
+        }
+      ]
+    },
+    {
+      "name": "server.netty.accept-count",
+      "values": [
+        {
+          "value": 0,
+          "description": "Not a default. Passed to listen() verbatim on epoll and kqueue (a queue of at most one pending connection on Linux); the nio transport, like Tomcat, substitutes 50."
         }
       ]
     },
