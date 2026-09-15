@@ -238,12 +238,9 @@ public class NettyServer {
     private record State(Channel serverChannel, EventLoopGroup bossGroup, EventLoopGroup workerGroup) {
     }
 
-    /**
-     * Start and budget, not their sum: {@code toNanos()} throws past {@code Long.MAX_VALUE}
-     * nanoseconds and a {@code nanoTime()} sum wraps below it, so a large grace expired at once (#251).
-     */
     private record Deadline(long startNanos, long budgetNanos) {
 
+        // Duration.toNanos() is Math.multiplyExact and throws past Long.MAX_VALUE nanoseconds (#251).
         private static final Duration MAX_BUDGET = Duration.ofNanos(Long.MAX_VALUE);
 
         private static Deadline in(Duration timeout) {
