@@ -158,8 +158,13 @@ public class NettyLoomAutoConfiguration {
     /**
      * Guarded by name, not by type: an application's own {@code ExecutorService} bean would otherwise
      * displace this one, and every request would then dispatch onto that pool's threads.
+     *
+     * <p>{@code shutdownNow} rather than the inferred {@code close()}: ThreadPerTaskExecutor.close()
+     * awaits every running dispatch with no bound and no interrupt, so one parked in a call that never
+     * returns would hold context close, and JVM exit, forever (#205). shutdownNow interrupts them and
+     * returns at once.
      */
-    @Bean(DISPATCH_EXECUTOR_BEAN)
+    @Bean(name = DISPATCH_EXECUTOR_BEAN, destroyMethod = "shutdownNow")
     @ConditionalOnMissingBean(name = DISPATCH_EXECUTOR_BEAN, search = SearchStrategy.CURRENT)
     public ExecutorService nettyLoomDispatchExecutor() {
         return Executors.newVirtualThreadPerTaskExecutor();
