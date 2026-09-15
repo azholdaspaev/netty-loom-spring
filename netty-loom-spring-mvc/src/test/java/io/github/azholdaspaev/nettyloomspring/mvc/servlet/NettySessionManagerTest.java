@@ -60,7 +60,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void defaultMaxInactiveIntervalIsThirtyMinutes() {
+    void shouldDefaultMaxInactiveIntervalToThirtyMinutes() {
         NettySessionManager fresh = new NettySessionManager(new DefaultNettyServletContext(), clock::get);
 
         assertEquals(30 * 60, fresh.getDefaultMaxInactiveInterval(),
@@ -68,7 +68,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void createGeneratesDistinctUppercaseHexIds() {
+    void shouldGenerateDistinctUppercaseHexIdsOnCreate() {
         Set<String> ids = new HashSet<>();
         for (int i = 0; i < 100; i++) {
             String id = manager.create().getId();
@@ -81,7 +81,7 @@ class NettySessionManagerTest {
     // --- Applying a configured timeout ---
 
     @Test
-    void aPositiveTimeoutKeepsSecondResolution() {
+    void shouldKeepSecondResolutionForPositiveTimeout() {
         /*
          * Boot and Tomcat round to whole minutes because the ServletContext API speaks minutes; storing
          * seconds honours the configuration as written.
@@ -94,7 +94,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void aSubSecondTimeoutRoundsUpToOneSecond() {
+    void shouldRoundSubSecondTimeoutUpToOneSecond() {
         // Truncating to 0 would mean "never expires" -- the opposite of what was configured.
         manager.setDefaultMaxInactiveInterval(Duration.ofMillis(500));
 
@@ -102,7 +102,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void aTimeoutOfZeroOrLessOrUnsetMeansNeverExpires() {
+    void shouldNeverExpireForTimeoutOfZeroOrLessOrUnset() {
         for (Duration timeout : new Duration[] {Duration.ZERO, Duration.ofSeconds(-1), null}) {
             manager.setDefaultMaxInactiveInterval(timeout);
             assertEquals(0, manager.getDefaultMaxInactiveInterval(), "for " + timeout);
@@ -110,7 +110,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void anImplausiblyLongTimeoutIsClampedRatherThanWrapped() {
+    void shouldClampImplausiblyLongTimeoutRatherThanWrap() {
         /*
          * toSeconds() on a multi-century Duration overflows an int, and the wrap lands on a plausible
          * small positive value: 100000 days would silently become ~579 days rather than never expiring.
@@ -121,24 +121,24 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void createdSessionInheritsTheManagerDefaultInterval() {
+    void shouldInheritManagerDefaultIntervalOnCreatedSession() {
         assertEquals(ONE_MINUTE, manager.create().getMaxInactiveInterval());
     }
 
     @Test
-    void findReturnsTheCreatedSession() {
+    void shouldReturnCreatedSessionOnFind() {
         NettyHttpSession created = manager.create();
 
         assertSame(created, manager.find(created.getId()));
     }
 
     @Test
-    void findReturnsNullForUnknownId() {
+    void shouldReturnNullOnFindForUnknownId() {
         assertNull(manager.find("NOTASESSIONID"));
     }
 
     @Test
-    void findExpiresAndEvictsASessionPastItsDeadline() {
+    void shouldExpireAndEvictSessionPastItsDeadlineOnFind() {
         NettyHttpSession created = manager.create();
         clock.set(ONE_MINUTE * 1000L);
 
@@ -151,7 +151,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void findRefreshesTheAccessTimeSoAnActiveSessionSurvives() {
+    void shouldRefreshAccessTimeOnFindSoActiveSessionSurvives() {
         NettyHttpSession created = manager.create();
 
         /*
@@ -166,7 +166,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void findClearsIsNewSoASecondRequestSeesAnEstablishedSession() {
+    void shouldClearIsNewOnFindSoSecondRequestSeesEstablishedSession() {
         NettyHttpSession created = manager.create();
         assertTrue(created.isNew(), "A session is new for the request that created it");
 
@@ -176,7 +176,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void zeroIntervalNeverExpires() {
+    void shouldNeverExpireWithZeroInterval() {
         manager.setDefaultMaxInactiveInterval(0);
         NettyHttpSession created = manager.create();
 
@@ -187,7 +187,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void negativeIntervalNeverExpires() {
+    void shouldNeverExpireWithNegativeInterval() {
         manager.setDefaultMaxInactiveInterval(-1);
         NettyHttpSession created = manager.create();
 
@@ -197,7 +197,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void sweepRemovesOnlyExpiredSessionsAndReturnsTheReclaimedCount() {
+    void shouldSweepOnlyExpiredSessionsAndReturnReclaimedCount() {
         NettyHttpSession stale = manager.create();
         clock.set(ONE_MINUTE * 1000L - 1);
         NettyHttpSession active = manager.create();
@@ -211,7 +211,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void sweepReclaimsNothingWhenEverySessionIsActive() {
+    void shouldReclaimNothingOnSweepWhenEverySessionIsActive() {
         manager.create();
         manager.create();
 
@@ -220,7 +220,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void invalidateRemovesTheSessionFromTheStore() {
+    void shouldRemoveSessionFromStoreOnInvalidate() {
         NettyHttpSession created = manager.create();
 
         created.invalidate();
@@ -230,7 +230,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void changeIdRebindsTheSessionUnderANewIdAndReleasesTheOld() {
+    void shouldRebindSessionUnderNewIdAndReleaseOldOnChangeId() {
         NettyHttpSession created = manager.create();
         String oldId = created.getId();
 
@@ -244,7 +244,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void changeIdPreservesSessionAttributes() {
+    void shouldPreserveSessionAttributesOnChangeId() {
         NettyHttpSession created = manager.create();
         created.setAttribute("user", "alice");
 
@@ -254,7 +254,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void closeShutsDownTheSweeperItStartedAndIsIdempotent() {
+    void shouldShutDownSweeperItStartedOnCloseIdempotently() {
         /*
          * Asserting on the executor, not just on size(): the eviction alone satisfies size() == 0, so
          * without this, deleting shutdownNow() would leave the suite green -- and a leaked sweeper is one
@@ -272,7 +272,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void createAfterCloseIsRefusedAndStartsNoSweeper() {
+    void shouldRefuseCreateAfterCloseAndStartNoSweeper() {
         /*
          * A request thread can still be in the dispatcher while the context is torn down. Storing that
          * session would leave it un-expired -- and resurrecting the sweeper would leak the thread.
@@ -284,7 +284,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void aSessionPublishedAfterTheDrainIsRefusedRatherThanLeftInTheStore() {
+    void shouldRefuseSessionPublishedAfterDrainNotLeaveItInStore() {
         /*
          * The guard at the top of create() is not atomic with its put -- ensureSweeperStarted and
          * newSessionId both take monitors in between -- so close() can run the whole drain while a
@@ -311,7 +311,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void openLetsTheStoreServeAgainAfterAStopStartCycle() {
+    void shouldLetStoreServeAgainOnOpenAfterStopStartCycle() {
         manager.close();
         manager.open();
 
@@ -321,7 +321,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void closeExpiresSessionsRatherThanDroppingThem() {
+    void shouldExpireSessionsRatherThanDropThemOnClose() {
         NettyHttpSession session = manager.create();
 
         manager.close();
@@ -330,7 +330,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void isValidIdTracksTheStoreWithoutTouchingTheSession() {
+    void shouldTrackStoreWithoutTouchingSessionOnIsValidId() {
         NettyHttpSession session = manager.create();
 
         assertTrue(manager.isValidId(session.getId()));
@@ -343,7 +343,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void isValidIdReportsAnExpiredSessionAsInvalidBeforeAnySweep() {
+    void shouldReportExpiredSessionInvalidBeforeAnySweepOnIsValidId() {
         NettyHttpSession session = manager.create();
         clock.set(ONE_MINUTE * 1000L);
 
@@ -351,7 +351,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void aScheduledSweepSwallowsEvenAnError() {
+    void shouldSwallowEvenErrorInScheduledSweep() {
         // An Error is what distinguishes this outer guard from catching only RuntimeException.
         var exploding = new NettySessionManager(new DefaultNettyServletContext(), () -> {
             throw new Error("clock exploded");
@@ -363,7 +363,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void aSweepSurvivesASessionWhoseListenerThrows() {
+    void shouldSurviveSessionWhoseListenerThrowsOnSweep() {
         NettyHttpSession poisoned = manager.create();
         poisoned.setAttribute("bad", new HttpSessionBindingListener() {
             @Override
@@ -396,7 +396,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void readSessionIdSkipsAStaleDuplicateAndReturnsTheLiveId() {
+    void shouldSkipStaleDuplicateAndReturnLiveIdOnReadSessionId() {
         /*
          * Issue #91: the stale duplicate routinely arrives first, and reading it hands find() an id that
          * is not in the store, so the user is logged out on every request.
@@ -409,7 +409,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void readSessionIdKeepsTheFirstLiveIdWhenAStaleDuplicateFollowsIt() {
+    void shouldKeepFirstLiveIdOverLaterStaleDuplicateOnReadSessionId() {
         /*
          * The tie-break is "first live", not "last live": preferring a later candidate would make which
          * session a request binds to depend on cookie order even when the first one is perfectly usable.
@@ -422,7 +422,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void readSessionIdFallsBackToTheLastMatchWhenNoCandidateIsLive() {
+    void shouldFallBackToLastMatchOnReadSessionIdWhenNoneIsLive() {
         /*
          * Nothing resolves, but an id must still be reported: SessionManagementFilter tells "presented an
          * expired id" from "presented none" purely by getRequestedSessionId() being non-null. Last rather
@@ -434,7 +434,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void readSessionIdTreatsAnExpiredDuplicateAsDeadBeforeAnySweep() {
+    void shouldTreatExpiredDuplicateAsDeadOnReadSessionIdBeforeSweep() {
         /*
          * Liveness here is find()'s predicate, deadline included -- not mere presence in the store. The
          * sweeper runs on a delay, so an expired session stays mapped until it fires, and a
@@ -453,7 +453,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void readSessionIdSkipsAnInvalidatedDuplicate() {
+    void shouldSkipInvalidatedDuplicateOnReadSessionId() {
         // A logout in another tab leaves its cookie in the browser under whatever Path it was set with.
         NettyHttpSession invalidated = manager.create();
         NettyHttpSession live = manager.create();
@@ -465,7 +465,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void readSessionIdDoesNotTouchTheSessionsItInspects() {
+    void shouldNotTouchInspectedSessionsOnReadSessionId() {
         /*
          * The scan asks isValidId, not find, for the same reason isRequestedSessionIdValid() does: find()
          * refreshes the access time and clears isNew, so merely resolving the requested id would silently
@@ -479,7 +479,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void readSessionIdMatchesTheCookieNameCaseSensitively() {
+    void shouldMatchCookieNameCaseSensitivelyOnReadSessionId() {
         /*
          * RFC 6265 4.1.1: cookie names are case-sensitive, so "jsessionid" is a different cookie -- one
          * anything sharing the host can set. Folding case would let it supply the session id, and with
@@ -498,7 +498,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void readSessionIdIgnoresCookiesWhenCookieTrackingIsDisabled() {
+    void shouldIgnoreCookiesOnReadSessionIdWhenTrackingIsDisabled() {
         NettyHttpSession live = manager.create();
         manager.setTrackingModes(Set.of());
 
@@ -507,13 +507,13 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void readSessionIdReturnsNullWhenNoCookieCarriesTheConfiguredName() {
+    void shouldReturnNullOnReadSessionIdWhenNoCookieHasConfiguredName() {
         assertNull(manager.readSessionId(cookies("theme", "dark", "lang", "en")));
         assertNull(manager.readSessionId(null), "a request with no cookies at all presents no id");
     }
 
     @Test
-    void anEmptyDuplicateValueIsJustAnotherDeadCandidate() {
+    void shouldTreatEmptyDuplicateValueAsJustAnotherDeadCandidate() {
         // "JSESSIONID=" names no session, so it must lose the tie-break like any other dead candidate.
         NettyHttpSession live = manager.create();
 
@@ -559,7 +559,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void createFiresSessionCreated() {
+    void shouldFireSessionCreatedOnCreate() {
         var listener = recordSessions();
 
         NettyHttpSession session = manager.create();
@@ -568,7 +568,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void aCreationRefusedAfterCloseFiresNothing() {
+    void shouldFireNothingWhenCreationIsRefusedAfterClose() {
         /*
          * create() refuses once the store is closed, and a session nothing can reach must not be
          * announced -- a listener told about it would hold a reference no teardown will ever revisit.
@@ -582,7 +582,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void sessionDestroyedFiresWhenALookupFindsAnExpiredSession() {
+    void shouldFireSessionDestroyedWhenLookupFindsExpiredSession() {
         var listener = recordSessions();
         NettyHttpSession session = manager.create();
         String id = session.getId();
@@ -594,7 +594,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void sessionDestroyedFiresForEverySessionTheSweepReclaims() {
+    void shouldFireSessionDestroyedForEverySessionSweepReclaims() {
         var listener = recordSessions();
         String first = manager.create().getId();
         String second = manager.create().getId();
@@ -606,7 +606,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void sessionDestroyedFiresForEverySessionShutdownDrains() {
+    void shouldFireSessionDestroyedForEverySessionShutdownDrains() {
         /*
          * The shutdown drain is where a @SessionScope bean's destruction callback runs; a container
          * listener auditing logouts has exactly the same claim on being told.
@@ -620,7 +620,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void sessionDestroyedFiresOnceWhenASweepRacesALookup() {
+    void shouldFireSessionDestroyedOnceWhenSweepRacesLookup() {
         // Both paths funnel through the same markInvalidated() CAS, so only one of them may notify.
         var listener = recordSessions();
         NettyHttpSession session = manager.create();
@@ -644,7 +644,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void aThrowingSessionCreatedListenerLeavesNoUnreachableSession() {
+    void shouldLeaveNoUnreachableSessionWhenCreatedListenerThrows() {
         /*
          * sessionCreated runs after sessions.put, so letting it propagate would abandon an entry that is
          * still valid and whose id no client ever received: nothing invalidates or unbinds it, and it
@@ -660,7 +660,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void aThrowingSessionCreatedListenerDoesNotStopTheOnesAfterIt() {
+    void shouldNotStopLaterListenersWhenSessionCreatedListenerThrows() {
         var reached = new ArrayList<String>();
         servletContext.addListener(throwingOnCreate());
         servletContext.addListener(new HttpSessionListener() {
@@ -676,7 +676,7 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void changeIdFiresSessionIdChangedWithTheOldId() {
+    void shouldFireSessionIdChangedWithOldIdOnChangeId() {
         var listener = recordSessions();
         NettyHttpSession session = manager.create();
         String oldId = session.getId();

@@ -50,7 +50,7 @@ class NettyFilterChainTest {
     }
 
     @Test
-    void runsFiltersInOrderThenTerminalOnce() throws Exception {
+    void shouldRunFiltersInOrderThenTerminalOnce() throws Exception {
         var chain = new NettyFilterChain(List.of(recording("a"), recording("b")), terminal());
 
         chain.doFilter(null, null);
@@ -60,7 +60,7 @@ class NettyFilterChainTest {
     }
 
     @Test
-    void runsTerminalImmediatelyWhenNoFilters() throws Exception {
+    void shouldRunTerminalImmediatelyWhenNoFilters() throws Exception {
         var chain = new NettyFilterChain(List.of(), terminal());
 
         chain.doFilter(null, null);
@@ -69,7 +69,7 @@ class NettyFilterChainTest {
     }
 
     @Test
-    void shortCircuitsWhenFilterDoesNotProceed() throws Exception {
+    void shouldShortCircuitWhenFilterDoesNotProceed() throws Exception {
         var chain = new NettyFilterChain(List.of(shortCircuiting("a"), recording("b")), terminal());
 
         chain.doFilter(null, null);
@@ -79,7 +79,7 @@ class NettyFilterChainTest {
     }
 
     @Test
-    void propagatesExceptionFromFilter() {
+    void shouldPropagateExceptionFromFilter() {
         Filter boom = (request, response, chain) -> {
             throw new ServletException("boom");
         };
@@ -92,7 +92,7 @@ class NettyFilterChainTest {
     }
 
     @Test
-    void propagatesRequestAndResponseWrappersToDownstreamFilterAndTerminal() throws Exception {
+    void shouldPassRequestAndResponseWrappersToNextFilterAndTerminal() throws Exception {
         var original = new NettyHttpServletRequest(
             new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/x"), InputStream.nullInputStream(),
             new HttpConnectionMetadata("", 0, "", 0, false, ""),
@@ -126,7 +126,7 @@ class NettyFilterChainTest {
     }
 
     @Test
-    void terminalCanThrowCheckedException() {
+    void shouldLetTerminalThrowCheckedException() {
         FilterChain throwing = (request, response) -> {
             throw new IOException("io");
         };

@@ -45,19 +45,19 @@ class DefaultNettyServletContextTest {
     // --- Request dispatchers (issue #182) ---
 
     @Test
-    void shouldReturnADispatcherForAContextAbsolutePath() {
+    void shouldReturnDispatcherForContextAbsolutePath() {
         assertNotNull(context.getRequestDispatcher("/target"));
     }
 
     @Test
-    void shouldReturnNullForARelativeDispatcherPath() {
+    void shouldReturnNullForRelativeDispatcherPath() {
         assertNull(context.getRequestDispatcher("target"),
             "ServletContext.getRequestDispatcher takes a context-absolute path; the request method is "
                 + "the one that resolves a relative path");
     }
 
     @Test
-    void shouldReturnNullForADispatcherPathThatEscapesTheContext() {
+    void shouldReturnNullForDispatcherPathThatEscapesContext() {
         assertNull(context.getRequestDispatcher("/../outside"));
     }
 
@@ -224,7 +224,7 @@ class DefaultNettyServletContextTest {
     }
 
     @Test
-    void shouldReturnFalseForDuplicateServletRegistrationInitParameter() {
+    void shouldReturnFalseForRepeatedServletRegistrationInitParameter() {
         var registration = context.addServlet("s", "com.example.S");
         registration.setInitParameter("p1", "v1");
 
@@ -534,19 +534,19 @@ class DefaultNettyServletContextTest {
     }
 
     @Test
-    void shouldDefaultTheServletContextNameWhenNoDisplayNameIsSet() {
+    void shouldDefaultServletContextNameWhenNoDisplayNameIsSet() {
         assertEquals("NettyServletContext", context.getServletContextName());
     }
 
     @Test
-    void shouldReturnTheConfiguredDisplayNameAsTheServletContextName() {
+    void shouldReturnConfiguredDisplayNameAsServletContextName() {
         context.setServletContextName("orders");
 
         assertEquals("orders", context.getServletContextName());
     }
 
     @Test
-    void shouldFallBackToTheDefaultServletContextNameForANullDisplayName() {
+    void shouldFallBackToDefaultServletContextNameForNullDisplayName() {
         context.setServletContextName("orders");
         context.setServletContextName(null);
 
@@ -587,13 +587,13 @@ class DefaultNettyServletContextTest {
     // --- Session support (issue #13) ---
 
     @Test
-    void shouldOwnASessionManager() {
+    void shouldOwnSessionManager() {
         assertNotNull(context.getSessionManager());
         assertSame(context.getSessionManager(), context.getSessionManager());
     }
 
     @Test
-    void shouldExposeTheSessionManagersCookieConfig() {
+    void shouldExposeSessionManagersCookieConfig() {
         assertSame(context.getSessionManager().getCookieConfig(), context.getSessionCookieConfig());
     }
 
@@ -624,7 +624,7 @@ class DefaultNettyServletContextTest {
     }
 
     @Test
-    void shouldClampAnImplausiblyLargeSessionTimeoutRatherThanWrap() {
+    void shouldClampImplausiblyLargeSessionTimeoutRatherThanWrap() {
         /*
          * Unchecked int arithmetic here would make Integer.MAX_VALUE minutes store -60 seconds, which
          * isExpired reads as "never expires", and 35_791_395 minutes wrap to a plausible small positive
@@ -686,7 +686,7 @@ class DefaultNettyServletContextTest {
     }
 
     @Test
-    void shouldLeaveTrackingModesUnchangedWhenRejectingAnUnsupportedMode() {
+    void shouldKeepTrackingModesWhenRejectingUnsupportedMode() {
         assertThrows(IllegalArgumentException.class,
             () -> context.setSessionTrackingModes(EnumSet.of(SessionTrackingMode.COOKIE, SessionTrackingMode.URL)));
 
@@ -711,7 +711,7 @@ class DefaultNettyServletContextTest {
     }
 
     @Test
-    void shouldCloseTheSessionManager() {
+    void shouldCloseSessionManager() {
         context.getSessionManager().create();
         assertEquals(1, context.getSessionManager().size());
 
@@ -728,7 +728,7 @@ class DefaultNettyServletContextTest {
     }
 
     @Test
-    void shouldReadBackTheConfiguredCookieSameSiteResolver() {
+    void shouldReadBackConfiguredCookieSameSiteResolver() {
         NettyCookieSameSiteResolver resolver = cookie -> "Strict";
 
         context.setCookieSameSiteResolver(resolver);
@@ -769,17 +769,17 @@ class DefaultNettyServletContextTest {
     }
 
     @Test
-    void shouldRejectAnUnknownListenerClassName() {
+    void shouldRejectUnknownListenerClassName() {
         assertThrows(IllegalArgumentException.class, () -> context.addListener("com.example.NoSuchListener"));
     }
 
     @Test
-    void shouldRejectAClassNameThatIsNotAListener() {
+    void shouldRejectClassNameThatIsNotListener() {
         assertThrows(IllegalArgumentException.class, () -> context.addListener(String.class.getName()));
     }
 
     @Test
-    void shouldRejectAListenerClassThatCannotBeInstantiated() {
+    void shouldRejectListenerClassThatCannotBeInstantiated() {
         /*
          * The overload that wraps createListener was untested: emptying its catch block left the suite
          * green and turned addListener(Class) into a silent no-op, which is exactly the "application
@@ -793,7 +793,7 @@ class DefaultNettyServletContextTest {
     }
 
     @Test
-    void shouldRejectCreatingAListenerOfNoSupportedType() {
+    void shouldRejectCreatingListenerOfNoSupportedType() {
         var thrown = assertThrows(IllegalArgumentException.class,
             () -> context.createListener(UnsupportedListener.class));
 
@@ -889,7 +889,7 @@ class DefaultNettyServletContextTest {
     }
 
     @Test
-    void shouldFireContextDestroyedAfterTheSessionStoreIsDrained() {
+    void shouldFireContextDestroyedAfterSessionStoreIsDrained() {
         /*
          * Tomcat stops the Manager before listenerStop, so a listener auditing live sessions on the way
          * out sees the store already emptied rather than a half-drained one.
@@ -910,7 +910,7 @@ class DefaultNettyServletContextTest {
     }
 
     @Test
-    void shouldReinitializeListenersWhenTheContextIsRestarted() {
+    void shouldReinitializeListenersWhenContextIsRestarted() {
         /*
          * ApplicationContext.start() after stop(), and CRaC restore, replay the stop phase. Leaving the
          * listeners destroyed would mean an application serving normally with every listener torn down.
@@ -927,7 +927,7 @@ class DefaultNettyServletContextTest {
     }
 
     @Test
-    void shouldKeepTheDispatchFactoryAcrossACloseOpenCycle() {
+    void shouldKeepDispatchFactoryAcrossCloseOpenCycle() {
         var dispatchFactory = context.getDispatchFactory();
 
         context.close();
@@ -938,7 +938,7 @@ class DefaultNettyServletContextTest {
     }
 
     @Test
-    void shouldNotFireContextInitializedOnOpenWithoutAPriorClose() {
+    void shouldNotFireContextInitializedOnOpenWithoutPriorClose() {
         /*
          * open() runs on every start, including the first -- where the factory has already fired the
          * event. Firing again would double-initialize every listener on a normal boot.
@@ -992,7 +992,7 @@ class DefaultNettyServletContextTest {
     }
 
     @Test
-    void shouldNotFireContextAttributeRemovedForAnAbsentName() {
+    void shouldNotFireContextAttributeRemovedForAbsentName() {
         var removed = new java.util.ArrayList<String>();
         context.addListener(new ServletContextAttributeListener() {
             @Override

@@ -25,29 +25,29 @@ class NettySessionCookieConfigTest {
     // --- Defaults ---
 
     @Test
-    void nameDefaultsToJsessionid() {
+    void shouldDefaultNameToJsessionid() {
         assertEquals(NettySessionCookieConfig.DEFAULT_NAME, config.getName());
     }
 
     @Test
-    void httpOnlyDefaultsToTrue() {
+    void shouldDefaultHttpOnlyToTrue() {
         assertTrue(config.isHttpOnly(),
             "The session cookie is HttpOnly unless configured otherwise, matching Tomcat's default");
     }
 
     @Test
-    void secureDefaultsToFalse() {
+    void shouldDefaultSecureToFalse() {
         assertFalse(config.isSecure());
     }
 
     @Test
-    void maxAgeDefaultsToMinusOne() {
+    void shouldDefaultMaxAgeToMinusOne() {
         assertEquals(-1, config.getMaxAge(),
             "-1 marks a browser-session cookie, which NettyHttpServletResponse emits without Max-Age");
     }
 
     @Test
-    void pathAndDomainDefaultToNull() {
+    void shouldDefaultPathAndDomainToNull() {
         assertNull(config.getPath(), "An unset path is resolved per-request from the context path");
         assertNull(config.getDomain());
     }
@@ -55,7 +55,7 @@ class NettySessionCookieConfigTest {
     // --- The typed accessors and the attribute map are one store ---
 
     @Test
-    void typedSettersAreVisibleThroughGetAttribute() {
+    void shouldExposeTypedSettersThroughGetAttribute() {
         config.setPath("/app");
         config.setDomain("example.test");
         config.setMaxAge(60);
@@ -66,7 +66,7 @@ class NettySessionCookieConfigTest {
     }
 
     @Test
-    void flagsAreStoredAsPresenceWithAnEmptyValue() {
+    void shouldStoreFlagsAsPresenceWithEmptyValue() {
         config.setHttpOnly(false);
         config.setSecure(true);
 
@@ -77,7 +77,7 @@ class NettySessionCookieConfigTest {
     }
 
     @Test
-    void setAttributeIsVisibleThroughTheTypedGetters() {
+    void shouldExposeSetAttributeThroughTypedGetters() {
         config.setAttribute("Path", "/app");
         config.setAttribute("Max-Age", "60");
         config.setAttribute("Secure", "");
@@ -88,7 +88,7 @@ class NettySessionCookieConfigTest {
     }
 
     @Test
-    void arbitraryAttributesRoundTrip() {
+    void shouldRoundTripArbitraryAttributes() {
         config.setAttribute("SameSite", "Lax");
         config.setAttribute("Partitioned", "");
 
@@ -99,7 +99,7 @@ class NettySessionCookieConfigTest {
     }
 
     @Test
-    void settingAnAttributeToNullRemovesIt() {
+    void shouldRemoveCookieAttributeWhenSetToNull() {
         config.setAttribute("SameSite", "Lax");
 
         config.setAttribute("SameSite", null);
@@ -108,7 +108,7 @@ class NettySessionCookieConfigTest {
     }
 
     @Test
-    void getAttributesIsCaseInsensitiveLikeTheBackingMap() {
+    void shouldMakeGetAttributesCaseInsensitiveLikeBackingMap() {
         config.setPath("/app");
 
         assertEquals("/app", config.getAttributes().get("path"));
@@ -116,21 +116,21 @@ class NettySessionCookieConfigTest {
     }
 
     @Test
-    void anAttributeNameWithReservedCharactersIsRejected() {
+    void shouldRejectAttributeNameWithReservedCharacters() {
         assertThrows(IllegalArgumentException.class, () -> config.setAttribute("Max Age", "600"));
         assertThrows(IllegalArgumentException.class, () -> config.setAttribute("a;b", "c"));
         assertThrows(IllegalArgumentException.class, () -> config.setAttribute("a=b", "c"));
     }
 
     @Test
-    void getAttributesIsAnUnmodifiableSnapshot() {
+    void shouldReturnUnmodifiableSnapshotFromGetAttributes() {
         config.setAttribute("SameSite", "Lax");
 
         assertThrows(UnsupportedOperationException.class, () -> config.getAttributes().put("Secure", "true"));
     }
 
     @Test
-    void attributeNamesAreMatchedCaseInsensitively() {
+    void shouldMatchAttributeNamesCaseInsensitively() {
         config.setAttribute("path", "/app");
         config.setAttribute("samesite", "Lax");
 
@@ -143,7 +143,7 @@ class NettySessionCookieConfigTest {
     // --- Removed-in-practice accessors ---
 
     @Test
-    void setCommentIsIgnoredRatherThanRejected() {
+    void shouldIgnoreSetCommentRatherThanReject() {
         assertDoesNotThrow(() -> config.setComment("anything"));
         assertNull(config.getComment());
     }
@@ -151,7 +151,7 @@ class NettySessionCookieConfigTest {
     // --- Validation and the post-initialization freeze ---
 
     @Test
-    void aBooleanAttributeGivenAsTextIsNormalisedToTheFlagEncoding() {
+    void shouldNormaliseBooleanAttributeGivenAsTextToFlagEncoding() {
         config.setAttribute("Partitioned", "false");
         assertNull(config.getAttribute("Partitioned"), "a false flag must be absent, not the text \"false\"");
 
@@ -163,18 +163,18 @@ class NettySessionCookieConfigTest {
     }
 
     @Test
-    void anUnparseableMaxAgeIsRejectedWhereItIsConfigured() {
+    void shouldRejectUnparseableMaxAgeWhereItIsConfigured() {
         assertThrows(NumberFormatException.class, () -> config.setAttribute("Max-Age", "forever"));
     }
 
     @Test
-    void aNullOrEmptyAttributeNameIsRejected() {
+    void shouldRejectNullOrEmptyAttributeName() {
         assertThrows(IllegalArgumentException.class, () -> config.setAttribute(null, "x"));
         assertThrows(IllegalArgumentException.class, () -> config.setAttribute("", "x"));
     }
 
     @Test
-    void theConfigurationIsFrozenOnceTheContextIsInitialized() {
+    void shouldFreezeConfigurationOnceContextIsInitialized() {
         config.markInitialized();
 
         assertThrows(IllegalStateException.class, () -> config.setName("SID"));
@@ -184,7 +184,7 @@ class NettySessionCookieConfigTest {
     }
 
     @Test
-    void readingStaysAvailableAfterTheFreeze() {
+    void shouldKeepReadingAvailableAfterFreeze() {
         config.setName("SID");
         config.markInitialized();
 
