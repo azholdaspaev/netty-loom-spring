@@ -170,7 +170,7 @@ class NettyListenerRegistryTest {
     // --- Registration ---
 
     @Test
-    void oneInstanceLandsInEveryBucketItQualifiesFor() {
+    void shouldFileOneInstanceInEveryBucketItQualifiesFor() {
         registry.addListener(new RecordingListener("all"));
 
         registry.fireContextInitialized();
@@ -190,21 +190,21 @@ class NettyListenerRegistryTest {
      * A deliberate independent copy of {@code SUPPORTED_TYPES}, so a drift between the two gates is a test
      * failure rather than a green suite.
      */
-    static Stream<Class<? extends EventListener>> theSevenAcceptedTypes() {
+    static Stream<Class<? extends EventListener>> acceptedTypes() {
         return Stream.of(ServletContextListener.class, ServletContextAttributeListener.class,
             ServletRequestListener.class, ServletRequestAttributeListener.class,
             HttpSessionListener.class, HttpSessionAttributeListener.class, HttpSessionIdListener.class);
     }
 
     @ParameterizedTest
-    @MethodSource("theSevenAcceptedTypes")
-    void everyAcceptedTypePassesTheClassLevelCheck(Class<? extends EventListener> type) {
+    @MethodSource("acceptedTypes")
+    void shouldPassEveryAcceptedTypeThroughClassLevelCheck(Class<? extends EventListener> type) {
         assertDoesNotThrow(() -> registry.requireSupportedType(type),
             type.getSimpleName() + " is filed by addListener, so the Class-level gate must accept it too");
     }
 
     @Test
-    void aListenerOfNoSupportedTypeIsRejected() {
+    void shouldRejectListenerOfNoSupportedType() {
         /*
          * Legal EventListener, but not one this container fires -- accepting it silently would leave the
          * application believing it is wired up.
@@ -220,7 +220,7 @@ class NettyListenerRegistryTest {
     }
 
     @Test
-    void aContextListenerCannotRegisterOnceTheInitPassHasStarted() {
+    void shouldRefuseContextListenerOnceInitPassHasStarted() {
         /*
          * fireContextInitialized iterates a CopyOnWriteArrayList snapshot taken at loop entry, so a
          * ServletContextListener added in between would miss contextInitialized and still receive
@@ -237,7 +237,7 @@ class NettyListenerRegistryTest {
     }
 
     @Test
-    void theOtherSixTypesStillRegisterDuringFilterAndServletInit() {
+    void shouldStillRegisterOtherSixTypesDuringFilterAndServletInit() {
         /*
          * markInitialized is deliberately later than the init pass so a Filter.init can still configure
          * the container. Only ServletContextListener closes early, because only it has already fired.
@@ -251,7 +251,7 @@ class NettyListenerRegistryTest {
     }
 
     @Test
-    void registrationIsRefusedOnceTheContextIsInitialized() {
+    void shouldRefuseRegistrationOnceContextIsInitialized() {
         registry.markInitialized();
 
         assertThrows(IllegalStateException.class, () -> registry.addListener(new RecordingListener("late")));
@@ -260,7 +260,7 @@ class NettyListenerRegistryTest {
     // --- Ordering ---
 
     @Test
-    void initializationEventsFireInRegistrationOrder() {
+    void shouldFireInitializationEventsInRegistrationOrder() {
         registry.addListener(new RecordingListener("first"));
         registry.addListener(new RecordingListener("second"));
 
@@ -274,7 +274,7 @@ class NettyListenerRegistryTest {
     }
 
     @Test
-    void destructionEventsFireInReverseRegistrationOrder() {
+    void shouldFireDestructionEventsInReverseRegistrationOrder() {
         registry.addListener(new RecordingListener("first"));
         registry.addListener(new RecordingListener("second"));
 
@@ -290,7 +290,7 @@ class NettyListenerRegistryTest {
     // --- Events ---
 
     @Test
-    void attributeEventsCarryTheOwnerAndTheValue() {
+    void shouldCarryOwnerAndValueInAttributeEvents() {
         var seen = new Object[3];
         registry.addListener(new ServletContextAttributeListener() {
             @Override
@@ -310,7 +310,7 @@ class NettyListenerRegistryTest {
     }
 
     @Test
-    void sessionIdChangedCarriesTheOldId() {
+    void shouldCarryOldIdInSessionIdChanged() {
         var seen = new String[1];
         registry.addListener((HttpSessionIdListener) (event, oldSessionId) -> seen[0] = oldSessionId);
 
@@ -322,8 +322,8 @@ class NettyListenerRegistryTest {
     // --- Failure isolation ---
 
     @ParameterizedTest
-    @MethodSource("theTwoFailureShapes")
-    void aFailingListenerDoesNotStrandTheRestOfATeardown(Throwable failure) {
+    @MethodSource("failureShapes")
+    void shouldNotStrandRestOfTeardownWhenListenerFails(Throwable failure) {
         /*
          * Teardown has no caller in a position to handle the failure, so it is logged and the remaining
          * listeners still run.
@@ -342,7 +342,7 @@ class NettyListenerRegistryTest {
     }
 
     @Test
-    void aFailingListenerAbortsStartup() {
+    void shouldAbortStartupWhenListenerFails() {
         /*
          * The opposite rule: a listener that cannot initialize must not leave the application serving
          * traffic in a half-configured state, so contextInitialized propagates and startup fails.
@@ -361,13 +361,13 @@ class NettyListenerRegistryTest {
      * The ordinary failure, and the linkage error {@code contextInitialized} actually sees, since that is
      * where applications touch static initializers and lazily-loaded classes.
      */
-    static Stream<Throwable> theTwoFailureShapes() {
+    static Stream<Throwable> failureShapes() {
         return Stream.of(new IllegalStateException("boom"), new NoClassDefFoundError("com/example/Missing"));
     }
 
     @ParameterizedTest
-    @MethodSource("theTwoFailureShapes")
-    void everyListenerIsInitializedEvenWhenAnEarlierOneFails(Throwable failure) {
+    @MethodSource("failureShapes")
+    void shouldInitializeEveryListenerEvenWhenEarlierOneFails(Throwable failure) {
         /*
          * The destroy pass walks the whole list, so the init pass has to as well. Aborting on the first
          * throw would leave listeners registered after it never initialized, and the startup backstop
@@ -398,7 +398,7 @@ class NettyListenerRegistryTest {
     }
 
     @Test
-    void aCheckedExceptionFromAListenerKeepsItsDiagnosis() {
+    void shouldKeepDiagnosisOfCheckedExceptionFromListener() {
         /*
          * contextInitialized declares no checked exception, but that binds the Java compiler, not the
          * runtime: a listener written in Kotlin -- which has no checked exceptions -- or one using
@@ -430,7 +430,7 @@ class NettyListenerRegistryTest {
     }
 
     @Test
-    void theFirstInitializationFailureIsTheOneReported() {
+    void shouldReportFirstInitializationFailure() {
         // Later failures are attached rather than dropped, so a log shows every listener that broke.
         registry.addListener(new ServletContextListener() {
             @Override
@@ -454,7 +454,7 @@ class NettyListenerRegistryTest {
     }
 
     @Test
-    void aVirtualMachineErrorIsNotSwallowedByAQuietPass() {
+    void shouldNotSwallowVirtualMachineErrorInQuietPass() {
         registry.addListener(new RecordingListener("survivor"));
         registry.addListener(new ServletContextListener() {
             @Override
@@ -467,7 +467,7 @@ class NettyListenerRegistryTest {
     }
 
     @Test
-    void aLinkageErrorIsStillSwallowedByAQuietPass() {
+    void shouldStillSwallowLinkageErrorInQuietPass() {
         registry.addListener(new RecordingListener("survivor"));
         registry.addListener(new ServletContextListener() {
             @Override
@@ -482,7 +482,7 @@ class NettyListenerRegistryTest {
     }
 
     @Test
-    void aFailingAttributeListenerDoesNotBreakTheMutationThatTriggeredIt() {
+    void shouldNotBreakTriggeringMutationWhenAttributeListenerFails() {
         /*
          * Attribute listeners are observers, not participants: unlike HttpSessionBindingListener, which is
          * the value's own resource protocol, nothing is left half-bound when one of these fails.

@@ -93,7 +93,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void contextPathAndServletPathReadTheServletContext() {
+    void shouldReadContextPathAndServletPathFromServletContext() {
         var inContext = requestWithContext("/app/hello?x=1", "/app");
         assertEquals("/app", inContext.getContextPath());
         assertEquals("/app/hello", inContext.getRequestURI());
@@ -106,7 +106,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void emptyContextLeavesPathGettersUnchanged() {
+    void shouldLeavePathGettersUnchangedForEmptyContext() {
         var noContext = requestWithContext("/hello", "");
         assertEquals("", noContext.getContextPath());
         assertEquals("/hello", noContext.getRequestURI());
@@ -114,34 +114,34 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void isWithinContextAcceptsContextRootAndPrefix() {
+    void shouldReportContextRootAndPrefixAsWithinContext() {
         assertTrue(requestWithContext("/app", "/app").isWithinContext());
         assertTrue(requestWithContext("/app/hello", "/app").isWithinContext());
         assertFalse(requestWithContext("/application", "/app").isWithinContext());
     }
 
     @Test
-    void isWithinContextRejectsOutOfContextUri() {
+    void shouldReportOutOfContextUriAsNotWithinContext() {
         assertFalse(requestWithContext("/other", "/app").isWithinContext());
         assertFalse(requestWithContext("/ap", "/app").isWithinContext());
     }
 
     @Test
-    void isWithinContextAlwaysTrueForRootContext() {
+    void shouldReportEveryUriAsWithinRootContext() {
         var root = requestWithContext("/anything", "");
         assertTrue(root.isWithinContext());
         assertEquals("/anything", root.getServletPath());
     }
 
     @Test
-    void getServletPathReturnsEmptyForUriShorterThanContextPath() {
+    void shouldReturnEmptyServletPathForUriShorterThanContextPath() {
         // Blindly stripping the prefix would throw StringIndexOutOfBoundsException here.
         var request = requestWithContext("/ap", "/app");
         assertEquals("", request.getServletPath());
     }
 
     @Test
-    void getRequestUriReportsThePathAsSent() {
+    void shouldReportRequestUriPathAsSent() {
         var request = requestWithContext("/files/a%2Fb/%2541", "");
 
         assertEquals("/files/a%2Fb/%2541", request.getRequestURI(),
@@ -149,7 +149,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void getRequestUrlKeepsThePathAsSent() {
+    void shouldKeepRequestUrlPathAsSent() {
         var request = request("/files/a%2Fb", "example.com", INSECURE);
 
         assertEquals("http://example.com/files/a%2Fb", request.getRequestURL().toString(),
@@ -157,7 +157,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void theServletPathIsDecodedWhileTheUriStaysRaw() {
+    void shouldDecodeServletPathWhileUriStaysRaw() {
         var request = requestWithContext("/app/a%2Fb", "/app");
 
         assertEquals("/app/a%2Fb", request.getRequestURI());
@@ -167,7 +167,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void anEncodedContextPathPrefixIsOutOfContext() {
+    void shouldTreatEncodedContextPathPrefixAsOutOfContext() {
         assertFalse(requestWithContext("/%61pp/hello", "/app").isWithinContext(),
             "getContextPath() is the configured literal, so Spring would throw on a raw URI it does not prefix");
         assertFalse(requestWithContext("/app%2Fx/hello", "/app").isWithinContext(),
@@ -175,7 +175,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void pathInfoIsNullWhenTheRequestCarriesNoExtraPathInformation() {
+    void shouldReturnNullPathInfoWhenRequestCarriesNoExtraPath() {
         var inContext = requestWithContext("/app/hello", "/app");
         assertNull(inContext.getPathInfo());
         assertNull(inContext.getPathTranslated());
@@ -188,7 +188,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void authenticationAccessorsAreNullOnAnUnauthenticatedRequest() {
+    void shouldReturnNullAuthenticationAccessorsWhenUnauthenticated() {
         var request = request(INSECURE, new DefaultNettyServletContext());
 
         assertNull(request.getAuthType());
@@ -197,7 +197,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void networkGettersFromConnection() {
+    void shouldReadNetworkGettersFromConnection() {
         var context = new DefaultNettyServletContext();
         var request = request(new HttpConnectionMetadata("203.0.113.7", 54321, "198.51.100.2", 8080, false, ""), context);
 
@@ -213,7 +213,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void remoteAndLocalHostsAreNotReverseDnsResolvedForIpv6() {
+    void shouldNotReverseDnsResolveRemoteAndLocalHostsForIpv6() {
         var request = request(
             new HttpConnectionMetadata("::1", 9999, "::1", 8080, false, ""),
             new DefaultNettyServletContext());
@@ -225,14 +225,14 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void protocolReflectsHttpVersion() {
+    void shouldReflectHttpVersionInProtocol() {
         var request = request(new HttpConnectionMetadata("", 0, "", 0, false, ""), new DefaultNettyServletContext());
 
         assertEquals("HTTP/1.1", request.getProtocol());
     }
 
     @Test
-    void requestIdIsUniquePerRequestAndServletConnectionIsNeverNull() {
+    void shouldGiveUniqueRequestIdAndNonNullServletConnection() {
         var secure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, true, "conn-7");
         var first = request(secure, new DefaultNettyServletContext());
         var second = request(secure, new DefaultNettyServletContext());
@@ -253,7 +253,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void serverNamePortFromHostHeader() {
+    void shouldReadServerNameAndPortFromHostHeader() {
         var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
 
         var hostOnly = request("/x", "example.com", insecure);
@@ -286,7 +286,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void ipv6ServerNameIsBracketedWhileLocalAddrStaysRaw() {
+    void shouldBracketIpv6ServerNameWhileLocalAddrStaysRaw() {
         /*
          * No Host header: serverName falls back to the local socket. For URL/authority use the IPv6
          * address must be bracketed, but the Servlet-spec numeric getLocalAddr()/getLocalName() must
@@ -301,7 +301,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void requestUrlWithoutHostAndEmptyLocalAddrOmitsAuthority() {
+    void shouldOmitAuthorityFromRequestUrlWithoutHostAndLocalAddr() {
         /*
          * No Host header and a non-Inet local address (empty localAddr): the URL must not become the
          * malformed "http:///x" with an empty authority.
@@ -312,7 +312,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void localesParseQOrderAndDefault() {
+    void shouldParseLocalesInQOrderAndDefault() {
         var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
 
         var ordered = requestWithAcceptLanguage("da, en-gb;q=0.8, en;q=0.7", insecure);
@@ -345,7 +345,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void localesAreCachedOnFirstAccessAndReused() {
+    void shouldCacheLocalesOnFirstAccessAndReuseThem() {
         var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
         var nettyRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/x");
         nettyRequest.headers().set(HttpHeaderNames.ACCEPT_LANGUAGE, "da, en-gb;q=0.8, en;q=0.7");
@@ -365,7 +365,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void requestUrlOmitsDefaultPortAndQuery() {
+    void shouldOmitDefaultPortAndQueryFromRequestUrl() {
         var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
         var secure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, true, "");
 
@@ -381,7 +381,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void paramsParseLazilyOnFirstAccess() {
+    void shouldParseParamsLazilyOnFirstAccess() {
         var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
         var request = formRequest("/x?a=1", "b=2".getBytes(StandardCharsets.UTF_8), insecure);
 
@@ -392,7 +392,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void formParametersAreNotParsedForAMethodTomcatWouldNotParse() throws Exception {
+    void shouldNotParseFormParametersForMethodTomcatWouldNotParse() throws Exception {
         var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
         var request = formRequest(HttpMethod.PUT, "/x?a=1", "b=2".getBytes(StandardCharsets.UTF_8), insecure);
 
@@ -405,7 +405,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void formParametersAreNotParsedOnceGetInputStreamHasClaimedTheBody() throws Exception {
+    void shouldNotParseFormParametersOnceGetInputStreamClaimedBody() throws Exception {
         var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
         var request = formRequest("/x?a=1", "b=2".getBytes(StandardCharsets.UTF_8), insecure);
         ServletInputStream body = request.getInputStream();
@@ -419,7 +419,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void formParametersAreNotParsedOnceGetReaderHasClaimedTheBody() throws Exception {
+    void shouldNotParseFormParametersOnceGetReaderClaimedBody() throws Exception {
         var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
         var request = formRequest("/x?a=1", "b=2".getBytes(StandardCharsets.UTF_8), insecure);
         BufferedReader reader = request.getReader();
@@ -431,7 +431,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void queryStringDecodedAsUtf8IndependentOfBodyEncoding() throws Exception {
+    void shouldDecodeQueryStringAsUtf8IndependentOfBodyEncoding() throws Exception {
         var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
         /*
          * %C3%A9 is the UTF-8 encoding of "é". The query must always decode as UTF-8, while the
@@ -446,7 +446,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void readerDefaultCharsetMatchesParameterParsing() throws Exception {
+    void shouldMatchReaderDefaultCharsetToParameterParsing() throws Exception {
         var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
         // No charset set anywhere: getReader() and parameter parsing must agree on the default.
         byte[] body = new byte[] {'v', '=', (byte) 0xE9};
@@ -460,7 +460,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void setEncodingBeforeReadAffectsParamsThenLocks() throws Exception {
+    void shouldApplyEncodingSetBeforeReadToParamsThenLock() throws Exception {
         var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
         // 0xE9 decodes to "é" in ISO-8859-1, and to the replacement char in UTF-8.
         byte[] body = new byte[] {'n', 'a', 'm', 'e', '=', (byte) 0xE9};
@@ -504,7 +504,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void getCookiesParsesSingleCookie() {
+    void shouldParseSingleCookie() {
         Cookie[] cookies = cookieRequest("foo=bar").getCookies();
 
         assertEquals(1, cookies.length);
@@ -513,7 +513,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void getCookiesPreservesOrderOfMultiplePairs() {
+    void shouldPreserveOrderOfMultipleCookiePairs() {
         Cookie[] cookies = cookieRequest("a=1; b=2; c=3").getCookies();
 
         assertEquals(3, cookies.length);
@@ -523,7 +523,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void getCookiesReadsMultipleCookieHeaders() {
+    void shouldReadMultipleCookieHeaders() {
         Cookie[] cookies = cookieRequest("a=1", "b=2").getCookies();
 
         assertEquals(2, cookies.length);
@@ -534,7 +534,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void getCookiesKeepsDuplicateNamesInOrder() {
+    void shouldKeepDuplicateCookieNamesInOrder() {
         Cookie[] cookies = cookieRequest("foo=1; foo=2").getCookies();
 
         assertEquals(2, cookies.length);
@@ -545,7 +545,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void getCookiesPreservesValuesVerbatim() {
+    void shouldPreserveCookieValuesVerbatim() {
         Cookie[] encodedCookies = cookieRequest("foo=hello%20world").getCookies();
 
         assertEquals(1, encodedCookies.length);
@@ -559,18 +559,18 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void getCookiesReturnsNullForMalformedHeaderWithoutThrowing() {
+    void shouldReturnNullCookiesForMalformedHeaderWithoutThrowing() {
         assertNull(assertDoesNotThrow(() -> cookieRequest("=;;garbage").getCookies()));
         assertNull(assertDoesNotThrow(() -> cookieRequest("").getCookies()));
     }
 
     @Test
-    void getCookiesReturnsNullWhenNoCookieHeader() {
+    void shouldReturnNullCookiesWhenNoCookieHeader() {
         assertNull(cookieRequest().getCookies());
     }
 
     @Test
-    void getCookiesReturnsDefensiveCopyButCachesElements() {
+    void shouldCopyCookiesDefensivelyButCacheElements() {
         NettyHttpServletRequest request = cookieRequest("a=1; b=2");
 
         Cookie[] first = request.getCookies();
@@ -643,14 +643,14 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void getSessionFalseReturnsNullWhenNoCookieIsPresent() {
+    void shouldReturnNullFromGetSessionFalseWhenNoCookieIsPresent() {
         var exchange = exchange(new DefaultNettyServletContext());
 
         assertNull(exchange.request().getSession(false));
     }
 
     @Test
-    void getSessionFalseWritesNoSetCookie() {
+    void shouldWriteNoSetCookieOnGetSessionFalse() {
         /*
          * DispatcherServlet calls getSession(false) on every request via SessionFlashMapManager, so this
          * is the stateless hot path: it must neither create a session nor touch the response.
@@ -663,7 +663,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void getSessionTrueCreatesASessionAndEmitsTheCookie() {
+    void shouldCreateSessionAndEmitCookieOnGetSessionTrue() {
         var context = new DefaultNettyServletContext();
         var exchange = exchange(context);
 
@@ -676,14 +676,14 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void noArgGetSessionCreates() {
+    void shouldCreateSessionOnNoArgGetSession() {
         var exchange = exchange(new DefaultNettyServletContext());
 
         assertNotNull(exchange.request().getSession());
     }
 
     @Test
-    void getSessionTrueIsIdempotentWithinOneRequest() {
+    void shouldReturnSameSessionFromGetSessionTrueWithinRequest() {
         var exchange = exchange(new DefaultNettyServletContext());
 
         var first = exchange.request().getSession(true);
@@ -694,7 +694,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void anExistingSessionResolvesFromTheCookieWithoutReEmitting() {
+    void shouldResolveExistingSessionFromCookieWithoutReEmitting() {
         var context = new DefaultNettyServletContext();
         var existing = context.getSessionManager().create();
 
@@ -706,7 +706,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void aSessionCookieAmongOthersIsStillFound() {
+    void shouldFindSessionCookieAmongOthers() {
         var context = new DefaultNettyServletContext();
         var existing = context.getSessionManager().create();
 
@@ -716,7 +716,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void anUnknownSessionIdYieldsNoSessionButAStaleRequestedId() {
+    void shouldYieldNoSessionButStaleRequestedIdForUnknownId() {
         var exchange = exchange(new DefaultNettyServletContext(), INSECURE, "JSESSIONID=DEADBEEF");
 
         // SessionManagementFilter keys on exactly this triple to detect an expired session.
@@ -727,7 +727,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void anUnknownSessionIdStillAllowsCreatingAFreshSession() {
+    void shouldStillCreateFreshSessionAfterUnknownSessionId() {
         var context = new DefaultNettyServletContext();
         var exchange = exchange(context, INSECURE, "JSESSIONID=DEADBEEF");
 
@@ -738,7 +738,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void aStaleDuplicateSessionCookieDoesNotMaskTheLiveSession() {
+    void shouldNotLetStaleDuplicateSessionCookieMaskLiveSession() {
         /*
          * Issue #91, through the real cookie decoder: the stale duplicate arrives first on the wire and
          * used to win outright.
@@ -756,7 +756,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void duplicateSessionCookiesThatAreAllStaleReportTheLastAsTheRequestedId() {
+    void shouldReportLastOfAllStaleDuplicateCookiesAsRequestedId() {
         var exchange = exchange(new DefaultNettyServletContext(), INSECURE,
             NettySessionCookieConfig.DEFAULT_NAME + "=DEAD1; "
                 + NettySessionCookieConfig.DEFAULT_NAME + "=DEAD2");
@@ -772,7 +772,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void aSessionCookieNamedInADifferentCaseIsNotTheSessionCookie() {
+    void shouldNotTreatDifferentlyCasedNameAsSessionCookie() {
         /*
          * The security edge of RFC 6265 4.1.1: a mis-cased cookie, which anything sharing the host can
          * set, must not be read as the session id even when it names a live session and the
@@ -791,7 +791,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void getRequestedSessionIdIsNullWhenNoCookieIsPresent() {
+    void shouldReturnNullRequestedSessionIdWhenNoCookieIsPresent() {
         /*
          * Not "": SessionManagementFilter treats any non-null requested id as a session to validate, so
          * an empty string would make it fire its invalid-session strategy on every stateless request.
@@ -804,14 +804,14 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void getRequestedSessionIdIsNullWhenOtherCookiesArePresent() {
+    void shouldReturnNullRequestedSessionIdWithOnlyOtherCookies() {
         var exchange = exchange(new DefaultNettyServletContext(), INSECURE, "theme=dark");
 
         assertNull(exchange.request().getRequestedSessionId());
     }
 
     @Test
-    void isRequestedSessionIdValidForALiveSession() {
+    void shouldReportRequestedSessionIdValidForLiveSession() {
         var context = new DefaultNettyServletContext();
         var existing = context.getSessionManager().create();
 
@@ -822,7 +822,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void isRequestedSessionIdFromUrlIsAlwaysFalse() {
+    void shouldAlwaysReportRequestedSessionIdNotFromUrl() {
         /*
          * URL rewriting is permanently out of scope: encodeURL is the identity, and COOKIE is the only
          * effective tracking mode.
@@ -831,7 +831,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void getSessionFalseAfterInvalidateReturnsNull() {
+    void shouldReturnNullFromGetSessionFalseAfterInvalidate() {
         var exchange = exchange(new DefaultNettyServletContext());
         exchange.request().getSession(true).invalidate();
 
@@ -840,7 +840,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void getSessionTrueAfterInvalidateCreatesAFreshSessionAndCookie() {
+    void shouldCreateFreshSessionAndCookieOnGetSessionAfterInvalidate() {
         var context = new DefaultNettyServletContext();
         var exchange = exchange(context);
         var first = exchange.request().getSession(true);
@@ -862,7 +862,7 @@ class NettyHttpServletRequestTest {
     // --- Session cookie attributes ---
 
     @Test
-    void theSessionCookieIsHttpOnlyByDefault() {
+    void shouldMakeSessionCookieHttpOnlyByDefault() {
         var exchange = exchange(new DefaultNettyServletContext());
         exchange.request().getSession(true);
 
@@ -870,7 +870,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void theSessionCookieHasNoMaxAgeByDefault() {
+    void shouldGiveSessionCookieNoMaxAgeByDefault() {
         var exchange = exchange(new DefaultNettyServletContext());
         exchange.request().getSession(true);
 
@@ -879,7 +879,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void theSessionCookiePathDefaultsToRootForTheRootContext() {
+    void shouldDefaultSessionCookiePathToRootForRootContext() {
         var exchange = exchange(new DefaultNettyServletContext());
         exchange.request().getSession(true);
 
@@ -892,7 +892,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void theSessionCookiePathDefaultsToTheContextPath() {
+    void shouldDefaultSessionCookiePathToContextPath() {
         var context = new DefaultNettyServletContext();
         context.setContextPath("/app");
         var exchange = exchange(context);
@@ -902,7 +902,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void aConfiguredPathWinsOverTheContextPath() {
+    void shouldPreferConfiguredPathOverContextPath() {
         /*
          * The configured value is deliberately not a prefix of the context path, and vice versa: with
          * "/" against "/app" the assertion would hold whichever won.
@@ -917,7 +917,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void theSessionCookieUsesTheConfiguredName() {
+    void shouldUseConfiguredNameForSessionCookie() {
         var context = new DefaultNettyServletContext();
         context.getSessionCookieConfig().setName("SID");
         var exchange = exchange(context);
@@ -928,7 +928,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void aConfiguredCookieNameIsAlsoAcceptedOnTheWayIn() {
+    void shouldAlsoAcceptConfiguredCookieNameOnWayIn() {
         var context = new DefaultNettyServletContext();
         context.getSessionCookieConfig().setName("SID");
         var existing = context.getSessionManager().create();
@@ -939,7 +939,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void theSessionCookieCarriesConfiguredAttributes() {
+    void shouldCarryConfiguredAttributesOnSessionCookie() {
         var context = new DefaultNettyServletContext();
         context.getSessionCookieConfig().setDomain("example.test");
         context.getSessionCookieConfig().setMaxAge(60);
@@ -955,7 +955,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void theSessionCookieIsSecureOverASecureConnection() {
+    void shouldMakeSessionCookieSecureOverSecureConnection() {
         var exchange = exchange(new DefaultNettyServletContext(), SECURE, null);
 
         exchange.request().getSession(true);
@@ -964,7 +964,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void theSessionCookieIsNotSecureOverAPlaintextConnection() {
+    void shouldNotMakeSessionCookieSecureOverPlaintextConnection() {
         var exchange = exchange(new DefaultNettyServletContext());
 
         exchange.request().getSession(true);
@@ -973,7 +973,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void aConfiguredSecureFlagAppliesEvenOverPlaintext() {
+    void shouldApplyConfiguredSecureFlagEvenOverPlaintext() {
         var context = new DefaultNettyServletContext();
         context.getSessionCookieConfig().setSecure(true);
         var exchange = exchange(context);
@@ -984,7 +984,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void noCookieIsEmittedWhenCookieTrackingIsDisabled() {
+    void shouldEmitNoCookieWhenCookieTrackingIsDisabled() {
         var context = new DefaultNettyServletContext();
         context.setSessionTrackingModes(Set.of());
         var exchange = exchange(context);
@@ -996,7 +996,7 @@ class NettyHttpServletRequestTest {
     // --- changeSessionId (session fixation, issue #52) ---
 
     @Test
-    void changeSessionIdRotatesTheIdAndReEmitsTheCookie() {
+    void shouldRotateIdAndReEmitCookieOnChangeSessionId() {
         var context = new DefaultNettyServletContext();
         var exchange = exchange(context);
         var session = exchange.request().getSession(true);
@@ -1012,7 +1012,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void aThrowingSessionIdListenerStillLeavesTheClientHoldingTheNewId() {
+    void shouldLeaveClientHoldingNewIdWhenSessionIdListenerThrows() {
         /*
          * sessionIdChanged fires after the rotation has committed and before writeSessionCookie runs, so
          * a listener that throws would unwind past the Set-Cookie: the store knows only the new id while
@@ -1036,7 +1036,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void changeSessionIdPreservesAttributes() {
+    void shouldPreserveAttributesOnChangeSessionId() {
         var exchange = exchange(new DefaultNettyServletContext());
         var session = exchange.request().getSession(true);
         session.setAttribute("user", "alice");
@@ -1047,7 +1047,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void changeSessionIdAfterCommitStillRotatesAndDoesNotThrow() throws Exception {
+    void shouldStillRotateWithoutThrowingOnChangeSessionIdAfterCommit() throws Exception {
         /*
          * changeSessionId declares IllegalStateException only for "no session"; the commit-time throw
          * belongs to getSession(create). Tomcat routes the rotated cookie through addCookie, which is
@@ -1073,14 +1073,14 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void changeSessionIdWithoutASessionThrows() {
+    void shouldThrowOnChangeSessionIdWithoutSession() {
         var exchange = exchange(new DefaultNettyServletContext());
 
         assertThrows(IllegalStateException.class, () -> exchange.request().changeSessionId());
     }
 
     @Test
-    void changeSessionIdRepointsTheRequestedIdAtTheNewOne() {
+    void shouldRepointRequestedIdAtNewOneOnChangeSessionId() {
         var context = new DefaultNettyServletContext();
         var existing = context.getSessionManager().create();
         var exchange = exchange(context, INSECURE, NettySessionCookieConfig.DEFAULT_NAME + "=" + existing.getId());
@@ -1096,7 +1096,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void changeSessionIdReplacesTheEarlierCookieRatherThanAppending() {
+    void shouldReplaceEarlierCookieNotAppendOnChangeSessionId() {
         var exchange = exchange(new DefaultNettyServletContext());
         exchange.request().getSession(true);
 
@@ -1111,7 +1111,7 @@ class NettyHttpServletRequestTest {
     // --- Creating a session too late (Servlet contract) ---
 
     @Test
-    void creatingASessionAfterTheResponseIsCommittedThrows() throws Exception {
+    void shouldThrowWhenCreatingSessionAfterResponseIsCommitted() throws Exception {
         var exchange = exchange(new DefaultNettyServletContext());
         exchange.response().sendRedirect("/elsewhere");
 
@@ -1125,7 +1125,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void aSessionCreatedAfterCommitIsNotLeftInTheStore() throws Exception {
+    void shouldNotLeaveSessionCreatedAfterCommitInStore() throws Exception {
         var context = new DefaultNettyServletContext();
         var exchange = exchange(context);
         exchange.response().sendRedirect("/elsewhere");
@@ -1136,7 +1136,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void resolvingAnExistingSessionAfterCommitStillWorks() throws Exception {
+    void shouldStillResolveExistingSessionAfterCommit() throws Exception {
         // Only *creation* is barred: an already-tracked session needs no new cookie.
         var context = new DefaultNettyServletContext();
         var existing = context.getSessionManager().create();
@@ -1147,7 +1147,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void creatingASessionAfterCommitIsAllowedWhenCookieTrackingIsDisabled() throws Exception {
+    void shouldAllowCreatingSessionAfterCommitWithoutCookieTracking() throws Exception {
         /*
          * The spec conditions the throw on the container using cookies; with tracking off there is no
          * id to deliver and nothing is lost.
@@ -1163,7 +1163,7 @@ class NettyHttpServletRequestTest {
     // --- isRequestedSessionIdValid tracks the store, it is not latched ---
 
     @Test
-    void isRequestedSessionIdValidTurnsFalseOnceTheSessionIsInvalidated() {
+    void shouldReportRequestedSessionIdInvalidOnceInvalidated() {
         var context = new DefaultNettyServletContext();
         var existing = context.getSessionManager().create();
         var exchange = exchange(context, INSECURE, NettySessionCookieConfig.DEFAULT_NAME + "=" + existing.getId());
@@ -1179,7 +1179,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void isRequestedSessionIdValidDoesNotRefreshTheSession() {
+    void shouldNotRefreshSessionOnIsRequestedSessionIdValid() {
         var context = new DefaultNettyServletContext();
         var existing = context.getSessionManager().create();
         var exchange = exchange(context, INSECURE, NettySessionCookieConfig.DEFAULT_NAME + "=" + existing.getId());
@@ -1213,7 +1213,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void requestAttributeMutationsFireTheContainerAttributeListener() {
+    void shouldFireAttributeListenerOnRequestAttributeMutation() {
         var context = new DefaultNettyServletContext();
         var events = recordRequestAttributes(context);
         var request = request(new HttpConnectionMetadata("", 0, "", 0, false, ""), context);
@@ -1226,7 +1226,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void settingARequestAttributeToNullFiresRemoved() {
+    void shouldFireRemovedWhenSettingRequestAttributeToNull() {
         var context = new DefaultNettyServletContext();
         var events = recordRequestAttributes(context);
         var request = request(new HttpConnectionMetadata("", 0, "", 0, false, ""), context);
@@ -1238,7 +1238,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void removingAnAbsentRequestAttributeNotifiesNothing() {
+    void shouldFireNothingWhenRemovingAbsentRequestAttribute() {
         var context = new DefaultNettyServletContext();
         var events = recordRequestAttributes(context);
         var request = request(new HttpConnectionMetadata("", 0, "", 0, false, ""), context);
@@ -1250,7 +1250,7 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
-    void theRequestAttributeEventNamesTheRequestItHappenedOn() {
+    void shouldNameRequestItHappenedOnInAttributeEvent() {
         var context = new DefaultNettyServletContext();
         var seen = new Object[2];
         context.addListener(new ServletRequestAttributeListener() {

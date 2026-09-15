@@ -27,7 +27,7 @@ class RegisteredFilterTest {
     }
 
     @Test
-    void exactPatternMatchesOnlyExactPath() {
+    void shouldMatchOnlyExactPathForExactPattern() {
         var filter = requestFilter("/foo");
 
         assertTrue(matchesAsRequest(filter,"/foo"));
@@ -36,7 +36,7 @@ class RegisteredFilterTest {
     }
 
     @Test
-    void extensionPatternMatchesBySuffix() {
+    void shouldMatchBySuffixForExtensionPattern() {
         var filter = requestFilter("*.json");
 
         assertTrue(matchesAsRequest(filter,"/api/data.json"));
@@ -44,7 +44,7 @@ class RegisteredFilterTest {
     }
 
     @Test
-    void wildcardPatternMatchesEverything() {
+    void shouldMatchEverythingForWildcardPattern() {
         var filter = requestFilter("/*");
 
         assertTrue(matchesAsRequest(filter,"/"));
@@ -52,7 +52,7 @@ class RegisteredFilterTest {
     }
 
     @Test
-    void pathPrefixMatchesBarePrefixAndDescendantsButNotSiblingPrefix() {
+    void shouldMatchBarePrefixAndDescendantsNotSiblingForPathPrefix() {
         var filter = requestFilter("/api/*");
 
         assertTrue(matchesAsRequest(filter,"/api"));
@@ -63,7 +63,7 @@ class RegisteredFilterTest {
     }
 
     @Test
-    void degenerateExtensionPatternMatchesNothing() {
+    void shouldMatchNothingForDegenerateExtensionPattern() {
         var filter = requestFilter("*.");
 
         assertFalse(matchesAsRequest(filter,"/file."));
@@ -71,7 +71,7 @@ class RegisteredFilterTest {
     }
 
     @Test
-    void multiplePatternsMatchIfAnyMatches() {
+    void shouldMatchWhenAnyOfMultiplePatternsMatches() {
         var filter = requestFilter("/never", "/api/*");
 
         assertTrue(matchesAsRequest(filter,"/api/users"));
@@ -79,7 +79,7 @@ class RegisteredFilterTest {
     }
 
     @Test
-    void doesNotMatchWhenDispatcherTypesLacksRequest() {
+    void shouldNotMatchWhenDispatcherTypesLacksRequest() {
         var filter = filterFor(Set.of("/*"), EnumSet.of(DispatcherType.ASYNC));
 
         assertFalse(matchesAsRequest(filter,"/anything"));

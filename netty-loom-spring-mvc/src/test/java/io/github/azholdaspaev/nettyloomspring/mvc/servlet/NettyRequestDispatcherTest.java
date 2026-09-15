@@ -45,7 +45,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void forwardRunsTheContextsTerminalChain() throws Exception {
+    void shouldRunContextsTerminalChainOnForward() throws Exception {
         recordTerminal();
         var response = new NettyHttpServletResponse();
         var request = requestFor("/source", response);
@@ -58,7 +58,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     // --- The target's view of the request ---
 
     @Test
-    void theTargetSeesTheForwardedPathElements() throws Exception {
+    void shouldExposeForwardedPathElementsToTarget() throws Exception {
         context.setContextPath("/app");
 
         var target = forward("/app/src", "/t", null);
@@ -70,7 +70,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void theForwardedRequestUriExcludesTheQuery() throws Exception {
+    void shouldExcludeQueryFromForwardedRequestUri() throws Exception {
         context.setContextPath("/app");
 
         var target = forward("/app/src", "/t", "q=1");
@@ -79,14 +79,14 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void theTargetDispatchTypeIsForward() throws Exception {
+    void shouldGiveTargetDispatcherTypeForward() throws Exception {
         var target = forward("/src", "/t", null);
 
         assertEquals(DispatcherType.FORWARD, target.getDispatcherType());
     }
 
     @Test
-    void theOriginalRequestStillReportsRequest() throws Exception {
+    void shouldKeepDispatcherTypeRequestOnOriginalRequest() throws Exception {
         recordTerminal();
         var response = new NettyHttpServletResponse();
         var request = requestFor("/src", response);
@@ -101,7 +101,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     // --- The jakarta.servlet.forward.* attributes ---
 
     @Test
-    void theForwardAttributesCarryTheOriginalPathElements() throws Exception {
+    void shouldCarryOriginalPathElementsInForwardAttributes() throws Exception {
         context.setContextPath("/app");
 
         var target = forward("/app/src?a=1", "/t", null);
@@ -113,7 +113,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void theAttributesForANullValuedPathElementAreAbsent() throws Exception {
+    void shouldOmitForwardAttributeForNullValuedPathElement() throws Exception {
         var target = forward("/src", "/t", null);
 
         assertNull(target.getAttribute(RequestDispatcher.FORWARD_QUERY_STRING),
@@ -123,7 +123,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void theForwardAttributeNamesAreEnumerated() throws Exception {
+    void shouldEnumerateForwardAttributeNames() throws Exception {
         context.setContextPath("/app");
 
         var names = Collections.list(forward("/app/src?a=1", "/t", null).getAttributeNames());
@@ -135,7 +135,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void aNestedForwardKeepsTheOutermostOriginalValues() throws Exception {
+    void shouldKeepOutermostOriginalValuesOnNestedForward() throws Exception {
         context.setContextPath("/app");
         terminalIs((inner, res) -> {
             var current = (HttpServletRequest) inner;
@@ -156,7 +156,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void getAttributeAnswersNullForANullNameAtEveryForwardDepth() throws Exception {
+    void shouldAnswerNullForNullAttributeNameAtEveryForwardDepth() throws Exception {
         terminalIs((inner, res) -> {
             var current = (HttpServletRequest) inner;
             if ("/c".equals(current.getServletPath())) {
@@ -177,7 +177,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void attributesSetDuringTheForwardAreVisibleToTheForwarder() throws Exception {
+    void shouldExposeAttributesSetDuringForwardToForwarder() throws Exception {
         terminalIs((inner, res) -> inner.setAttribute("marker", "set-by-target"));
         var response = new NettyHttpServletResponse();
         var request = requestFor("/src", response);
@@ -192,21 +192,21 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     // --- Query string and parameters (Servlet 6.1 section 9.1.1) ---
 
     @Test
-    void theTargetsQueryStringReplacesTheOriginals() throws Exception {
+    void shouldReplaceOriginalQueryStringWithTargets() throws Exception {
         var target = forward("/src?a=1", "/t", "a=2&b=3");
 
         assertEquals("a=2&b=3", target.getQueryString());
     }
 
     @Test
-    void withoutAQueryOnTheDispatchPathTheOriginalsQueryStringRemains() throws Exception {
+    void shouldKeepOriginalQueryStringWhenDispatchPathHasNone() throws Exception {
         var target = forward("/src?a=1", "/t", null);
 
         assertEquals("a=1", target.getQueryString());
     }
 
     @Test
-    void theTargetsParametersTakePrecedenceAndTheOriginalsRemain() throws Exception {
+    void shouldPreferTargetsParametersWhileOriginalsRemain() throws Exception {
         var target = forward("/src?a=1", "/t", "a=2&b=3");
 
         assertEquals("2", target.getParameter("a"), "the target's value comes first");
@@ -218,7 +218,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void withoutAQueryOnTheDispatchPathTheOriginalParametersAreUnchanged() throws Exception {
+    void shouldKeepOriginalParametersWhenDispatchPathHasNoQuery() throws Exception {
         var target = forward("/src?a=1", "/t", null);
 
         assertEquals("1", target.getParameter("a"));
@@ -226,7 +226,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void theExtraParametersAreNotVisibleAfterTheForwardReturns() throws Exception {
+    void shouldNotExposeExtraParametersAfterForwardReturns() throws Exception {
         recordTerminal();
         var response = new NettyHttpServletResponse();
         var request = requestFor("/src?a=1", response);
@@ -240,7 +240,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     // --- Filter matching on a forward dispatch ---
 
     @Test
-    void aFilterMappedToForwardRunsForTheTargetPath() throws Exception {
+    void shouldRunFilterMappedToForwardForTargetPath() throws Exception {
         registerFilter("onForward", "/t", EnumSet.of(DispatcherType.FORWARD));
 
         forward("/src", "/t", null);
@@ -249,7 +249,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void aRequestOnlyFilterDoesNotRerunOnForward() throws Exception {
+    void shouldNotRerunRequestOnlyFilterOnForward() throws Exception {
         registerFilter("onRequest", "/t", EnumSet.of(DispatcherType.REQUEST));
 
         forward("/src", "/t", null);
@@ -258,7 +258,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void aForwardFilterMappedToTheSourcePathDoesNotRun() throws Exception {
+    void shouldNotRunForwardFilterMappedToSourcePath() throws Exception {
         registerFilter("onSource", "/src", EnumSet.of(DispatcherType.FORWARD));
 
         forward("/src", "/t", null);
@@ -269,7 +269,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     // --- Commit rejection and buffer reset ---
 
     @Test
-    void forwardAfterTheHeadIsWrittenThrowsIllegalStateException() throws Exception {
+    void shouldThrowIllegalStateOnForwardAfterHeadIsWritten() throws Exception {
         recordTerminal();
         List<HttpObject> parts = new ArrayList<>();
         var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, parts::add);
@@ -282,7 +282,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void forwardAfterSendErrorThrowsIllegalStateException() throws Exception {
+    void shouldThrowIllegalStateOnForwardAfterSendError() throws Exception {
         recordTerminal();
         var response = new NettyHttpServletResponse();
         var request = requestFor("/src", response);
@@ -295,7 +295,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void theTargetIsNotRunWhenTheForwardIsRejected() throws Exception {
+    void shouldNotRunTargetWhenForwardIsRejected() throws Exception {
         recordTerminal();
         var response = new NettyHttpServletResponse();
         var request = requestFor("/src", response);
@@ -308,7 +308,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void anUncommittedBufferIsClearedBeforeTheTargetRuns() throws Exception {
+    void shouldClearUncommittedBufferBeforeTargetRuns() throws Exception {
         terminalIs((request, res) ->
             res.getOutputStream().write("after".getBytes(StandardCharsets.UTF_8)));
         List<HttpObject> parts = new ArrayList<>();
@@ -325,7 +325,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void includeIsNotSupported() {
+    void shouldNotSupportInclude() {
         var response = new NettyHttpServletResponse();
         var request = requestFor("/src", response);
         var dispatcher = new NettyRequestDispatcher(factory, "/t", null);
@@ -336,21 +336,21 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     // --- Resolving a dispatcher path ---
 
     @Test
-    void aContextAbsolutePathResolvesAgainstTheContext() throws Exception {
+    void shouldResolveContextAbsolutePathAgainstContext() throws Exception {
         context.setContextPath("/app");
 
         assertEquals("/app/other", forwardVia("/app/a/b", "/other").getRequestURI());
     }
 
     @Test
-    void aRelativePathResolvesAgainstTheRequestDirectory() throws Exception {
+    void shouldResolveRelativePathAgainstRequestDirectory() throws Exception {
         context.setContextPath("/app");
 
         assertEquals("/app/a/sibling", forwardVia("/app/a/b", "sibling").getRequestURI());
     }
 
     @Test
-    void aRelativePathAtTheContextRootResolvesFromTheRoot() throws Exception {
+    void shouldResolveRelativePathAtContextRootFromRoot() throws Exception {
         context.setContextPath("/app");
 
         assertEquals("/app/index.html", forwardVia("/app", "index.html").getRequestURI(),
@@ -358,14 +358,14 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void dotDotIsNormalisedWithinTheContext() throws Exception {
+    void shouldNormaliseDotDotWithinContext() throws Exception {
         context.setContextPath("/app");
 
         assertEquals("/app/a/x", forwardVia("/app/a/b/c", "../x").getRequestURI());
     }
 
     @Test
-    void theDispatchPathsQueryStringIsKept() throws Exception {
+    void shouldKeepDispatchPathsQueryString() throws Exception {
         var target = forwardVia("/src", "/t?x=1");
 
         assertEquals("/t", target.getRequestURI());
@@ -373,7 +373,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void aPathThatEscapesTheContextResolvesToNoDispatcher() {
+    void shouldResolvePathThatEscapesContextToNoDispatcher() {
         context.setContextPath("/app");
         var request = requestFor("/app/a", new NettyHttpServletResponse());
 
@@ -381,7 +381,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void aPathParameterHidingADotSegmentResolvesToNoDispatcher() {
+    void shouldResolvePathParameterHidingDotSegmentToNoDispatcher() {
         context.setContextPath("/app");
         var request = requestFor("/app/a", new NettyHttpServletResponse());
 
@@ -390,7 +390,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void aPercentEncodedDotSegmentResolvesToNoDispatcher() {
+    void shouldResolvePercentEncodedDotSegmentToNoDispatcher() {
         context.setContextPath("/app");
         var request = requestFor("/app/a", new NettyHttpServletResponse());
 
@@ -399,7 +399,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void aMalformedEscapeResolvesToNoDispatcher() {
+    void shouldResolveMalformedEscapeToNoDispatcher() {
         var request = requestFor("/src", new NettyHttpServletResponse());
 
         assertNull(request.getRequestDispatcher("/a%zz"),
@@ -407,7 +407,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void aPercentEncodedPathWithinTheContextStillResolves() {
+    void shouldStillResolvePercentEncodedPathWithinContext() {
         var request = requestFor("/src", new NettyHttpServletResponse());
 
         assertNotNull(request.getRequestDispatcher("/a%20b"),
@@ -415,21 +415,21 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void aNullPathResolvesToNoDispatcher() {
+    void shouldResolveNullPathToNoDispatcher() {
         var request = requestFor("/src", new NettyHttpServletResponse());
 
         assertNull(request.getRequestDispatcher(null));
     }
 
     @Test
-    void aValidPathResolvesToADispatcher() {
+    void shouldResolveValidPathToDispatcher() {
         var request = requestFor("/src", new NettyHttpServletResponse());
 
         assertNotNull(request.getRequestDispatcher("/t"));
     }
 
     @Test
-    void aForwardTargetResolvesRelativePathsAgainstTheForwardedUri() throws Exception {
+    void shouldResolveRelativePathsAgainstForwardedUriInTarget() throws Exception {
         context.setContextPath("/app");
         terminalIs((inner, res) -> {
             var current = (HttpServletRequest) inner;
@@ -449,7 +449,7 @@ class NettyRequestDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void aContentLengthSetBeforeTheForwardDoesNotSurviveIt() throws Exception {
+    void shouldNotLetContentLengthSetBeforeForwardSurviveIt() throws Exception {
         terminalIs((request, res) ->
             res.getOutputStream().write("target".getBytes(StandardCharsets.UTF_8)));
         var response = new NettyHttpServletResponse();

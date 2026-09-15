@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class NettyHttpServletResponseTest {
 
     @Test
-    void sendErrorDiscardsAnyPreviouslyWrittenBody() throws Exception {
+    void shouldDiscardPreviouslyWrittenBodyOnSendError() throws Exception {
         var response = new NettyHttpServletResponse();
         response.getWriter().write("partial output written before the error");
 
@@ -39,7 +39,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void resetBufferClearsStaleContentLengthHeader() throws Exception {
+    void shouldClearStaleContentLengthHeaderOnResetBuffer() throws Exception {
         var response = new NettyHttpServletResponse();
         response.setContentLength(9);
         response.getOutputStream().write("discarded".getBytes(StandardCharsets.UTF_8));
@@ -55,7 +55,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void sendErrorClearsStaleContentLengthHeader() throws Exception {
+    void shouldClearStaleContentLengthHeaderOnSendError() throws Exception {
         var response = new NettyHttpServletResponse();
         response.setContentLength(100);
         response.getWriter().write("a body that will be discarded by sendError");
@@ -72,7 +72,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void sendErrorRecordsTheStatusAndTheMessageItWasGiven() throws Exception {
+    void shouldRecordGivenStatusAndMessageOnSendError() throws Exception {
         var response = new NettyHttpServletResponse();
 
         response.sendError(HttpResponseStatus.FORBIDDEN.code(), "no entry");
@@ -82,7 +82,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void sendErrorWithoutAMessageRecordsNone() throws Exception {
+    void shouldRecordNoMessageOnSendErrorWithoutOne() throws Exception {
         var response = new NettyHttpServletResponse();
 
         response.sendError(HttpResponseStatus.NOT_FOUND.code());
@@ -92,7 +92,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void resetTakesBackTheErrorState() throws Exception {
+    void shouldTakeBackErrorStateOnReset() throws Exception {
         var response = new NettyHttpServletResponse();
         response.sendError(HttpResponseStatus.FORBIDDEN.code(), "no entry");
 
@@ -103,7 +103,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void reopeningForAnErrorPageKeepsTheHeadersAlreadyWritten() throws Exception {
+    void shouldKeepHeadersAlreadyWrittenWhenReopeningForErrorPage() throws Exception {
         var response = new NettyHttpServletResponse();
         response.addCookie(new Cookie("JSESSIONID", "abc"));
         response.getWriter().write("half a page written before the failure");
@@ -126,7 +126,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void reopeningForAnErrorPageIsRefusedOnceTheHeadIsOnTheWire() throws Exception {
+    void shouldRefuseReopeningForErrorPageOnceHeadIsOnWire() throws Exception {
         List<HttpObject> written = new ArrayList<>();
         var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, written::add);
         response.setBufferSize(1);
@@ -137,7 +137,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void sendErrorCommitsTheResponse() throws Exception {
+    void shouldCommitResponseOnSendError() throws Exception {
         var response = new NettyHttpServletResponse();
 
         response.sendError(HttpResponseStatus.NOT_FOUND.code());
@@ -146,7 +146,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void headersSetAfterSendErrorAreIgnored() throws Exception {
+    void shouldIgnoreHeadersSetAfterSendError() throws Exception {
         var response = new NettyHttpServletResponse();
         response.sendError(HttpResponseStatus.NOT_FOUND.code());
 
@@ -157,7 +157,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void statusSetAfterSendErrorIsIgnored() throws Exception {
+    void shouldIgnoreStatusSetAfterSendError() throws Exception {
         var response = new NettyHttpServletResponse();
         response.sendError(HttpResponseStatus.NOT_FOUND.code());
 
@@ -168,7 +168,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void sendRedirectCommitsTheResponseAndKeepsLocation() throws Exception {
+    void shouldCommitResponseAndKeepLocationOnSendRedirect() throws Exception {
         var response = new NettyHttpServletResponse();
 
         response.sendRedirect("/elsewhere", HttpResponseStatus.FOUND.code(), true);
@@ -180,7 +180,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void resetBufferDiscardsContentBufferedInTheWriter() throws Exception {
+    void shouldDiscardContentBufferedInWriterOnResetBuffer() throws Exception {
         var response = new NettyHttpServletResponse();
         /*
          * Writer uses autoFlush=false, so these chars sit in the writer's encoder buffer,
@@ -195,7 +195,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void addCookieWritesSetCookieHeader() throws Exception {
+    void shouldWriteSetCookieHeaderOnAddCookie() throws Exception {
         var response = new NettyHttpServletResponse();
         response.addCookie(new Cookie("foo", "bar"));
 
@@ -204,7 +204,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void addCookieWritesOneHeaderLinePerCookie() throws Exception {
+    void shouldWriteOneHeaderLinePerCookieOnAddCookie() throws Exception {
         var response = new NettyHttpServletResponse();
         response.addCookie(new Cookie("a", "1"));
         response.addCookie(new Cookie("b", "2"));
@@ -214,7 +214,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void addCookieWritesEmptyValue() throws Exception {
+    void shouldWriteEmptyCookieValueOnAddCookie() throws Exception {
         var response = new NettyHttpServletResponse();
         response.addCookie(new Cookie("empty", ""));
 
@@ -223,7 +223,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void addCookieWritesEmptyStringForNullValue() throws Exception {
+    void shouldWriteEmptyStringForNullCookieValueOnAddCookie() throws Exception {
         var response = new NettyHttpServletResponse();
         // The standard delete-cookie idiom passes a null value; jakarta Cookie permits it.
         response.addCookie(new Cookie("logout", null));
@@ -233,7 +233,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void addCookieWritesAttributesWithSessionGuard() throws Exception {
+    void shouldWriteCookieAttributesWithSessionGuardOnAddCookie() throws Exception {
         var response = new NettyHttpServletResponse();
         Cookie cookie = new Cookie("sid", "xyz");
         cookie.setPath("/app");
@@ -253,7 +253,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void addCookieOmitsMaxAgeForSessionCookie() throws Exception {
+    void shouldOmitMaxAgeForSessionCookieOnAddCookie() throws Exception {
         var response = new NettyHttpServletResponse();
         // Default maxAge is -1 (session cookie): must not emit Max-Age.
         response.addCookie(new Cookie("sid", "xyz"));
@@ -263,7 +263,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void addCookieMapsSameSiteCaseInsensitively() throws Exception {
+    void shouldMapSameSiteCaseInsensitivelyOnAddCookie() throws Exception {
         var response = new NettyHttpServletResponse();
         Cookie cookie = new Cookie("sid", "xyz");
         cookie.setAttribute("SameSite", "strict");
@@ -274,7 +274,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void addCookieTrimsPaddedSameSite() throws Exception {
+    void shouldTrimPaddedSameSiteOnAddCookie() throws Exception {
         var response = new NettyHttpServletResponse();
         Cookie cookie = new Cookie("sid", "xyz");
         // A padded value must not silently drop SameSite (weakening the intended policy).
@@ -286,7 +286,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void addCookieAppliesTheResolverWhenTheCookieDeclaresNoSameSite() throws Exception {
+    void shouldApplyResolverWhenAddedCookieDeclaresNoSameSite() throws Exception {
         var response = new NettyHttpServletResponse(cookie -> "Strict");
         response.addCookie(new Cookie("XSRF-TOKEN", "t"));
 
@@ -295,7 +295,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void addCookiePrefersAnExplicitSameSiteOverTheResolver() throws Exception {
+    void shouldPreferExplicitSameSiteOverResolverOnAddCookie() throws Exception {
         var response = new NettyHttpServletResponse(cookie -> "None");
         Cookie cookie = new Cookie("XSRF-TOKEN", "t");
         cookie.setAttribute("SameSite", "Lax");
@@ -308,7 +308,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void addCookieOmitsSameSiteWhenTheResolverDeclines() throws Exception {
+    void shouldOmitSameSiteWhenResolverDeclinesOnAddCookie() throws Exception {
         var response = new NettyHttpServletResponse(cookie -> null);
         response.addCookie(new Cookie("XSRF-TOKEN", "t"));
 
@@ -317,7 +317,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void addCookieMapsPartitionedAttribute() throws Exception {
+    void shouldMapPartitionedAttributeOnAddCookie() throws Exception {
         var response = new NettyHttpServletResponse();
         Cookie cookie = new Cookie("sid", "xyz");
         // CHIPS: presence of the Partitioned attribute (empty value) marks a partitioned cookie.
@@ -329,7 +329,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void addCookieThrowsForInvalidCookieValue() {
+    void shouldThrowForInvalidCookieValueOnAddCookie() {
         var response = new NettyHttpServletResponse();
         // The space is an invalid RFC 6265 cookie-octet, so ServerCookieEncoder.STRICT rejects it.
         assertThrows(IllegalArgumentException.class,
@@ -343,7 +343,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void setCookieReplacesAnEarlierCookieOfTheSameName() throws Exception {
+    void shouldReplaceEarlierCookieOfSameNameOnSetCookie() throws Exception {
         var response = new NettyHttpServletResponse();
         response.setCookie(new Cookie("sid", "first"));
 
@@ -355,7 +355,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void setCookieLeavesCookiesOfOtherNamesAlone() throws Exception {
+    void shouldLeaveCookiesOfOtherNamesAloneOnSetCookie() throws Exception {
         var response = new NettyHttpServletResponse();
         response.addCookie(new Cookie("theme", "dark"));
 
@@ -367,7 +367,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void setCookieDoesNotDropACookieWhoseNameMerelyStartsWithTheSameText() throws Exception {
+    void shouldNotDropCookieWhoseNameStartsWithSameTextOnSetCookie() throws Exception {
         // The scan matches on "name=", so a longer name sharing a prefix must survive.
         var response = new NettyHttpServletResponse();
         response.addCookie(new Cookie("SIDE", "kept"));
@@ -380,7 +380,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void setCookieWithNoPriorHeaderJustAdds() throws Exception {
+    void shouldJustAddOnSetCookieWithNoPriorHeader() throws Exception {
         var response = new NettyHttpServletResponse();
 
         response.setCookie(new Cookie("sid", "xyz"));
@@ -389,7 +389,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void setCookieIsIgnoredOnceCommitted() throws Exception {
+    void shouldIgnoreSetCookieOnceCommitted() throws Exception {
         /*
          * The Servlet contract says a cookie written after the commit has no effect. A cookie is seeded
          * before the commit deliberately: without one, "no Set-Cookie appeared" is satisfied by
@@ -411,7 +411,7 @@ class NettyHttpServletResponseTest {
     // --- streaming: the buffer, the commit, and what the wire sees (issue #37) ---
 
     @Test
-    void completeWritesASingleFullResponseWhenNothingWasFlushed() throws Exception {
+    void shouldWriteSingleFullResponseOnCompleteWhenNothingWasFlushed() throws Exception {
         var wire = new RecordingWriter();
         var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, wire);
         response.getOutputStream().write("hi".getBytes(StandardCharsets.UTF_8));
@@ -425,7 +425,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void outputStreamFlushesToTheWireOnceTheBufferIsFull() throws Exception {
+    void shouldFlushOutputStreamToWireOnceBufferIsFull() throws Exception {
         var wire = new RecordingWriter();
         var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, wire);
         response.setBufferSize(8);
@@ -439,7 +439,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void writerFlushesToTheWireOnceTheBufferIsFull() throws Exception {
+    void shouldFlushWriterToWireOnceBufferIsFull() throws Exception {
         var wire = new RecordingWriter();
         var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, wire);
         response.setBufferSize(8);
@@ -452,7 +452,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void outputStreamFlushCommitsWhatIsBuffered() throws Exception {
+    void shouldCommitBufferedContentOnOutputStreamFlush() throws Exception {
         var wire = new RecordingWriter();
         var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, wire);
 
@@ -466,7 +466,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void writerFlushCommitsWhatIsBuffered() throws Exception {
+    void shouldCommitBufferedContentOnWriterFlush() throws Exception {
         var wire = new RecordingWriter();
         var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, wire);
 
@@ -478,7 +478,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void outputStreamCloseCommitsWhatIsBuffered() throws Exception {
+    void shouldCommitBufferedContentOnOutputStreamClose() throws Exception {
         var wire = new RecordingWriter();
         var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, wire);
 
@@ -493,7 +493,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void getBufferSizeReportsTheConfiguredSize() {
+    void shouldReportConfiguredSizeFromGetBufferSize() {
         var response = new NettyHttpServletResponse();
         response.setBufferSize(4096);
 
@@ -501,7 +501,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void setBufferSizeThrowsOnceContentHasBeenWritten() throws Exception {
+    void shouldThrowOnSetBufferSizeOnceContentHasBeenWritten() throws Exception {
         var response = new NettyHttpServletResponse();
         response.getOutputStream().write('x');
 
@@ -509,7 +509,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void flushBufferFlushesTheCachedWriterBeforeCommitting() throws Exception {
+    void shouldFlushCachedWriterBeforeCommittingOnFlushBuffer() throws Exception {
         var wire = new RecordingWriter();
         var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, wire);
         response.getWriter().print("event one");
@@ -521,7 +521,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void isCommittedReportsTrueOnceTheHeadIsOnTheWire() throws Exception {
+    void shouldReportCommittedOnceHeadIsOnWire() throws Exception {
         var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, new RecordingWriter());
         assertFalse(response.isCommitted());
 
@@ -531,7 +531,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void setHeaderIsIgnoredOnceTheHeadIsOnTheWire() throws Exception {
+    void shouldIgnoreSetHeaderOnceHeadIsOnWire() throws Exception {
         var wire = new RecordingWriter();
         var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, wire);
         response.flushBuffer();
@@ -542,7 +542,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void resetBufferThrowsOnceTheHeadIsOnTheWire() throws Exception {
+    void shouldThrowOnResetBufferOnceHeadIsOnWire() throws Exception {
         var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, new RecordingWriter());
         response.flushBuffer();
 
@@ -550,7 +550,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void sendErrorThrowsOnceTheHeadIsOnTheWire() throws Exception {
+    void shouldThrowOnSendErrorOnceHeadIsOnWire() throws Exception {
         var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, new RecordingWriter());
         response.flushBuffer();
 
@@ -559,7 +559,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void sendRedirectThrowsOnceTheHeadIsOnTheWire() throws Exception {
+    void shouldThrowOnSendRedirectOnceHeadIsOnWire() throws Exception {
         var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, new RecordingWriter());
         response.flushBuffer();
 
@@ -568,7 +568,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void sendErrorThenResetStillWorksWhenNothingWasFlushed() throws Exception {
+    void shouldStillResetAfterSendErrorWhenNothingWasFlushed() throws Exception {
         var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, new RecordingWriter());
         response.sendError(HttpResponseStatus.FORBIDDEN.code());
 
@@ -577,7 +577,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void consecutiveChunksDoNotShareABuffer() throws Exception {
+    void shouldNotShareBufferBetweenConsecutiveChunks() throws Exception {
         var wire = new RecordingWriter();
         var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, wire);
         response.getOutputStream().write("first".getBytes(StandardCharsets.UTF_8));
@@ -591,7 +591,7 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
-    void completeFlushesTheRemainderAndTerminatesTheStream() throws Exception {
+    void shouldFlushRemainderAndTerminateStreamOnComplete() throws Exception {
         var wire = new RecordingWriter();
         var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, wire);
         response.getOutputStream().write("head".getBytes(StandardCharsets.UTF_8));

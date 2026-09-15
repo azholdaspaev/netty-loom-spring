@@ -37,7 +37,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
         context.setErrorPageResolver((status, failure, rootCause) -> path);
     }
 
-    private String reportOnAStreamedResponse(Throwable failure) throws Exception {
+    private String reportOnStreamedResponse(Throwable failure) throws Exception {
         pageIs("/error");
         List<HttpObject> written = new ArrayList<>();
         var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, written::add);
@@ -57,7 +57,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void noRegisteredPageMeansNothingIsDispatched() throws Exception {
+    void shouldDispatchNothingWhenNoPageIsRegistered() throws Exception {
         var response = new NettyHttpServletResponse();
         var request = requestFor("/boom", response);
         response.sendError(HttpResponseStatus.NOT_FOUND.code());
@@ -68,7 +68,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void aResponseThatNeverErroredIsNotDispatched() throws Exception {
+    void shouldNotDispatchResponseThatNeverErrored() throws Exception {
         pageIs("/error");
         var response = new NettyHttpServletResponse();
         var request = requestFor("/fine", response);
@@ -78,7 +78,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void aResolvedPageRunsWithDispatcherTypeError() throws Exception {
+    void shouldRunResolvedPageWithDispatcherTypeError() throws Exception {
         pageIs("/error");
         var response = new NettyHttpServletResponse();
         var request = requestFor("/boom", response);
@@ -92,7 +92,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void theErrorPageSeesTheStatusMethodUriAndQueryAttributes() throws Exception {
+    void shouldExposeStatusMethodUriAndQueryAttributesToErrorPage() throws Exception {
         pageIs("/error");
         var response = new NettyHttpServletResponse();
         var request = requestFor("/boom?q=1", response);
@@ -109,7 +109,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void aNullMessageReachesTheErrorPageAsAnEmptyString() throws Exception {
+    void shouldPassNullMessageToErrorPageAsEmptyString() throws Exception {
         pageIs("/error");
         var response = new NettyHttpServletResponse();
         var request = requestFor("/boom", response);
@@ -122,7 +122,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void theErrorPageIsDispatchedAsAGetCarryingTheOriginalMethod() throws Exception {
+    void shouldDispatchErrorPageAsGetCarryingOriginalMethod() throws Exception {
         pageIs("/error");
         var response = new NettyHttpServletResponse();
         var request = requestFor(HttpMethod.POST, "/boom", response);
@@ -136,7 +136,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void theErrorPageDoesNotSeeTheForwardAttributes() throws Exception {
+    void shouldNotExposeForwardAttributesToErrorPage() throws Exception {
         pageIs("/error");
         var response = new NettyHttpServletResponse();
         var request = requestFor("/boom", response);
@@ -148,7 +148,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void theRootCauseOfAServletExceptionIsWhatTheErrorPageIsToldAbout() throws Exception {
+    void shouldTellErrorPageRootCauseOfServletException() throws Exception {
         pageIs("/error");
         var response = new NettyHttpServletResponse();
         var request = requestFor("/boom", response);
@@ -163,7 +163,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void thePageIsResolvedFromTheFailureAsThrownBeforeItsRootCause() throws Exception {
+    void shouldResolvePageFromFailureAsThrownBeforeItsRootCause() throws Exception {
         context.setErrorPageResolver((status, failure, rootCause) ->
             failure instanceof ServletException ? "/wrapper" : "/root");
         var response = new NettyHttpServletResponse();
@@ -176,7 +176,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void aPageRegisteredForTheRootCauseAloneIsFoundUnderItsWrapper() throws Exception {
+    void shouldFindPageRegisteredForRootCauseAloneUnderItsWrapper() throws Exception {
         context.setErrorPageResolver((status, failure, rootCause) ->
             rootCause instanceof IllegalStateException ? "/root" : null);
         var response = new NettyHttpServletResponse();
@@ -189,7 +189,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void aFailureOnAnOkResponseIsReportedAsFiveHundred() throws Exception {
+    void shouldReportFailureOnOkResponseAsFiveHundred() throws Exception {
         pageIs("/error");
         var response = new NettyHttpServletResponse();
         var request = requestFor("/boom", response);
@@ -201,7 +201,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void aFailureOverridesTheStatusTheHandlerAlreadySet() throws Exception {
+    void shouldOverrideStatusHandlerAlreadySetOnFailure() throws Exception {
         pageIs("/error");
         var response = new NettyHttpServletResponse();
         var request = requestFor("/boom", response);
@@ -214,7 +214,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void aFailureIsReportedWithTheStatusItsTypeMeans() throws Exception {
+    void shouldReportFailureWithStatusItsTypeMeans() throws Exception {
         pageIs("/error");
         var response = new NettyHttpServletResponse();
         var request = requestFor("/boom", response);
@@ -226,7 +226,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void anUnsupportedOperationIsReportedAsNotImplemented() throws Exception {
+    void shouldReportUnsupportedOperationAsNotImplemented() throws Exception {
         pageIs("/error");
         var response = new NettyHttpServletResponse();
         var request = requestFor("/boom", response);
@@ -238,7 +238,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void aWrappedFailureIsReportedAsFiveHundredWhileItsRootCauseReachesThePage() throws Exception {
+    void shouldReportWrappedFailureAsFiveHundredWithRootCauseOnPage() throws Exception {
         pageIs("/error");
         var response = new NettyHttpServletResponse();
         var request = requestFor("/boom", response);
@@ -252,7 +252,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void theBodyWrittenBeforeTheFailureIsDiscardedButTheHeadersSurvive() throws Exception {
+    void shouldDiscardBodyWrittenBeforeFailureWhileHeadersSurvive() throws Exception {
         pageIs("/error");
         terminalIs((request, response) -> {
             try {
@@ -276,7 +276,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void aPageThatCanonicalisesOutOfTheContextIsNotDispatched() throws Exception {
+    void shouldNotDispatchPageThatCanonicalisesOutOfContext() throws Exception {
         pageIs("/../escape");
         var response = new NettyHttpServletResponse();
         var request = requestFor("/boom", response);
@@ -287,7 +287,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void aResponseWhoseHeadIsOnTheWireIsNotDispatched() throws Exception {
+    void shouldNotDispatchResponseWhoseHeadIsOnWire() throws Exception {
         pageIs("/error");
         List<HttpObject> written = new ArrayList<>();
         var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, written::add);
@@ -301,23 +301,23 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void aClientThatLeftMidResponseIsNotWarnedAbout() throws Exception {
-        String logged = reportOnAStreamedResponse(new ClosedChannelException());
+    void shouldNotWarnAboutClientThatLeftMidResponse() throws Exception {
+        String logged = reportOnStreamedResponse(new ClosedChannelException());
 
         assertFalse(logged.contains("WARN"),
             "a client that hung up mid-download is not a fault this server owns; log was: " + logged);
     }
 
     @Test
-    void aServerFaultMidResponseIsStillWarnedAbout() throws Exception {
-        String logged = reportOnAStreamedResponse(new IllegalStateException("bang"));
+    void shouldStillWarnAboutServerFaultMidResponse() throws Exception {
+        String logged = reportOnStreamedResponse(new IllegalStateException("bang"));
 
         assertTrue(logged.contains("WARN"),
             "a page the server owed and cannot send is worth saying so; log was: " + logged);
     }
 
     @Test
-    void filtersMappedToTheErrorDispatchRunAndRequestOnlyFiltersDoNot() throws Exception {
+    void shouldRunErrorMappedFiltersNotRequestOnlyFilters() throws Exception {
         pageIs("/error");
         registerFilter("error-filter", "/*", EnumSet.of(DispatcherType.ERROR));
         registerFilter("request-filter", "/*", EnumSet.of(DispatcherType.REQUEST));
