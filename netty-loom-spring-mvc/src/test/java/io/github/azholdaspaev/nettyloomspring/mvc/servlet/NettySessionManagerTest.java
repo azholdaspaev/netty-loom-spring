@@ -521,6 +521,18 @@ class NettySessionManagerTest {
             manager.readSessionId(cookies(SESSION_COOKIE, "", SESSION_COOKIE, live.getId())));
     }
 
+    @Test
+    void shouldSkipTrailingEmptyDuplicateOnReadSessionIdFallback() {
+        /*
+         * Issue #100: with no candidate live the last match stands, and "JSESSIONID=" is a match. Letting
+         * it win reports "" where the client presented a real, merely expired, id -- the one an audit
+         * trail needs to correlate the report with a server-side session.
+         */
+        String resolved = manager.readSessionId(cookies(SESSION_COOKIE, "DEADBEEF", SESSION_COOKIE, ""));
+
+        assertEquals("DEADBEEF", resolved, "an empty duplicate must not displace the id the client presented");
+    }
+
     // --- Container-registered session listeners (issue #17) ---
 
     /**
