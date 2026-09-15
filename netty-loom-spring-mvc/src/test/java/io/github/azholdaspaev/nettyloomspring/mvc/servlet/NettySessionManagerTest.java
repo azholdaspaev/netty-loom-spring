@@ -533,6 +533,12 @@ class NettySessionManagerTest {
         assertEquals("DEADBEEF", resolved, "an empty duplicate must not displace the id the client presented");
     }
 
+    @Test
+    void shouldReportEmptyIdOnReadSessionIdWhenOnlyEmptyIsPresented() {
+        assertEquals("", manager.readSessionId(cookies(SESSION_COOKIE, "", SESSION_COOKIE, "")),
+            "an empty value is skipped only in favour of another match, not dropped; whether it counts as presented at all is #94");
+    }
+
     // --- Container-registered session listeners (issue #17) ---
 
     /**
