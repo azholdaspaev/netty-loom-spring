@@ -69,7 +69,7 @@ class ListenerIntegrationTest {
     }
 
     @Test
-    void everyRequestIsBracketedByTheRequestListener() {
+    void shouldBracketEveryRequestWithRequestListener() {
         call("/listener/ping");
 
         assertFired("requestInitialized", 1);
@@ -77,7 +77,7 @@ class ListenerIntegrationTest {
     }
 
     @Test
-    void creatingASessionFiresSessionCreated() {
+    void shouldFireSessionCreatedOnSessionCreation() {
         assertNotNull(call("/listener/session/create"), "creating a session must emit a JSESSIONID cookie");
 
         assertFired("sessionCreated", 1);
@@ -85,7 +85,7 @@ class ListenerIntegrationTest {
     }
 
     @Test
-    void invalidatingASessionFiresSessionDestroyed() {
+    void shouldFireSessionDestroyedOnSessionInvalidation() {
         String sessionId = call("/listener/session/create");
         listener.reset();
 
@@ -96,7 +96,7 @@ class ListenerIntegrationTest {
     }
 
     @Test
-    void sessionAttributeMutationsFireAddedReplacedAndRemoved() {
+    void shouldFireAddedReplacedAndRemovedOnSessionAttributeMutation() {
         call("/listener/session/attributes");
 
         assertFired("sessionAttributeAdded:value", 1);
@@ -105,7 +105,7 @@ class ListenerIntegrationTest {
     }
 
     @Test
-    void requestAttributeMutationsFireAddedReplacedAndRemoved() {
+    void shouldFireAddedReplacedAndRemovedOnRequestAttributeMutation() {
         call("/listener/request/attributes");
 
         assertFired("requestAttributeAdded:stage", 1);
@@ -114,7 +114,7 @@ class ListenerIntegrationTest {
     }
 
     @Test
-    void springsOwnRequestAttributesAlsoReachTheListener() {
+    void shouldDeliverSpringsOwnRequestAttributesToListener() {
         /*
          * DispatcherServlet always publishes its WebApplicationContext as a request attribute, so this
          * fires without the fixture setting anything.
@@ -126,7 +126,7 @@ class ListenerIntegrationTest {
     }
 
     @Test
-    void rotatingTheSessionIdFiresSessionIdChanged() {
+    void shouldFireSessionIdChangedOnSessionIdRotation() {
         /*
          * changeSessionId() is what Spring Security calls on every authentication, so this is the event a
          * session registry needs to keep tracking a user across the login boundary.

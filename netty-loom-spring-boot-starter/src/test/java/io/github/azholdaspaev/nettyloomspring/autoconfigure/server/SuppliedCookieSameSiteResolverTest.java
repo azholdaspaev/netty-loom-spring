@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class SuppliedCookieSameSiteResolverTest {
 
     @Test
-    void theFirstSupplierWithAnOpinionWins() {
+    void shouldPreferFirstSupplierWithOpinion() {
         var resolver = new SuppliedCookieSameSiteResolver(List.of(
             CookieSameSiteSupplier.ofNone().whenHasName("tracker"),
             CookieSameSiteSupplier.ofStrict()));
@@ -29,7 +29,7 @@ class SuppliedCookieSameSiteResolverTest {
     }
 
     @Test
-    void aSupplierWithNoOpinionIsSkipped() {
+    void shouldSkipSupplierWithNoOpinion() {
         var resolver = new SuppliedCookieSameSiteResolver(List.of(
             CookieSameSiteSupplier.ofNone().whenHasName("other"),
             CookieSameSiteSupplier.ofStrict()));
@@ -38,7 +38,7 @@ class SuppliedCookieSameSiteResolverTest {
     }
 
     @Test
-    void anOmittedSameSiteStopsAtThatSupplierAndSuppressesTheRest() {
+    void shouldStopAtOmittedSameSiteAndSuppressRemainingSuppliers() {
         /*
          * SameSite.OMITTED is an opinion -- "emit nothing" -- not an abstention, so the search ends
          * there. Reading past it would let the next supplier's Strict appear where Tomcat emits no
@@ -52,7 +52,7 @@ class SuppliedCookieSameSiteResolverTest {
     }
 
     @Test
-    void noSupplierWithAnOpinionYieldsNoSameSite() {
+    void shouldYieldNoSameSiteWhenNoSupplierHasOpinion() {
         var resolver = new SuppliedCookieSameSiteResolver(List.of(
             CookieSameSiteSupplier.ofStrict().whenHasName("other")));
 
@@ -60,7 +60,7 @@ class SuppliedCookieSameSiteResolverTest {
     }
 
     @Test
-    void theSupplierListIsCopiedOnConstruction() {
+    void shouldCopySupplierListOnConstruction() {
         // ServletWebServerSettings.getCookieSameSiteSuppliers() hands back its live field, not a copy.
         var suppliers = new ArrayList<CookieSameSiteSupplier>();
         suppliers.add(CookieSameSiteSupplier.ofLax());

@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class RegisteredErrorPageResolverTest {
 
     @Test
-    void theGlobalPageAnswersAnyStatus() {
+    void shouldAnswerAnyStatusWithGlobalPage() {
         var resolver = new RegisteredErrorPageResolver(List.of(new ErrorPage("/error")));
 
         assertEquals("/error", resolver.resolve(404, null, null));
@@ -24,7 +24,7 @@ class RegisteredErrorPageResolverTest {
     }
 
     @Test
-    void aStatusSpecificPageBeatsTheGlobalOne() {
+    void shouldPreferStatusSpecificPageOverGlobalOne() {
         var resolver = new RegisteredErrorPageResolver(List.of(
             new ErrorPage("/error"),
             new ErrorPage(HttpStatus.NOT_FOUND, "/404")));
@@ -34,7 +34,7 @@ class RegisteredErrorPageResolverTest {
     }
 
     @Test
-    void anExceptionPageIsFoundByWalkingSuperclasses() {
+    void shouldFindExceptionPageByWalkingSuperclasses() {
         var resolver = new RegisteredErrorPageResolver(List.of(new ErrorPage(IOException.class, "/io")));
 
         var failure = new FileNotFoundException();
@@ -42,7 +42,7 @@ class RegisteredErrorPageResolverTest {
     }
 
     @Test
-    void anExceptionPageBeatsTheStatusPageForTheSameFailure() {
+    void shouldPreferExceptionPageOverStatusPageForSameFailure() {
         var resolver = new RegisteredErrorPageResolver(List.of(
             new ErrorPage(HttpStatus.INTERNAL_SERVER_ERROR, "/500"),
             new ErrorPage(IllegalStateException.class, "/ise")));
@@ -52,7 +52,7 @@ class RegisteredErrorPageResolverTest {
     }
 
     @Test
-    void anExceptionWithNoPageOfItsOwnFallsBackToTheStatusPage() {
+    void shouldFallBackToStatusPageForExceptionWithNoPageOfItsOwn() {
         var resolver = new RegisteredErrorPageResolver(List.of(
             new ErrorPage(HttpStatus.INTERNAL_SERVER_ERROR, "/500"),
             new ErrorPage(IOException.class, "/io")));
@@ -62,7 +62,7 @@ class RegisteredErrorPageResolverTest {
     }
 
     @Test
-    void aPageForTheServletExceptionBeatsOneForItsRootCause() {
+    void shouldPreferPageForServletExceptionOverOneForItsRootCause() {
         var resolver = new RegisteredErrorPageResolver(List.of(
             new ErrorPage(ServletException.class, "/se"),
             new ErrorPage(IllegalStateException.class, "/ise")));
@@ -72,7 +72,7 @@ class RegisteredErrorPageResolverTest {
     }
 
     @Test
-    void noRegisteredPagesResolvesToNothing() {
+    void shouldResolveToNothingWithNoRegisteredPages() {
         var resolver = new RegisteredErrorPageResolver(List.of());
 
         assertNull(resolver.resolve(404, null, null));

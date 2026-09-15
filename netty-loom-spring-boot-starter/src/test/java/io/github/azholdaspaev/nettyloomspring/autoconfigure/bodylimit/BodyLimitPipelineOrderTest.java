@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class BodyLimitPipelineOrderTest {
 
     @Test
-    void shouldPlaceTheBodyLimitBelowDecoderFailureAndAboveTheDispatcher() {
+    void shouldPlaceBodyLimitBelowDecoderFailureAndAboveDispatcher() {
         try (ConfigurableApplicationContext context = new SpringApplicationBuilder(SmokeNettyLoomApplication.class)
             .properties("server.port=0")
             .run()) {

@@ -42,7 +42,7 @@ class SlowHandlerNotTimedOutTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void shouldAnswerAHandlerThatRunsLongerThanTheReadTimeout() throws Exception {
+    void shouldAnswerHandlerThatRunsLongerThanReadTimeout() throws Exception {
         /*
          * The gate has teeth only while the handler outlasts the timeout. Raising the property past the
          * delay would leave this passing having asserted nothing at all.

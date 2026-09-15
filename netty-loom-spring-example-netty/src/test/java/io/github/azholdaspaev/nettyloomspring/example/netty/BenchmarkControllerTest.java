@@ -45,7 +45,7 @@ class BenchmarkControllerTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void pingReturnsPong() {
+    void shouldReturnPongFromPing() {
         restTestClient.get().uri("/ping")
             .exchange()
             .expectStatus().isOk()
@@ -54,7 +54,7 @@ class BenchmarkControllerTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void workReturnsJsonAfterSimulatedBlockingCall() {
+    void shouldReturnJsonFromWorkAfterSimulatedBlockingCall() {
         restTestClient.get().uri("/work")
             .exchange()
             .expectStatus().isOk()
@@ -63,7 +63,7 @@ class BenchmarkControllerTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void workSecuredRedirectsToLoginWhenUnauthenticated() {
+    void shouldRedirectWorkSecuredToLoginWhenUnauthenticated() {
         restTestClient.get().uri("/work-secured")
             .exchange()
             .expectStatus().isFound()
@@ -72,7 +72,7 @@ class BenchmarkControllerTest {
 
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
-    void workSecuredReturnsJsonAfterFormLoginOnTheRotatedSessionCookie() {
+    void shouldReturnJsonFromWorkSecuredAfterFormLoginOnRotatedCookie() {
         String postLoginSessionId = logIn();
 
         /*
@@ -87,7 +87,7 @@ class BenchmarkControllerTest {
 
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
-    void loginLeavesTheStoredCredentialAlone() {
+    void shouldLeaveStoredCredentialAloneOnLogin() {
         // issue #111
         String before = userDetailsService.loadUserByUsername("bench").getPassword();
 

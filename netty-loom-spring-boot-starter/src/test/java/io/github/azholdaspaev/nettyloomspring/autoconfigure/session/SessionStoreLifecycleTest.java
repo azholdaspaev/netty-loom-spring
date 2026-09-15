@@ -42,7 +42,7 @@ class SessionStoreLifecycleTest {
     }
 
     @Test
-    void stopExpiresTheLiveSessionsWhileTheApplicationBeansAreStillUp() {
+    void shouldExpireLiveSessionsOnStopWhileApplicationBeansAreUp() {
         NettyHttpSession session = servletContext.getSessionManager().create();
 
         lifecycle.stop();
@@ -57,7 +57,7 @@ class SessionStoreLifecycleTest {
     }
 
     @Test
-    void startingAgainAfterAStopLetsTheStoreServeSessions() {
+    void shouldServeSessionsFromStoreAfterStopThenStart() {
         servletContext.getSessionManager().create();
         lifecycle.stop();
 
@@ -70,7 +70,7 @@ class SessionStoreLifecycleTest {
     }
 
     @Test
-    void aStopWithoutARestartLeavesTheStoreClosed() {
+    void shouldLeaveStoreClosedAfterStopWithoutRestart() {
         /*
          * The other half of the pair: reopening must be something start() does, not something close()
          * forgot to do. Without this, "restart works" would also be satisfied by never closing at all.
@@ -81,13 +81,13 @@ class SessionStoreLifecycleTest {
     }
 
     @Test
-    void theStoreIsNotPauseable() {
+    void shouldReportStoreNotPauseable() {
         assertFalse(lifecycle.isPauseable(),
             "sessions may only be torn down when the server they belong to is going down too");
     }
 
     @Test
-    void theStoreStopsAfterTheWebServerHasDrained() {
+    void shouldStopStoreAfterWebServerHasDrained() {
         /*
          * stopBeans sorts descending, so a lower phase stops later. Asserted as an inequality against
          * Boot's own constant rather than as an equality with our arithmetic, which would restate the

@@ -43,7 +43,7 @@ class RequestBodyStreamingIntegrationTest {
 
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
-    void shouldHandTheHandlerEachChunkBeforeTheNextIsSent() throws Exception {
+    void shouldHandHandlerEachChunkBeforeNextIsSent() throws Exception {
         try (Socket socket = connect()) {
             RawHttpClient.send(socket, "POST /upload/gated HTTP/1.1",
                 "Host: localhost", "Transfer-Encoding: chunked");
@@ -62,7 +62,7 @@ class RequestBodyStreamingIntegrationTest {
 
     @Test
     @Timeout(value = 30, unit = TimeUnit.SECONDS)
-    void shouldReadABodyLargerThanTheConnectionsQueueBound() throws Exception {
+    void shouldReadBodyLargerThanConnectionsQueueBound() throws Exception {
         try (Socket socket = connect()) {
             RawHttpClient.send(socket, "POST /upload/count HTTP/1.1",
                 "Host: localhost", "Content-Length: " + LARGE_BODY_BYTES);
@@ -77,7 +77,7 @@ class RequestBodyStreamingIntegrationTest {
 
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
-    void shouldInviteABodyTheClientAsksAboutAndThenAnswerIt() throws Exception {
+    void shouldInviteBodyClientAsksAboutAndThenAnswerIt() throws Exception {
         try (Socket socket = connect()) {
             RawHttpClient.send(socket, "POST /upload/count HTTP/1.1",
                 "Host: localhost", "Content-Length: 5", "Expect: 100-continue");
@@ -94,7 +94,7 @@ class RequestBodyStreamingIntegrationTest {
 
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
-    void shouldRefuseADeclaredBodyTooLargeToAcceptBeforeItIsSent() throws Exception {
+    void shouldRefuseDeclaredBodyTooLargeToAcceptBeforeItIsSent() throws Exception {
         try (Socket socket = connect()) {
             RawHttpClient.send(socket, "POST /upload/count HTTP/1.1",
                 "Host: localhost", "Content-Length: " + UNACCEPTABLE_CONTENT_LENGTH, "Expect: 100-continue");
@@ -107,7 +107,7 @@ class RequestBodyStreamingIntegrationTest {
 
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
-    void shouldRefuseADeclaredBodyTooLargeToAcceptEvenWhenNothingIsExpected() throws Exception {
+    void shouldRefuseDeclaredBodyTooLargeToAcceptWhenNoneIsExpected() throws Exception {
         try (Socket socket = connect()) {
             RawHttpClient.send(socket, "POST /upload/ignored HTTP/1.1",
                 "Host: localhost", "Content-Length: " + UNACCEPTABLE_CONTENT_LENGTH);
@@ -121,7 +121,7 @@ class RequestBodyStreamingIntegrationTest {
 
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
-    void shouldRefuseAnExpectationItCannotMeet() throws Exception {
+    void shouldRefuseExpectationItCannotMeet() throws Exception {
         try (Socket socket = connect()) {
             RawHttpClient.send(socket, "POST /upload/count HTTP/1.1",
                 "Host: localhost", "Content-Length: 5", "Expect: the-impossible");
@@ -133,7 +133,7 @@ class RequestBodyStreamingIntegrationTest {
 
     @Test
     @Timeout(value = 60, unit = TimeUnit.SECONDS)
-    void shouldRefuseABodyThatOutgrowsTheLimitAsItArrives() throws Exception {
+    void shouldRefuseBodyThatOutgrowsLimitAsItArrives() throws Exception {
         try (Socket socket = connect()) {
             RawHttpClient.send(socket, "POST /upload/count HTTP/1.1",
                 "Host: localhost", "Transfer-Encoding: chunked");
@@ -149,7 +149,7 @@ class RequestBodyStreamingIntegrationTest {
 
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
-    void shouldServeTheNextRequestOnAConnectionWhoseBodyTheHandlerIgnored() throws Exception {
+    void shouldServeNextRequestAfterHandlerIgnoredBody() throws Exception {
         try (Socket socket = connect()) {
             RawHttpClient.send(socket, "POST /upload/ignored HTTP/1.1",
                 "Host: localhost", "Content-Length: 11");
@@ -170,7 +170,7 @@ class RequestBodyStreamingIntegrationTest {
 
     @Test
     @Timeout(value = 30, unit = TimeUnit.SECONDS)
-    void shouldServeTheNextRequestOnAConnectionWhoseUndrainedBodyFilledTheQueue() throws Exception {
+    void shouldServeNextRequestAfterUndrainedBodyFilledQueue() throws Exception {
         try (Socket socket = connect()) {
             RawHttpClient.send(socket, "POST /upload/ignored HTTP/1.1",
                 "Host: localhost", "Content-Length: " + LARGE_BODY_BYTES);

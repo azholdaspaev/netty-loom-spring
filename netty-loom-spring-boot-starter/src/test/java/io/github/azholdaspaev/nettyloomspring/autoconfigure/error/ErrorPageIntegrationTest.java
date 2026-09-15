@@ -32,7 +32,7 @@ class ErrorPageIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void aSpringGeneratedNotFoundGetsBootsErrorBody() {
+    void shouldAnswerSpringGeneratedNotFoundWithBootsErrorBody() {
         getJson("/definitely-not-mapped")
             .exchange()
             .expectStatus().isNotFound()
@@ -43,7 +43,7 @@ class ErrorPageIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void anUncaughtExceptionGetsBootsErrorBodyWithTheOriginalPath() {
+    void shouldReportOriginalPathInBootsErrorBodyForUncaughtException() {
         getJson("/fail/exception")
             .exchange()
             .expectStatus().is5xxServerError()
@@ -55,7 +55,7 @@ class ErrorPageIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void sendErrorGetsBootsErrorBodyWithThatStatusAndMessage() {
+    void shouldAnswerSendErrorWithBootsErrorBodyOfItsStatusAndMessage() {
         getJson("/fail/send-error")
             .exchange()
             .expectStatus().isForbidden()
@@ -67,7 +67,7 @@ class ErrorPageIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void anUnauthenticatedRequestGetsBootsErrorBody() {
+    void shouldAnswerUnauthenticatedRequestWithBootsErrorBody() {
         getJson("/secured/ping")
             .exchange()
             .expectStatus().isUnauthorized()
@@ -78,7 +78,7 @@ class ErrorPageIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void aForbiddenRequestGetsBootsErrorBody() {
+    void shouldAnswerForbiddenRequestWithBootsErrorBody() {
         getJson("/secured/denied")
             .headers(headers -> headers.setBasicAuth("user", "pw"))
             .exchange()
@@ -90,7 +90,7 @@ class ErrorPageIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void aStatusSpecificErrorPageBeatsBootsGlobalOne() {
+    void shouldPreferStatusSpecificErrorPageOverBootsGlobalOne() {
         restTestClient.get().uri("/fail/gone")
             .exchange()
             .expectStatus().isEqualTo(HttpStatus.GONE)
@@ -99,7 +99,7 @@ class ErrorPageIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void anAcceptHtmlRequestGetsBootsWhitelabelPage() {
+    void shouldAnswerAcceptHtmlRequestWithBootsWhitelabelPage() {
         restTestClient.get().uri("/fail/exception").accept(MediaType.TEXT_HTML)
             .exchange()
             .expectStatus().is5xxServerError()
@@ -109,7 +109,7 @@ class ErrorPageIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void theErrorDispatchRunsErrorFiltersAndNotRequestOnlyOnes() {
+    void shouldRunErrorFiltersNotRequestOnlyOnesOnErrorDispatch() {
         getJson("/fail/exception")
             .exchange()
             .expectHeader().valueEquals("X-Error-Filter", "ran")
@@ -122,7 +122,7 @@ class ErrorPageIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void aDirectRequestToTheErrorPageRunsRequestFiltersAndNotErrorOnlyOnes() {
+    void shouldRunRequestFiltersNotErrorOnlyOnesOnDirectErrorRequest() {
         getJson("/error")
             .exchange()
             .expectHeader().valueEquals("X-Request-Filter", "ran")
@@ -131,7 +131,7 @@ class ErrorPageIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void aSessionCreatedBeforeTheFailureStillReachesTheClient() {
+    void shouldDeliverSessionCreatedBeforeFailureToClient() {
         getJson("/fail/with-session")
             .exchange()
             .expectStatus().is5xxServerError()

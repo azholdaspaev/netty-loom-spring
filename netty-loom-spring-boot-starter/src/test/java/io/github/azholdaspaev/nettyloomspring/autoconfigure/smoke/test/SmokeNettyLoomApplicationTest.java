@@ -5,6 +5,6 @@ import org.junit.jupiter.api.Test;
 class SmokeNettyLoomApplicationTest extends BaseIntegrationTest {
 
     @Test
-    void contextLoads() {
+    void shouldLoadContext() {
     }
 }

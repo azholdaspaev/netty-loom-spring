@@ -62,7 +62,7 @@ class SessionIntegrationTest {
     }
 
     @Test
-    void anAttributeSetOnOneRequestIsReadableOnTheNextUsingTheReturnedCookie() {
+    void shouldReadAttributeSetOnOneRequestOnNextUsingReturnedCookie() {
         String sessionId = createSessionWith("hello");
 
         restTestClient.get().uri("/session/get")
@@ -73,7 +73,7 @@ class SessionIntegrationTest {
     }
 
     @Test
-    void aRequestWithoutTheCookieSeesNoSession() {
+    void shouldSeeNoSessionOnRequestWithoutCookie() {
         createSessionWith("hello");
 
         restTestClient.get().uri("/session/get")
@@ -83,7 +83,7 @@ class SessionIntegrationTest {
     }
 
     @Test
-    void aStaleDuplicateSessionCookieDoesNotMaskTheLiveOne() {
+    void shouldNotMaskLiveSessionWithStaleDuplicateCookie() {
         /*
          * Issue #91, over the wire: what this adds over the unit tests is that a duplicated cookie name
          * survives the real socket and HttpServerCodec un-merged and in order. Hence the raw header
@@ -101,7 +101,7 @@ class SessionIntegrationTest {
     }
 
     @Test
-    void aStatelessRequestGetsNoSetCookie() {
+    void shouldSendNoSetCookieOnStatelessRequest() {
         restTestClient.get().uri("/session/stateless")
             .exchange()
             .expectStatus().isOk()
@@ -109,7 +109,7 @@ class SessionIntegrationTest {
     }
 
     @Test
-    void anEstablishedSessionIsNotReIssuedOnEveryResponse() {
+    void shouldNotReIssueEstablishedSessionOnEveryResponse() {
         String sessionId = createSessionWith("hello");
 
         restTestClient.get().uri("/session/get")
@@ -120,7 +120,7 @@ class SessionIntegrationTest {
     }
 
     @Test
-    void theSessionCookieIsHttpOnlyAndPathScopedAndCarriesNoMaxAge() {
+    void shouldEmitSessionCookieHttpOnlyAndPathScopedWithNoMaxAge() {
         var result = restTestClient.get().uri("/session/set?value=hello")
             .exchange()
             .expectStatus().isOk()
@@ -138,7 +138,7 @@ class SessionIntegrationTest {
     }
 
     @Test
-    void aSessionIsNewOnlyForTheRequestThatCreatedIt() {
+    void shouldReportSessionNewOnlyForRequestThatCreatedIt() {
         var result = restTestClient.get().uri("/session/isnew")
             .exchange()
             .expectStatus().isOk()
@@ -153,7 +153,7 @@ class SessionIntegrationTest {
     }
 
     @Test
-    void anInvalidatedSessionIsGoneAndTheNextGetSessionIssuesANewId() {
+    void shouldDropInvalidatedSessionAndIssueNewIdOnNextGetSession() {
         String sessionId = createSessionWith("hello");
 
         restTestClient.get().uri("/session/invalidate")
@@ -180,7 +180,7 @@ class SessionIntegrationTest {
     }
 
     @Test
-    void anUnknownSessionIdIsReportedAsRequestedButInvalid() {
+    void shouldReportUnknownSessionIdAsRequestedButInvalid() {
         // SessionManagementFilter keys on exactly this pair to detect an expired session.
         restTestClient.get().uri("/session/requested-id")
             .cookie(SESSION_COOKIE, UNKNOWN_SESSION_ID)
@@ -190,7 +190,7 @@ class SessionIntegrationTest {
     }
 
     @Test
-    void noSessionCookieMeansNoRequestedSessionId() {
+    void shouldReportNoRequestedSessionIdWithoutSessionCookie() {
         /*
          * "null", not "" -- an empty string is non-null and would make SessionManagementFilter run its
          * invalid-session strategy on every stateless request.
@@ -202,7 +202,7 @@ class SessionIntegrationTest {
     }
 
     @Test
-    void aRequestCarryingOtherCookiesButNoSessionCookieCreatesNoSession() {
+    void shouldCreateNoSessionForOtherCookiesWithoutSessionCookie() {
         var result = restTestClient.get().uri("/session/id")
             .cookie("theme", "dark")
             .exchange()
@@ -216,7 +216,7 @@ class SessionIntegrationTest {
     // --- Session fixation (issue #52) ---
 
     @Test
-    void changeSessionIdRotatesTheIdAndReIssuesTheCookie() {
+    void shouldRotateIdAndReIssueCookieOnChangeSessionId() {
         String originalId = createSessionWith("hello");
 
         var rotated = restTestClient.get().uri("/session/rotate")
@@ -247,7 +247,7 @@ class SessionIntegrationTest {
     // --- Cookie emission across a commit ---
 
     @Test
-    void aSessionCreatedBeforeSendRedirectStillEmitsItsCookie() {
+    void shouldEmitCookieForSessionCreatedBeforeSendRedirect() {
         var result = restTestClient.get().uri("/session/flash")
             .exchange()
             .expectStatus().is3xxRedirection()
@@ -258,7 +258,7 @@ class SessionIntegrationTest {
     }
 
     @Test
-    void flashAttributesSurviveARedirect() {
+    void shouldKeepFlashAttributesAcrossRedirect() {
         var redirect = restTestClient.get().uri("/session/flash")
             .exchange()
             .expectStatus().is3xxRedirection()
@@ -275,7 +275,7 @@ class SessionIntegrationTest {
     }
 
     @Test
-    void aFlashRedirectWithoutTheCookieLosesTheFlashAttribute() {
+    void shouldLoseFlashAttributeOnFlashRedirectWithoutCookie() {
         restTestClient.get().uri("/session/flash").exchange().expectStatus().is3xxRedirection();
 
         restTestClient.get().uri("/session/flash-target")

@@ -40,7 +40,7 @@ class ContextPathIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void relativeRequestIsMountedUnderContextPath() {
+    void shouldMountRelativeRequestUnderContextPath() {
         // RestTestClient prepends "/app" to the relative URI, so this hits /app/hello.
         restTestClient.get().uri("/hello")
             .exchange()
@@ -50,7 +50,7 @@ class ContextPathIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void inContextAbsoluteRequestRoutes() throws Exception {
+    void shouldRouteInContextAbsoluteRequest() throws Exception {
         HttpResponse<String> response = get("http://localhost:" + port + "/app/hello");
 
         assertEquals(200, response.statusCode());
@@ -59,7 +59,7 @@ class ContextPathIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void outOfContextAbsoluteRequestYields404() throws Exception {
+    void shouldYield404ForOutOfContextAbsoluteRequest() throws Exception {
         HttpResponse<String> response = get("http://localhost:" + port + "/hello");
 
         assertEquals(404, response.statusCode());
@@ -67,7 +67,7 @@ class ContextPathIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void filterMappedByContextRelativePatternMatches() {
+    void shouldMatchFilterMappedByContextRelativePattern() {
         restTestClient.get().uri("/hello")
             .exchange()
             .expectStatus().isOk()
@@ -76,7 +76,7 @@ class ContextPathIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void anEncodedContextPathPrefixIsOutOfContext() throws Exception {
+    void shouldTreatEncodedContextPathPrefixAsOutOfContext() throws Exception {
         assertEquals(404, get("http://localhost:" + port + "/%61pp/hello").statusCode(),
             "getContextPath() is the configured literal, so a raw URI it does not prefix cannot enter");
         assertEquals(404, get("http://localhost:" + port + "/app%2Fx/hello").statusCode(),
