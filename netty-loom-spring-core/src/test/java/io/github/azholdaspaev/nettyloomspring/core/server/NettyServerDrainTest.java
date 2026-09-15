@@ -23,6 +23,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -206,6 +208,20 @@ class NettyServerDrainTest {
 
             assertEquals(NettyShutdownResult.IDLE, shutdown.get(5, TimeUnit.SECONDS),
                 "shutdown completes once the request is answered, however large the grace");
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {-1, -200_000})
+    void shouldTreatNegativeGraceAsNoGrace(long days) throws Exception {
+        try (Socket client = connect()) {
+            send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
+            assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
+
+            NettyShutdownResult result = nettyServer.shutdown(Duration.ofDays(days));
+
+            assertEquals(NettyShutdownResult.REQUESTS_ACTIVE, result,
+                "a negative grace, however far below long nanoseconds, must expire at once rather than fail");
         }
     }
 

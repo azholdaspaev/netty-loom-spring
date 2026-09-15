@@ -244,7 +244,9 @@ public class NettyServer {
         private static final Duration MAX_BUDGET = Duration.ofNanos(Long.MAX_VALUE);
 
         private static Deadline in(Duration timeout) {
-            long budget = timeout.compareTo(MAX_BUDGET) > 0 ? Long.MAX_VALUE : timeout.toNanos();
+            long budget = timeout.isNegative() ? 0L
+                : timeout.compareTo(MAX_BUDGET) > 0 ? Long.MAX_VALUE
+                : timeout.toNanos();
             return new Deadline(System.nanoTime(), budget);
         }
 
