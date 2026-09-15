@@ -11,6 +11,7 @@ public record NettyLoomProperties(
     @DefaultValue("1") int bossThreads,
     @DefaultValue("0") int workerThreads,
     @DefaultValue("true") boolean tcpKeepAlive,
+    @DefaultValue("128") int acceptCount,
     @DefaultValue("30s") Duration shutdownGracePeriod,
     @DefaultValue("30s") Duration readTimeout,
     @DefaultValue("60s") Duration writeStallTimeout,

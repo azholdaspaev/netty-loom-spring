@@ -134,7 +134,7 @@ public class NettyServer {
             .group(boss, worker)
             .channel(ioHandlerFactory.getServerChannelClass())
             .childHandler(channelInitializer)
-            .option(ChannelOption.SO_BACKLOG, 128)
+            .option(ChannelOption.SO_BACKLOG, configuration.acceptCount())
             .childOption(ChannelOption.SO_KEEPALIVE, configuration.tcpKeepAlive());
         InetSocketAddress address = new InetSocketAddress(configuration.address(), configuration.port());
         ChannelFuture future = bootstrap.bind(address).await();
