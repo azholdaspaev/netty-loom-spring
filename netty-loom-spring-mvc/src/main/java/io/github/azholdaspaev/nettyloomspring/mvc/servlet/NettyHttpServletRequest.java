@@ -535,9 +535,17 @@ public class NettyHttpServletRequest implements HttpServletRequest {
             throw new IllegalStateException("getReader() has already been called on this request");
         }
         if (inputStream == null) {
-            inputStream = new NettyServletInputStream(body);
+            inputStream = new NettyServletInputStream(body, declaredBodyLength());
         }
         return inputStream;
+    }
+
+    private long declaredBodyLength() {
+        /*
+         * HttpObjectDecoder.readHeaders drops a Content-Length beside chunked for HTTP/1.1 only, and
+         * gives a request with neither header an empty body (RFC 9112, 6.3).
+         */
+        return HttpUtil.isTransferEncodingChunked(nettyRequest) ? -1L : HttpUtil.getContentLength(nettyRequest, 0L);
     }
 
     @Override
