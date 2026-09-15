@@ -419,6 +419,17 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
+    void shouldReportInputStreamFinishedOnceFormParseDrainedBody() throws Exception {
+        var request = bodyRequest("b=2".getBytes(StandardCharsets.UTF_8),
+            "Content-Type", "application/x-www-form-urlencoded", "Content-Length", "3");
+        assertEquals("2", request.getParameter("b"), "the form parse ran and read all three bytes");
+
+        assertTrue(request.getInputStream().isFinished(),
+            "the form parse drained the body, so nothing is left to read; Tomcat's readPostBody "
+                + "reads through the same InputBuffer, so IdentityInputFilter.remaining is already zero");
+    }
+
+    @Test
     void shouldNotParseFormParametersOnceGetReaderClaimedBody() throws Exception {
         var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
         var request = formRequest("/x?a=1", "b=2".getBytes(StandardCharsets.UTF_8), insecure);
