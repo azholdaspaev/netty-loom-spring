@@ -45,15 +45,26 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
         response.setBufferSize(1);
         response.getOutputStream().write("streamed".getBytes(StandardCharsets.UTF_8));
 
+        var outcome = reportCapturingStandardError(request, response, failure);
+        assertFalse(outcome.reported());
+        return outcome.logged();
+    }
+
+    private record ReportOutcome(boolean reported, String logged) {
+    }
+
+    private ReportOutcome reportCapturingStandardError(HttpServletRequest request, NettyHttpServletResponse response,
+                                                       Throwable failure) throws Exception {
         ByteArrayOutputStream captured = new ByteArrayOutputStream();
         PrintStream standardError = System.err;
         System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
+        boolean reported;
         try {
-            assertFalse(errorPages.report(request, response, failure));
+            reported = errorPages.report(request, response, failure);
         } finally {
             System.setErr(standardError);
         }
-        return captured.toString(StandardCharsets.UTF_8);
+        return new ReportOutcome(reported, captured.toString(StandardCharsets.UTF_8));
     }
 
     @Test
@@ -258,22 +269,13 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
         var request = requestFor("/stuck", response);
         var cutOff = new ServletException("Request processing failed", new InterruptedException());
 
-        ByteArrayOutputStream captured = new ByteArrayOutputStream();
-        PrintStream standardError = System.err;
-        System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
-        boolean reported;
-        try {
-            reported = errorPages.report(request, response, cutOff);
-        } finally {
-            System.setErr(standardError);
-        }
-        String logged = captured.toString(StandardCharsets.UTF_8);
+        var outcome = reportCapturingStandardError(request, response, cutOff);
 
-        assertFalse(reported,
+        assertFalse(outcome.reported(),
             "an interrupt is the executor cutting the dispatch off at shutdown, not a failure a page answers");
         assertTrue(reached.isEmpty(), "the connection is already closed; there is nobody to render a page for");
-        assertFalse(logged.contains("ERROR"),
-            "a cut-off is not an uncaught failure of the application; log was: " + logged);
+        assertFalse(outcome.logged().contains("ERROR"),
+            "a cut-off is not an uncaught failure of the application; log was: " + outcome.logged());
     }
 
     @Test
