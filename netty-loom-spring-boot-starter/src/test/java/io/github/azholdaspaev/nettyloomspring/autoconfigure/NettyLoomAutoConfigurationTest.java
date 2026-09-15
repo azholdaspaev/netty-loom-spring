@@ -13,6 +13,8 @@ import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.HttpVersion;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -23,18 +25,30 @@ import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import org.springframework.boot.tomcat.autoconfigure.servlet.TomcatServletWebServerAutoConfiguration;
 import org.springframework.boot.tomcat.servlet.TomcatServletWebServerFactory;
 import org.springframework.boot.web.server.servlet.ServletWebServerFactory;
+import org.springframework.boot.web.server.servlet.context.AnnotationConfigServletWebServerApplicationContext;
 import org.springframework.web.servlet.DispatcherServlet;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.concurrent.ExecutorService;
 
 import static io.github.azholdaspaev.nettyloomspring.autoconfigure.NettyLoomAutoConfiguration.DISPATCH_EXECUTOR_BEAN;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.boot.webmvc.autoconfigure.DispatcherServletAutoConfiguration.DEFAULT_DISPATCHER_SERVLET_BEAN_NAME;
 
 class NettyLoomAutoConfigurationTest {
+
+    private static final Duration TIMEOUT = Duration.ofSeconds(5);
 
     private final WebApplicationContextRunner runner = new WebApplicationContextRunner()
         .withConfiguration(AutoConfigurations.of(NettyLoomAutoConfiguration.class))
@@ -136,5 +150,74 @@ class NettyLoomAutoConfigurationTest {
             .run(context -> assertThat(context)
                 .hasSingleBean(NettyWebServerFactory.class)
                 .hasBean(DISPATCH_EXECUTOR_BEAN));
+    }
+
+    @Test
+    void shouldDispatchToChildServletInChildContext() throws Exception {
+        DispatcherServlet parentServlet = newServletWriting("parent");
+        DispatcherServlet childServlet = newServletWriting("child");
+        newRunnerWithServlet(parentServlet).run(parent ->
+            new WebApplicationContextRunner(AnnotationConfigServletWebServerApplicationContext::new)
+                .withConfiguration(AutoConfigurations.of(NettyLoomAutoConfiguration.class))
+                .withBean(DEFAULT_DISPATCHER_SERVLET_BEAN_NAME, DispatcherServlet.class, () -> childServlet)
+                .withPropertyValues("server.port=0")
+                .withParent(parent)
+                .run(child -> {
+                    int port = child.getSourceApplicationContext(AnnotationConfigServletWebServerApplicationContext.class)
+                        .getWebServer().getPort();
+                    try (HttpClient client = HttpClient.newBuilder().connectTimeout(TIMEOUT).build()) {
+                        HttpResponse<String> response = client.send(
+                            HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/")).timeout(TIMEOUT).build(),
+                            HttpResponse.BodyHandlers.ofString());
+                        assertThat(response.body()).isEqualTo("child");
+                    }
+                    verify(parentServlet, never()).service(any(ServletRequest.class), any(ServletResponse.class));
+                }));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "nettyIoHandlerFactory",
+        "nettyServletContext",
+        "sessionStoreLifecycle",
+        "httpConnectionRegistry",
+        "nettyServerChannelInitializer",
+        "nettyPipelineDefinition",
+        "httpRequestDispatcher",
+        DISPATCH_EXECUTOR_BEAN
+    })
+    void shouldOwnDefaultBeanInChildContext(String beanName) {
+        newRunnerWithServlet(mock(DispatcherServlet.class)).run(parent ->
+            newRunnerWithServlet(mock(DispatcherServlet.class)).withParent(parent).run(child ->
+                assertThat(child.getBean(beanName))
+                    .as("child's %s must be its own, not the parent's", beanName)
+                    .isNotSameAs(parent.getBean(beanName))));
+    }
+
+    @Test
+    void shouldLeaveParentExecutorAndSessionsOpenAfterChildCloses() {
+        newRunnerWithServlet(mock(DispatcherServlet.class)).run(parent -> {
+            newRunnerWithServlet(mock(DispatcherServlet.class)).withParent(parent).run(child -> { });
+
+            assertThat(parent.getBean(DISPATCH_EXECUTOR_BEAN, ExecutorService.class).isShutdown())
+                .as("closing the child must not shut down the parent's dispatch executor").isFalse();
+            assertThatCode(() -> parent.getBean("nettyServletContext", NettyServletContext.class).getSessionManager().create())
+                .as("closing the child must not close the parent's session store").doesNotThrowAnyException();
+        });
+    }
+
+    private static WebApplicationContextRunner newRunnerWithServlet(DispatcherServlet servlet) {
+        return new WebApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(NettyLoomAutoConfiguration.class))
+            .withBean(DEFAULT_DISPATCHER_SERVLET_BEAN_NAME, DispatcherServlet.class, () -> servlet);
+    }
+
+    private static DispatcherServlet newServletWriting(String body) throws Exception {
+        DispatcherServlet servlet = mock(DispatcherServlet.class);
+        doAnswer(invocation -> {
+            invocation.<ServletResponse>getArgument(1).getWriter().write(body);
+            return null;
+        }).when(servlet).service(any(ServletRequest.class), any(ServletResponse.class));
+        return servlet;
     }
 }

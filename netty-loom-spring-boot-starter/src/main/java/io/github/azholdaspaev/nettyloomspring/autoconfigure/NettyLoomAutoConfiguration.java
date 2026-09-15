@@ -84,38 +84,38 @@ public class NettyLoomAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnMissingBean
+    @ConditionalOnMissingBean(search = SearchStrategy.CURRENT)
     public NettyIoHandlerFactory nettyIoHandlerFactory(NettyLoomProperties properties) {
         return new NettyIoHandlerFactory(properties.transport());
     }
 
     @Bean
-    @ConditionalOnMissingBean
+    @ConditionalOnMissingBean(search = SearchStrategy.CURRENT)
     public NettyServletContext nettyServletContext() {
         return new DefaultNettyServletContext();
     }
 
     @Bean
-    @ConditionalOnMissingBean
+    @ConditionalOnMissingBean(search = SearchStrategy.CURRENT)
     public SessionStoreLifecycle sessionStoreLifecycle(NettyServletContext servletContext) {
         return new SessionStoreLifecycle(servletContext);
     }
 
     @Bean
-    @ConditionalOnMissingBean
+    @ConditionalOnMissingBean(search = SearchStrategy.CURRENT)
     public HttpConnectionRegistry httpConnectionRegistry() {
         return new HttpConnectionRegistry(new DefaultChannelGroup("netty-loom-channels", GlobalEventExecutor.INSTANCE));
     }
 
     @Bean
-    @ConditionalOnMissingBean
+    @ConditionalOnMissingBean(search = SearchStrategy.CURRENT)
     public NettyServerChannelInitializer nettyServerChannelInitializer(NettyPipelineDefinition nettyPipelineDefinition,
                                                                        HttpConnectionRegistry httpConnectionRegistry) {
         return new NettyServerChannelInitializer(nettyPipelineDefinition, httpConnectionRegistry);
     }
 
     @Bean
-    @ConditionalOnMissingBean
+    @ConditionalOnMissingBean(search = SearchStrategy.CURRENT)
     public NettyPipelineDefinition nettyPipelineDefinition(NettyLoomProperties properties,
                                                            HttpRequestDispatcher httpRequestDispatcher,
                                                            @Qualifier(DISPATCH_EXECUTOR_BEAN) ExecutorService nettyLoomDispatchExecutor,
@@ -167,13 +167,13 @@ public class NettyLoomAutoConfiguration {
      * displace this one, and every request would then dispatch onto that pool's threads.
      */
     @Bean(DISPATCH_EXECUTOR_BEAN)
-    @ConditionalOnMissingBean(name = DISPATCH_EXECUTOR_BEAN)
+    @ConditionalOnMissingBean(name = DISPATCH_EXECUTOR_BEAN, search = SearchStrategy.CURRENT)
     public ExecutorService nettyLoomDispatchExecutor() {
         return Executors.newVirtualThreadPerTaskExecutor();
     }
 
     @Bean
-    @ConditionalOnMissingBean
+    @ConditionalOnMissingBean(search = SearchStrategy.CURRENT)
     public HttpRequestDispatcher httpRequestDispatcher(DispatcherServlet dispatcherServlet,
                                                        NettyServletContext servletContext) {
         return new SpringHttpRequestDispatcher(dispatcherServlet, servletContext);
