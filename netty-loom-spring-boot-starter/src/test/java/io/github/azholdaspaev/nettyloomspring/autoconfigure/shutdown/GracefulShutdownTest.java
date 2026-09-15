@@ -119,12 +119,6 @@ class GracefulShutdownTest {
             assertTrue(holding.entered.await(5, TimeUnit.SECONDS),
                 "the request must be inside the controller before shutdown begins");
 
-            /*
-             * Judged from the client, not from how long close() takes: destroying the dispatch
-             * executor bean calls ExecutorService.close(), which waits for running tasks with no
-             * timeout, so close() lasts the controller's hold whether or not the drain was cut short.
-             * The same wait is why the controller must let go by itself rather than on a latch.
-             */
             long startedAt = System.nanoTime();
             CompletableFuture<Long> settledAfterMillis =
                 response.handle((_, _) -> (System.nanoTime() - startedAt) / 1_000_000L);
@@ -141,6 +135,38 @@ class GracefulShutdownTest {
                                CompletableFuture<Long> settledAfterMillis) {
     }
 
+    @Test
+    void shouldShutDownPromptlyWhileRequestNeverFinishes() throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+        ConfigurableApplicationContext context = new SpringApplicationBuilder(
+            SmokeNettyLoomApplication.class, StuckController.class)
+            .properties("server.port=0", "server.netty.shutdown-grace-period=1s")
+            .run();
+        StuckController stuck = context.getBean(StuckController.class);
+
+        long elapsedMillis;
+        try {
+            int port = ((WebServerApplicationContext) context).getWebServer().getPort();
+            client.sendAsync(
+                HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/stuck")).build(),
+                HttpResponse.BodyHandlers.ofString());
+            assertTrue(stuck.entered.await(5, TimeUnit.SECONDS),
+                "the request must be inside the controller before shutdown begins");
+
+            long startedAt = System.nanoTime();
+            context.close();
+            elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000L;
+        } finally {
+            if (context.isActive()) {
+                context.close();
+            }
+        }
+
+        assertTrue(elapsedMillis < PROMPT_SHUTDOWN_MILLIS,
+            "closing the context must not wait for a dispatch that never finishes on its own, took "
+                + elapsedMillis + "ms");
+    }
+
     @RestController
     static class HoldingController {
 
@@ -153,6 +179,20 @@ class GracefulShutdownTest {
             entered.countDown();
             Thread.sleep(HOLD_MILLIS);
             return "released";
+        }
+    }
+
+    @RestController
+    static class StuckController {
+
+        final CountDownLatch entered = new CountDownLatch(1);
+        private final CountDownLatch neverReleased = new CountDownLatch(1);
+
+        @GetMapping("/stuck")
+        String stuck() throws InterruptedException {
+            entered.countDown();
+            neverReleased.await();
+            return "unreachable";
         }
     }
 }
