@@ -19,7 +19,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SpringBootTest(
     classes = ErrorTestApplication.class,
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = {"spring.web.error.include-message=always", "spring.autoconfigure.exclude="}
+    properties = {
+        "spring.web.error.include-message=always",
+        "spring.autoconfigure.exclude=org.springframework.boot.tomcat.autoconfigure.servlet.TomcatServletWebServerAutoConfiguration"
+    }
 )
 class ErrorPageIntegrationTest {
 
