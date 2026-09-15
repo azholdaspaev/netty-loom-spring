@@ -6,6 +6,7 @@ import io.netty.handler.codec.http.HttpObject;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequestWrapper;
 
 import org.junit.jupiter.api.Test;
 
@@ -14,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -223,6 +225,50 @@ class NettyRequestDispatcherTest extends DispatchFixture {
 
         assertEquals("1", target.getParameter("a"));
         assertNull(target.getParameter("b"));
+    }
+
+    @Test
+    void shouldHonourParameterMapOverrideWhenDispatchPathHasNoQuery() throws Exception {
+        recordTerminal();
+        var response = new NettyHttpServletResponse();
+        var wrapped = new HttpServletRequestWrapper(requestFor("/src", response)) {
+            @Override
+            public Map<String, String[]> getParameterMap() {
+                return Map.of("page", new String[] {"1"});
+            }
+        };
+
+        new NettyRequestDispatcher(factory, "/t", null).forward(wrapped, response);
+
+        var target = reached.getFirst();
+        assertEquals("1", target.getParameter("page"),
+            "Tomcat's ApplicationHttpRequest.parseParameters seeds from getRequest().getParameterMap() "
+                + "with or without a query, so a filter wrapper overriding only getParameterMap() reaches "
+                + "the target's accessors");
+        assertArrayEquals(new String[] {"1"}, target.getParameterValues("page"));
+        assertTrue(Collections.list(target.getParameterNames()).contains("page"));
+    }
+
+    @Test
+    void shouldNotCorruptGetParameterOnceMergedMapArrayIsMutated() throws Exception {
+        var target = forward("/src?a=1", "/t", "a=2&b=3");
+
+        target.getParameterMap().get("a")[0] = "mutated";
+
+        assertEquals("2", target.getParameter("a"),
+            "the merged map is as immutable as the original's: Servlet 6.0 getParameterMap()");
+        assertArrayEquals(new String[] {"2", "1"}, target.getParameterValues("a"));
+    }
+
+    @Test
+    void shouldNotCorruptGetParameterOnceOriginalMapArrayIsMutated() throws Exception {
+        var target = forward("/src?a=1", "/t", null);
+
+        target.getParameterMap().get("a")[0] = "mutated";
+
+        assertEquals("1", target.getParameter("a"),
+            "with no query of its own the wrapper reads the original's map, and exposes a copy of it");
+        assertArrayEquals(new String[] {"1"}, target.getParameterValues("a"));
     }
 
     @Test

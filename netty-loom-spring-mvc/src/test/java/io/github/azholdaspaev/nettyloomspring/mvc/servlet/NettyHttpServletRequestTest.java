@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -389,6 +390,20 @@ class NettyHttpServletRequestTest {
         assertEquals("2", request.getParameter("b"));
         assertEquals(2, request.getParameterMap().size());
         assertSame(request.getParameterMap(), request.getParameterMap());
+    }
+
+    @Test
+    void shouldNotCorruptGetParameterOnceParameterMapArrayIsMutated() {
+        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
+        var request = formRequest("/x?a=1", "b=2".getBytes(StandardCharsets.UTF_8), insecure);
+
+        request.getParameterMap().get("a")[0] = "mutated";
+
+        assertEquals("1", request.getParameter("a"),
+            "Servlet 6.0 declares the map immutable; Tomcat's Request.getParameterMap fills its "
+                + "locked ParameterMap from Parameters.getParameterValues, which hands out a fresh "
+                + "array, so a caller writing into the map never reaches the accessor path");
+        assertArrayEquals(new String[] {"1"}, request.getParameterValues("a"));
     }
 
     @Test
