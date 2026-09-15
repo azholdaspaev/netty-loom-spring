@@ -64,6 +64,8 @@ import java.util.concurrent.TimeUnit;
 @Import(ServletWebServerConfiguration.class)
 public class NettyLoomAutoConfiguration {
 
+    public static final String DISPATCH_EXECUTOR_BEAN = "nettyLoomDispatchExecutor";
+
     private static final int MAX_HTTP_REQUEST_BODY_BYTES = 1024 * 1024;
     private static final int MAX_HTTP_INITIAL_LINE_LENGTH = 10_000;
     private static final int MAX_HTTP_HEADER_SIZE = 10_000;
@@ -116,7 +118,7 @@ public class NettyLoomAutoConfiguration {
     @ConditionalOnMissingBean
     public NettyPipelineDefinition nettyPipelineDefinition(NettyLoomProperties properties,
                                                            HttpRequestDispatcher httpRequestDispatcher,
-                                                           @Qualifier("nettyLoomDispatchExecutor") ExecutorService nettyLoomDispatchExecutor,
+                                                           @Qualifier(DISPATCH_EXECUTOR_BEAN) ExecutorService nettyLoomDispatchExecutor,
                                                            HttpConnectionRegistry httpConnectionRegistry) {
         /*
          * Nanoseconds, not millis: toMillis() truncates, so a sub-millisecond read-timeout would arrive as
@@ -164,8 +166,8 @@ public class NettyLoomAutoConfiguration {
      * Guarded by name, not by type: an application's own {@code ExecutorService} bean would otherwise
      * displace this one, and every request would then dispatch onto that pool's threads.
      */
-    @Bean
-    @ConditionalOnMissingBean(name = "nettyLoomDispatchExecutor")
+    @Bean(DISPATCH_EXECUTOR_BEAN)
+    @ConditionalOnMissingBean(name = DISPATCH_EXECUTOR_BEAN)
     public ExecutorService nettyLoomDispatchExecutor() {
         return Executors.newVirtualThreadPerTaskExecutor();
     }

@@ -27,6 +27,7 @@ import org.springframework.web.servlet.DispatcherServlet;
 
 import java.util.concurrent.ExecutorService;
 
+import static io.github.azholdaspaev.nettyloomspring.autoconfigure.NettyLoomAutoConfiguration.DISPATCH_EXECUTOR_BEAN;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -34,8 +35,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 class NettyLoomAutoConfigurationTest {
-
-    private static final String DISPATCH_EXECUTOR_BEAN = "nettyLoomDispatchExecutor";
 
     private final WebApplicationContextRunner runner = new WebApplicationContextRunner()
         .withConfiguration(AutoConfigurations.of(NettyLoomAutoConfiguration.class))
