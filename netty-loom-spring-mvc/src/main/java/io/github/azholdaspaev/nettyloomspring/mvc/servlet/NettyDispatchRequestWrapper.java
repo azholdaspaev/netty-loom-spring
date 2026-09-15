@@ -109,34 +109,37 @@ class NettyDispatchRequestWrapper extends HttpServletRequestWrapper {
 
     @Override
     public String getParameter(String name) {
-        String[] values = parameters().get(name);
+        ensureParametersMerged();
+        String[] values = parameters.get(name);
         return values == null || values.length == 0 ? null : values[0];
     }
 
     @Override
     public String[] getParameterValues(String name) {
-        String[] values = parameters().get(name);
+        ensureParametersMerged();
+        String[] values = parameters.get(name);
         return values == null ? null : values.clone();
     }
 
     @Override
     public Enumeration<String> getParameterNames() {
-        return Collections.enumeration(parameters().keySet());
+        ensureParametersMerged();
+        return Collections.enumeration(parameters.keySet());
     }
 
     @Override
     public Map<String, String[]> getParameterMap() {
         if (parameterMapCopy == null) {
-            parameterMapCopy = NettyHttpServletRequest.copyParameterMap(parameters());
+            ensureParametersMerged();
+            parameterMapCopy = NettyHttpServletRequest.copyParameterMap(parameters);
         }
         return parameterMapCopy;
     }
 
-    private Map<String, String[]> parameters() {
+    private void ensureParametersMerged() {
         if (parameters == null) {
             parameters = queryString == null ? super.getParameterMap() : mergedParameters();
         }
-        return parameters;
     }
 
     /**
