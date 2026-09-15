@@ -419,6 +419,17 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
+    void shouldReportInputStreamFinishedOnceFormParseDrainedBody() throws Exception {
+        var request = bodyRequest("b=2".getBytes(StandardCharsets.UTF_8),
+            "Content-Type", "application/x-www-form-urlencoded", "Content-Length", "3");
+        assertEquals("2", request.getParameter("b"), "the form parse ran and read all three bytes");
+
+        assertTrue(request.getInputStream().isFinished(),
+            "the form parse drained the body, so nothing is left to read; Tomcat's readPostBody "
+                + "reads through the same InputBuffer, so IdentityInputFilter.remaining is already zero");
+    }
+
+    @Test
     void shouldNotParseFormParametersOnceGetReaderClaimedBody() throws Exception {
         var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
         var request = formRequest("/x?a=1", "b=2".getBytes(StandardCharsets.UTF_8), insecure);
@@ -489,6 +500,54 @@ class NettyHttpServletRequestTest {
         viaStream.getInputStream();
         viaStream.setCharacterEncoding("ISO-8859-1");
         assertEquals("ISO-8859-1", viaStream.getCharacterEncoding());
+    }
+
+    private static NettyHttpServletRequest bodyRequest(byte[] body, String... headers) {
+        var nettyRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/x");
+        for (int i = 0; i < headers.length; i += 2) {
+            nettyRequest.headers().set(headers[i], headers[i + 1]);
+        }
+        return new NettyHttpServletRequest(
+            nettyRequest, new ByteArrayInputStream(body),
+            new HttpConnectionMetadata("", 0, "", 0, false, ""),
+            new DefaultNettyServletContext(),
+            new NettyHttpServletResponse());
+    }
+
+    @Test
+    void shouldReportInputStreamFinishedOnceContentLengthIsConsumed() throws Exception {
+        var request = bodyRequest("hello".getBytes(StandardCharsets.UTF_8), "Content-Length", "5");
+        ServletInputStream body = request.getInputStream();
+
+        assertFalse(body.isFinished(), "five declared bytes are unread");
+        assertEquals(5, body.read(new byte[5]));
+        assertTrue(body.isFinished(),
+            "the declared Content-Length has been handed out, so no read past the end is needed");
+    }
+
+    @Test
+    void shouldReportInputStreamFinishedWhenRequestDeclaresNoBody() throws Exception {
+        var request = bodyRequest(new byte[0]);
+
+        assertTrue(request.getInputStream().isFinished(),
+            "a request with neither Content-Length nor Transfer-Encoding has an empty body "
+                + "(RFC 9112 6.3); Netty emits its LastHttpContent at once and Tomcat's VoidInputFilter "
+                + "answers true from the start");
+    }
+
+    @Test
+    void shouldIgnoreContentLengthBesideChunkedTransferEncoding() throws Exception {
+        var request = bodyRequest("hello".getBytes(StandardCharsets.UTF_8),
+            "Content-Length", "0", "Transfer-Encoding", "chunked");
+        ServletInputStream body = request.getInputStream();
+
+        assertFalse(body.isFinished(),
+            "Transfer-Encoding overrides Content-Length (RFC 9112 6.3), so a chunked body is finished "
+                + "only once a read returns -1");
+        assertEquals(5, body.read(new byte[5]));
+        assertFalse(body.isFinished(), "the zero-chunk has not been seen yet");
+        assertEquals(-1, body.read());
+        assertTrue(body.isFinished());
     }
 
     private static NettyHttpServletRequest cookieRequest(String... cookieHeaders) {

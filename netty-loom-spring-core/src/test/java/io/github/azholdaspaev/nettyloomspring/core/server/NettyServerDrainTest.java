@@ -23,6 +23,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -188,6 +190,38 @@ class NettyServerDrainTest {
 
             assertEquals(NettyShutdownResult.REQUESTS_ACTIVE, result,
                 "a request still running at the deadline must be reported, not passed off as idle");
+        }
+    }
+
+    @Test
+    void shouldTreatGraceBeyondLongNanosAsUnbounded() throws Exception {
+        try (Socket client = connect()) {
+            send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
+            assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
+
+            Future<NettyShutdownResult> shutdown = shutdownExecutor.submit(
+                () -> nettyServer.shutdown(Duration.ofDays(200_000)));
+            assertStillDraining(shutdown,
+                "a grace too large for long nanoseconds must wait for the request, not fail or expire at once");
+
+            releaseDispatcher.countDown();
+
+            assertEquals(NettyShutdownResult.IDLE, shutdown.get(5, TimeUnit.SECONDS),
+                "shutdown completes once the request is answered, however large the grace");
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {-1, -200_000})
+    void shouldTreatNegativeGraceAsNoGrace(long days) throws Exception {
+        try (Socket client = connect()) {
+            send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
+            assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
+
+            NettyShutdownResult result = nettyServer.shutdown(Duration.ofDays(days));
+
+            assertEquals(NettyShutdownResult.REQUESTS_ACTIVE, result,
+                "a negative grace, however far below long nanoseconds, must expire at once rather than fail");
         }
     }
 

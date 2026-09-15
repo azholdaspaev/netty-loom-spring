@@ -13,16 +13,19 @@ import java.io.InputStream;
 final class NettyServletInputStream extends ServletInputStream {
 
     private final InputStream body;
+    private final long declaredLength;
 
-    private boolean finished;
+    private long consumed;
+    private boolean sawEof;
 
-    NettyServletInputStream(InputStream body) {
+    NettyServletInputStream(InputStream body, long declaredLength) {
         this.body = body;
+        this.declaredLength = declaredLength;
     }
 
     @Override
     public boolean isFinished() {
-        return finished;
+        return sawEof || (declaredLength >= 0 && consumed >= declaredLength);
     }
 
     @Override
@@ -37,12 +40,14 @@ final class NettyServletInputStream extends ServletInputStream {
 
     @Override
     public int read() throws IOException {
-        return record(body.read());
+        int value = body.read();
+        count(value < 0 ? -1 : 1);
+        return value;
     }
 
     @Override
     public int read(byte[] destination, int offset, int length) throws IOException {
-        return record(body.read(destination, offset, length));
+        return count(body.read(destination, offset, length));
     }
 
     @Override
@@ -50,8 +55,12 @@ final class NettyServletInputStream extends ServletInputStream {
         return body.available();
     }
 
-    private int record(int read) {
-        finished = read < 0;
+    private int count(int read) {
+        if (read < 0) {
+            sawEof = true;
+        } else {
+            consumed += read;
+        }
         return read;
     }
 }

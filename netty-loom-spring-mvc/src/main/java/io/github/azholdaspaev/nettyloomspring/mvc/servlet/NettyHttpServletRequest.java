@@ -86,6 +86,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     private boolean cookiesParsed;
     private ServletInputStream inputStream;
     private BufferedReader reader;
+    private boolean formBodyDrained;
     private NettyHttpSession session;
     private boolean sessionResolved;
     private String requestedSessionId;
@@ -181,7 +182,9 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     private String readFormBody(Charset charset) {
         try {
-            return new String(body.readAllBytes(), charset);
+            String form = new String(body.readAllBytes(), charset);
+            formBodyDrained = true;
+            return form;
         } catch (IOException stopped) {
             throw new UncheckedIOException(stopped);
         }
@@ -535,9 +538,17 @@ public class NettyHttpServletRequest implements HttpServletRequest {
             throw new IllegalStateException("getReader() has already been called on this request");
         }
         if (inputStream == null) {
-            inputStream = new NettyServletInputStream(body);
+            inputStream = new NettyServletInputStream(body, formBodyDrained ? 0L : declaredBodyLength());
         }
         return inputStream;
+    }
+
+    private long declaredBodyLength() {
+        /*
+         * HttpObjectDecoder.readHeaders drops a Content-Length beside chunked for HTTP/1.1 only, and
+         * gives a request with neither header an empty body (RFC 9112, 6.3).
+         */
+        return HttpUtil.isTransferEncodingChunked(nettyRequest) ? -1L : HttpUtil.getContentLength(nettyRequest, 0L);
     }
 
     @Override
