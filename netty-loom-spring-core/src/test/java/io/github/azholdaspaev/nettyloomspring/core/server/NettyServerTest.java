@@ -7,6 +7,7 @@ import io.github.azholdaspaev.nettyloomspring.core.support.NettyServerFixture;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.ChannelOption;
 import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import org.junit.jupiter.api.AfterEach;
@@ -48,7 +49,7 @@ class NettyServerTest {
     void shouldDeliverInboundBytesToPipelineThatAsksForNoReadsItself() throws Exception {
         CompletableFuture<String> received = new CompletableFuture<>();
         nettyServer = NettyServerFixture.newServer(
-            new NettyServerConfiguration(0, null, 1, 1, true),
+            new NettyServerConfiguration(0, null, 1, 1, true, 128),
             new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)),
             List.of(new NettyPipelineStep("capture", () -> new ChannelInboundHandlerAdapter() {
                 @Override
@@ -71,6 +72,29 @@ class NettyServerTest {
         }
     }
 
+    @Test
+    void shouldApplyAcceptCountToListenSocket() throws Exception {
+        CompletableFuture<Integer> backlog = new CompletableFuture<>();
+        nettyServer = NettyServerFixture.newServer(
+            new NettyServerConfiguration(0, null, 1, 1, false, 7),
+            new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)),
+            List.of(new NettyPipelineStep("backlog", () -> new ChannelInboundHandlerAdapter() {
+                @Override
+                public void channelActive(ChannelHandlerContext ctx) {
+                    backlog.complete(ctx.channel().parent().config().getOption(ChannelOption.SO_BACKLOG));
+                    ctx.fireChannelActive();
+                }
+            })));
+        nettyServer.start();
+
+        try (Socket client = new Socket()) {
+            client.connect(new InetSocketAddress("127.0.0.1", nettyServer.getPort()), 1_000);
+
+            assertEquals(7, backlog.get(5, TimeUnit.SECONDS),
+                "the configured accept count must reach the listen socket's SO_BACKLOG option");
+        }
+    }
+
     private static NettyServer newServer(InetAddress address) {
         return newServer(address, null, 0);
     }
@@ -80,7 +104,7 @@ class NettyServerTest {
      * @param port     0 to let the OS choose; a specific port to bind exactly there
      */
     private static NettyServer newServer(InetAddress address, CountDownLatch accepted, int port) {
-        NettyServerConfiguration configuration = new NettyServerConfiguration(port, address, 0, 0, false);
+        NettyServerConfiguration configuration = new NettyServerConfiguration(port, address, 0, 0, false, 128);
         List<NettyPipelineStep> handlers = accepted == null ? List.of()
             : List.of(new NettyPipelineStep("accepted", () -> new ChannelInboundHandlerAdapter() {
                 @Override

@@ -346,7 +346,7 @@ class NettyServerDrainTest {
             }
         };
         NettyServerConfiguration configuration = new NettyServerConfiguration(
-            0, InetAddress.getLoopbackAddress(), 0, 0, false);
+            0, InetAddress.getLoopbackAddress(), 0, 0, false, 128);
         return NettyServerFixture.newServer(configuration, connectionRegistry, List.of(
             new NettyPipelineStep("httpCodec", HttpServerCodec::new),
             new NettyPipelineStep("httpKeepAlive", HttpServerKeepAliveHandler::new),
