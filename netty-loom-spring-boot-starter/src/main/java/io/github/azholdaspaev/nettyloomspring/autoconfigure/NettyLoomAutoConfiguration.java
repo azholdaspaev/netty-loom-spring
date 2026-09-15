@@ -24,8 +24,14 @@ import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.HttpServerKeepAliveHandler;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type;
+import org.springframework.boot.autoconfigure.condition.SearchStrategy;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.server.autoconfigure.servlet.ServletWebServerConfiguration;
+import org.springframework.boot.web.server.servlet.ServletWebServerFactory;
 import org.springframework.boot.webmvc.autoconfigure.WebMvcAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -36,7 +42,23 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-@AutoConfiguration(before = WebMvcAutoConfiguration.class)
+/**
+ * Ordered after Boot's own containers, not left to the default:
+ * {@code AutoConfigurationSorter.getInPriorityOrder} sorts unordered auto-configurations by class
+ * name, so {@code io.github} would register ahead of {@code org.springframework} and the Boot
+ * container's {@code @ConditionalOnMissingBean} would be the one to yield. Ordered this way, Netty
+ * serves only when it is the sole factory.
+ */
+@AutoConfiguration(
+    before = WebMvcAutoConfiguration.class,
+    afterName = {
+        "org.springframework.boot.tomcat.autoconfigure.servlet.TomcatServletWebServerAutoConfiguration",
+        "org.springframework.boot.jetty.autoconfigure.servlet.JettyServletWebServerAutoConfiguration",
+        "org.springframework.boot.undertow.autoconfigure.servlet.UndertowServletWebServerAutoConfiguration"
+    }
+)
+@ConditionalOnClass(HttpServerCodec.class)
+@ConditionalOnWebApplication(type = Type.SERVLET)
 @EnableConfigurationProperties(NettyLoomProperties.class)
 @Import(ServletWebServerConfiguration.class)
 public class NettyLoomAutoConfiguration {
@@ -47,6 +69,7 @@ public class NettyLoomAutoConfiguration {
     private static final int MAX_HTTP_CHUNK_SIZE = 10_000;
 
     @Bean
+    @ConditionalOnMissingBean(value = ServletWebServerFactory.class, search = SearchStrategy.CURRENT)
     public NettyWebServerFactory nettyWebServerFactory(NettyIoHandlerFactory nettyIoHandlerFactory,
                                                        NettyServerChannelInitializer nettyServerChannelInitializer,
                                                        HttpConnectionRegistry httpConnectionRegistry,
@@ -58,32 +81,38 @@ public class NettyLoomAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean
     public NettyIoHandlerFactory nettyIoHandlerFactory(NettyLoomProperties properties) {
         return new NettyIoHandlerFactory(properties.transport());
     }
 
     @Bean
+    @ConditionalOnMissingBean
     public NettyServletContext nettyServletContext() {
         return new DefaultNettyServletContext();
     }
 
     @Bean
+    @ConditionalOnMissingBean
     public SessionStoreLifecycle sessionStoreLifecycle(NettyServletContext servletContext) {
         return new SessionStoreLifecycle(servletContext);
     }
 
     @Bean
+    @ConditionalOnMissingBean
     public HttpConnectionRegistry httpConnectionRegistry() {
         return new HttpConnectionRegistry(new DefaultChannelGroup("netty-loom-channels", GlobalEventExecutor.INSTANCE));
     }
 
     @Bean
+    @ConditionalOnMissingBean
     public NettyServerChannelInitializer nettyServerChannelInitializer(NettyPipelineDefinition nettyPipelineDefinition,
                                                                        HttpConnectionRegistry httpConnectionRegistry) {
         return new NettyServerChannelInitializer(nettyPipelineDefinition, httpConnectionRegistry);
     }
 
     @Bean
+    @ConditionalOnMissingBean
     public NettyPipelineDefinition nettyPipelineDefinition(NettyLoomProperties properties,
                                                            HttpRequestDispatcher httpRequestDispatcher,
                                                            ExecutorService nettyLoomDispatchExecutor,
@@ -130,12 +159,18 @@ public class NettyLoomAutoConfiguration {
         ));
     }
 
+    /**
+     * Guarded by name, not by type: an application's own {@code ExecutorService} bean would otherwise
+     * displace this one, and every request would then dispatch onto that pool's threads.
+     */
     @Bean
+    @ConditionalOnMissingBean(name = "nettyLoomDispatchExecutor")
     public ExecutorService nettyLoomDispatchExecutor() {
         return Executors.newVirtualThreadPerTaskExecutor();
     }
 
     @Bean
+    @ConditionalOnMissingBean
     public HttpRequestDispatcher httpRequestDispatcher(DispatcherServlet dispatcherServlet,
                                                        NettyServletContext servletContext) {
         return new SpringHttpRequestDispatcher(dispatcherServlet, servletContext);
