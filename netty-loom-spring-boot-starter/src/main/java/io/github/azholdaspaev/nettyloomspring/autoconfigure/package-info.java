@@ -5,7 +5,7 @@
  * {@code HttpRequestDispatcher}, the {@code NettyPipelineDefinition} or the
  * {@code ServletWebServerFactory} declares its own and the auto-configured one backs off; the
  * dispatch executor alone is guarded by name, {@code nettyLoomDispatchExecutor}. Every guard searches
- * the current context only, so a child context that starts its own server owns its own bean graph;
- * which {@code DispatcherServlet} that graph wraps is still whichever one the child can see.
+ * the current context only, so a child context that starts its own server registers its own bean
+ * graph; injection still sees the whole hierarchy, so a parent bean marked {@code @Primary} wins.
  */
 package io.github.azholdaspaev.nettyloomspring.autoconfigure;

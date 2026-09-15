@@ -52,9 +52,10 @@ First release. Not yet published to Maven Central; a `0.1.0-SNAPSHOT` is on
   them on the classpath serves instead, and every bean `@ConditionalOnMissingBean` so a
   `ServletWebServerFactory`, `HttpRequestDispatcher` or `NettyPipelineDefinition` of your own
   replaces the starter's without `@Primary`. Every guard searches the current application context
-  only, so a child context that starts its own Netty server owns its own dispatcher, pipeline,
+  only, so a child context that starts its own Netty server registers its own dispatcher, pipeline,
   session store and executor rather than inheriting its parent's; which `DispatcherServlet` that
-  dispatcher wraps is still whichever one the child context can see.
+  dispatcher wraps, and whether a parent bean marked `@Primary` still wins, is up to injection,
+  which sees the whole hierarchy.
 
 ### Known limitations
 
