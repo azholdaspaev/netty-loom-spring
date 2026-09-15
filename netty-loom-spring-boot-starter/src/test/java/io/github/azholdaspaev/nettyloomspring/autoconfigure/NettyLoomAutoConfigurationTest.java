@@ -204,6 +204,24 @@ class NettyLoomAutoConfigurationTest {
     }
 
     @Test
+    void shouldDispatchThroughChildOverrideUnderDefaultBeanName() throws Exception {
+        HttpRequestDispatcher childDispatcher = mock(HttpRequestDispatcher.class);
+        newRunnerWithServlet(mock(DispatcherServlet.class)).run(parent ->
+            newRunnerWithServlet(mock(DispatcherServlet.class))
+                .withBean("httpRequestDispatcher", HttpRequestDispatcher.class, () -> childDispatcher)
+                .withBean(DISPATCH_EXECUTOR_BEAN, ExecutorService.class, NettyLoomAutoConfigurationTest::newInlineExecutor)
+                .withParent(parent)
+                .run(child -> {
+                    EmbeddedChannel channel = new EmbeddedChannel();
+                    child.getBean(NettyPipelineDefinition.class).applyTo(channel.pipeline());
+                    channel.writeInbound(new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/"));
+
+                    verify(childDispatcher).handle(any(), any(), any(), any());
+                    channel.finishAndReleaseAll();
+                }));
+    }
+
+    @Test
     void shouldLeaveParentExecutorAndSessionsOpenAfterChildCloses() {
         newRunnerWithServlet(mock(DispatcherServlet.class)).run(parent -> {
             newRunnerWithServlet(mock(DispatcherServlet.class)).withParent(parent).run(child -> { });
@@ -219,6 +237,15 @@ class NettyLoomAutoConfigurationTest {
         return new WebApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(NettyLoomAutoConfiguration.class))
             .withBean(DEFAULT_DISPATCHER_SERVLET_BEAN_NAME, DispatcherServlet.class, () -> servlet);
+    }
+
+    private static ExecutorService newInlineExecutor() {
+        ExecutorService executor = mock(ExecutorService.class);
+        doAnswer(invocation -> {
+            invocation.<Runnable>getArgument(0).run();
+            return null;
+        }).when(executor).execute(any());
+        return executor;
     }
 
     private static DispatcherServlet newServletWriting(String body) throws Exception {

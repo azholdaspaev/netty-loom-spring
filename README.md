@@ -271,9 +271,11 @@ is needed. The one exception is the virtual-thread dispatch executor, guarded by
 type: only a bean named `nettyLoomDispatchExecutor` replaces it, so an `ExecutorService` bean of your
 own does not silently take over request dispatch. Every guard searches the current application
 context only: a bean in a parent context does not replace a default, so a child that starts its own
-server registers its whole bean graph. Injection still resolves across the hierarchy, so a parent bean
-marked `@Primary` is the one the child's beans receive; leave `@Primary` off a parent bean the child
-must not pick up.
+server registers its whole bean graph. Injection still resolves across the hierarchy, and two rules
+follow. A parent bean marked `@Primary` is the one the child's beans receive, so leave `@Primary` off a
+parent bean the child must not pick up. A child's replacement hides the parent's default only under
+the default's own bean name (`httpRequestDispatcher`, `nettyServletContext`, …); under any other name
+the parent's default is the one injected, so name a child's replacement after the bean it replaces.
 
 The pipeline handler names above (`httpCodec`, `drain`, `dispatcher`, …) are the addressable handles
 for anyone reaching into the pipeline directly.
