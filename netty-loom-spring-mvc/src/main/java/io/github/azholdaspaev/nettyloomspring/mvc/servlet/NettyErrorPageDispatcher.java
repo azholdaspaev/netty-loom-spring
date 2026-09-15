@@ -44,11 +44,12 @@ public class NettyErrorPageDispatcher {
          */
         Throwable rootCause = rootCauseOf(failure);
         /*
-         * Left to the connection, not answered here: an interrupt is the dispatch executor cutting the
-         * request off at shutdown (#205), when its connection is closed and the context that would
-         * render the page is being destroyed. HttpRequestHandler reports the abandoned dispatch.
+         * Left to the connection, not answered here: an interrupt once the context is closed is the
+         * dispatch executor cutting the request off at shutdown (#205), when its connection is gone and
+         * the context that would render the page is being destroyed. One while the context is open is a
+         * runtime failure like any other. HttpRequestHandler reports the abandoned dispatch.
          */
-        if (rootCause instanceof InterruptedException) {
+        if (rootCause instanceof InterruptedException && context.isClosed()) {
             return false;
         }
         int status = statusFor(response, failure);

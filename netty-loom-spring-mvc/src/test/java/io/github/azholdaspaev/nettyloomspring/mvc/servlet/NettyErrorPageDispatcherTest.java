@@ -263,19 +263,34 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
-    void shouldNotAnswerInterruptedDispatchWithErrorPage() throws Exception {
+    void shouldNotAnswerInterruptedDispatchOnceContextIsClosed() throws Exception {
         pageIs("/error");
         var response = new NettyHttpServletResponse();
         var request = requestFor("/stuck", response);
         var cutOff = new ServletException("Request processing failed", new InterruptedException());
+        context.close();
 
         var outcome = reportCapturingStandardError(request, response, cutOff);
 
         assertFalse(outcome.reported(),
-            "an interrupt is the executor cutting the dispatch off at shutdown, not a failure a page answers");
+            "an interrupt once the context is closed is the executor cutting the dispatch off at shutdown, "
+                + "not a failure a page answers");
         assertTrue(reached.isEmpty(), "the connection is already closed; there is nobody to render a page for");
         assertFalse(outcome.logged().contains("ERROR"),
             "a cut-off is not an uncaught failure of the application; log was: " + outcome.logged());
+    }
+
+    @Test
+    void shouldAnswerInterruptedDispatchWhileContextIsOpen() throws Exception {
+        pageIs("/error");
+        var response = new NettyHttpServletResponse();
+        var request = requestFor("/slow", response);
+        var rootCause = new InterruptedException();
+
+        assertTrue(errorPages.report(request, response, new ServletException("Request processing failed", rootCause)),
+            "a handler interrupted at runtime, by a watchdog or a stray interrupt flag, fails like any other 500");
+        assertEquals(500, reached.getFirst().getAttribute(RequestDispatcher.ERROR_STATUS_CODE));
+        assertEquals(rootCause, reached.getFirst().getAttribute(RequestDispatcher.ERROR_EXCEPTION));
     }
 
     @Test

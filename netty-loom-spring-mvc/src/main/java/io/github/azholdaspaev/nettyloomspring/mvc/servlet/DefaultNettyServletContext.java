@@ -402,6 +402,11 @@ public final class DefaultNettyServletContext implements NettyServletContext {
     }
 
     @Override
+    public boolean isClosed() {
+        return sessionManager.isClosed();
+    }
+
+    @Override
     public void open() {
         sessionManager.open();
         /*

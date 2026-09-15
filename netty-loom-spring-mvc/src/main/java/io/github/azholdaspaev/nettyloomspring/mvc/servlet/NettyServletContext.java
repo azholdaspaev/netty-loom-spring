@@ -121,6 +121,11 @@ public interface NettyServletContext extends ServletContext, AutoCloseable {
     default void open() {
     }
 
+    /** Between {@link #close()} and {@link #open()}: a dispatch unwinding into a context being torn down. */
+    default boolean isClosed() {
+        return false;
+    }
+
     @Override
     default String getContextPath() {
         throw new UnsupportedOperationException();
