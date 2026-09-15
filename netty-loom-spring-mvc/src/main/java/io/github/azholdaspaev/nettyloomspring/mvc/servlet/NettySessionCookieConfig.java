@@ -63,6 +63,7 @@ public final class NettySessionCookieConfig implements SessionCookieConfig {
     @Override
     public void setName(String name) {
         requireNotInitialized();
+        requireToken("Session cookie name", name);
         this.name = name;
     }
 
@@ -147,7 +148,7 @@ public final class NettySessionCookieConfig implements SessionCookieConfig {
     @Override
     public void setAttribute(String name, String value) {
         requireNotInitialized();
-        requireValidAttributeName(name);
+        requireToken("Cookie attribute name", name);
         if (value == null) {
             attributes.remove(name);
             return;
@@ -210,16 +211,16 @@ public final class NettySessionCookieConfig implements SessionCookieConfig {
      * Rejects a name {@code jakarta.servlet.http.Cookie} would reject later anyway, but here where the
      * misconfiguration is rather than as a 500 on the first session-creating request.
      */
-    private static void requireValidAttributeName(String name) {
+    private static void requireToken(String what, String name) {
         if (name == null || name.isEmpty()) {
-            throw new IllegalArgumentException("Cookie attribute name must not be null or empty");
+            throw new IllegalArgumentException(what + " must not be null or empty");
         }
         for (int i = 0; i < name.length(); i++) {
             char c = name.charAt(i);
             // RFC 6265 token: no CTLs, no separators.
             if (c < 0x20 || c >= 0x7f || RESERVED_NAME_CHARACTERS.indexOf(c) >= 0) {
                 throw new IllegalArgumentException(
-                    "Cookie attribute name '" + name + "' contains a character not permitted in a cookie name");
+                    what + " '" + name + "' contains a character not permitted in a cookie name");
             }
         }
     }
