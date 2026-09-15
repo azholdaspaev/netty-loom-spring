@@ -121,6 +121,7 @@ Path-based `forward` only ([#182](https://github.com/azholdaspaev/netty-loom-spr
 | `server.servlet.session.timeout` | `works` | Second resolution; `0` or less means never expires. Lazy 60s sweeper thread plus exact expiry on lookup |
 | `server.servlet.session.cookie.*` | `works` | Name, domain, path, `http-only`, `secure`, `max-age`, `same-site`, `partitioned`. Frozen after startup. `setComment` is accepted and does nothing |
 | Cookie `Secure` behind a TLS proxy | `partial` | Derived from the real connection, which is plaintext behind a terminating proxy — set `server.servlet.session.cookie.secure=true` explicitly (CWE-614, [#50](https://github.com/azholdaspaev/netty-loom-spring/issues/50)) |
+| Empty `JSESSIONID=` cookie | `works` | `getRequestedSessionId()` is `""`, not `null`, and `isRequestedSessionIdValid()` is `false` — the same as Tomcat and Jetty. With `invalidSessionUrl` configured, Spring Security treats it as an expired session and redirects once ([#94](https://github.com/azholdaspaev/netty-loom-spring/issues/94)) |
 | `changeSessionId()` | `partial` | Rotates and re-emits the cookie. After commit it still rotates but the new `Set-Cookie` is dropped, stranding the client on a dead id |
 | Session teardown on shutdown | `works` | Every session is invalidated and unbound, so `@PreDestroy` and `@SessionScope` callbacks run |
 | URL rewriting | `none` | `encodeURL` is the identity; `isRequestedSessionIdFromURL()` is always `false` |

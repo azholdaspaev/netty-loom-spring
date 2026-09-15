@@ -850,6 +850,16 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
+    void shouldReportEmptyRequestedSessionIdForEmptyCookieValue() {
+        var exchange = exchange(new DefaultNettyServletContext(), INSECURE, "JSESSIONID=");
+
+        assertEquals("", exchange.request().getRequestedSessionId(),
+            "an empty value is an id the client presented, as Tomcat and Jetty report it, not an absent one");
+        assertFalse(exchange.request().isRequestedSessionIdValid());
+        assertTrue(exchange.request().isRequestedSessionIdFromCookie());
+    }
+
+    @Test
     void shouldReturnNullRequestedSessionIdWhenNoCookieIsPresent() {
         /*
          * Not "": SessionManagementFilter treats any non-null requested id as a session to validate, so

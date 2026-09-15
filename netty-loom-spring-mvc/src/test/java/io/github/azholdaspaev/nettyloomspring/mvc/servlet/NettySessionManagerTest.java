@@ -531,7 +531,7 @@ class NettySessionManagerTest {
     @Test
     void shouldReportEmptyIdOnReadSessionIdWhenOnlyEmptyIsPresented() {
         assertEquals("", manager.readSessionId(cookies(SESSION_COOKIE, "", SESSION_COOKIE, "")),
-            "an empty value is skipped only in favour of another match, not dropped; whether it counts as presented at all is #94");
+            "an empty value is skipped only in favour of another match, never dropped: alone it is the id the client presented (issue #94)");
     }
 
     @Test
