@@ -44,6 +44,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -186,8 +187,11 @@ class NettyServerDrainTest {
             send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
             assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
 
-            NettyShutdownResult result = nettyServer.shutdown(Duration.ofMillis(500));
+            Future<NettyShutdownResult> shutdown = shutdownExecutor.submit(
+                () -> nettyServer.shutdown(Duration.ofMillis(500)));
 
+            NettyShutdownResult result = assertDoesNotThrow(() -> shutdown.get(2, TimeUnit.SECONDS),
+                "a request that outlasts the grace must be cut off at about the grace, not held until it ends");
             assertEquals(NettyShutdownResult.REQUESTS_ACTIVE, result,
                 "a request still running at the deadline must be reported, not passed off as idle");
         }
