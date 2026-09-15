@@ -53,9 +53,10 @@ First release. Not yet published to Maven Central; a `0.1.0-SNAPSHOT` is on
   `ServletWebServerFactory`, `HttpRequestDispatcher` or `NettyPipelineDefinition` of your own
   replaces the starter's without `@Primary`. Every guard searches the current application context
   only, so a child context that starts its own Netty server registers its own dispatcher, pipeline,
-  session store and executor rather than inheriting its parent's; which `DispatcherServlet` that
-  dispatcher wraps, and whether a parent bean marked `@Primary` still wins, is up to injection,
-  which sees the whole hierarchy.
+  session store and executor rather than inheriting its parent's. What those beans receive is up to
+  injection, which sees the whole hierarchy: which `DispatcherServlet` the dispatcher wraps, a parent
+  bean marked `@Primary` over the child's default, and a parent default over a child replacement
+  under any name but the default's.
 
 ### Known limitations
 

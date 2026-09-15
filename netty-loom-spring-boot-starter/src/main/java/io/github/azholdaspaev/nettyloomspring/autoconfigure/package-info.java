@@ -6,6 +6,7 @@
  * {@code ServletWebServerFactory} declares its own and the auto-configured one backs off; the
  * dispatch executor alone is guarded by name, {@code nettyLoomDispatchExecutor}. Every guard searches
  * the current context only, so a child context that starts its own server registers its own bean
- * graph; injection still sees the whole hierarchy, so a parent bean marked {@code @Primary} wins.
+ * graph; injection still sees the whole hierarchy, so a parent bean marked {@code @Primary} wins, as
+ * does a parent default over a child replacement under any name but the default's.
  */
 package io.github.azholdaspaev.nettyloomspring.autoconfigure;
