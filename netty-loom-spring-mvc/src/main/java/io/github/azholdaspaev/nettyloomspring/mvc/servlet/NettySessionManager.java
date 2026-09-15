@@ -304,7 +304,8 @@ public class NettySessionManager {
      * longest-path-first, so a stale {@code JSESSIONID} usually arrives first. Liveness therefore picks
      * among the candidates instead of the first match winning (issue #91); failing that the last one
      * stands, so {@code getRequestedSessionId()} still reports what the client sent, as Tomcat's
-     * {@code CoyoteAdapter.parseSessionCookiesId} does.
+     * {@code CoyoteAdapter.parseSessionCookiesId} does -- except that an empty value never displaces
+     * a real id (issue #100), which Tomcat lets it do.
      *
      * @param cookies the request's already-parsed cookies, in wire order, or {@code null} if it sent none
      */
@@ -325,7 +326,9 @@ public class NettySessionManager {
             if (isValidId(cookie.getValue())) {
                 return cookie.getValue();
             }
-            lastMatch = cookie.getValue();
+            if (lastMatch == null || !cookie.getValue().isEmpty()) {
+                lastMatch = cookie.getValue();
+            }
         }
         return lastMatch;
     }
