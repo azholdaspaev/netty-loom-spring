@@ -5,14 +5,17 @@ import org.springframework.boot.web.server.context.WebServerApplicationContext;
 import org.springframework.context.SmartLifecycle;
 
 /**
- * Tears the session store down in the <em>stop</em> phase, while the application's beans are still
+ * Destroys the servlet and the filters, tears the session store down and fires
+ * {@code contextDestroyed}, in the <em>stop</em> phase, while the application's beans are still
  * live. As a bean-destruction callback this would be the wrong phase: the servlet context is created
  * during {@code onRefresh()} and singletons are destroyed in reverse creation order, so it closes
  * after data sources have, leaving a {@code @SessionScope} bean's {@code @PreDestroy} to run against
  * a closed {@code DataSource}. Tomcat expires in {@code StandardManager.stopInternal()}, i.e. in this
- * phase, where the same callback succeeds. The web server's stop phase has ended the drain before
- * this runs; a handler thread it cut off has not stopped (issue #89, {@code docs/configuration.md}
- * § Graceful shutdown).
+ * phase, where the same callback succeeds. Here rather than in {@code NettyWebServer.destroy()},
+ * where Boot destroys Tomcat's servlet and filters: that runs after bean destruction, so it would
+ * follow the {@code contextDestroyed} this phase fires -- the inversion issue #103 reports. The web
+ * server's stop phase has ended the drain before this runs; a handler thread it cut off has not
+ * stopped (issue #89, {@code docs/configuration.md} § Graceful shutdown).
  */
 public class SessionStoreLifecycle implements SmartLifecycle {
 
