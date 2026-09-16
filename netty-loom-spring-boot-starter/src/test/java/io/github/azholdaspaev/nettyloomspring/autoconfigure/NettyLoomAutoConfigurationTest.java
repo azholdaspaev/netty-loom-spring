@@ -269,6 +269,18 @@ class NettyLoomAutoConfigurationTest {
         });
     }
 
+    @Test
+    void shouldDestroyDispatcherServletOnceContextCloses() {
+        DispatcherServlet servlet = mock(DispatcherServlet.class);
+        new WebApplicationContextRunner(AnnotationConfigServletWebServerApplicationContext::new)
+            .withConfiguration(AutoConfigurations.of(NettyLoomAutoConfiguration.class))
+            .withBean(DEFAULT_DISPATCHER_SERVLET_BEAN_NAME, DispatcherServlet.class, () -> servlet)
+            .withPropertyValues("server.port=0")
+            .run(context -> verify(servlet, never()).destroy());
+
+        verify(servlet).destroy();
+    }
+
     private static WebApplicationContextRunner newRunnerWithServlet(DispatcherServlet servlet) {
         return new WebApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(NettyLoomAutoConfiguration.class))

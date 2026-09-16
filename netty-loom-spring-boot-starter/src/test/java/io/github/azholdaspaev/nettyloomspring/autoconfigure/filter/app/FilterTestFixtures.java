@@ -24,6 +24,7 @@ public final class FilterTestFixtures {
     public static final class HeaderFilter implements Filter {
 
         private final AtomicInteger initCount = new AtomicInteger();
+        private final AtomicInteger destroyCount = new AtomicInteger();
 
         @Override
         public void init(FilterConfig filterConfig) {
@@ -37,8 +38,17 @@ public final class FilterTestFixtures {
             chain.doFilter(request, response);
         }
 
+        @Override
+        public void destroy() {
+            destroyCount.incrementAndGet();
+        }
+
         public int initCount() {
             return initCount.get();
+        }
+
+        public int destroyCount() {
+            return destroyCount.get();
         }
     }
 
