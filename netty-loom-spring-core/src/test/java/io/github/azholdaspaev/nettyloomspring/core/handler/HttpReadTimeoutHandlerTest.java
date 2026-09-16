@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -223,6 +224,18 @@ class HttpReadTimeoutHandlerTest {
         elapse(channel, TIMEOUT_MILLIS * 5);
 
         assertTrue(channel.isOpen(), "a non-positive timeout turns the guard off rather than closing at once");
+    }
+
+    @Test
+    void shouldArmTimerWhenDurationExceedsLongNanos() {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpReadTimeoutHandler(Duration.ofDays(200_000)));
+        channel.freezeTime();
+
+        elapse(channel, TIMEOUT_MILLIS * 5);
+
+        assertTrue(channel.isOpen(), "a timeout past Long.MAX_VALUE nanoseconds must not expire");
+        assertTrue(channel.runScheduledPendingTasks() != -1,
+            "a timeout past Long.MAX_VALUE nanoseconds must arm a timer rather than disable the guard");
     }
 
     @Test
