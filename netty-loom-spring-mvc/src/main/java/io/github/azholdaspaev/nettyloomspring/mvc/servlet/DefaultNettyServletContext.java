@@ -73,7 +73,7 @@ public final class DefaultNettyServletContext implements NettyServletContext {
     private final AtomicReference<ListenerState> listenerState = new AtomicReference<>(ListenerState.NEW);
     /**
      * Appended after each init that returned, so a startup that failed midway destroys only that prefix;
-     * claimed by pollLast, so the two routes into close() destroy each filter once.
+     * claimed by pollLast.
      */
     private final Deque<RegisteredFilter> initializedFilters = new ConcurrentLinkedDeque<>();
     private final AtomicBoolean servletInitialized = new AtomicBoolean();
@@ -419,10 +419,7 @@ public final class DefaultNettyServletContext implements NettyServletContext {
          * Servlet, filters back to front, store, listeners: the order of StandardContext.stopInternal()
          * (wrappers, filterStop, Manager, listenerStop), so a listener auditing live sessions on the way
          * out is not handed a half-drained store, and ServletContextListener.contextDestroyed's promise
-         * that every servlet and filter is already destroyed holds. Guarded by the transition, not by a
-         * flag read: close() is reached both from SessionStoreLifecycle.stop() and from the
-         * bean-destruction backstop, and a startup that failed before fireContextInitialized has nothing
-         * to destroy.
+         * that every servlet and filter is already destroyed holds.
          */
         if (servletInitialized.getAndSet(false)) {
             destroyQuietly("Servlet '" + servletName + "'", servlet::destroy);
