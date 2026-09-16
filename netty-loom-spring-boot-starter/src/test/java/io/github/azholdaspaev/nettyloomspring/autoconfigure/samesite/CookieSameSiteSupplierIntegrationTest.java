@@ -1,7 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.samesite;
 
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.samesite.app.SameSiteTestApplication;
-import io.github.azholdaspaev.nettyloomspring.autoconfigure.support.ResponseCookies;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettySessionCookieConfig;
 
 import org.junit.jupiter.api.Test;
@@ -15,7 +14,6 @@ import org.springframework.test.web.servlet.client.RestTestClient;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -36,33 +34,24 @@ class CookieSameSiteSupplierIntegrationTest {
     @Autowired
     private RestTestClient restTestClient;
 
-    private String setCookie(String uri, String name) {
-        String line = ResponseCookies.lineFor(restTestClient.get().uri(uri)
-            .exchange()
-            .expectStatus().isOk()
-            .expectBody(String.class).returnResult()
-            .getResponseHeaders(), name);
-        assertNotNull(line, "no Set-Cookie for " + name + " from " + uri);
-        return line;
-    }
-
     @Test
     void shouldCarrySameSiteOnWireForSupplierMatchedCookie() {
-        String setCookie = setCookie("/same-site/tracked", "tracker");
+        String setCookie = SetCookieLines.fetch(restTestClient, "/same-site/tracked", "tracker");
 
         assertTrue(setCookie.contains("SameSite=Strict"), "Actual: " + setCookie);
     }
 
     @Test
     void shouldCarryNoSameSiteForUnmatchedCookie() {
-        String setCookie = setCookie("/same-site/plain", "plain");
+        String setCookie = SetCookieLines.fetch(restTestClient, "/same-site/plain", "plain");
 
         assertFalse(setCookie.contains("SameSite"), "Actual: " + setCookie);
     }
 
     @Test
     void shouldPreferSessionSameSitePropertyOverMatchingSupplier() {
-        String setCookie = setCookie("/same-site/session", NettySessionCookieConfig.DEFAULT_NAME);
+        String setCookie = SetCookieLines.fetch(restTestClient, "/same-site/session",
+            NettySessionCookieConfig.DEFAULT_NAME);
 
         assertTrue(setCookie.contains("SameSite=Lax"), "Actual: " + setCookie);
         assertFalse(setCookie.contains("SameSite=Strict"), "Actual: " + setCookie);
