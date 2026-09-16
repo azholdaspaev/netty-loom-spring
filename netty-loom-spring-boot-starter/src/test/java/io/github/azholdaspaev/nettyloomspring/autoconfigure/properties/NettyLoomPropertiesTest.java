@@ -4,6 +4,7 @@ import io.github.azholdaspaev.nettyloomspring.core.server.NettyTransportPreferen
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
+import org.springframework.util.unit.DataSize;
 
 import java.time.Duration;
 import java.util.Map;
@@ -52,6 +53,62 @@ class NettyLoomPropertiesTest {
         NettyLoomProperties properties = bind(Map.of("server.netty.accept-count", "1024"));
 
         assertEquals(1024, properties.acceptCount());
+    }
+
+    @Test
+    void shouldApplyDefaultMaxHttpBodySize() {
+        NettyLoomProperties properties = bind(Map.of());
+
+        assertEquals(DataSize.ofMegabytes(1), properties.maxHttpBodySize());
+    }
+
+    @Test
+    void shouldOverrideMaxHttpBodySizeFromConfiguration() {
+        NettyLoomProperties properties = bind(Map.of("server.netty.max-http-body-size", "8MB"));
+
+        assertEquals(DataSize.ofMegabytes(8), properties.maxHttpBodySize());
+    }
+
+    @Test
+    void shouldApplyDefaultMaxHeaderSize() {
+        NettyLoomProperties properties = bind(Map.of());
+
+        assertEquals(DataSize.ofBytes(10_000), properties.maxHeaderSize());
+    }
+
+    @Test
+    void shouldOverrideMaxHeaderSizeFromConfiguration() {
+        NettyLoomProperties properties = bind(Map.of("server.netty.max-header-size", "16KB"));
+
+        assertEquals(DataSize.ofKilobytes(16), properties.maxHeaderSize());
+    }
+
+    @Test
+    void shouldApplyDefaultMaxInitialLineLength() {
+        NettyLoomProperties properties = bind(Map.of());
+
+        assertEquals(DataSize.ofBytes(10_000), properties.maxInitialLineLength());
+    }
+
+    @Test
+    void shouldOverrideMaxInitialLineLengthFromConfiguration() {
+        NettyLoomProperties properties = bind(Map.of("server.netty.max-initial-line-length", "4KB"));
+
+        assertEquals(DataSize.ofKilobytes(4), properties.maxInitialLineLength());
+    }
+
+    @Test
+    void shouldApplyDefaultMaxChunkSize() {
+        NettyLoomProperties properties = bind(Map.of());
+
+        assertEquals(DataSize.ofBytes(10_000), properties.maxChunkSize());
+    }
+
+    @Test
+    void shouldOverrideMaxChunkSizeFromConfiguration() {
+        NettyLoomProperties properties = bind(Map.of("server.netty.max-chunk-size", "64KB"));
+
+        assertEquals(DataSize.ofKilobytes(64), properties.maxChunkSize());
     }
 
     @Test

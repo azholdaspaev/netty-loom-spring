@@ -181,7 +181,7 @@ issue. The contrast with the list above is the point.
 Standard knobs bind under Spring Boot's `server.*` namespace; Netty-only tuning lives under
 `server.netty.*`. The rule for which is which, and why, is [ADR 0001](docs/adr/0001-server-properties-namespace.md).
 
-Eight Netty-only properties. Types, defaults and exact semantics are in
+Twelve Netty-only properties. Types, defaults and exact semantics are in
 **[docs/configuration.md](docs/configuration.md#servernetty)**, which is where they are maintained:
 
 | Property | Controls |
@@ -194,6 +194,10 @@ Eight Netty-only properties. Types, defaults and exact semantics are in
 | `server.netty.shutdown-grace-period` | How long graceful shutdown drains before force-closing |
 | `server.netty.read-timeout` | The slow-loris deadline, measured on the client rather than on your handler |
 | `server.netty.write-stall-timeout` | How long a response waits on a client that has stopped reading it |
+| `server.netty.max-http-body-size` | Request body cap, answered `413` |
+| `server.netty.max-header-size` | Request header-block cap, answered `431` |
+| `server.netty.max-initial-line-length` | Request-line cap, answered `414` |
+| `server.netty.max-chunk-size` | Largest piece of a body the decoder hands on at once |
 
 Honoured from the standard namespace: `server.port`, `server.address`,
 `server.servlet.context-path`, `server.servlet.session.timeout`,
@@ -205,9 +209,9 @@ Two things to know before tuning any of it. `server.netty.shutdown-grace-period`
 strictly below `spring.lifecycle.timeout-per-shutdown-phase`, or the phase timeout is the deadline
 that applies and a request it cuts off runs on after the session store is gone
 ([#89](https://github.com/azholdaspaev/netty-loom-spring/issues/89) —
-[why](docs/configuration.md#graceful-shutdown)). And the HTTP frame limits are fixed rather than
-configurable ([#42](https://github.com/azholdaspaev/netty-loom-spring/issues/42) —
-[the values, and the status each over-limit request gets](docs/configuration.md#fixed-limits)).
+[why](docs/configuration.md#graceful-shutdown)). And the size limits default to 10,000 decimal
+bytes, not the `10KB` a `DataSize` would read as 10,240
+([the defaults, and the status each over-limit request gets](docs/configuration.md#size-limits)).
 
 ## Architecture
 
@@ -232,13 +236,13 @@ TCP accept (boss loop)
   → worker loop, in NettyServerChannelInitializer.initChannel:
       HttpConnectionRegistry.register(channel)   # before the pipeline is configured
   → then the pipeline, on that same loop:
-      httpCodec          HttpServerCodec(10_000, 10_000, 10_000)
+      httpCodec          HttpServerCodec           # server.netty.max-initial-line-length / max-header-size / max-chunk-size
       httpKeepAlive      HttpServerKeepAliveHandler
       drain              HttpDrainHandler          # counts the exchange for graceful shutdown
       readTimeout        HttpReadTimeoutHandler    # client deadline; suspended while dispatching
       pipelining         HttpPipeliningHandler     # responses leave in request order; withholds reads
       decoderFailure     HttpDecoderFailureHandler # @Sharable
-      bodyLimit          HttpRequestBodyLimitHandler # 1 MiB cap, 100 Continue / 417 / 413
+      bodyLimit          HttpRequestBodyLimitHandler # server.netty.max-http-body-size, 100 Continue / 417 / 413
       dispatcher         HttpRequestHandler
           → virtual thread (Executors.newVirtualThreadPerTaskExecutor)
               → SpringHttpRequestDispatcher
