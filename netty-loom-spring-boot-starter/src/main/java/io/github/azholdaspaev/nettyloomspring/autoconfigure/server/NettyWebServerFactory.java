@@ -11,6 +11,7 @@ import io.netty.handler.codec.http.cookie.CookieHeaderNames;
 import jakarta.servlet.ServletException;
 import org.springframework.boot.web.server.AbstractConfigurableWebServerFactory;
 import org.springframework.boot.web.server.Cookie;
+import org.springframework.boot.web.server.MimeMappings;
 import org.springframework.boot.web.server.Ssl;
 import org.springframework.boot.web.server.WebServer;
 import org.springframework.boot.web.server.WebServerException;
@@ -23,7 +24,9 @@ import org.springframework.boot.web.servlet.ServletContextInitializer;
 import org.springframework.boot.webmvc.autoconfigure.DispatcherServletAutoConfiguration;
 import org.springframework.web.servlet.DispatcherServlet;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
     implements ConfigurableServletWebServerFactory {
@@ -66,6 +69,7 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
          */
         servletContext.setContextPath(getContextPath());
         servletContext.setServletContextName(getSettings().getDisplayName());
+        configureMimeMappings();
         configureSessions();
         configureCookieSameSite();
         configureErrorPages();
@@ -97,6 +101,14 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
             throw new WebServerException("server.ssl.* is configured but netty-loom-spring does not support "
                 + "TLS yet (see issue #16). Remove server.ssl.* or set server.ssl.enabled=false.", null);
         }
+    }
+
+    private void configureMimeMappings() {
+        Map<String, String> mimeMappings = new HashMap<>();
+        for (MimeMappings.Mapping mapping : getSettings().getMimeMappings()) {
+            mimeMappings.put(mapping.getExtension(), mapping.getMimeType());
+        }
+        servletContext.setMimeMappings(mimeMappings);
     }
 
     /**
