@@ -532,6 +532,51 @@ class DefaultNettyServletContextTest {
         assertNull(context.getRealPath("/"));
     }
 
+    // --- MIME types (issue #59) ---
+
+    @Test
+    void shouldReturnNullMimeTypeWhenNoMappingsAreSet() {
+        assertNull(context.getMimeType("index.html"),
+            "a context built outside Boot has no mime table, and the spec's answer for an unknown type is null");
+    }
+
+    @Test
+    void shouldReturnMappedMimeTypeForFileExtension() {
+        context.setMimeMappings(Map.of("html", "text/html"));
+
+        assertEquals("text/html", context.getMimeType("index.html"));
+    }
+
+    @Test
+    void shouldMatchMimeMappingIgnoringExtensionCase() {
+        context.setMimeMappings(Map.of("HTML", "text/html"));
+
+        assertEquals("text/html", context.getMimeType("/static/INDEX.Html"),
+            "Tomcat lower-cases the extension on both add and lookup (StandardContext.findMimeMapping)");
+    }
+
+    @Test
+    void shouldReturnNullMimeTypeForUnmappedExtension() {
+        context.setMimeMappings(Map.of("html", "text/html"));
+
+        assertNull(context.getMimeType("archive.unknown"));
+    }
+
+    @Test
+    void shouldReturnNullMimeTypeForFileWithoutExtension() {
+        context.setMimeMappings(Map.of("html", "text/html"));
+
+        assertNull(context.getMimeType("README"));
+        assertNull(context.getMimeType("trailing."));
+    }
+
+    @Test
+    void shouldReturnNullMimeTypeForNullFile() {
+        context.setMimeMappings(Map.of("html", "text/html"));
+
+        assertNull(context.getMimeType(null));
+    }
+
     // --- Simple getters ---
 
     @Test

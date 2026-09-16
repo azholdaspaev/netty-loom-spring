@@ -22,10 +22,12 @@ import java.util.Deque;
 import java.util.EnumSet;
 import java.util.Enumeration;
 import java.util.EventListener;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -63,6 +65,7 @@ public final class DefaultNettyServletContext implements NettyServletContext {
     private volatile List<RegisteredFilter> registeredFiltersSnapshot;
     private volatile String contextPath = ROOT_CONTEXT_PATH;
     private volatile String servletContextName = DEFAULT_SERVLET_CONTEXT_NAME;
+    private volatile Map<String, String> mimeMappings = Map.of();
     private volatile NettyDispatchFactory dispatchFactory;
     private volatile NettyCookieSameSiteResolver cookieSameSiteResolver = NettyCookieSameSiteResolver.NO_OPINION;
     private volatile NettyErrorPageResolver errorPageResolver = NettyErrorPageResolver.NO_PAGES;
@@ -290,6 +293,25 @@ public final class DefaultNettyServletContext implements NettyServletContext {
     @Override
     public String getRealPath(String path) {
         return null;
+    }
+
+    @Override
+    public void setMimeMappings(Map<String, String> mimeMappings) {
+        var lowerCased = new HashMap<String, String>();
+        mimeMappings.forEach((extension, mimeType) -> lowerCased.put(extension.toLowerCase(Locale.ROOT), mimeType));
+        this.mimeMappings = Collections.unmodifiableMap(lowerCased);
+    }
+
+    @Override
+    public String getMimeType(String file) {
+        if (file == null) {
+            return null;
+        }
+        int period = file.lastIndexOf('.');
+        if (period < 0) {
+            return null;
+        }
+        return mimeMappings.get(file.substring(period + 1).toLowerCase(Locale.ROOT));
     }
 
     @Override
