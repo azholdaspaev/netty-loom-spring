@@ -121,12 +121,9 @@ public class NettyLoomAutoConfiguration {
          * zero -- which the handler treats as "disabled", silently turning the slow-loris guard off.
          */
         long readTimeoutNanos = properties.readTimeout().toNanos();
-        int maxInitialLineLength = Math.toIntExact(
-            requirePositiveBytes(properties.maxInitialLineLength(), "server.netty.max-initial-line-length"));
-        int maxHeaderSize = Math.toIntExact(
-            requirePositiveBytes(properties.maxHeaderSize(), "server.netty.max-header-size"));
-        int maxChunkSize = Math.toIntExact(
-            requirePositiveBytes(properties.maxChunkSize(), "server.netty.max-chunk-size"));
+        int maxInitialLineLength = requireIntBytes(properties.maxInitialLineLength(), "server.netty.max-initial-line-length");
+        int maxHeaderSize = requireIntBytes(properties.maxHeaderSize(), "server.netty.max-header-size");
+        int maxChunkSize = requireIntBytes(properties.maxChunkSize(), "server.netty.max-chunk-size");
         long maxHttpBodyBytes = requirePositiveBytes(properties.maxHttpBodySize(), "server.netty.max-http-body-size");
         return new NettyPipelineDefinition(List.of(
             new NettyPipelineStep("httpCodec", () -> new HttpServerCodec(maxInitialLineLength, maxHeaderSize, maxChunkSize)),
@@ -171,6 +168,14 @@ public class NettyLoomAutoConfiguration {
             throw new IllegalArgumentException(property + " must be positive, was " + size);
         }
         return bytes;
+    }
+
+    private static int requireIntBytes(DataSize size, String property) {
+        long bytes = requirePositiveBytes(size, property);
+        if (bytes > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException(property + " must be at most " + Integer.MAX_VALUE + " bytes, was " + size);
+        }
+        return (int) bytes;
     }
 
     /**

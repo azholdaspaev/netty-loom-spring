@@ -123,9 +123,10 @@ class NettyLoomAutoConfigurationTest {
         "server.netty.max-initial-line-length",
         "server.netty.max-chunk-size"
     })
-    void shouldFailStartupWhenCodecLimitDoesNotFitInt(String property) {
+    void shouldFailStartupNamingPropertyWhenCodecLimitDoesNotFitInt(String property) {
         runner.withPropertyValues(property + "=3GB")
-            .run(context -> assertThat(context).hasFailed());
+            .run(context -> assertThat(context).hasFailed()
+                .getFailure().rootCause().hasMessageContaining(property));
     }
 
     @ParameterizedTest
