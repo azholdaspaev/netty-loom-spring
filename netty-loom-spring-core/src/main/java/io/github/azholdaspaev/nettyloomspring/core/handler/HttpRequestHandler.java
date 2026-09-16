@@ -1,6 +1,5 @@
 package io.github.azholdaspaev.nettyloomspring.core.handler;
 
-import io.github.azholdaspaev.nettyloomspring.core.time.Durations;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -53,7 +52,7 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
         this.requestDispatcher = requestDispatcher;
         this.dispatchExecutor = dispatchExecutor;
         this.connectionRegistry = connectionRegistry;
-        this.writeStallTimeoutNanos = Durations.toNanosSaturated(writeStallTimeout);
+        this.writeStallTimeoutNanos = TimeUnit.NANOSECONDS.convert(writeStallTimeout);
     }
 
     /**
