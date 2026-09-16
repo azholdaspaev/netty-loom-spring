@@ -80,6 +80,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     private String serverName;
     private int serverPort;
     private Map<String, String[]> parameterMap;
+    private Map<String, String[]> parameterMapCopy;
     private List<Locale> locales;
     private Charset characterEncoding;
     private Cookie[] cookies;
@@ -221,6 +222,17 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     static Map<String, String[]> toParameterMap(Map<String, List<String>> parameters) {
         Map<String, String[]> map = new LinkedHashMap<>(parameters.size());
         parameters.forEach((name, values) -> map.put(name, values.toArray(new String[0])));
+        return Collections.unmodifiableMap(map);
+    }
+
+    /**
+     * One copy per request rather than a copy per call: Tomcat's {@code Request.getParameterMap}
+     * fills a locked {@code ParameterMap} once, from arrays {@code Parameters.getParameterValues}
+     * creates afresh, so the map it caches never shares an array with {@code getParameter}.
+     */
+    static Map<String, String[]> copyParameterMap(Map<String, String[]> parameters) {
+        Map<String, String[]> map = new LinkedHashMap<>(parameters.size());
+        parameters.forEach((name, values) -> map.put(name, values.clone()));
         return Collections.unmodifiableMap(map);
     }
 
@@ -574,7 +586,10 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     @Override
     public Map<String, String[]> getParameterMap() {
         ensureParametersParsed();
-        return parameterMap;
+        if (parameterMapCopy == null) {
+            parameterMapCopy = copyParameterMap(parameterMap);
+        }
+        return parameterMapCopy;
     }
 
     @Override
