@@ -196,7 +196,7 @@ fired on an object bound into a session, and passing one to `addListener` throws
 | HTTP/1.1, keep-alive, pipelining | `works` | Responses leave in request order |
 | HTTP/1.0 | `partial` | Streamed responses are close-delimited rather than chunked |
 | `HEAD`, `OPTIONS` | `works` | Via `HttpServlet`'s own handling |
-| Server-wide `OPTIONS *` | `none` | [#58](https://github.com/azholdaspaev/netty-loom-spring/issues/58) |
+| Server-wide `OPTIONS *` | `works` | Answered by the bridge with Tomcat's fixed `Allow` list, before the context-path guard, filters or the servlet |
 | epoll / kqueue / NIO transports | `works` | Auto-selected; see `server.netty.transport` |
 | Graceful shutdown | `works` | Two-phase drain. Note `server.shutdown=immediate` is ignored — it always drains ([#87](https://github.com/azholdaspaev/netty-loom-spring/issues/87)) |
 | Slow-loris protection | `works` | Per-connection read timeout measuring the client, not the handler |
