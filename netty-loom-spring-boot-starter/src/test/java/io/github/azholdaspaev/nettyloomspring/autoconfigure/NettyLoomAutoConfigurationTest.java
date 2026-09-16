@@ -193,10 +193,7 @@ class NettyLoomAutoConfigurationTest {
         DispatcherServlet parentServlet = newServletWriting("parent");
         DispatcherServlet childServlet = newServletWriting("child");
         newRunnerWithServlet(parentServlet).run(parent ->
-            new WebApplicationContextRunner(AnnotationConfigServletWebServerApplicationContext::new)
-                .withConfiguration(AutoConfigurations.of(NettyLoomAutoConfiguration.class))
-                .withBean(DEFAULT_DISPATCHER_SERVLET_BEAN_NAME, DispatcherServlet.class, () -> childServlet)
-                .withPropertyValues("server.port=0")
+            newBootedRunnerWithServlet(childServlet)
                 .withParent(parent)
                 .run(child -> {
                     int port = child.getSourceApplicationContext(AnnotationConfigServletWebServerApplicationContext.class)
@@ -272,11 +269,7 @@ class NettyLoomAutoConfigurationTest {
     @Test
     void shouldDestroyDispatcherServletOnceContextCloses() {
         DispatcherServlet servlet = mock(DispatcherServlet.class);
-        new WebApplicationContextRunner(AnnotationConfigServletWebServerApplicationContext::new)
-            .withConfiguration(AutoConfigurations.of(NettyLoomAutoConfiguration.class))
-            .withBean(DEFAULT_DISPATCHER_SERVLET_BEAN_NAME, DispatcherServlet.class, () -> servlet)
-            .withPropertyValues("server.port=0")
-            .run(context -> verify(servlet, never()).destroy());
+        newBootedRunnerWithServlet(servlet).run(context -> verify(servlet, never()).destroy());
 
         verify(servlet).destroy();
     }
@@ -285,6 +278,13 @@ class NettyLoomAutoConfigurationTest {
         return new WebApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(NettyLoomAutoConfiguration.class))
             .withBean(DEFAULT_DISPATCHER_SERVLET_BEAN_NAME, DispatcherServlet.class, () -> servlet);
+    }
+
+    private static WebApplicationContextRunner newBootedRunnerWithServlet(DispatcherServlet servlet) {
+        return new WebApplicationContextRunner(AnnotationConfigServletWebServerApplicationContext::new)
+            .withConfiguration(AutoConfigurations.of(NettyLoomAutoConfiguration.class))
+            .withBean(DEFAULT_DISPATCHER_SERVLET_BEAN_NAME, DispatcherServlet.class, () -> servlet)
+            .withPropertyValues("server.port=0");
     }
 
     private static ExecutorService newInlineExecutor() {
