@@ -65,20 +65,55 @@ class GracefulShutdownTest {
 
     @Test
     void shouldCutOffRequestOnceLifecyclePhaseTimeoutExpires() throws Exception {
+        HeldRequest held = holdRequestAcrossClose(
+            "spring.lifecycle.timeout-per-shutdown-phase=1s",
+            "server.netty.shutdown-grace-period=30s");
+
+        assertTrue(held.response().isCompletedExceptionally(),
+            "once Spring's phase timeout expires, stop() must cut the request off rather than wait "
+                + "out the grace period");
+        assertTrue(held.settledAfterMillis().get() < HoldingController.HOLD_MILLIS,
+            "the request must be cut off at the phase timeout, before the controller would have "
+                + "answered; it settled after " + held.settledAfterMillis().get() + "ms");
+    }
+
+    @Test
+    void shouldDrainRequestToCompletionWhenShutdownIsGraceful() throws Exception {
+        HeldRequest held = holdRequestAcrossClose(
+            "server.shutdown=graceful",
+            "spring.lifecycle.timeout-per-shutdown-phase=30s",
+            "server.netty.shutdown-grace-period=30s");
+
+        assertEquals("released", held.response().get(5, TimeUnit.SECONDS).body(),
+            "under server.shutdown=graceful the in-flight request must be drained to its response");
+    }
+
+    @Test
+    void shouldCutOffRequestWithoutDrainingWhenShutdownIsImmediate() throws Exception {
+        HeldRequest held = holdRequestAcrossClose(
+            "server.shutdown=immediate",
+            "spring.lifecycle.timeout-per-shutdown-phase=30s",
+            "server.netty.shutdown-grace-period=30s");
+
+        assertTrue(held.response().isCompletedExceptionally(),
+            "under server.shutdown=immediate, stop() must cut the request off rather than drain it");
+        assertTrue(held.settledAfterMillis().get() < HoldingController.HOLD_MILLIS,
+            "the request must be cut off without waiting for the controller to answer; it settled after "
+                + held.settledAfterMillis().get() + "ms");
+    }
+
+    private static HeldRequest holdRequestAcrossClose(String... properties) throws Exception {
         HttpClient client = HttpClient.newHttpClient();
         ConfigurableApplicationContext context = new SpringApplicationBuilder(
             SmokeNettyLoomApplication.class, HoldingController.class)
-            .properties("server.port=0",
-                "spring.lifecycle.timeout-per-shutdown-phase=1s",
-                "server.netty.shutdown-grace-period=30s")
+            .properties("server.port=0")
+            .properties(properties)
             .run();
         HoldingController holding = context.getBean(HoldingController.class);
 
-        CompletableFuture<HttpResponse<String>> response;
-        CompletableFuture<Long> settledAfterMillis;
         try {
             int port = ((WebServerApplicationContext) context).getWebServer().getPort();
-            response = client.sendAsync(
+            CompletableFuture<HttpResponse<String>> response = client.sendAsync(
                 HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/hold")).build(),
                 HttpResponse.BodyHandlers.ofString());
             assertTrue(holding.entered.await(5, TimeUnit.SECONDS),
@@ -91,89 +126,19 @@ class GracefulShutdownTest {
              * The same wait is why the controller must let go by itself rather than on a latch.
              */
             long startedAt = System.nanoTime();
-            settledAfterMillis = response.handle((_, _) -> (System.nanoTime() - startedAt) / 1_000_000L);
+            CompletableFuture<Long> settledAfterMillis =
+                response.handle((_, _) -> (System.nanoTime() - startedAt) / 1_000_000L);
             context.close();
+            return new HeldRequest(response, settledAfterMillis);
         } finally {
             if (context.isActive()) {
                 context.close();
             }
         }
-
-        assertTrue(response.isCompletedExceptionally(),
-            "once Spring's phase timeout expires, stop() must cut the request off rather than wait "
-                + "out the grace period");
-        assertTrue(settledAfterMillis.get() < HoldingController.HOLD_MILLIS,
-            "the request must be cut off at the phase timeout, before the controller would have "
-                + "answered; it settled after " + settledAfterMillis.get() + "ms");
     }
 
-    @Test
-    void shouldDrainRequestToCompletionWhenShutdownIsGraceful() throws Exception {
-        HttpClient client = HttpClient.newHttpClient();
-        ConfigurableApplicationContext context = new SpringApplicationBuilder(
-            SmokeNettyLoomApplication.class, HoldingController.class)
-            .properties("server.port=0",
-                "server.shutdown=graceful",
-                "spring.lifecycle.timeout-per-shutdown-phase=30s",
-                "server.netty.shutdown-grace-period=30s")
-            .run();
-        HoldingController holding = context.getBean(HoldingController.class);
-
-        CompletableFuture<HttpResponse<String>> response;
-        try {
-            int port = ((WebServerApplicationContext) context).getWebServer().getPort();
-            response = client.sendAsync(
-                HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/hold")).build(),
-                HttpResponse.BodyHandlers.ofString());
-            assertTrue(holding.entered.await(5, TimeUnit.SECONDS),
-                "the request must be inside the controller before shutdown begins");
-            context.close();
-        } finally {
-            if (context.isActive()) {
-                context.close();
-            }
-        }
-
-        assertEquals("released", response.get(5, TimeUnit.SECONDS).body(),
-            "under server.shutdown=graceful the in-flight request must be drained to its response");
-    }
-
-    @Test
-    void shouldCutOffRequestWithoutDrainingWhenShutdownIsImmediate() throws Exception {
-        HttpClient client = HttpClient.newHttpClient();
-        ConfigurableApplicationContext context = new SpringApplicationBuilder(
-            SmokeNettyLoomApplication.class, HoldingController.class)
-            .properties("server.port=0",
-                "server.shutdown=immediate",
-                "spring.lifecycle.timeout-per-shutdown-phase=30s",
-                "server.netty.shutdown-grace-period=30s")
-            .run();
-        HoldingController holding = context.getBean(HoldingController.class);
-
-        CompletableFuture<HttpResponse<String>> response;
-        CompletableFuture<Long> settledAfterMillis;
-        try {
-            int port = ((WebServerApplicationContext) context).getWebServer().getPort();
-            response = client.sendAsync(
-                HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/hold")).build(),
-                HttpResponse.BodyHandlers.ofString());
-            assertTrue(holding.entered.await(5, TimeUnit.SECONDS),
-                "the request must be inside the controller before shutdown begins");
-
-            long startedAt = System.nanoTime();
-            settledAfterMillis = response.handle((_, _) -> (System.nanoTime() - startedAt) / 1_000_000L);
-            context.close();
-        } finally {
-            if (context.isActive()) {
-                context.close();
-            }
-        }
-
-        assertTrue(response.isCompletedExceptionally(),
-            "under server.shutdown=immediate, stop() must cut the request off rather than drain it");
-        assertTrue(settledAfterMillis.get() < HoldingController.HOLD_MILLIS,
-            "the request must be cut off without waiting for the controller to answer; it settled after "
-                + settledAfterMillis.get() + "ms");
+    private record HeldRequest(CompletableFuture<HttpResponse<String>> response,
+                               CompletableFuture<Long> settledAfterMillis) {
     }
 
     @RestController
