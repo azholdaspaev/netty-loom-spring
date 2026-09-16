@@ -6,10 +6,7 @@ import io.github.azholdaspaev.nettyloomspring.core.server.NettyIoHandlerFactory;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyServer;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyServerChannelInitializer;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyServerConfiguration;
-import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyFilterConfig;
-import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletConfig;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
-import io.github.azholdaspaev.nettyloomspring.mvc.servlet.RegisteredFilter;
 import io.netty.handler.codec.http.cookie.CookieHeaderNames;
 import jakarta.servlet.ServletException;
 import org.springframework.boot.web.server.AbstractConfigurableWebServerFactory;
@@ -173,19 +170,17 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
     }
 
     private void initializeFilters() {
-        for (RegisteredFilter registeredFilter : servletContext.getRegisteredFilters()) {
-            try {
-                registeredFilter.filter().init(new NettyFilterConfig(registeredFilter.name(), servletContext));
-            } catch (ServletException e) {
-                throw new WebServerException("Failed to initialize filter '" + registeredFilter.name() + "'", e);
-            }
+        try {
+            servletContext.initializeFilters();
+        } catch (ServletException e) {
+            throw new WebServerException("Failed to initialize filters", e);
         }
     }
 
     private void initializeDispatcherServlet() {
         try {
             String servletName = DispatcherServletAutoConfiguration.DEFAULT_DISPATCHER_SERVLET_BEAN_NAME;
-            dispatcherServlet.init(new NettyServletConfig(servletName, servletContext));
+            servletContext.initializeServlet(servletName, dispatcherServlet);
         } catch (ServletException e) {
             throw new WebServerException("Failed to initialize dispatcher servlet", e);
         }
