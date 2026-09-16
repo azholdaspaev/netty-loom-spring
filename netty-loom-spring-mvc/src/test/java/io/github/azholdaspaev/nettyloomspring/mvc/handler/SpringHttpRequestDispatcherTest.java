@@ -304,6 +304,37 @@ class SpringHttpRequestDispatcherTest {
         assertTrue(events.isEmpty(), "an out-of-context request fires no request listener; got " + events);
     }
 
+    // --- Server-wide OPTIONS * (issue #58) ---
+
+    private static FullHttpRequest optionsAsterisk() {
+        return new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.OPTIONS, "*");
+    }
+
+    @Test
+    void shouldAnswerOptionsAsteriskWithAllowUnderContextPath() throws Exception {
+        servletContext.setContextPath("/app");
+        var dispatcher = dispatcher((request, response) -> response.setStatus(HttpServletResponse.SC_NOT_FOUND));
+
+        FullHttpResponse response = dispatch(dispatcher, optionsAsterisk());
+
+        assertEquals(HttpServletResponse.SC_OK, response.status().code(),
+            "the asterisk-form target is the whole server, not a path outside the context, and the "
+                + "servlet that would answer 404 never runs");
+        assertEquals("GET, HEAD, POST, PUT, DELETE, OPTIONS", response.headers().get(HttpHeaderNames.ALLOW));
+    }
+
+    @Test
+    void shouldNeverLetOptionsAsteriskEnterContext() throws Exception {
+        recordRequests();
+        var dispatcher = dispatcher((request, response) -> events.add("service"));
+
+        FullHttpResponse response = dispatch(dispatcher, optionsAsterisk());
+
+        assertEquals(HttpServletResponse.SC_OK, response.status().code());
+        assertTrue(events.isEmpty(),
+            "OPTIONS * is answered by the container, so no listener or servlet sees it; got " + events);
+    }
+
     @Test
     void shouldAbortDispatchWhenRequestListenerFails() {
         /*

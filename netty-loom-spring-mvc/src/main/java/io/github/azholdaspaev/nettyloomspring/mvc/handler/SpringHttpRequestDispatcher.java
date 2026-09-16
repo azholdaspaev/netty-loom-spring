@@ -8,6 +8,8 @@ import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyErrorPageDispatch
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyHttpServletRequest;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyHttpServletResponse;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
+import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 
 import java.io.InputStream;
@@ -15,6 +17,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.servlet.DispatcherServlet;
 
 public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
+
+    private static final String SERVER_WIDE_ALLOW = "GET, HEAD, POST, PUT, DELETE, OPTIONS";
 
     private final NettyServletContext servletContext;
     private final NettyErrorPageDispatcher errorPages;
@@ -37,6 +41,18 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
             new NettyHttpServletResponse(servletContext.getCookieSameSiteResolver(), writer);
         NettyHttpServletRequest servletRequest =
             new NettyHttpServletRequest(request, body, connection, servletContext, servletResponse);
+
+        /*
+         * Server-wide OPTIONS (RFC 9110 section 7.1, asterisk-form): "*" is not a path, so neither the
+         * context-path guard nor Spring's handler lookup could match it. Answered before filters or the
+         * servlet with the list Tomcat's connector gives (CoyoteAdapter.postParseRequest), less the TRACE
+         * it appends only when allowTrace is on.
+         */
+        if (HttpMethod.OPTIONS.equals(request.method()) && "*".equals(request.uri())) {
+            servletResponse.setHeader(HttpHeaderNames.ALLOW.toString(), SERVER_WIDE_ALLOW);
+            servletResponse.complete();
+            return;
+        }
 
         /*
          * Out-of-context request: a plain 404 before running filters or the servlet, because Boot's
