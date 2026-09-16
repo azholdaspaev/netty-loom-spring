@@ -29,13 +29,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         "server.netty.max-http-body-size=100B",
         "server.netty.max-header-size=200B",
         "server.netty.max-initial-line-length=100B",
-        "server.netty.max-chunk-size=5B"
+        "server.netty.max-chunk-size=" + HttpSizeLimitBindingTest.MAX_CHUNK_BYTES + "B"
     }
 )
 @Timeout(value = 20, unit = TimeUnit.SECONDS)
 class HttpSizeLimitBindingTest {
 
-    private static final int MAX_CHUNK_BYTES = 5;
+    static final int MAX_CHUNK_BYTES = 5;
 
     @LocalServerPort
     int port;
@@ -91,7 +91,7 @@ class HttpSizeLimitBindingTest {
                 int read = gate.awaitRead();
                 assertTrue(read <= MAX_CHUNK_BYTES,
                     "one read spans at most one decoded chunk, so a " + read + "-byte read means the "
-                        + "codec ignored server.netty.max-chunk-size=5B");
+                        + "codec ignored server.netty.max-chunk-size=" + MAX_CHUNK_BYTES + "B");
                 total += read;
             }
 
