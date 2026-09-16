@@ -23,8 +23,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * End-to-end coverage for HEAD and OPTIONS, which Spring MVC answers on its own and the bridge must
- * not drop, mis-frame, or answer with headers it cannot honour.
+ * End-to-end coverage for HEAD and OPTIONS: the ones Spring MVC answers on its own and the bridge
+ * must not drop, mis-frame, or answer with headers it cannot honour, and the server-wide
+ * {@code OPTIONS *} the bridge answers itself before the servlet runs.
  */
 class HeadOptionsIntegrationTest extends BaseIntegrationTest {
 
