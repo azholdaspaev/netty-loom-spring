@@ -100,7 +100,8 @@ the body.
 The three codec limits default to 10,000 decimal bytes, not 10 KiB; `DataSize` reads `10KB` as
 10,240. All four
 must be positive — `0` does not disable a limit, unlike the `Duration` properties above — and the
-three codec limits must fit an `int`; a value outside that range fails startup rather than binding.
+three codec limits must fit an `int`; a value outside that range fails at binding, and Boot's failure
+report names the property, the value and its origin.
 
 ## Graceful shutdown
 
