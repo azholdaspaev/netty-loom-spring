@@ -1,6 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.core.server;
 
 import io.github.azholdaspaev.nettyloomspring.core.exception.NettyServerException;
+import io.github.azholdaspaev.nettyloomspring.core.handler.Durations;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
@@ -240,14 +241,8 @@ public class NettyServer {
 
     private record Deadline(long startNanos, long budgetNanos) {
 
-        // Duration.toNanos() is Math.multiplyExact and throws past Long.MAX_VALUE nanoseconds (#251).
-        private static final Duration MAX_BUDGET = Duration.ofNanos(Long.MAX_VALUE);
-
         private static Deadline in(Duration timeout) {
-            long budget = timeout.isNegative() ? 0L
-                : timeout.compareTo(MAX_BUDGET) > 0 ? Long.MAX_VALUE
-                : timeout.toNanos();
-            return new Deadline(System.nanoTime(), budget);
+            return new Deadline(System.nanoTime(), Durations.toNanosSaturated(timeout));
         }
 
         private long remainingMillis() {

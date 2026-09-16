@@ -52,7 +52,7 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
         this.requestDispatcher = requestDispatcher;
         this.dispatchExecutor = dispatchExecutor;
         this.connectionRegistry = connectionRegistry;
-        this.writeStallTimeoutNanos = writeStallTimeout.toNanos();
+        this.writeStallTimeoutNanos = Durations.toNanosSaturated(writeStallTimeout);
     }
 
     /**

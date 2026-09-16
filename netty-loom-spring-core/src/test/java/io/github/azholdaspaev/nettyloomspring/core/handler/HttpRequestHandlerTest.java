@@ -337,6 +337,32 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    void shouldParkDispatchWhenWriteStallTimeoutExceedsLongNanos() throws Exception {
+        CountDownLatch responseFinished = new CountDownLatch(1);
+        AtomicReference<Thread> worker = new AtomicReference<>();
+        try (StalledConnection connection = new StalledConnection(new HttpRequestHandler((_, _, _, writer) -> {
+                writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
+                writer.write(LastHttpContent.EMPTY_LAST_CONTENT);
+                responseFinished.countDown();
+            },
+            task -> worker.set(startQuietly(task)), connectionRegistry, Duration.ofDays(200_000)))) {
+
+            connection.dispatch();
+
+            SpinWait.untilParked(worker::get, PARK_LIMIT,
+                "a bound past Long.MAX_VALUE nanoseconds must still park the dispatch thread on a deadline, "
+                    + "not fail the connection at construction");
+            assertTrue(connection.channel.isOpen(),
+                "a bound past Long.MAX_VALUE nanoseconds must leave the stalled connection open");
+
+            connection.drain();
+            SpinWait.until(() -> responseFinished.getCount() == 0, PARK_LIMIT,
+                "the dispatch must resume once the connection has taken what it was given");
+        }
+    }
+
+    @Test
     void shouldCloseNotFireExceptionCaughtWhenDispatchFailsPostCommit() {
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         EmbeddedChannel channel = new EmbeddedChannel(

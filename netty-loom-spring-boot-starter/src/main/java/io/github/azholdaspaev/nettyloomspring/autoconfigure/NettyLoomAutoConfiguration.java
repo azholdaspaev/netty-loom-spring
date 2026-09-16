@@ -3,6 +3,7 @@ package io.github.azholdaspaev.nettyloomspring.autoconfigure;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.properties.NettyLoomProperties;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.NettyWebServerFactory;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.SessionStoreLifecycle;
+import io.github.azholdaspaev.nettyloomspring.core.handler.Durations;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpDecoderFailureHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpDrainHandler;
@@ -124,7 +125,7 @@ public class NettyLoomAutoConfiguration {
          * Nanoseconds, not millis: toMillis() truncates, so a sub-millisecond read-timeout would arrive as
          * zero -- which the handler treats as "disabled", silently turning the slow-loris guard off.
          */
-        long readTimeoutNanos = properties.readTimeout().toNanos();
+        long readTimeoutNanos = Durations.toNanosSaturated(properties.readTimeout());
         return new NettyPipelineDefinition(List.of(
             new NettyPipelineStep("httpCodec", () -> new HttpServerCodec(MAX_HTTP_INITIAL_LINE_LENGTH, MAX_HTTP_HEADER_SIZE, MAX_HTTP_CHUNK_SIZE)),
             new NettyPipelineStep("httpKeepAlive", HttpServerKeepAliveHandler::new),
