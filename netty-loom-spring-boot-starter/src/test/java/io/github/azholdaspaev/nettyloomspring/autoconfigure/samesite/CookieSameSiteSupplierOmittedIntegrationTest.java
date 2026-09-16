@@ -18,10 +18,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Pins the deviation from Tomcat at {@code same-site=omitted} (issue #161): Tomcat's
- * {@code SuppliedSameSiteCookieProcessor} takes {@code OMITTED} as an answer for the session cookie
- * and never reaches the application's supplier, whereas here {@code omitted} writes no attribute and
- * a matching supplier still applies. Recorded in {@code docs/compatibility-matrix.md}.
+ * Pins the deviation from Tomcat at {@code same-site=omitted} (issue #161) that
+ * {@code NettyWebServerFactory.configureCookieSameSite} names.
  */
 @AutoConfigureRestTestClient
 @SpringBootTest(
