@@ -41,6 +41,20 @@ class NettyLoomPropertiesTest {
     }
 
     @Test
+    void shouldApplyDefaultAcceptCount() {
+        NettyLoomProperties properties = bind(Map.of());
+
+        assertEquals(128, properties.acceptCount());
+    }
+
+    @Test
+    void shouldOverrideAcceptCountFromConfiguration() {
+        NettyLoomProperties properties = bind(Map.of("server.netty.accept-count", "1024"));
+
+        assertEquals(1024, properties.acceptCount());
+    }
+
+    @Test
     void shouldDefaultTransportToAuto() {
         NettyLoomProperties properties = bind(Map.of());
 
