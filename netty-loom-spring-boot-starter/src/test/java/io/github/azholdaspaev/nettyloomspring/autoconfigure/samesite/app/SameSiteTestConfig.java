@@ -19,8 +19,8 @@ public class SameSiteTestConfig {
     }
 
     /**
-     * Claims the session cookie too, so the test can show that
-     * {@code server.servlet.session.cookie.same-site} still wins there.
+     * Claims the session cookie too, so the tests can show which of
+     * {@code server.servlet.session.cookie.same-site} and the supplier wins there.
      */
     @Bean
     CookieSameSiteSupplier sessionSameSite() {
