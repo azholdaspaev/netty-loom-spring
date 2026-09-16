@@ -9,6 +9,7 @@ import io.netty.handler.timeout.ReadTimeoutException;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.Ticker;
 
+import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -61,6 +62,10 @@ public class HttpReadTimeoutHandler extends ChannelDuplexHandler {
 
     public HttpReadTimeoutHandler(long timeout, TimeUnit unit) {
         this.timeoutNanos = unit.toNanos(timeout);
+    }
+
+    public HttpReadTimeoutHandler(Duration timeout) {
+        this.timeoutNanos = TimeUnit.NANOSECONDS.convert(timeout);
     }
 
     @Override

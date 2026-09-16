@@ -16,7 +16,6 @@ import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineStep;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineDefinition;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyIoHandlerFactory;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyServerChannelInitializer;
-import io.github.azholdaspaev.nettyloomspring.core.time.Durations;
 import io.github.azholdaspaev.nettyloomspring.mvc.handler.SpringHttpRequestDispatcher;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.DefaultNettyServletContext;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
@@ -42,7 +41,6 @@ import org.springframework.web.servlet.DispatcherServlet;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Ordered after Boot's own containers, not left to the default:
@@ -116,11 +114,6 @@ public class NettyLoomAutoConfiguration {
                                                            HttpRequestDispatcher httpRequestDispatcher,
                                                            @Qualifier(DISPATCH_EXECUTOR_BEAN) ExecutorService nettyLoomDispatchExecutor,
                                                            HttpConnectionRegistry httpConnectionRegistry) {
-        /*
-         * Nanoseconds, not millis: toMillis() truncates, so a sub-millisecond read-timeout would arrive as
-         * zero -- which the handler treats as "disabled", silently turning the slow-loris guard off.
-         */
-        long readTimeoutNanos = Durations.toNanosSaturated(properties.readTimeout());
         int maxInitialLineLength = (int) properties.maxInitialLineLength().toBytes();
         int maxHeaderSize = (int) properties.maxHeaderSize().toBytes();
         int maxChunkSize = (int) properties.maxChunkSize().toBytes();
@@ -138,7 +131,7 @@ public class NettyLoomAutoConfiguration {
              * Above the pipelining gate so its count stays a property of what the client has delivered
              * rather than of what that handler has released; correctness holds on either side.
              */
-            new NettyPipelineStep("readTimeout", () -> new HttpReadTimeoutHandler(readTimeoutNanos, TimeUnit.NANOSECONDS)),
+            new NettyPipelineStep("readTimeout", () -> new HttpReadTimeoutHandler(properties.readTimeout())),
             /*
              * Above the dispatcher so requests are gated before dispatch while responses still pass back
              * through, and above bodyLimit so that handler's 100 Continue and 413 are sequenced rather
