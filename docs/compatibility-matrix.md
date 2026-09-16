@@ -29,7 +29,7 @@ property reference.
 | Spring Security | `works` | It is a servlet `Filter` with its own `SecurityContext`; it does not depend on the container auth methods, which are stubs |
 | Actuator | `untested` | No compatibility test module yet ([#25](https://github.com/azholdaspaev/netty-loom-spring/issues/25)) |
 | `@Async` MVC, `Callable` return values | `none` | Routes through `startAsync()` |
-| Welcome page (`index.html`) | `none` | Still 500 with a static `index.html` present ([#59](https://github.com/azholdaspaev/netty-loom-spring/issues/59)), 404 without one — but no longer for want of a `RequestDispatcher`. The forward now runs and `ResourceHttpRequestHandler` finds the resource; it then calls `ServletContext.getMimeType`, which throws |
+| Welcome page (`index.html`) | `works` | `GET /` forwards to a static `index.html` on one of Boot's classpath locations and answers it as `text/html`; 404 without one. Not from a `ServletContext` resource, which [#15](https://github.com/azholdaspaev/netty-loom-spring/issues/15) still leaves at `null` |
 
 ## Errors
 
@@ -184,7 +184,8 @@ fired on an object bound into a session, and passing one to `addListener` throws
 | `getContextPath`, `getAttribute*`, `getInitParameter` | `works` | `setInitParameter` is put-if-absent and returns `false` on a duplicate |
 | `getResource`, `getResourceAsStream`, `getResourcePaths`, `getRealPath` | `none` | All return `null` ([#15](https://github.com/azholdaspaev/netty-loom-spring/issues/15)). `getResourcePaths` returns `null` rather than an empty set |
 | `getRequestDispatcher` | `partial` | Same resolution as the request method above, except that the path must be context-absolute: a relative one returns `null` |
-| `getMimeType`, `getNamedDispatcher`, `getContext`, `addJspFile`, `createServlet`, `createFilter`, `getJspConfigDescriptor`, `declareRoles`, `getVirtualServerName`, `get/setRequestCharacterEncoding`, `get/setResponseCharacterEncoding` | `none` | Throw `UnsupportedOperationException`, which surfaces as **501** if it reaches the pipeline unwrapped, or 500 once Spring wraps it |
+| `getMimeType` | `works` | Answers from Boot's `MimeMappings` — its defaults plus `server.mime-mappings.*` — by the extension after the last `.`, case-insensitively, as Tomcat does; `null` for no extension or an unmapped one |
+| `getNamedDispatcher`, `getContext`, `addJspFile`, `createServlet`, `createFilter`, `getJspConfigDescriptor`, `declareRoles`, `getVirtualServerName`, `get/setRequestCharacterEncoding`, `get/setResponseCharacterEncoding` | `none` | Throw `UnsupportedOperationException`, which surfaces as **501** if it reaches the pipeline unwrapped, or 500 once Spring wraps it |
 | `getServletContextName()` | `works` | Returns `server.servlet.application-display-name`, which Boot defaults to `application` |
 | `getServerInfo()` | `works` | Returns `Netty-Loom` |
 | `getMajorVersion` / `getMinorVersion` | `works` | Reports Servlet 6.0 |
