@@ -1,9 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.timeout;
 
-import io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.app.SmokeNettyLoomApplication;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.web.server.context.WebServerApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 
@@ -13,6 +11,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.concurrent.TimeUnit;
 
+import static io.github.azholdaspaev.nettyloomspring.autoconfigure.support.NettyLoomApplications.run;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
@@ -36,9 +35,7 @@ class TimeoutBeyondLongNanosTest {
     }
 
     private static void assertServesRequest(String property) throws Exception {
-        try (ConfigurableApplicationContext context = new SpringApplicationBuilder(SmokeNettyLoomApplication.class)
-            .properties("server.port=0", property)
-            .run()) {
+        try (ConfigurableApplicationContext context = run(property)) {
             int port = ((WebServerApplicationContext) context).getWebServer().getPort();
 
             HttpResponse<String> response = HttpClient.newHttpClient().send(
