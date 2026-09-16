@@ -96,6 +96,18 @@ public interface NettyServletContext extends ServletContext, AutoCloseable {
     void fireContextInitialized();
 
     /**
+     * Runs {@code Filter.init} on every filter registered with an instance, in registration order,
+     * remembering each one that returned so {@link #close()} destroys exactly those.
+     */
+    void initializeFilters() throws ServletException;
+
+    /**
+     * Runs {@code Servlet.init} on the servlet the filter chain terminates at. Remembered as the
+     * filters are, so {@link #close()} destroys it and {@link #open()} initializes it again.
+     */
+    void initializeServlet(String servletName, Servlet servlet) throws ServletException;
+
+    /**
      * Declares startup over, freezing every part of the context that may only be configured before the
      * application serves traffic -- session settings, the session cookie, and listener registration.
      * Called after filter and servlet initialization, not with {@link #fireContextInitialized()}: Tomcat
@@ -105,18 +117,19 @@ public interface NettyServletContext extends ServletContext, AutoCloseable {
     void markInitialized();
 
     /**
-     * Releases whatever the context holds open. On the interface rather than only the implementation
-     * because owning a background thread is part of this seam: whoever holds a
-     * {@code NettyServletContext} is responsible for closing it.
+     * Destroys what was initialized and releases whatever the context holds open. On the interface
+     * rather than only the implementation because owning a background thread is part of this seam:
+     * whoever holds a {@code NettyServletContext} is responsible for closing it.
      */
     @Override
     default void close() {
     }
 
     /**
-     * Reverses {@link #close()}, so the context can serve sessions again after a stop/start cycle: Spring
+     * Reverses {@link #close()}, so the context can serve again after a stop/start cycle: Spring
      * restarts the stop phase on {@code ApplicationContext.start()}, {@code restart()} and CRaC restore,
-     * and without this every {@code getSession(true)} after a restart fails.
+     * and without this every {@code getSession(true)} after a restart fails and every filter serves
+     * destroyed.
      */
     default void open() {
     }

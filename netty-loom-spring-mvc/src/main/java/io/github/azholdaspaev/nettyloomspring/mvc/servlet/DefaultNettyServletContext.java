@@ -18,6 +18,7 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.EnumSet;
 import java.util.Enumeration;
 import java.util.EventListener;
@@ -28,7 +29,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class DefaultNettyServletContext implements NettyServletContext {
@@ -68,6 +71,14 @@ public final class DefaultNettyServletContext implements NettyServletContext {
      * SessionStoreLifecycle.stop() and the bean-destruction backstop, and each event is owed one delivery.
      */
     private final AtomicReference<ListenerState> listenerState = new AtomicReference<>(ListenerState.NEW);
+    /**
+     * Appended after each init that returned, so a startup that failed midway destroys only that prefix;
+     * claimed by pollLast, so the two routes into close() destroy each filter once.
+     */
+    private final Deque<RegisteredFilter> initializedFilters = new ConcurrentLinkedDeque<>();
+    private final AtomicBoolean servletInitialized = new AtomicBoolean();
+    private volatile String servletName;
+    private volatile Servlet servlet;
 
     /**
      * Only {@code STOPPED} is a state {@link #open()} re-initializes from, so a first start -- which the
@@ -387,17 +398,55 @@ public final class DefaultNettyServletContext implements NettyServletContext {
     }
 
     @Override
+    public void initializeFilters() throws ServletException {
+        for (RegisteredFilter registeredFilter : getRegisteredFilters()) {
+            registeredFilter.filter().init(new NettyFilterConfig(registeredFilter.name(), this));
+            initializedFilters.addLast(registeredFilter);
+        }
+    }
+
+    @Override
+    public void initializeServlet(String servletName, Servlet servlet) throws ServletException {
+        this.servletName = servletName;
+        this.servlet = servlet;
+        servlet.init(new NettyServletConfig(servletName, this));
+        servletInitialized.set(true);
+    }
+
+    @Override
     public void close() {
-        sessionManager.close();
         /*
-         * After the store is drained, matching Tomcat: StandardContext.stopInternal() stops the Manager
-         * and only then runs listenerStop, so a listener auditing live sessions on the way out is not
-         * handed a half-drained store. Guarded by the transition, not by a flag read: close() is reached
-         * both from SessionStoreLifecycle.stop() and from the bean-destruction backstop, and a startup
-         * that failed before fireContextInitialized has nothing to destroy.
+         * Servlet, filters back to front, store, listeners: the order of StandardContext.stopInternal()
+         * (wrappers, filterStop, Manager, listenerStop), so a listener auditing live sessions on the way
+         * out is not handed a half-drained store, and ServletContextListener.contextDestroyed's promise
+         * that every servlet and filter is already destroyed holds. Guarded by the transition, not by a
+         * flag read: close() is reached both from SessionStoreLifecycle.stop() and from the
+         * bean-destruction backstop, and a startup that failed before fireContextInitialized has nothing
+         * to destroy.
          */
+        if (servletInitialized.getAndSet(false)) {
+            destroyQuietly("Servlet '" + servletName + "'", servlet::destroy);
+        }
+        RegisteredFilter filter;
+        while ((filter = initializedFilters.pollLast()) != null) {
+            destroyQuietly("Filter '" + filter.name() + "'", filter.filter()::destroy);
+        }
+        sessionManager.close();
         if (listenerState.compareAndSet(ListenerState.STARTED, ListenerState.STOPPED)) {
             listeners.fireContextDestroyed();
+        }
+    }
+
+    private static void destroyQuietly(String description, Runnable destroy) {
+        try {
+            destroy.run();
+        } catch (Throwable failure) {
+            /*
+             * Logged and passed over, as Tomcat's ApplicationFilterConfig.release() does: teardown has no
+             * caller in a position to handle it, and one failure must not strand what is left to destroy.
+             */
+            NettyListenerRegistry.rethrowIfFatal(failure);
+            log.warn("{} failed to destroy", description, failure);
         }
     }
 
@@ -406,10 +455,19 @@ public final class DefaultNettyServletContext implements NettyServletContext {
         sessionManager.open();
         /*
          * Only from STOPPED. open() also runs on a first start, where the factory has already fired
-         * contextInitialized, and re-firing there would double-initialize every listener on a normal boot.
+         * contextInitialized and initialized the filters and the servlet, and repeating that there would
+         * double-initialize every one of them on a normal boot.
          */
         if (listenerState.get() == ListenerState.STOPPED) {
             fireContextInitialized();
+            try {
+                initializeFilters();
+                if (servlet != null) {
+                    initializeServlet(servletName, servlet);
+                }
+            } catch (ServletException e) {
+                throw new IllegalStateException("Failed to re-initialize filters and servlet on restart", e);
+            }
         }
     }
 
