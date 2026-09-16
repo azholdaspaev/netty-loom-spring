@@ -36,19 +36,19 @@
     },
     {
       "name": "server.netty.max-http-body-size",
-      "description": "Maximum request body size. A request whose Content-Length declares more is answered 413 before any of its body is read; a body without a declared length is answered 413 the moment it grows past the limit. Defaults to 1MB."
+      "description": "Maximum request body size. A request whose Content-Length declares more is answered 413 before any of its body is read; a body without a declared length is answered 413 the moment it grows past the limit. Must be positive; 0 does not disable the limit and fails startup. Defaults to 1MB."
     },
     {
       "name": "server.netty.max-header-size",
-      "description": "Maximum size of a request's header block, all header lines together. A request past it is answered 431 and the connection is closed. This is the Netty-only counterpart of server.max-http-request-header-size, which this server does not read. Defaults to 10000B (decimal bytes, not 10KB)."
+      "description": "Maximum size of a request's header block, all header lines together. A request past it is answered 431 and the connection is closed. This is the Netty-only counterpart of server.max-http-request-header-size, which this server does not read. Must be positive; 0 does not disable the limit and fails startup. Defaults to 10000B (decimal bytes, not 10KB)."
     },
     {
       "name": "server.netty.max-initial-line-length",
-      "description": "Maximum length of the request line -- method, target and version together. A request past it is answered 414 and the connection is closed. Defaults to 10000B (decimal bytes, not 10KB)."
+      "description": "Maximum length of the request line -- method, target and version together. A request past it is answered 414 and the connection is closed. Must be positive; 0 does not disable the limit and fails startup. Defaults to 10000B (decimal bytes, not 10KB)."
     },
     {
       "name": "server.netty.max-chunk-size",
-      "description": "Largest piece of a request body the decoder hands on at once. Larger bodies are split into pieces of at most this size and reach getInputStream() one piece at a time; nothing is refused for exceeding it. Defaults to 10000B (decimal bytes, not 10KB)."
+      "description": "Largest piece of a request body the decoder hands on at once. Larger bodies are split into pieces of at most this size and reach getInputStream() one piece at a time; nothing is refused for exceeding it. Must be positive; 0 does not disable the limit and fails startup. Defaults to 10000B (decimal bytes, not 10KB)."
     },
     {
       "name": "server.netty.transport",
