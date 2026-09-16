@@ -45,6 +45,8 @@ First release. Not yet published to Maven Central; a `0.1.0-SNAPSHOT` is on
   and all seven `addListener` listener types, over `NettyHttpServletRequest`,
   `NettyHttpServletResponse` and `DefaultNettyServletContext`, whose `getServletContextName()`
   is `server.servlet.application-display-name`.
+- **Server-wide `OPTIONS *`** answered with Tomcat's `Allow` list before the context-path guard,
+  filters or the servlet, rather than a 404.
 - **In-memory sessions** with the standard `server.servlet.session.*` cookie and timeout
   properties, plus `CookieSameSiteSupplier` support.
 - **Two SPI seams for extension** — `HttpRequestDispatcher` for the layer above the channel

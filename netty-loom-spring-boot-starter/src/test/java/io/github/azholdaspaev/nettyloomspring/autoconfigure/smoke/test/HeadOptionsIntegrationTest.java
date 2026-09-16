@@ -1,9 +1,12 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.test;
 
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.app.SmokeController;
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.support.RawHttpClient;
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.support.RawHttpResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -11,6 +14,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.client.EntityExchangeResult;
 import org.springframework.test.web.servlet.client.RestTestClient;
 
+import java.net.Socket;
+import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
@@ -18,13 +23,17 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * End-to-end coverage for HEAD and OPTIONS, which Spring MVC answers on its own and the bridge must
- * not drop, mis-frame, or answer with headers it cannot honour.
+ * End-to-end coverage for HEAD and OPTIONS: the ones Spring MVC answers on its own and the bridge
+ * must not drop, mis-frame, or answer with headers it cannot honour, and the server-wide
+ * {@code OPTIONS *} the bridge answers itself before the servlet runs.
  */
 class HeadOptionsIntegrationTest extends BaseIntegrationTest {
 
     @Autowired
     private RestTestClient restTestClient;
+
+    @LocalServerPort
+    private int port;
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
@@ -84,6 +93,19 @@ class HeadOptionsIntegrationTest extends BaseIntegrationTest {
             .exchange()
             .expectStatus().isNotFound()
             .expectHeader().doesNotExist(HttpHeaders.ALLOW);
+    }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldAnswerServerWideOptionsAsteriskWithAllow() throws Exception {
+        try (Socket socket = RawHttpClient.connect(port, Duration.ofSeconds(5))) {
+            RawHttpClient.send(socket, "OPTIONS * HTTP/1.1", "Host: localhost");
+            RawHttpResponse response = RawHttpResponse.read(socket.getInputStream());
+
+            assertEquals(200, response.status());
+            assertEquals("GET, HEAD, POST, PUT, DELETE, OPTIONS", response.header("allow"),
+                "the server-wide Allow list Tomcat's connector answers with");
+        }
     }
 
     @Test
