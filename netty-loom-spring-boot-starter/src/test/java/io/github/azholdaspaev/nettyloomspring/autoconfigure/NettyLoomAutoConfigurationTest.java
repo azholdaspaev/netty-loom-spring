@@ -17,6 +17,7 @@ import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.FilteredClassLoader;
@@ -125,6 +126,23 @@ class NettyLoomAutoConfigurationTest {
     void shouldFailStartupWhenCodecLimitDoesNotFitInt(String property) {
         runner.withPropertyValues(property + "=3GB")
             .run(context -> assertThat(context).hasFailed());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "server.netty.max-header-size, 0B",
+        "server.netty.max-header-size, -1B",
+        "server.netty.max-initial-line-length, 0B",
+        "server.netty.max-initial-line-length, -1B",
+        "server.netty.max-chunk-size, 0B",
+        "server.netty.max-chunk-size, -1B",
+        "server.netty.max-http-body-size, 0B",
+        "server.netty.max-http-body-size, -1B"
+    })
+    void shouldFailStartupNamingPropertyWhenSizeLimitIsNotPositive(String property, String value) {
+        runner.withPropertyValues(property + "=" + value)
+            .run(context -> assertThat(context).hasFailed()
+                .getFailure().rootCause().hasMessageContaining(property));
     }
 
     @Test

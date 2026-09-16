@@ -36,6 +36,7 @@ import org.springframework.boot.web.server.servlet.ServletWebServerFactory;
 import org.springframework.boot.webmvc.autoconfigure.WebMvcAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.util.unit.DataSize;
 import org.springframework.web.servlet.DispatcherServlet;
 
 import java.util.List;
@@ -120,10 +121,13 @@ public class NettyLoomAutoConfiguration {
          * zero -- which the handler treats as "disabled", silently turning the slow-loris guard off.
          */
         long readTimeoutNanos = properties.readTimeout().toNanos();
-        int maxInitialLineLength = Math.toIntExact(properties.maxInitialLineLength().toBytes());
-        int maxHeaderSize = Math.toIntExact(properties.maxHeaderSize().toBytes());
-        int maxChunkSize = Math.toIntExact(properties.maxChunkSize().toBytes());
-        long maxHttpBodyBytes = properties.maxHttpBodySize().toBytes();
+        int maxInitialLineLength = Math.toIntExact(
+            requirePositiveBytes(properties.maxInitialLineLength(), "server.netty.max-initial-line-length"));
+        int maxHeaderSize = Math.toIntExact(
+            requirePositiveBytes(properties.maxHeaderSize(), "server.netty.max-header-size"));
+        int maxChunkSize = Math.toIntExact(
+            requirePositiveBytes(properties.maxChunkSize(), "server.netty.max-chunk-size"));
+        long maxHttpBodyBytes = requirePositiveBytes(properties.maxHttpBodySize(), "server.netty.max-http-body-size");
         return new NettyPipelineDefinition(List.of(
             new NettyPipelineStep("httpCodec", () -> new HttpServerCodec(maxInitialLineLength, maxHeaderSize, maxChunkSize)),
             new NettyPipelineStep("httpKeepAlive", HttpServerKeepAliveHandler::new),
@@ -159,6 +163,14 @@ public class NettyLoomAutoConfiguration {
                 httpConnectionRegistry, properties.writeStallTimeout())),
             NettyPipelineStep.shared("exceptionHandler", new HttpExceptionHandler())
         ));
+    }
+
+    private static long requirePositiveBytes(DataSize size, String property) {
+        long bytes = size.toBytes();
+        if (bytes <= 0) {
+            throw new IllegalArgumentException(property + " must be positive, was " + size);
+        }
+        return bytes;
     }
 
     /**
