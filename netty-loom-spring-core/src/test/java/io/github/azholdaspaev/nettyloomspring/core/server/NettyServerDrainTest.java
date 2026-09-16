@@ -1,11 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.core.server;
 
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
-import io.github.azholdaspaev.nettyloomspring.core.handler.HttpDrainHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestDispatcher;
-import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestBodyLimitHandler;
-import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestHandler;
-import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineStep;
 import io.github.azholdaspaev.nettyloomspring.core.support.HttpWireClient;
 import io.github.azholdaspaev.nettyloomspring.core.support.NettyServerFixture;
 import io.github.azholdaspaev.nettyloomspring.core.support.SpinWait;
@@ -16,8 +12,6 @@ import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import io.netty.handler.codec.http.HttpServerCodec;
-import io.netty.handler.codec.http.HttpServerKeepAliveHandler;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import org.junit.jupiter.api.AfterEach;
@@ -27,7 +21,6 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
-import java.net.InetAddress;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
@@ -54,10 +47,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @Timeout(value = 30, unit = TimeUnit.SECONDS)
 class NettyServerDrainTest {
-
-    private static final Duration UNREACHED_WRITE_STALL_TIMEOUT = Duration.ofSeconds(60);
-
-    private static final int MAX_HTTP_REQUEST_BODY_BYTES = 64 * 1024;
 
     private final CountDownLatch dispatcherEntered = new CountDownLatch(1);
     private final CountDownLatch releaseDispatcher = new CountDownLatch(1);
@@ -337,15 +326,7 @@ class NettyServerDrainTest {
                 super.abortDrain();
             }
         };
-        NettyServerConfiguration configuration = new NettyServerConfiguration(
-            0, InetAddress.getLoopbackAddress(), 0, 0, false, 128);
-        return NettyServerFixture.newServer(configuration, connectionRegistry, List.of(
-            new NettyPipelineStep("httpCodec", HttpServerCodec::new),
-            new NettyPipelineStep("httpKeepAlive", HttpServerKeepAliveHandler::new),
-            new NettyPipelineStep("drain", () -> new HttpDrainHandler(connectionRegistry)),
-            new NettyPipelineStep("bodyLimit", () -> new HttpRequestBodyLimitHandler(MAX_HTTP_REQUEST_BODY_BYTES)),
-            new NettyPipelineStep("dispatcher",
-                () -> new HttpRequestHandler(blockingDispatcher(), dispatchExecutor, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT))));
+        return NettyServerFixture.newHttpServer(connectionRegistry, blockingDispatcher(), dispatchExecutor);
     }
 
     private void awaitAbortRelease() {

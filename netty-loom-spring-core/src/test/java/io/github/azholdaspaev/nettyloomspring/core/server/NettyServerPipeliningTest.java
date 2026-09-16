@@ -1,12 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.core.server;
 
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
-import io.github.azholdaspaev.nettyloomspring.core.handler.HttpDrainHandler;
-import io.github.azholdaspaev.nettyloomspring.core.handler.HttpPipeliningHandler;
-import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestBodyLimitHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestDispatcher;
-import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestHandler;
-import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineStep;
 import io.github.azholdaspaev.nettyloomspring.core.support.HttpWireClient;
 import io.github.azholdaspaev.nettyloomspring.core.support.NettyServerFixture;
 import io.netty.buffer.Unpooled;
@@ -15,8 +10,6 @@ import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import io.netty.handler.codec.http.HttpServerCodec;
-import io.netty.handler.codec.http.HttpServerKeepAliveHandler;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import org.junit.jupiter.api.AfterEach;
@@ -24,10 +17,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
-import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -42,14 +33,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 @Timeout(value = 30, unit = TimeUnit.SECONDS)
 class NettyServerPipeliningTest {
 
-    private static final int MAX_HTTP_REQUEST_BODY_BYTES = 64 * 1024;
-
     /**
      * How long the first request yields to the second before giving up on being overtaken.
      */
     private static final Duration OVERTAKE_WINDOW = Duration.ofSeconds(1);
-
-    private static final Duration UNREACHED_WRITE_STALL_TIMEOUT = Duration.ofSeconds(60);
 
     private final CountDownLatch secondResponded = new CountDownLatch(1);
 
@@ -120,18 +107,9 @@ class NettyServerPipeliningTest {
     }
 
     private NettyServer newServer() {
-        HttpConnectionRegistry connectionRegistry = new HttpConnectionRegistry(
-            new DefaultChannelGroup(GlobalEventExecutor.INSTANCE));
-        NettyServerConfiguration configuration = new NettyServerConfiguration(
-            0, InetAddress.getLoopbackAddress(), 0, 0, false, 128);
-        return NettyServerFixture.newServer(configuration, connectionRegistry, List.of(
-            new NettyPipelineStep("httpCodec", HttpServerCodec::new),
-            new NettyPipelineStep("httpKeepAlive", HttpServerKeepAliveHandler::new),
-            new NettyPipelineStep("drain", () -> new HttpDrainHandler(connectionRegistry)),
-            new NettyPipelineStep("pipelining", HttpPipeliningHandler::new),
-            new NettyPipelineStep("bodyLimit", () -> new HttpRequestBodyLimitHandler(MAX_HTTP_REQUEST_BODY_BYTES)),
-            new NettyPipelineStep("dispatcher",
-                () -> new HttpRequestHandler(overtakingDispatcher(), dispatchExecutor, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT))));
+        return NettyServerFixture.newHttpServer(
+            new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)),
+            overtakingDispatcher(), dispatchExecutor);
     }
 
     private static FullHttpResponse textResponse(String body) {
