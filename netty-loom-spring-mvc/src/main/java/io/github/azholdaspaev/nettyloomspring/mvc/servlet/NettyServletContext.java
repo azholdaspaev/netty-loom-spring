@@ -48,6 +48,13 @@ public interface NettyServletContext extends ServletContext, AutoCloseable {
     void setServletContextName(String servletContextName);
 
     /**
+     * Sets the table {@link #getMimeType(String)} answers from, file extension to MIME type (issue #59):
+     * the route Boot's {@code server.mime-mappings.*} take to the context, since no servlet API carries
+     * them. A later call replaces the whole table.
+     */
+    void setMimeMappings(Map<String, String> mimeMappings);
+
+    /**
      * Sets the container-wide {@code SameSite} policy for cookies the application writes (issue #85): the
      * route Boot's {@code CookieSameSiteSupplier} beans take to the request path, since no servlet API
      * carries them.
