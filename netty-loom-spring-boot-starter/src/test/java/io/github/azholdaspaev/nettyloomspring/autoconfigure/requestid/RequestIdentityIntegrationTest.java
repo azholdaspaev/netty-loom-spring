@@ -34,7 +34,7 @@ class RequestIdentityIntegrationTest {
                             String connectionId, String protocol, String protocolConnectionId,
                             boolean secure) {
 
-        static Identity parse(String line) {
+        static Identity from(String line) {
             String[] fields = line.split("\\|", -1);
             assertEquals(7, fields.length, "the controller reports seven fields; got " + line);
             return new Identity(fields[0], fields[1], fields[2], fields[3], fields[4], fields[5],
@@ -46,8 +46,8 @@ class RequestIdentityIntegrationTest {
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
     void shouldGiveEachRequestOnOneSocketItsOwnIdAndOneConnectionId() throws Exception {
         try (Socket socket = connect()) {
-            Identity first = Identity.parse(exchange(socket, "/identity").readBody());
-            Identity second = Identity.parse(exchange(socket, "/identity").readBody());
+            Identity first = Identity.from(exchange(socket, "/identity").readBody());
+            Identity second = Identity.from(exchange(socket, "/identity").readBody());
 
             assertFalse(first.requestId().isEmpty(), "getRequestId() must not be the empty string");
             assertNotEquals(first.requestId(), second.requestId(),
@@ -67,8 +67,8 @@ class RequestIdentityIntegrationTest {
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
     void shouldGiveDifferentConnectionIdsToTwoSockets() throws Exception {
         try (Socket first = connect(); Socket second = connect()) {
-            Identity onFirst = Identity.parse(exchange(first, "/identity").readBody());
-            Identity onSecond = Identity.parse(exchange(second, "/identity").readBody());
+            Identity onFirst = Identity.from(exchange(first, "/identity").readBody());
+            Identity onSecond = Identity.from(exchange(second, "/identity").readBody());
 
             assertNotEquals(onFirst.connectionId(), onSecond.connectionId(),
                 "requests on two sockets must report different connection ids");
@@ -100,8 +100,8 @@ class RequestIdentityIntegrationTest {
     private static void assertDispatchKeptIdentity(String body, String dispatcherType) {
         String[] lines = body.split("\n");
         assertEquals(2, lines.length, "the dispatched endpoint reports the recorded line and its own; got " + body);
-        Identity before = Identity.parse(lines[0]);
-        Identity after = Identity.parse(lines[1]);
+        Identity before = Identity.from(lines[0]);
+        Identity after = Identity.from(lines[1]);
 
         assertEquals("REQUEST", before.dispatcherType());
         assertEquals(dispatcherType, after.dispatcherType());
