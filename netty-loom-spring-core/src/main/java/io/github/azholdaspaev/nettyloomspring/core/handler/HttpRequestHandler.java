@@ -1,5 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.core.handler;
 
+import io.github.azholdaspaev.nettyloomspring.core.time.Durations;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;

@@ -1,4 +1,4 @@
-package io.github.azholdaspaev.nettyloomspring.core.handler;
+package io.github.azholdaspaev.nettyloomspring.core.time;
 
 import org.junit.jupiter.api.Test;
 
