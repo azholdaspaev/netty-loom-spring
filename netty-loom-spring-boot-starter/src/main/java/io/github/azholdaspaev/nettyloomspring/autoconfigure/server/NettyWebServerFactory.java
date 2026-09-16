@@ -87,7 +87,7 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
             getPort(), getAddress(), properties.bossThreads(), properties.workerThreads(),
             properties.tcpKeepAlive(), properties.acceptCount());
         NettyServer nettyServer = new NettyServer(configuration, channelInitializer, ioHandlerFactory, connectionRegistry);
-        return new NettyWebServer(nettyServer, properties.shutdownGracePeriod());
+        return new NettyWebServer(nettyServer, getShutdown(), properties.shutdownGracePeriod());
     }
 
     private void verifySslNotConfigured() {

@@ -22,7 +22,8 @@ First release. Not yet published to Maven Central; a `0.1.0-SNAPSHOT` is on
 - **Two-phase graceful shutdown** with a configurable drain deadline
   (`server.netty.shutdown-grace-period`). Idle keep-alive connections are closed rather than waited
   on; in-flight requests are drained, then force-closed at the deadline — or earlier, when Spring's
-  `spring.lifecycle.timeout-per-shutdown-phase` expires first.
+  `spring.lifecycle.timeout-per-shutdown-phase` expires first. `server.shutdown=immediate` skips
+  the drain, as under Tomcat.
 - **Slow-loris protection** through a per-connection read timeout (`server.netty.read-timeout`)
   that measures client progress and exempts handler execution.
 - **Configurable listen backlog** via `server.netty.accept-count` (default `128`, the former
