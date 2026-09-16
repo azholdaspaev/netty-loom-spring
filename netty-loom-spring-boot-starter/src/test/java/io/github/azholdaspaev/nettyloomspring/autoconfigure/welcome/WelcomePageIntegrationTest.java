@@ -1,6 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.welcome;
 
-import io.github.azholdaspaev.nettyloomspring.autoconfigure.welcome.app.WelcomePageTestApplication;
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.app.SmokeNettyLoomApplication;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @AutoConfigureRestTestClient
 @SpringBootTest(
-    classes = WelcomePageTestApplication.class,
+    classes = SmokeNettyLoomApplication.class,
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = "spring.web.resources.static-locations=classpath:/welcome/"
 )
