@@ -5,6 +5,7 @@ import io.github.azholdaspaev.nettyloomspring.core.exception.NettyServerExceptio
 import org.springframework.boot.web.server.GracefulShutdownCallback;
 import org.springframework.boot.web.server.GracefulShutdownResult;
 import org.springframework.boot.web.server.PortInUseException;
+import org.springframework.boot.web.server.Shutdown;
 import org.springframework.boot.web.server.WebServer;
 import org.springframework.boot.web.server.WebServerException;
 
@@ -17,10 +18,12 @@ public class NettyWebServer implements WebServer {
         Thread.ofPlatform().name("netty-loom-graceful-shutdown").daemon(false).factory();
 
     private final NettyServer nettyServer;
+    private final Shutdown shutdown;
     private final Duration gracePeriod;
 
-    public NettyWebServer(NettyServer nettyServer, Duration gracePeriod) {
+    public NettyWebServer(NettyServer nettyServer, Shutdown shutdown, Duration gracePeriod) {
         this.nettyServer = nettyServer;
+        this.shutdown = shutdown;
         this.gracePeriod = gracePeriod;
     }
 
@@ -52,6 +55,10 @@ public class NettyWebServer implements WebServer {
 
     @Override
     public void shutDownGracefully(GracefulShutdownCallback callback) {
+        if (shutdown != Shutdown.GRACEFUL) {
+            callback.shutdownComplete(GracefulShutdownResult.IMMEDIATE);
+            return;
+        }
         nettyServer.stopAcceptingConnections();
         shutdownGracefully(callback);
     }
