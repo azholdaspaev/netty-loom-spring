@@ -91,7 +91,7 @@ What the servlet bridge implements, method by method. Verified against the sourc
 | Headers, `setStatus` | `works` | Silently no-op after commit, as the spec requires |
 | `addCookie` | `partial` | Maps name, value, path, domain, max-age, `Secure`, `HttpOnly`, `SameSite`, `Partitioned`. **`Expires`, `Comment` and `Version` are silently dropped** |
 | `CookieSameSiteSupplier` beans | `partial` | An explicit cookie attribute wins over any supplier. Deviates from Tomcat at `server.servlet.session.cookie.same-site=omitted`: Tomcat treats `omitted` as an opinion that suppresses the supplier for the session cookie, where here no attribute is written and a matching supplier then applies to `JSESSIONID` |
-| `sendRedirect` | `partial` | Sets `Location` verbatim — no relative-to-absolute resolution, and the buffered body is **not** discarded, unlike `sendError` |
+| `sendRedirect` | `partial` | Sets `Location` verbatim — no relative-to-absolute resolution. Honours `clearBuffer`: the one-argument form discards the buffered body, as `sendError` does, and the three-argument form with `false` keeps it |
 | `encodeURL`, `encodeRedirectURL` | `none` | Identity functions — no URL session rewriting |
 | `setLocale` | `ignored` | No-op; `getLocale()` returns the JVM default, so `Content-Language` is never emitted |
 | `Date` and `Server` response headers | `none` | Neither is ever emitted. Tomcat always sends `Date` |
