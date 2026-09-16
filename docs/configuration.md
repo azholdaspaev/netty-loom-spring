@@ -44,6 +44,7 @@ in favour of `server.port`.
 | `server.servlet.session.tracking-modes` | Only `cookie`; an empty set is legal and disables the cookie |
 | `server.servlet.context-parameters.*` | Become `ServletContext` init parameters |
 | `server.servlet.application-display-name` | Returned by `ServletContext.getServletContextName()`, as under Tomcat |
+| `server.mime-mappings.*` | Added to Boot's default table and answered by `ServletContext.getMimeType()`, as under Tomcat |
 | `spring.servlet.encoding.*` | Works because Boot implements it as a `CharacterEncodingFilter` bean, not a container setting |
 
 Two extension points also work: `WebServerFactoryCustomizer<ConfigurableServletWebServerFactory>`
@@ -70,7 +71,6 @@ Everything below is set on the factory and never read again — **no warning, no
 | `server.http2.enabled` | `HttpServerCodec` is HTTP/1.1 only | [#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23) |
 | `server.server-header` | Never written to a response | |
 | `server.max-http-request-header-size` | The header cap is `server.netty.max-header-size` ([ADR 0001](adr/0001-server-properties-namespace.md): frame-size limits are Netty-only tuning) | |
-| `server.mime-mappings.*` | Never read; `ServletContext.getMimeType` throws | |
 | `server.servlet.register-default-servlet` | Only the `DispatcherServlet` is ever initialized | |
 | `server.servlet.jsp.*` | No JSP servlet | |
 | `server.servlet.encoding.mapping.*` | Locale-to-charset mappings are never read. Note this is a different property from `spring.servlet.encoding.*`, which *is* honoured because Boot implements it as a filter | |

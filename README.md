@@ -130,7 +130,7 @@ that cost the most:
 - `server.http2.*` — HTTP/1.1 only ([#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23))
 
 The [full list](docs/configuration.md#properties-that-are-silently-ignored) covers the rest,
-including `server.server-header`, `server.mime-mappings.*` and `spring.mvc.servlet.path`.
+including `server.server-header` and `spring.mvc.servlet.path`.
 
 ### 2. Settings that fail startup loudly
 
@@ -153,10 +153,9 @@ issue. The contrast with the list above is the point.
   terminates at `DispatcherServlet`, so a `ServletRegistrationBean` registers and is never invoked.
 - **Filters registered by class never run.** `addFilter(name, Filter)` works; the `Class` and
   class-name overloads are dropped without a warning. URL-pattern mappings only.
-- **No static resources or JSP ([#15](https://github.com/azholdaspaev/netty-loom-spring/issues/15)).**
-  `getResource*` and `getRealPath` return `null`. `GET /` with an `index.html` present still
-  returns 500 ([#59](https://github.com/azholdaspaev/netty-loom-spring/issues/59)): the forward to
-  it now works and the resource is found, but `ServletContext.getMimeType` then throws.
+- **No `ServletContext` resources or JSP ([#15](https://github.com/azholdaspaev/netty-loom-spring/issues/15)).**
+  `getResource*` and `getRealPath` return `null`. Static resources on Boot's classpath locations,
+  the welcome page included, are served: Boot resolves those without the servlet API.
 - **`RequestDispatcher` does `forward` and the container's own error dispatch, nothing else
   ([#182](https://github.com/azholdaspaev/netty-loom-spring/issues/182)).** `include` and named
   dispatch throw; filters mapped to `INCLUDE` or `ASYNC` still never match. A forward
