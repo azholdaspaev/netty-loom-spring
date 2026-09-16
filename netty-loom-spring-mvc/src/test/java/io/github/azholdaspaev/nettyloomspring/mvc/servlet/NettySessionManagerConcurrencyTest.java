@@ -8,16 +8,19 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
+import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Races on the session store (issue #13 review). The store is keyed by an id the session itself carries
@@ -62,24 +65,32 @@ class NettySessionManagerConcurrencyTest {
         }
     }
 
-    /**
-     * Runs both bodies on two threads released together, so they interleave rather than queue.
-     */
     private static void race(Runnable first, Runnable second) throws InterruptedException {
+        race(new Runnable[] {first, second});
+    }
+
+    static void race(int threads, Runnable body) throws InterruptedException {
+        var bodies = new Runnable[threads];
+        Arrays.fill(bodies, body);
+        race(bodies);
+    }
+
+    /**
+     * Runs each body on its own platform thread, all released together, so they interleave rather than queue.
+     */
+    private static void race(Runnable[] bodies) throws InterruptedException {
         var start = new CountDownLatch(1);
-        var done = new CountDownLatch(2);
-        for (Runnable body : new Runnable[] {first, second}) {
+        var done = new CountDownLatch(bodies.length);
+        var failure = new AtomicReference<Throwable>();
+        for (Runnable body : bodies) {
             Thread.ofPlatform().start(() -> {
                 try {
                     start.await();
                     body.run();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                } catch (RuntimeException ignored) {
-                    /*
-                     * A loser that throws IllegalStateException is a legitimate outcome here; what the
-                     * assertions care about is the state the store is left in.
-                     */
+                } catch (Throwable thrown) {
+                    failure.compareAndSet(null, thrown);
                 } finally {
                     done.countDown();
                 }
@@ -87,6 +98,9 @@ class NettySessionManagerConcurrencyTest {
         }
         start.countDown();
         assertTrue(done.await(30, TimeUnit.SECONDS), "threads did not finish");
+        if (failure.get() != null) {
+            fail("a racing thread threw", failure.get());
+        }
     }
 
     /**
@@ -143,7 +157,13 @@ class NettySessionManagerConcurrencyTest {
         for (int round = 0; round < ROUNDS; round++) {
             NettyHttpSession session = manager.create();
 
-            race(() -> manager.changeId(session), session::invalidate);
+            race(() -> {
+                try {
+                    manager.changeId(session);
+                } catch (IllegalStateException expected) {
+                    // The invalidation won.
+                }
+            }, session::invalidate);
 
             assertEquals(0, manager.size(), "round " + round + ": an invalidated session must leave no entry");
             assertNull(manager.find(session.getId()),
@@ -163,7 +183,13 @@ class NettySessionManagerConcurrencyTest {
             NettyHttpSession session = manager.create();
             var value = new CountingValue();
 
-            race(() -> session.setAttribute("k", value), session::invalidate);
+            race(() -> {
+                try {
+                    session.setAttribute("k", value);
+                } catch (IllegalStateException expected) {
+                    // The invalidation won.
+                }
+            }, session::invalidate);
 
             assertTrue(session.isInvalidated(), "round " + round + ": invalidate must win eventually");
             assertFalse(session.hasBoundAttributes(),

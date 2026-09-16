@@ -1,11 +1,8 @@
 package io.github.azholdaspaev.nettyloomspring.core.server;
 
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
-import io.github.azholdaspaev.nettyloomspring.core.handler.HttpDrainHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestDispatcher;
-import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestBodyLimitHandler;
-import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestHandler;
-import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineStep;
+import io.github.azholdaspaev.nettyloomspring.core.support.HttpWireClient;
 import io.github.azholdaspaev.nettyloomspring.core.support.NettyServerFixture;
 import io.github.azholdaspaev.nettyloomspring.core.support.SpinWait;
 import io.netty.buffer.Unpooled;
@@ -15,8 +12,6 @@ import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import io.netty.handler.codec.http.HttpServerCodec;
-import io.netty.handler.codec.http.HttpServerKeepAliveHandler;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import org.junit.jupiter.api.AfterEach;
@@ -26,15 +21,7 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.Socket;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
@@ -60,10 +47,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @Timeout(value = 30, unit = TimeUnit.SECONDS)
 class NettyServerDrainTest {
-
-    private static final Duration UNREACHED_WRITE_STALL_TIMEOUT = Duration.ofSeconds(60);
-
-    private static final int MAX_HTTP_REQUEST_BODY_BYTES = 64 * 1024;
 
     private final CountDownLatch dispatcherEntered = new CountDownLatch(1);
     private final CountDownLatch releaseDispatcher = new CountDownLatch(1);
@@ -98,8 +81,8 @@ class NettyServerDrainTest {
 
     @Test
     void shouldAnswerInFlightRequestBeforeCompletingShutdown() throws Exception {
-        try (Socket client = connect()) {
-            send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        try (HttpWireClient client = HttpWireClient.connect(nettyServer.getPort())) {
+            client.send("GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
             assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
 
             Future<NettyShutdownResult> shutdown = shutdownInBackground();
@@ -107,7 +90,7 @@ class NettyServerDrainTest {
 
             releaseDispatcher.countDown();
 
-            List<String> response = readHeaderBlock(reader(client));
+            List<String> response = client.readHeaderBlock();
             assertEquals("HTTP/1.1 200 OK", response.getFirst(),
                 "a request in flight when shutdown began must still receive its response");
             assertTrue(hasHeader(response, "connection", "close"),
@@ -120,17 +103,17 @@ class NettyServerDrainTest {
     @Test
     void shouldAnswerRequestWhoseBodyArrivesAfterDrainBegins() throws Exception {
         releaseDispatcher.countDown();
-        try (Socket client = connect()) {
-            send(client, "POST /upload HTTP/1.1\r\nHost: localhost\r\nContent-Length: 5\r\n\r\n");
+        try (HttpWireClient client = HttpWireClient.connect(nettyServer.getPort())) {
+            client.send("POST /upload HTTP/1.1\r\nHost: localhost\r\nContent-Length: 5\r\n\r\n");
             Thread.sleep(200);
 
             Future<NettyShutdownResult> shutdown = shutdownExecutor.submit(
                 () -> nettyServer.shutdown(Duration.ofSeconds(10)));
             Thread.sleep(200);
 
-            send(client, "hello");
+            client.send("hello");
 
-            assertEquals("HTTP/1.1 200 OK", readHeaderBlock(reader(client)).getFirst(),
+            assertEquals("HTTP/1.1 200 OK", client.readHeaderBlock().getFirst(),
                 "a request already on the wire when the drain began must still be answered");
             assertEquals(NettyShutdownResult.IDLE, shutdown.get(5, TimeUnit.SECONDS));
         }
@@ -139,9 +122,8 @@ class NettyServerDrainTest {
     @Test
     void shouldHonourExpectContinueWhileDraining() throws Exception {
         releaseDispatcher.countDown();
-        try (Socket client = connect()) {
-            BufferedReader reader = reader(client);
-            send(client, "POST /upload HTTP/1.1\r\nHost: localhost\r\n"
+        try (HttpWireClient client = HttpWireClient.connect(nettyServer.getPort())) {
+            client.send("POST /upload HTTP/1.1\r\nHost: localhost\r\n"
                 + "Content-Length: 5\r\nExpect: 100-continue\r\n\r\n");
             Thread.sleep(200);
 
@@ -149,15 +131,15 @@ class NettyServerDrainTest {
                 () -> nettyServer.shutdown(Duration.ofSeconds(10)));
             Thread.sleep(200);
 
-            List<String> interim = readHeaderBlock(reader);
+            List<String> interim = client.readHeaderBlock();
             assertEquals("HTTP/1.1 100 Continue", interim.getFirst(),
                 "the server must still invite the body while draining");
             assertFalse(hasHeader(interim, "connection", "close"),
                 "an interim 1xx must not carry Connection: close -- the exchange is not over");
 
-            send(client, "hello");
+            client.send("hello");
 
-            assertEquals("HTTP/1.1 200 OK", readHeaderBlock(reader).getFirst(),
+            assertEquals("HTTP/1.1 200 OK", client.readHeaderBlock().getFirst(),
                 "the upload invited by 100 Continue must still be answered");
             assertEquals(NettyShutdownResult.IDLE, shutdown.get(5, TimeUnit.SECONDS));
         }
@@ -165,8 +147,8 @@ class NettyServerDrainTest {
 
     @Test
     void shouldWaitForDispatchWhoseClientHasAlreadyDisconnected() throws Exception {
-        try (Socket client = connect()) {
-            send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        try (HttpWireClient client = HttpWireClient.connect(nettyServer.getPort())) {
+            client.send("GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
             assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
         }
         awaitConnectionClosed();
@@ -183,8 +165,8 @@ class NettyServerDrainTest {
 
     @Test
     void shouldReportRequestsActiveWhenRequestOutlastsGracePeriod() throws Exception {
-        try (Socket client = connect()) {
-            send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        try (HttpWireClient client = HttpWireClient.connect(nettyServer.getPort())) {
+            client.send("GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
             assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
 
             Future<NettyShutdownResult> shutdown = shutdownExecutor.submit(
@@ -199,8 +181,8 @@ class NettyServerDrainTest {
 
     @Test
     void shouldTreatGraceBeyondLongNanosAsUnbounded() throws Exception {
-        try (Socket client = connect()) {
-            send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        try (HttpWireClient client = HttpWireClient.connect(nettyServer.getPort())) {
+            client.send("GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
             assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
 
             Future<NettyShutdownResult> shutdown = shutdownExecutor.submit(
@@ -218,8 +200,8 @@ class NettyServerDrainTest {
     @ParameterizedTest
     @ValueSource(longs = {-1, -200_000})
     void shouldTreatNegativeGraceAsNoGrace(long days) throws Exception {
-        try (Socket client = connect()) {
-            send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        try (HttpWireClient client = HttpWireClient.connect(nettyServer.getPort())) {
+            client.send("GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
             assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
 
             NettyShutdownResult result = nettyServer.shutdown(Duration.ofDays(days));
@@ -232,8 +214,8 @@ class NettyServerDrainTest {
     @Test
     void shouldCutDrainShortWhenShutdownIsCalledAgainWithNoGrace() throws Exception {
         releaseAbort.countDown();
-        try (Socket client = connect()) {
-            send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        try (HttpWireClient client = HttpWireClient.connect(nettyServer.getPort())) {
+            client.send("GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
             assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
             Future<NettyShutdownResult> graceful = shutdownInBackground();
             assertStillDraining(graceful, "the first shutdown must own the drain before the second arrives");
@@ -250,15 +232,15 @@ class NettyServerDrainTest {
             assertEquals(NettyShutdownResult.REQUESTS_ACTIVE, graceful.get(5, TimeUnit.SECONDS),
                 "the graceful shutdown must report what the abort left behind");
             assertFalse(nettyServer.isRunning());
-            assertNull(reader(client).readLine(),
+            assertNull(client.readLine(),
                 "cutting the drain short must close the connection the request came in on");
         }
     }
 
     @Test
     void shouldGiveSecondShutdownItsOwnGraceBeforeAborting() throws Exception {
-        try (Socket client = connect()) {
-            send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        try (HttpWireClient client = HttpWireClient.connect(nettyServer.getPort())) {
+            client.send("GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
             assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
             Future<NettyShutdownResult> graceful = shutdownInBackground();
             assertStillDraining(graceful, "the first shutdown must own the drain before the second arrives");
@@ -276,7 +258,7 @@ class NettyServerDrainTest {
             assertEquals(NettyShutdownResult.IDLE, second,
                 "a second shutdown with grace left must let the request finish, not abort on arrival");
             assertEquals(NettyShutdownResult.IDLE, graceful.get(5, TimeUnit.SECONDS));
-            assertEquals("HTTP/1.1 200 OK", readHeaderBlock(reader(client)).getFirst(),
+            assertEquals("HTTP/1.1 200 OK", client.readHeaderBlock().getFirst(),
                 "the request must have been answered, not cut off");
         }
     }
@@ -285,8 +267,8 @@ class NettyServerDrainTest {
     void shouldNotLetJoinerWhoseDeadlineExpiredAbortRestartedServer() throws Exception {
         Future<NettyShutdownResult> graceful;
         Future<NettyShutdownResult> immediate;
-        try (Socket client = connect()) {
-            send(client, "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        try (HttpWireClient client = HttpWireClient.connect(nettyServer.getPort())) {
+            client.send("GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n");
             assertTrue(dispatcherEntered.await(5, TimeUnit.SECONDS), "request must have reached the dispatcher");
             graceful = shutdownInBackground();
             assertStillDraining(graceful, "the first shutdown must own the drain before the second arrives");
@@ -305,15 +287,14 @@ class NettyServerDrainTest {
         }
 
         nettyServer.start();
-        try (Socket client = connect()) {
-            send(client, "GET /ping HTTP/1.1\r\nHost: localhost\r\n\r\n");
-            BufferedReader reader = reader(client);
-            assertEquals("HTTP/1.1 200 OK", readHeaderBlock(reader).getFirst());
+        try (HttpWireClient client = HttpWireClient.connect(nettyServer.getPort())) {
+            client.send("GET /ping HTTP/1.1\r\nHost: localhost\r\n\r\n");
+            assertEquals("HTTP/1.1 200 OK", client.readHeaderBlock().getFirst());
             releaseAbort.countDown();
             assertEquals(NettyShutdownResult.IDLE, immediate.get(5, TimeUnit.SECONDS));
 
-            send(client, "GET /ping HTTP/1.1\r\nHost: localhost\r\n\r\n");
-            assertEquals("HTTP/1.1 200 OK", readHeaderBlock(reader).getFirst(),
+            client.send("GET /ping HTTP/1.1\r\nHost: localhost\r\n\r\n");
+            assertEquals("HTTP/1.1 200 OK", client.readHeaderBlock().getFirst(),
                 "a joiner whose deadline expired during the previous drain must not close the "
                     + "restarted server's connections");
         }
@@ -345,15 +326,7 @@ class NettyServerDrainTest {
                 super.abortDrain();
             }
         };
-        NettyServerConfiguration configuration = new NettyServerConfiguration(
-            0, InetAddress.getLoopbackAddress(), 0, 0, false, 128);
-        return NettyServerFixture.newServer(configuration, connectionRegistry, List.of(
-            new NettyPipelineStep("httpCodec", HttpServerCodec::new),
-            new NettyPipelineStep("httpKeepAlive", HttpServerKeepAliveHandler::new),
-            new NettyPipelineStep("drain", () -> new HttpDrainHandler(connectionRegistry)),
-            new NettyPipelineStep("bodyLimit", () -> new HttpRequestBodyLimitHandler(MAX_HTTP_REQUEST_BODY_BYTES)),
-            new NettyPipelineStep("dispatcher",
-                () -> new HttpRequestHandler(blockingDispatcher(), dispatchExecutor, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT))));
+        return NettyServerFixture.newHttpServer(connectionRegistry, blockingDispatcher(), dispatchExecutor);
     }
 
     private void awaitAbortRelease() {
@@ -378,34 +351,6 @@ class NettyServerDrainTest {
             response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH, 0);
             writer.write(response);
         };
-    }
-
-    private Socket connect() throws IOException {
-        Socket client = new Socket();
-        client.connect(new InetSocketAddress(InetAddress.getLoopbackAddress(), nettyServer.getPort()), 1_000);
-        client.setSoTimeout(10_000);
-        return client;
-    }
-
-    private static void send(Socket client, String request) throws IOException {
-        client.getOutputStream().write(request.getBytes(StandardCharsets.US_ASCII));
-        client.getOutputStream().flush();
-    }
-
-    /**
-     * One reader per socket: a fresh one would discard whatever the previous had already buffered.
-     */
-    private static BufferedReader reader(Socket client) throws IOException {
-        return new BufferedReader(new InputStreamReader(client.getInputStream(), StandardCharsets.US_ASCII));
-    }
-
-    private static List<String> readHeaderBlock(BufferedReader reader) throws IOException {
-        List<String> lines = new ArrayList<>();
-        String line;
-        while ((line = reader.readLine()) != null && !line.isEmpty()) {
-            lines.add(line);
-        }
-        return lines;
     }
 
     private static boolean hasHeader(List<String> headerBlock, String name, String value) {
