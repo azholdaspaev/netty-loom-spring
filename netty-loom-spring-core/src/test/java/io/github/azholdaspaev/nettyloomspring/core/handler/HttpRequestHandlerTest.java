@@ -426,10 +426,14 @@ class HttpRequestHandlerTest {
         }
 
         void drain() throws Exception {
+            /*
+             * Writable before settled: trySuccess wakes the dispatch, whose next write reads
+             * isWritable() and parks on a promise this task has already cleared if the flip comes after.
+             */
             channel.eventLoop().submit(() -> {
+                channel.unsafe().outboundBuffer().setUserDefinedWritability(1, true);
                 unsettled.forEach(ChannelPromise::trySuccess);
                 unsettled.clear();
-                channel.unsafe().outboundBuffer().setUserDefinedWritability(1, true);
             }).sync();
         }
 
