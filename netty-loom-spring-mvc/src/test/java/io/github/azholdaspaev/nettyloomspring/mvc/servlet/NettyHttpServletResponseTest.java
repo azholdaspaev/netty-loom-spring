@@ -180,6 +180,30 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
+    void shouldDiscardBufferedBodyOnSendRedirect() throws Exception {
+        var response = new NettyHttpServletResponse();
+        response.getOutputStream().write("SECRET-BODY".getBytes(StandardCharsets.UTF_8));
+
+        response.sendRedirect("/elsewhere");
+
+        FullHttpResponse httpResponse = response.toFullHttpResponse();
+        assertEquals(0, httpResponse.content().readableBytes(),
+            "Actual body: " + httpResponse.content().toString(StandardCharsets.UTF_8));
+        assertEquals(0, httpResponse.headers().getInt(HttpHeaderNames.CONTENT_LENGTH));
+    }
+
+    @Test
+    void shouldKeepBufferedBodyOnSendRedirectWhenClearBufferIsFalse() throws Exception {
+        var response = new NettyHttpServletResponse();
+        response.getOutputStream().write("kept".getBytes(StandardCharsets.UTF_8));
+
+        response.sendRedirect("/elsewhere", HttpResponseStatus.FOUND.code(), false);
+
+        FullHttpResponse httpResponse = response.toFullHttpResponse();
+        assertEquals("kept", httpResponse.content().toString(StandardCharsets.UTF_8));
+    }
+
+    @Test
     void shouldDiscardContentBufferedInWriterOnResetBuffer() throws Exception {
         var response = new NettyHttpServletResponse();
         /*
