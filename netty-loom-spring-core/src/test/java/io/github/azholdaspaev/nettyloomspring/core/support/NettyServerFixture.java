@@ -39,8 +39,10 @@ public final class NettyServerFixture {
     }
 
     /**
-     * The HTTP pipeline on a loopback port the OS picks; handler order follows
-     * {@code NettyLoomAutoConfiguration}, which owns the reasons for it.
+     * The request-carrying steps of the HTTP pipeline, without its timeout and failure handlers, on
+     * a loopback port the OS picks; handler order follows {@code NettyLoomAutoConfiguration}, which
+     * owns the reasons for it. The registry is a parameter, though this method builds the handlers
+     * itself, so a test can pass a subclass that hooks {@code abortDrain}.
      */
     public static NettyServer newHttpServer(HttpConnectionRegistry connectionRegistry,
                                             HttpRequestDispatcher dispatcher,
