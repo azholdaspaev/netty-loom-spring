@@ -171,7 +171,6 @@ issue. The contrast with the list above is the point.
   cover this: it fixes the *request* via Boot's `ForwardedHeaderFilter`, not the cookie.
 - **No container auth.** `getUserPrincipal()` → `null`, `isUserInRole()` → `false`; `login` and
   `logout` are silent no-ops that report no failure.
-- **Filters and servlets are initialized but never destroyed** ([#103](https://github.com/azholdaspaev/netty-loom-spring/issues/103)).
 - **No bound on queued responses** — a client that pipelines while never reading has been measured
   queuing ~5.7 MB out for ~900 bytes in
   ([#88](https://github.com/azholdaspaev/netty-loom-spring/issues/88)). The write-stall timeout
