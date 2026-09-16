@@ -147,6 +147,14 @@ class NettyLoomAutoConfigurationTest {
     }
 
     @Test
+    void shouldFailStartupOnNonPositiveLimitWhenUserDeclaresPipeline() {
+        runner.withBean("userBean", NettyPipelineDefinition.class, () -> mock(NettyPipelineDefinition.class))
+            .withPropertyValues("server.netty.max-header-size=0B")
+            .run(context -> assertThat(context).hasFailed()
+                .getFailure().rootCause().hasMessageContaining("server.netty.max-header-size"));
+    }
+
+    @Test
     void shouldUseUserExecutorNamedNettyLoomDispatchExecutor() {
         ExecutorService userExecutor = mock(ExecutorService.class);
         runner.withBean(DISPATCH_EXECUTOR_BEAN, ExecutorService.class, () -> userExecutor)
