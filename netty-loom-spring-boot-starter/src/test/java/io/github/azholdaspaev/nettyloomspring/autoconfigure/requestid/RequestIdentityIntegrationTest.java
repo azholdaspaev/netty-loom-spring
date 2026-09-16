@@ -112,7 +112,7 @@ class RequestIdentityIntegrationTest {
         assertEquals(before.connectionId(), after.connectionId(),
             "the dispatched request must report the original request's connection");
         assertEquals(before.secure(), after.secure(),
-            "the dispatched request must report the original request's connection");
+            "the dispatched request must report the original connection's secure flag");
     }
 
     private Socket connect() throws IOException {
