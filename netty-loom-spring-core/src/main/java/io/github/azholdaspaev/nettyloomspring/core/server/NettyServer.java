@@ -1,8 +1,8 @@
 package io.github.azholdaspaev.nettyloomspring.core.server;
 
 import io.github.azholdaspaev.nettyloomspring.core.exception.NettyServerException;
-import io.github.azholdaspaev.nettyloomspring.core.handler.Durations;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
+import io.github.azholdaspaev.nettyloomspring.core.time.Durations;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
