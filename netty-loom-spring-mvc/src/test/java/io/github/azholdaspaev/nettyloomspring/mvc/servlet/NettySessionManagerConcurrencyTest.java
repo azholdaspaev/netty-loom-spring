@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
+import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.TimeUnit;
@@ -62,13 +63,23 @@ class NettySessionManagerConcurrencyTest {
         }
     }
 
-    /**
-     * Runs both bodies on two threads released together, so they interleave rather than queue.
-     */
     private static void race(Runnable first, Runnable second) throws InterruptedException {
+        race(new Runnable[] {first, second});
+    }
+
+    static void race(int threads, Runnable body) throws InterruptedException {
+        var bodies = new Runnable[threads];
+        Arrays.fill(bodies, body);
+        race(bodies);
+    }
+
+    /**
+     * Runs each body on its own platform thread, all released together, so they interleave rather than queue.
+     */
+    private static void race(Runnable[] bodies) throws InterruptedException {
         var start = new CountDownLatch(1);
-        var done = new CountDownLatch(2);
-        for (Runnable body : new Runnable[] {first, second}) {
+        var done = new CountDownLatch(bodies.length);
+        for (Runnable body : bodies) {
             Thread.ofPlatform().start(() -> {
                 try {
                     start.await();

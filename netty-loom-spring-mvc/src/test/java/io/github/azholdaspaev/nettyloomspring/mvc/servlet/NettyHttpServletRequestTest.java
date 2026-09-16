@@ -31,7 +31,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -266,24 +265,12 @@ class NettyHttpServletRequestTest {
     void shouldHandOutDistinctRequestIdsWhenConstructedConcurrently() throws InterruptedException {
         var context = new DefaultNettyServletContext();
         Set<String> ids = ConcurrentHashMap.newKeySet();
-        var start = new CountDownLatch(1);
-        var done = new CountDownLatch(ID_THREADS);
-        for (int thread = 0; thread < ID_THREADS; thread++) {
-            Thread.ofPlatform().start(() -> {
-                try {
-                    start.await();
-                    for (int i = 0; i < IDS_PER_THREAD; i++) {
-                        ids.add(request(INSECURE, context).getRequestId());
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                } finally {
-                    done.countDown();
-                }
-            });
-        }
-        start.countDown();
-        assertTrue(done.await(60, TimeUnit.SECONDS), "threads did not finish");
+
+        NettySessionManagerConcurrencyTest.race(ID_THREADS, () -> {
+            for (int i = 0; i < IDS_PER_THREAD; i++) {
+                ids.add(request(INSECURE, context).getRequestId());
+            }
+        });
 
         assertEquals(ID_THREADS * IDS_PER_THREAD, ids.size(),
             "every request constructed concurrently must get its own id (Servlet 6.0 getRequestId: unique within the container)");
