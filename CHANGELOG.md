@@ -25,6 +25,9 @@ First release. Not yet published to Maven Central; a `0.1.0-SNAPSHOT` is on
   `spring.lifecycle.timeout-per-shutdown-phase` expires first.
 - **Slow-loris protection** through a per-connection read timeout (`server.netty.read-timeout`)
   that measures client progress and exempts handler execution.
+- **Configurable listen backlog** via `server.netty.accept-count` (default `128`, the former
+  hardcoded `SO_BACKLOG`), the same concept as `server.tomcat.accept-count`. The kernel clamps it
+  silently to `net.core.somaxconn` on Linux.
 - **Fixed HTTP frame-size limits** answering `414`, `431` and `413` rather than passing malformed
   or oversized requests to the application.
 - **Streaming responses** — writes flush incrementally as `Transfer-Encoding: chunked` once the

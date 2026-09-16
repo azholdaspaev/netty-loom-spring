@@ -181,7 +181,7 @@ issue. The contrast with the list above is the point.
 Standard knobs bind under Spring Boot's `server.*` namespace; Netty-only tuning lives under
 `server.netty.*`. The rule for which is which, and why, is [ADR 0001](docs/adr/0001-server-properties-namespace.md).
 
-Seven Netty-only properties. Types, defaults and exact semantics are in
+Eight Netty-only properties. Types, defaults and exact semantics are in
 **[docs/configuration.md](docs/configuration.md#servernetty)**, which is where they are maintained:
 
 | Property | Controls |
@@ -190,6 +190,7 @@ Seven Netty-only properties. Types, defaults and exact semantics are in
 | `server.netty.boss-threads` | Size of the event-loop group that accepts connections |
 | `server.netty.worker-threads` | Size of the event-loop group that reads and writes on them |
 | `server.netty.tcp-keep-alive` | Socket-level `SO_KEEPALIVE` |
+| `server.netty.accept-count` | Listen backlog (`SO_BACKLOG`), clamped by the kernel to `net.core.somaxconn` |
 | `server.netty.shutdown-grace-period` | How long graceful shutdown drains before force-closing |
 | `server.netty.read-timeout` | The slow-loris deadline, measured on the client rather than on your handler |
 | `server.netty.write-stall-timeout` | How long a response waits on a client that has stopped reading it |
