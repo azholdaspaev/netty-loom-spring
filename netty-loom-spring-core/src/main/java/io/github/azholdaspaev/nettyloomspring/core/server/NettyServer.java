@@ -2,7 +2,6 @@ package io.github.azholdaspaev.nettyloomspring.core.server;
 
 import io.github.azholdaspaev.nettyloomspring.core.exception.NettyServerException;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
-import io.github.azholdaspaev.nettyloomspring.core.time.Durations;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -242,7 +241,7 @@ public class NettyServer {
     private record Deadline(long startNanos, long budgetNanos) {
 
         private static Deadline in(Duration timeout) {
-            return new Deadline(System.nanoTime(), Durations.toNanosSaturated(timeout));
+            return new Deadline(System.nanoTime(), Math.max(0L, TimeUnit.NANOSECONDS.convert(timeout)));
         }
 
         private long remainingMillis() {
