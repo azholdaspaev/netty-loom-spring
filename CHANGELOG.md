@@ -29,8 +29,11 @@ First release. Not yet published to Maven Central; a `0.1.0-SNAPSHOT` is on
 - **Configurable listen backlog** via `server.netty.accept-count` (default `128`, the former
   hardcoded `SO_BACKLOG`), the same concept as `server.tomcat.accept-count`. The kernel clamps it
   silently to `net.core.somaxconn` on Linux.
-- **Fixed HTTP frame-size limits** answering `414`, `431` and `413` rather than passing malformed
-  or oversized requests to the application.
+- **Configurable HTTP size limits** — `server.netty.max-initial-line-length`,
+  `server.netty.max-header-size`, `server.netty.max-chunk-size` and `server.netty.max-http-body-size`
+  (`DataSize`; defaults `10000B`, `10000B`, `10000B` and `1MB`, the former hardcoded values) —
+  answering `414`, `431` and `413` rather than passing malformed or oversized requests to the
+  application.
 - **Streaming responses** — writes flush incrementally as `Transfer-Encoding: chunked` once the
   body outgrows the response buffer, with backpressure when the client reads more slowly than the
   handler writes, bounded by `server.netty.write-stall-timeout` so a client that stops reading

@@ -35,6 +35,22 @@
       "description": "How long a response may sit unsent against a client that has stopped reading it. The clock starts only once the connection is unwritable -- its outbound buffer past the high-water mark -- and not on every write, so a client that reads slowly but steadily is never cut off; this is not Netty's WriteTimeoutHandler. On expiry the connection is closed mid-response and the handler is told the client stopped reading. Use 0 or a negative value to disable, which leaves a stalled dispatch waiting indefinitely. Defaults to 60 seconds."
     },
     {
+      "name": "server.netty.max-http-body-size",
+      "description": "Maximum request body size. A request whose Content-Length declares more is answered 413 before any of its body is read; a body without a declared length is answered 413 the moment it grows past the limit. Defaults to 1MB."
+    },
+    {
+      "name": "server.netty.max-header-size",
+      "description": "Maximum size of a request's header block, all header lines together. A request past it is answered 431 and the connection is closed. This is the Netty-only counterpart of server.max-http-request-header-size, which this server does not read. Defaults to 10000B (decimal bytes, not 10KB)."
+    },
+    {
+      "name": "server.netty.max-initial-line-length",
+      "description": "Maximum length of the request line -- method, target and version together. A request past it is answered 414 and the connection is closed. Defaults to 10000B (decimal bytes, not 10KB)."
+    },
+    {
+      "name": "server.netty.max-chunk-size",
+      "description": "Largest piece of a request body the decoder hands on at once. Larger bodies are split into pieces of at most this size and reach getInputStream() one piece at a time; nothing is refused for exceeding it. Defaults to 10000B (decimal bytes, not 10KB)."
+    },
+    {
       "name": "server.netty.transport",
       "description": "Netty I/O transport to use. 'auto' picks the best native transport for the platform (epoll on Linux, kqueue on macOS) and falls back to NIO when none is available. 'nio' forces the portable Java NIO transport. 'epoll' or 'kqueue' force that native transport and fail fast at startup if it is not available on the platform."
     }

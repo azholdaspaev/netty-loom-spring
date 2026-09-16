@@ -21,6 +21,10 @@ The rule for which namespace a knob belongs to — Spring Boot's `server.*` vers
 | `server.netty.shutdown-grace-period` | `Duration` | `30s` | How long graceful shutdown waits for in-flight requests before force-closing. See [Graceful shutdown](#graceful-shutdown) |
 | `server.netty.read-timeout` | `Duration` | `30s` | Client-progress deadline. See [The read timeout](#the-read-timeout). `0` or negative disables it |
 | `server.netty.write-stall-timeout` | `Duration` | `60s` | How long a response may sit unsent against a client that has stopped reading. The clock starts only once the connection is unwritable — the outbound buffer past its high-water mark — not on every write, so a slow but progressing client is never cut off. On expiry the connection is closed mid-response. `0` or negative disables it, leaving a stalled dispatch waiting indefinitely |
+| `server.netty.max-http-body-size` | `DataSize` | `1MB` | Request body cap. A `Content-Length` past it is answered `413` before any of the body is read; a body without a declared length is answered `413` the moment it grows past the limit. See [Size limits](#size-limits) |
+| `server.netty.max-header-size` | `DataSize` | `10000B` | Cap on the request's header block, all header lines together; past it the request is answered `431` and the connection closed. The Netty-only counterpart of `server.max-http-request-header-size`, which is not read |
+| `server.netty.max-initial-line-length` | `DataSize` | `10000B` | Cap on the request line — method, target and version together; past it the request is answered `414` and the connection closed |
+| `server.netty.max-chunk-size` | `DataSize` | `10000B` | Largest piece of a request body the decoder hands on at once. A larger body is split into pieces of at most this size and reaches `getInputStream()` one piece at a time; nothing is refused for exceeding it |
 
 `NettyLoomProperties` is a `@ConfigurationProperties` record, which binds with
 `ignoreUnknownFields = true`. A misspelled or obsolete key under `server.netty.*` is therefore
@@ -65,7 +69,7 @@ Everything below is set on the factory and never read again — **no warning, no
 | `server.compression.*` | No `HttpContentCompressor` in the pipeline | [#22](https://github.com/azholdaspaev/netty-loom-spring/issues/22) |
 | `server.http2.enabled` | `HttpServerCodec` is HTTP/1.1 only | [#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23) |
 | `server.server-header` | Never written to a response | |
-| `server.max-http-request-header-size` | Superseded by the fixed 10,000-byte header limit | [#42](https://github.com/azholdaspaev/netty-loom-spring/issues/42) |
+| `server.max-http-request-header-size` | The header cap is `server.netty.max-header-size` ([ADR 0001](adr/0001-server-properties-namespace.md): frame-size limits are Netty-only tuning) | |
 | `server.mime-mappings.*` | Never read; `ServletContext.getMimeType` throws | |
 | `server.servlet.register-default-servlet` | Only the `DispatcherServlet` is ever initialized | |
 | `server.servlet.jsp.*` | No JSP servlet | |
@@ -83,19 +87,18 @@ selects the page a failed request is dispatched to, and `include-message`, `incl
 `include-binding-errors` and `whitelabel.enabled` are Boot's own and reach the client along with
 the body.
 
-## Fixed limits
+## Size limits
 
-Not configurable ([#42](https://github.com/azholdaspaev/netty-loom-spring/issues/42)):
+| Limit | Property | Default | Exceeded by a request → |
+| --- | --- | --- | --- |
+| Max initial line | `server.netty.max-initial-line-length` | 10,000 bytes | `414`, connection closed |
+| Max header block | `server.netty.max-header-size` | 10,000 bytes | `431`, connection closed |
+| Max chunk size | `server.netty.max-chunk-size` | 10,000 bytes | — |
+| Max request body | `server.netty.max-http-body-size` | 1 MiB | `413` |
+| Undrained request body before reads stop | not configurable | 64 KiB | — (the read loop in flight still lands) |
 
-| Limit | Value | Exceeded by a request → |
-| --- | --- | --- |
-| Max initial line | 10,000 bytes | `414`, connection closed |
-| Max header block | 10,000 bytes | `431`, connection closed |
-| Max chunk size | 10,000 bytes | — |
-| Max request body | 1 MiB | `413` |
-| Undrained request body before reads stop | 64 KiB | — (the read loop in flight still lands) |
-
-These are 10,000 decimal bytes, not 10 KiB.
+The defaults are 10,000 decimal bytes, not 10 KiB; `DataSize` reads `10KB` as 10,240. The three
+codec limits must fit an `int`: a value of 2 GiB or more fails startup rather than binding.
 
 ## Graceful shutdown
 

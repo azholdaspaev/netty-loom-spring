@@ -66,11 +66,6 @@ public class NettyLoomAutoConfiguration {
 
     public static final String DISPATCH_EXECUTOR_BEAN = "nettyLoomDispatchExecutor";
 
-    private static final int MAX_HTTP_REQUEST_BODY_BYTES = 1024 * 1024;
-    private static final int MAX_HTTP_INITIAL_LINE_LENGTH = 10_000;
-    private static final int MAX_HTTP_HEADER_SIZE = 10_000;
-    private static final int MAX_HTTP_CHUNK_SIZE = 10_000;
-
     @Bean
     @ConditionalOnMissingBean(value = ServletWebServerFactory.class, search = SearchStrategy.CURRENT)
     public NettyWebServerFactory nettyWebServerFactory(NettyIoHandlerFactory nettyIoHandlerFactory,
@@ -125,8 +120,12 @@ public class NettyLoomAutoConfiguration {
          * zero -- which the handler treats as "disabled", silently turning the slow-loris guard off.
          */
         long readTimeoutNanos = properties.readTimeout().toNanos();
+        int maxInitialLineLength = Math.toIntExact(properties.maxInitialLineLength().toBytes());
+        int maxHeaderSize = Math.toIntExact(properties.maxHeaderSize().toBytes());
+        int maxChunkSize = Math.toIntExact(properties.maxChunkSize().toBytes());
+        long maxHttpBodyBytes = properties.maxHttpBodySize().toBytes();
         return new NettyPipelineDefinition(List.of(
-            new NettyPipelineStep("httpCodec", () -> new HttpServerCodec(MAX_HTTP_INITIAL_LINE_LENGTH, MAX_HTTP_HEADER_SIZE, MAX_HTTP_CHUNK_SIZE)),
+            new NettyPipelineStep("httpCodec", () -> new HttpServerCodec(maxInitialLineLength, maxHeaderSize, maxChunkSize)),
             new NettyPipelineStep("httpKeepAlive", HttpServerKeepAliveHandler::new),
             /*
              * Directly below the codec so a connection counts as busy from the head of a request, before
@@ -155,7 +154,7 @@ public class NettyLoomAutoConfiguration {
              * Below decoderFailure so it counts only what decoded, and above the dispatcher so a body it
              * refuses never reaches one.
              */
-            new NettyPipelineStep("bodyLimit", () -> new HttpRequestBodyLimitHandler(MAX_HTTP_REQUEST_BODY_BYTES)),
+            new NettyPipelineStep("bodyLimit", () -> new HttpRequestBodyLimitHandler(maxHttpBodyBytes)),
             new NettyPipelineStep("dispatcher", () -> new HttpRequestHandler(httpRequestDispatcher, nettyLoomDispatchExecutor,
                 httpConnectionRegistry, properties.writeStallTimeout())),
             NettyPipelineStep.shared("exceptionHandler", new HttpExceptionHandler())

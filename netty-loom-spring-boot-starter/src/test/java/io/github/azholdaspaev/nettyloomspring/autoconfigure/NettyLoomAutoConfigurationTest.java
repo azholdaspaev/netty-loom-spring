@@ -116,6 +116,17 @@ class NettyLoomAutoConfigurationTest {
                 .getBean(type).isSameAs(userBean));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "server.netty.max-header-size",
+        "server.netty.max-initial-line-length",
+        "server.netty.max-chunk-size"
+    })
+    void shouldFailStartupWhenCodecLimitDoesNotFitInt(String property) {
+        runner.withPropertyValues(property + "=3GB")
+            .run(context -> assertThat(context).hasFailed());
+    }
+
     @Test
     void shouldUseUserExecutorNamedNettyLoomDispatchExecutor() {
         ExecutorService userExecutor = mock(ExecutorService.class);
