@@ -2,19 +2,24 @@ package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.Filter;
+import jakarta.servlet.FilterConfig;
 import jakarta.servlet.FilterRegistration;
 import jakarta.servlet.Servlet;
 import jakarta.servlet.ServletContextAttributeEvent;
 import jakarta.servlet.ServletContextAttributeListener;
 import jakarta.servlet.ServletContextEvent;
 import jakarta.servlet.ServletContextListener;
+import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletRegistration;
 import jakarta.servlet.SessionTrackingMode;
+import jakarta.servlet.http.HttpSessionEvent;
+import jakarta.servlet.http.HttpSessionListener;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.net.MalformedURLException;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.Enumeration;
 import java.util.List;
@@ -34,6 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DefaultNettyServletContextTest {
 
     private DefaultNettyServletContext context;
+    private final List<String> events = new ArrayList<>();
 
     @BeforeEach
     void setUp() {
@@ -1006,6 +1012,135 @@ class DefaultNettyServletContextTest {
         assertTrue(removed.isEmpty(), "removing an absent attribute changes nothing, so it notifies nothing");
     }
 
+    // --- Filter and servlet lifecycle (issue #103) ---
+
+    @Test
+    void shouldDestroyInitializedFiltersOnClose() throws ServletException {
+        context.addFilter("recording", new RecordingFilter("recording"));
+        context.initializeFilters();
+
+        context.close();
+
+        assertEquals(List.of("recording.init", "recording.destroy"), events);
+    }
+
+    @Test
+    void shouldDestroyNothingWhenNothingWasInitialized() {
+        context.addFilter("recording", new RecordingFilter("recording"));
+
+        context.close();
+
+        assertTrue(events.isEmpty(), "a filter whose init never ran must not be destroyed; saw " + events);
+    }
+
+    @Test
+    void shouldDestroyServletThenFiltersBeforeStoreAndListeners() throws ServletException {
+        context.addFilter("a", new RecordingFilter("a"));
+        context.addFilter("b", new RecordingFilter("b"));
+        context.addListener(new HttpSessionListener() {
+            @Override
+            public void sessionDestroyed(HttpSessionEvent event) {
+                events.add("sessionDestroyed");
+            }
+        });
+        context.addListener(new ServletContextListener() {
+            @Override
+            public void contextDestroyed(ServletContextEvent event) {
+                events.add("contextDestroyed");
+            }
+        });
+        context.fireContextInitialized();
+        context.initializeFilters();
+        context.initializeServlet("dispatcher", new RecordingServlet("dispatcher"));
+        context.getSessionManager().create();
+        events.clear();
+
+        context.close();
+
+        assertEquals(List.of("dispatcher.destroy", "b.destroy", "a.destroy", "sessionDestroyed", "contextDestroyed"),
+            events, "contextDestroyed promises every servlet and filter is already destroyed");
+    }
+
+    @Test
+    void shouldDestroyOnlyFiltersWhoseInitSucceeded() {
+        context.addFilter("first", new RecordingFilter("first"));
+        context.addFilter("broken", new RecordingFilter("broken") {
+            @Override
+            public void init(FilterConfig filterConfig) throws ServletException {
+                throw new ServletException("broken");
+            }
+        });
+        context.addFilter("never", new RecordingFilter("never"));
+
+        assertThrows(ServletException.class, context::initializeFilters);
+        context.close();
+
+        assertEquals(List.of("first.init", "first.destroy"), events,
+            "only the prefix whose init ran may be destroyed");
+    }
+
+    @Test
+    void shouldDestroyFiltersAndServletOnlyOnceAcrossRepeatedCloses() throws ServletException {
+        context.addFilter("a", new RecordingFilter("a"));
+        context.initializeFilters();
+        context.initializeServlet("dispatcher", new RecordingServlet("dispatcher"));
+
+        context.close();
+        context.close();
+
+        assertEquals(List.of("a.init", "dispatcher.init", "dispatcher.destroy", "a.destroy"), events);
+    }
+
+    @Test
+    void shouldContinueDestroyPassWhenOneDestroyThrows() throws ServletException {
+        context.addFilter("a", new RecordingFilter("a"));
+        context.initializeFilters();
+        context.initializeServlet("dispatcher", new RecordingServlet("dispatcher") {
+            @Override
+            public void destroy() {
+                throw new IllegalStateException("destroy failed");
+            }
+        });
+
+        assertDoesNotThrow(context::close);
+
+        assertTrue(events.contains("a.destroy"),
+            "a throwing servlet must not strand the filters after it; saw " + events);
+    }
+
+    @Test
+    void shouldReinitializeFiltersAndServletWhenContextIsRestarted() throws ServletException {
+        context.addFilter("a", new RecordingFilter("a"));
+        context.addListener(new ServletContextListener() {
+            @Override
+            public void contextInitialized(ServletContextEvent event) {
+                events.add("contextInitialized");
+            }
+        });
+        context.fireContextInitialized();
+        context.initializeFilters();
+        context.initializeServlet("dispatcher", new RecordingServlet("dispatcher"));
+        context.close();
+        events.clear();
+
+        context.open();
+
+        assertEquals(List.of("contextInitialized", "a.init", "dispatcher.init"), events,
+            "a restarted context must re-initialize in the startup order: listeners, filters, servlet");
+    }
+
+    @Test
+    void shouldNotReinitializeFiltersOnOpenWithoutPriorClose() throws ServletException {
+        context.addFilter("a", new RecordingFilter("a"));
+        context.fireContextInitialized();
+        context.initializeFilters();
+        context.initializeServlet("dispatcher", new RecordingServlet("dispatcher"));
+
+        context.open();
+
+        assertEquals(List.of("a.init", "dispatcher.init"), events);
+    }
+
     private static List<String> collectNames(Enumeration<String> enumeration) {
         var names = new java.util.ArrayList<String>();
         enumeration.asIterator().forEachRemaining(names::add);
@@ -1025,6 +1160,30 @@ class DefaultNettyServletContextTest {
     private static class StubFilter implements Filter {
         @Override public void doFilter(jakarta.servlet.ServletRequest request, jakarta.servlet.ServletResponse response,
                                        jakarta.servlet.FilterChain chain) {}
+    }
+
+    private class RecordingFilter extends StubFilter {
+
+        private final String name;
+
+        RecordingFilter(String name) {
+            this.name = name;
+        }
+
+        @Override public void init(FilterConfig filterConfig) throws ServletException { events.add(name + ".init"); }
+        @Override public void destroy() { events.add(name + ".destroy"); }
+    }
+
+    private class RecordingServlet extends StubServlet {
+
+        private final String name;
+
+        RecordingServlet(String name) {
+            this.name = name;
+        }
+
+        @Override public void init(jakarta.servlet.ServletConfig config) { events.add(name + ".init"); }
+        @Override public void destroy() { events.add(name + ".destroy"); }
     }
 
     private static class CountingContextListener implements ServletContextListener {
