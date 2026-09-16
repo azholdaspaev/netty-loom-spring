@@ -205,6 +205,9 @@ public class NettyHttpServletResponse implements HttpServletResponse {
     @Override
     public void sendRedirect(String location, int sc, boolean clearBuffer) throws IOException {
         requireHeadNotWritten();
+        if (clearBuffer) {
+            resetBuffer();
+        }
         this.status = sc;
         // Location must land before the commit closes the guard on setHeader.
         setHeader(HttpHeaders.LOCATION, location);
