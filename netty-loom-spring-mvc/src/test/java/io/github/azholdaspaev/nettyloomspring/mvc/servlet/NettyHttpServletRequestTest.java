@@ -19,6 +19,7 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpSessionIdListener;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.http.HttpHeaders;
 
 import java.io.UnsupportedEncodingException;
@@ -29,6 +30,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -44,6 +48,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NettyHttpServletRequestTest {
+
+    private static final int ID_THREADS = 8;
+    // Tens of thousands, not hundreds: a 500-request probe passed against a racy counter (#278).
+    private static final int IDS_PER_THREAD = 50_000;
 
     private static NettyHttpServletRequest request(HttpConnectionMetadata connection, NettyServletContext context) {
         return new NettyHttpServletRequest(
@@ -251,6 +259,34 @@ class NettyHttpServletRequestTest {
         assertEquals("", connection.getProtocolConnectionId(), "HTTP/1.x defines no protocol connection id");
         assertTrue(connection.isSecure());
         assertFalse(request(INSECURE, new DefaultNettyServletContext()).getServletConnection().isSecure());
+    }
+
+    @Test
+    @Timeout(value = 60, unit = TimeUnit.SECONDS)
+    void shouldHandOutDistinctRequestIdsWhenConstructedConcurrently() throws InterruptedException {
+        var context = new DefaultNettyServletContext();
+        Set<String> ids = ConcurrentHashMap.newKeySet();
+        var start = new CountDownLatch(1);
+        var done = new CountDownLatch(ID_THREADS);
+        for (int thread = 0; thread < ID_THREADS; thread++) {
+            Thread.ofPlatform().start(() -> {
+                try {
+                    start.await();
+                    for (int i = 0; i < IDS_PER_THREAD; i++) {
+                        ids.add(request(INSECURE, context).getRequestId());
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+        start.countDown();
+        assertTrue(done.await(60, TimeUnit.SECONDS), "threads did not finish");
+
+        assertEquals(ID_THREADS * IDS_PER_THREAD, ids.size(),
+            "every request constructed concurrently must get its own id (Servlet 6.0 getRequestId: unique within the container)");
     }
 
     @Test
