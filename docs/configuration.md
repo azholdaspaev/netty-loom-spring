@@ -97,7 +97,8 @@ the body.
 | Max request body | `server.netty.max-http-body-size` | 1 MiB | `413` |
 | Undrained request body before reads stop | not configurable | 64 KiB | — (the read loop in flight still lands) |
 
-The defaults are 10,000 decimal bytes, not 10 KiB; `DataSize` reads `10KB` as 10,240. All four
+The three codec limits default to 10,000 decimal bytes, not 10 KiB; `DataSize` reads `10KB` as
+10,240. All four
 must be positive — `0` does not disable a limit, unlike the `Duration` properties above — and the
 three codec limits must fit an `int`; a value outside that range fails startup rather than binding.
 

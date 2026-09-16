@@ -208,8 +208,8 @@ Two things to know before tuning any of it. `server.netty.shutdown-grace-period`
 strictly below `spring.lifecycle.timeout-per-shutdown-phase`, or the phase timeout is the deadline
 that applies and a request it cuts off runs on after the session store is gone
 ([#89](https://github.com/azholdaspaev/netty-loom-spring/issues/89) —
-[why](docs/configuration.md#graceful-shutdown)). And the size limits default to 10,000 decimal
-bytes, not the `10KB` a `DataSize` would read as 10,240
+[why](docs/configuration.md#graceful-shutdown)). And the three codec limits default to 10,000
+decimal bytes, not the `10KB` a `DataSize` would read as 10,240
 ([the defaults, and the status each over-limit request gets](docs/configuration.md#size-limits)).
 
 ## Architecture
