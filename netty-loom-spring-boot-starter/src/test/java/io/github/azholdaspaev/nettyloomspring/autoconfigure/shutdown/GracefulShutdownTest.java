@@ -72,9 +72,9 @@ class GracefulShutdownTest {
         assertTrue(held.response().isCompletedExceptionally(),
             "once Spring's phase timeout expires, stop() must cut the request off rather than wait "
                 + "out the grace period");
-        assertTrue(held.settledAfterMillis().get() < HoldingController.HOLD_MILLIS,
+        assertTrue(held.settledAfterMillis() < HoldingController.HOLD_MILLIS,
             "the request must be cut off at the phase timeout, before the controller would have "
-                + "answered; it settled after " + held.settledAfterMillis().get() + "ms");
+                + "answered; it settled after " + held.settledAfterMillis() + "ms");
     }
 
     @Test
@@ -97,9 +97,9 @@ class GracefulShutdownTest {
 
         assertTrue(held.response().isCompletedExceptionally(),
             "under server.shutdown=immediate, stop() must cut the request off rather than drain it");
-        assertTrue(held.settledAfterMillis().get() < HoldingController.HOLD_MILLIS,
+        assertTrue(held.settledAfterMillis() < HoldingController.HOLD_MILLIS,
             "the request must be cut off without waiting for the controller to answer; it settled after "
-                + held.settledAfterMillis().get() + "ms");
+                + held.settledAfterMillis() + "ms");
     }
 
     private static HeldRequest holdRequestAcrossClose(String... properties) throws Exception {
@@ -123,7 +123,7 @@ class GracefulShutdownTest {
             CompletableFuture<Long> settledAfterMillis =
                 response.handle((_, _) -> (System.nanoTime() - startedAt) / 1_000_000L);
             context.close();
-            return new HeldRequest(response, settledAfterMillis);
+            return new HeldRequest(response, settledAfterMillis.get());
         } finally {
             if (context.isActive()) {
                 context.close();
@@ -131,8 +131,7 @@ class GracefulShutdownTest {
         }
     }
 
-    private record HeldRequest(CompletableFuture<HttpResponse<String>> response,
-                               CompletableFuture<Long> settledAfterMillis) {
+    private record HeldRequest(CompletableFuture<HttpResponse<String>> response, long settledAfterMillis) {
     }
 
     @Test
