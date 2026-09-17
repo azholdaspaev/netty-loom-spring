@@ -13,25 +13,29 @@ caps concurrency. Targets only stable JDK features: no `--enable-preview` for co
 Three identical blocking Spring MVC apps driven by k6 against `GET /work` (a 50 ms `Thread.sleep`,
 standing in for a blocking DB call), at 10,000 concurrent connections. The comparison is against
 other **same-model** servers — Tomcat with virtual threads enabled, and Tomcat with a platform
-thread pool — not against a reactive stack, which would be a rewrite rather than a swap.
+thread pool — not against a reactive stack, which would be a rewrite rather than a swap. The
+figures are the [2026-08-23 sweep](docs/benchmarks/2026-08-23/COMPARISON.md): a dedicated
+4-core/8-thread Xeon, forward and reversed passes agreeing within 3% on 14 of 15 metrics.
 
 | Metric | Netty-Loom | Tomcat + virtual threads | Tomcat + platform threads |
 | --- | --- | --- | --- |
-| Throughput per core (req/s/core) | **20,336** | 8,322 (2.4×) | 8,069 (2.5×) |
-| Throughput (req/s) | **44,584** | 26,819 (1.7×) | 3,663 (12.2×) |
-| p99 latency | **420 ms** | 2,409 ms (5.7×) | 2,831 ms (6.7×) |
-| CPU used (of 8 cores) | 2.19 | 3.22 | 0.45 (pool-capped) |
+| Throughput per core (req/s/core) | **9,239** | 5,297 (1.74×) | 5,963 (1.55×) |
+| Throughput (req/s) | **24,076** | 17,831 (1.35×) | 3,970 (6.07×) |
+| p99 latency | **735 ms** | 2,427 ms (3.3×) | 2,542 ms (3.5×) |
+| CPU used (of 8 threads) | 2.61 | 3.37 | 0.67 (pool-capped) |
+
+**What the advantage is.** Netty-Loom's throughput per core is flat from 2,000 to 10,000
+connections; Tomcat + virtual threads loses a third of its. The two are equally efficient until the
+connection count climbs past what a thread-per-request pool absorbs.
 
 **Where the advantage does not apply.** At 2,000 connections Netty-Loom and Tomcat + virtual threads
-are statistically indistinguishable — 30,885 vs 30,128 req/s, inside the harness's ±11% noise floor,
-with identical tails. At low concurrency (1–10 VUs, `GET /ping`) Netty-Loom is the **slowest** of
-the three, by about 28 microseconds per request. There is no per-request speed advantage to claim;
-the gain is structural and appears only as connection count climbs past what a thread-per-request
-pool absorbs.
+are statistically indistinguishable — 23,400 vs 22,225 req/s, inside the harness's ±11% noise floor,
+with the same tail. At low concurrency (1–10 VUs, `GET /ping`) Netty-Loom is the **slowest** of
+the three, by a few microseconds per request. There is no per-request speed advantage to claim.
 
 Read these as relative, not absolute: it is a single-box loopback test where client and server share
-8 cores, so throughput-per-core is the one figure likely to transfer off-box. Memory per connection
-is deliberately withheld — it rose 20.2 → 49.2 → 66.6 KB across three sweeps and is unattributed
+the 8 threads, so throughput-per-core is the one figure likely to transfer off-box. Memory per
+connection is deliberately withheld: it is unattributed
 ([#144](https://github.com/azholdaspaev/netty-loom-spring/issues/144)).
 
 Methodology, every sweep, and the reproduce recipe:
@@ -180,7 +184,7 @@ issue. The contrast with the list above is the point.
 Standard knobs bind under Spring Boot's `server.*` namespace; Netty-only tuning lives under
 `server.netty.*`. The rule for which is which, and why, is [ADR 0001](docs/adr/0001-server-properties-namespace.md).
 
-Twelve Netty-only properties. Types, defaults and exact semantics are in
+The Netty-only properties. Types, defaults and exact semantics are in
 **[docs/configuration.md](docs/configuration.md#servernetty)**, which is where they are maintained:
 
 | Property | Controls |
