@@ -9,14 +9,18 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.net.SocketException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -262,18 +266,25 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
         assertEquals(rootCause, reached.getFirst().getAttribute(RequestDispatcher.ERROR_EXCEPTION));
     }
 
-    @Test
-    void shouldNotAnswerInterruptedDispatchOnceContextIsClosed() throws Exception {
+    static Stream<Throwable> cutOffShapes() {
+        return Stream.of(
+            new ServletException("Request processing failed", new InterruptedException()),
+            new ServletException("Request processing failed", new SocketException("Closed by interrupt")),
+            new IllegalStateException("handler rethrew the cut-off"));
+    }
+
+    @ParameterizedTest
+    @MethodSource("cutOffShapes")
+    void shouldNotAnswerFailureOnceContextIsClosed(Throwable cutOff) throws Exception {
         pageIs("/error");
         var response = new NettyHttpServletResponse();
         var request = requestFor("/stuck", response);
-        var cutOff = new ServletException("Request processing failed", new InterruptedException());
         context.close();
 
         var outcome = reportCapturingStandardError(request, response, cutOff);
 
         assertFalse(outcome.reported(),
-            "an interrupt once the context is closed is the executor cutting the dispatch off at shutdown, "
+            "a failure once the context is closed is a dispatch the shutdown cut off, whatever it unwound with, "
                 + "not a failure a page answers");
         assertTrue(reached.isEmpty(), "the connection is already closed; there is nobody to render a page for");
         assertFalse(outcome.logged().contains("ERROR"),

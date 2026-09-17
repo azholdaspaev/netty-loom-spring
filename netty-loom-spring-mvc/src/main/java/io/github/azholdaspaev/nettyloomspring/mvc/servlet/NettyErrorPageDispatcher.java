@@ -36,6 +36,15 @@ public class NettyErrorPageDispatcher {
             return false;
         }
         /*
+         * Left to the connection, not answered here: the context closes only after the server's stop
+         * phase has closed every connection and stopped the event loops, so a dispatch still failing
+         * once it is closed is one the shutdown cut off (#205), whatever the interrupt surfaced as --
+         * InterruptedException, SocketException, a rethrow. HttpRequestHandler reports it as abandoned.
+         */
+        if (context.isClosed()) {
+            return false;
+        }
+        /*
          * The two throwables answer different questions, so both are passed on. The wrapper
          * FrameworkServlet adds tells a controller failure from a filter's, and only the latter keeps
          * the pipeline's mapped status -- taken over whatever the response already held, as Tomcat's
@@ -43,15 +52,6 @@ public class NettyErrorPageDispatcher {
          * for, which is why StandardHostValve.throwable unwraps too.
          */
         Throwable rootCause = rootCauseOf(failure);
-        /*
-         * Left to the connection, not answered here: an interrupt once the context is closed is the
-         * dispatch executor cutting the request off at shutdown (#205), when its connection is gone and
-         * the context that would render the page is being destroyed. One while the context is open is a
-         * runtime failure like any other. HttpRequestHandler reports the abandoned dispatch.
-         */
-        if (rootCause instanceof InterruptedException && context.isClosed()) {
-            return false;
-        }
         int status = statusFor(response, failure);
         String path = context.getErrorPageResolver().resolve(status, failure, rootCause);
         if (path == null) {
