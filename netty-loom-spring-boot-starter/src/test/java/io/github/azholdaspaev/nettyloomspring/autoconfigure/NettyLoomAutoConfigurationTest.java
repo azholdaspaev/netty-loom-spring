@@ -1,7 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure;
 
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.NettyWebServerFactory;
-import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.SessionStoreLifecycle;
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.ServletContextLifecycle;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestDispatcher;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineDefinition;
@@ -99,7 +99,7 @@ class NettyLoomAutoConfigurationTest {
     @ValueSource(classes = {
         NettyIoHandlerFactory.class,
         NettyServletContext.class,
-        SessionStoreLifecycle.class,
+        ServletContextLifecycle.class,
         HttpConnectionRegistry.class,
         NettyServerChannelInitializer.class,
         NettyPipelineDefinition.class,
@@ -235,7 +235,7 @@ class NettyLoomAutoConfigurationTest {
     @ValueSource(strings = {
         "nettyIoHandlerFactory",
         "nettyServletContext",
-        "sessionStoreLifecycle",
+        "servletContextLifecycle",
         "httpConnectionRegistry",
         "nettyServerChannelInitializer",
         "nettyPipelineDefinition",

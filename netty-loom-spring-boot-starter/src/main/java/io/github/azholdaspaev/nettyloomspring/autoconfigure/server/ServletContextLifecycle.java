@@ -17,7 +17,7 @@ import org.springframework.context.SmartLifecycle;
  * server's stop phase has ended the drain before this runs; a handler thread it cut off has not
  * stopped (issue #89, {@code docs/configuration.md} § Graceful shutdown).
  */
-public class SessionStoreLifecycle implements SmartLifecycle {
+public class ServletContextLifecycle implements SmartLifecycle {
 
     /**
      * Read from Boot's constant rather than hardcoded: were the number to move, this bean would land
@@ -29,7 +29,7 @@ public class SessionStoreLifecycle implements SmartLifecycle {
 
     private volatile boolean running;
 
-    public SessionStoreLifecycle(NettyServletContext servletContext) {
+    public ServletContextLifecycle(NettyServletContext servletContext) {
         this.servletContext = servletContext;
     }
 

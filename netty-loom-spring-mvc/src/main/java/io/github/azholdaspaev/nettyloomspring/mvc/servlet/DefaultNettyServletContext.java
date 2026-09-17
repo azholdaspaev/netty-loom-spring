@@ -71,7 +71,7 @@ public final class DefaultNettyServletContext implements NettyServletContext {
     private volatile NettyErrorPageResolver errorPageResolver = NettyErrorPageResolver.NO_PAGES;
     /**
      * Atomic because the transition must happen once: close() is reachable from both
-     * SessionStoreLifecycle.stop() and the bean-destruction backstop, and each event is owed one delivery.
+     * ServletContextLifecycle.stop() and the bean-destruction backstop, and each event is owed one delivery.
      */
     private final AtomicReference<ListenerState> listenerState = new AtomicReference<>(ListenerState.NEW);
     /**
