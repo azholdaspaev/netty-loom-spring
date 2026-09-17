@@ -39,11 +39,7 @@ Gradle 9.4.1 (Kotlin DSL), Spring Boot BOM 4.0.5, Netty 4.2.12.Final, JUnit 6.0.
 
 ## IDE Tooling
 
-Library sources — Netty, Spring, the Servlet API, Tomcat — come from `./gradlew dependencySources`, which unpacks every `-sources.jar` on a module's `testRuntimeClasspath` into `<module>/build/dependency-sources/<artifact>-<version>/` (e.g. `netty-loom-spring-mvc/build/dependency-sources/spring-webmvc-<version>/org/springframework/web/servlet/DispatcherServlet.java`). Run it once per worktree; a second run is up-to-date, and `build` never runs it. Read the trees with `grep` and `cat`, the same as the source tree. `javap` gives signatures, never method bodies.
-
-A JetBrains MCP server (`idea`) is available whenever IntelliJ has this project open; CI and the agent pipeline never have it. Reach for it only for inspections `javac` lacks — `ToolSearch("select:mcp__idea__lint_files")`, then **`lint_files` / `get_file_problems`**: `@Incubating` API use, JSpecify `@NullMarked` violations, superseded idioms. Gate at `min_severity: "error"`; `"warning"` adds unused-lambda-parameter noise. A clean file is omitted from `items`, not returned empty.
-
-`./gradlew` is the ground truth for builds and tests, not the IDE. On an index error (`PSI and index do not match`) fall back to `grep`. `rename_refactoring` is denied in `.claude/settings.json`: it misses `META-INF` registrations and rewrites README prose, and the result still compiles. Cross-module renames are manual.
+Library sources come from `./gradlew dependencySources`, once per worktree, into `<module>/build/dependency-sources/`; read them with `grep` and `cat`. The `idea` MCP server exists only while IntelliJ has the project open: `lint_files` at `min_severity: "error"` finds what `javac` cannot, nothing more. `./gradlew` is the ground truth, and `rename_refactoring` is denied in `.claude/settings.json`.
 
 ## Development Workflow
 
@@ -55,7 +51,7 @@ Tests use JUnit 6 (`org.junit.jupiter.api`, via `org.junit.jupiter:junit-jupiter
 
 `.claude/settings.json` tracks the permission rules every session starts with; the body and review threads of #230, the pull request that added them, record why each rule has the shape it does, and which tidier spelling would strand the pipeline.
 
-`scripts/agent/pipeline.sh <issue>` takes an issue from its worktree to a pull request ready for review: `stage.sh` runs each `/flow:*` command as an unattended `claude -p` with `.claude/agent/` as its system prompt and settings (`implement`, then `review`/`fix` until no review thread is open or a round changed nothing, three rounds at most, then `test`), and the script itself settles a reused worktree first (uncommitted edits to a named stash, unpushed commits to a draft pull request it opens in place of an implement stage), moves an issue whose stage asked a question to `agent/needs-input`, or marks the pull request ready, labels the issue `agent/pr-ready` and posts the cost and time; `requeue.sh` is the tick step that moves an answered `agent/needs-input` issue back to `agent/queued`, or only takes the label off when an `agent/fix` pull request is open on its branch; `runner.sh` is the launchd tick itself — under a lock: fail every issue a dead tick left on `agent/running` and strip `agent/*` labels from closed issues, clean up merged pull requests, `requeue.sh`, a fix stage then a review stage per `agent/fix` pull request whose issue is not on `agent/needs-input` (a question from either stage puts it there), then one `agent/queued` issue into a worktree under `../netty-loom-wt/`. `docs/agent-pipeline.md` has the labels, the plist and the maintainer's side. Each script has its own shim-driven `test-*.sh`. In that settings file `gh`, `git push` and `pr-comments.sh` are `sandbox.excludedCommands`: under Seatbelt a Go binary cannot verify TLS and SSH cannot cross the sandbox proxy (Claude Code sandboxing reference, § Troubleshooting: https://code.claude.com/docs/en/sandboxing). They still pass the permission rules.
+`scripts/agent/pipeline.sh <issue>` takes an issue from its worktree to a pull request ready for review by running the `/flow:*` commands as unattended `claude -p` stages under `.claude/agent/`; `docs/agent-pipeline.md` owns the labels, the tick, the logs and the maintainer's side.
 
 ## CI
 
