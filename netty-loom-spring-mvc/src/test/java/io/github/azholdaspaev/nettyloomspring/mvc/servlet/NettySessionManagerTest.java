@@ -42,6 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class NettySessionManagerTest {
 
     private static final int ONE_MINUTE = 60;
+    private static final String MINTED_ID_SHAPE = "[0-9A-F]{32}";
 
     private AtomicLong clock;
     private DefaultNettyServletContext servletContext;
@@ -74,7 +75,7 @@ class NettySessionManagerTest {
         Set<String> ids = new HashSet<>();
         for (int i = 0; i < 100; i++) {
             String id = manager.create().getId();
-            assertTrue(id.matches("[0-9A-F]{32}"),
+            assertTrue(id.matches(MINTED_ID_SHAPE),
                 "Session id should be 32 uppercase hex characters (128 bits) but was '" + id + "'");
             assertTrue(ids.add(id), "Session ids must be distinct but '" + id + "' repeated");
         }
@@ -398,11 +399,11 @@ class NettySessionManagerTest {
     }
 
     @Test
-    void shouldRejectContainerShapedUnknownIdsOnIsValidId() {
+    void shouldKeepUnknownSentinelsMintedShapedButNeverLive() {
         manager.create();
 
         for (String unknown : List.of(UNKNOWN_SESSION_ID, OTHER_UNKNOWN_SESSION_ID)) {
-            assertTrue(unknown.matches("[0-9A-F]{32}"),
+            assertTrue(unknown.matches(MINTED_ID_SHAPE),
                 "the sentinel must have the shape create() mints, or a format check would reject it for the wrong reason: '"
                     + unknown + "'");
             assertFalse(manager.isValidId(unknown), "a well-formed id the store never minted must not be live");
