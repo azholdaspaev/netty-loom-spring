@@ -37,6 +37,7 @@ in favour of `server.port`.
 | --- | --- |
 | `server.port` | Default 8080; `0` lets the OS choose. A bind failure is reported as Boot's `PortInUseException` where the OS says the port is in use |
 | `server.address` | Unset binds every interface |
+| `server.shutdown` | `graceful` (Boot 4's default) drains in-flight requests; `immediate` skips the drain. See [Graceful shutdown](#graceful-shutdown) |
 | `server.servlet.context-path` | Applied before initializers run, so `getContextPath()` is correct during `onStartup`. Also the default session-cookie path |
 | `server.servlet.session.timeout` | Second resolution; `0` or less means sessions never expire |
 | `server.servlet.session.cookie.*` | `name`, `domain`, `path`, `http-only`, `secure`, `max-age`, `same-site`, `partitioned` |
@@ -67,7 +68,6 @@ Everything below is set on the factory and never read again — **no warning, no
 | --- | --- | --- |
 | `server.compression.*` | No `HttpContentCompressor` in the pipeline | [#22](https://github.com/azholdaspaev/netty-loom-spring/issues/22) |
 | `server.http2.enabled` | `HttpServerCodec` is HTTP/1.1 only | [#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23) |
-| `server.shutdown=immediate` | Boot 4 registers the graceful-shutdown lifecycle for every factory; this one never reads `getShutdown()` to opt out, so it always drains | [#87](https://github.com/azholdaspaev/netty-loom-spring/issues/87) |
 | `server.server-header` | Never written to a response | |
 | `server.max-http-request-header-size` | The header cap is `server.netty.max-header-size` ([ADR 0001](adr/0001-server-properties-namespace.md): frame-size limits are Netty-only tuning) | |
 | `server.mime-mappings.*` | Never read; `ServletContext.getMimeType` throws | |
@@ -122,8 +122,8 @@ cut off: its connection is closed, but the thread runs on, and its next session 
 `spring.lifecycle.timeout-per-shutdown-phase`**, or the phase timeout is the deadline that applies
 and the grace period is never reached. Both default to 30s in Spring Boot 4.
 
-`server.shutdown=immediate` does not disable any of this
-([#87](https://github.com/azholdaspaev/netty-loom-spring/issues/87)).
+`server.shutdown=immediate` skips the drain, as it does under Tomcat: the graceful phase completes
+at once and the stop phase force-closes every connection, in-flight requests included.
 
 ## The read timeout
 

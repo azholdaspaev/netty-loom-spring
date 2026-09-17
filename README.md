@@ -119,12 +119,11 @@ Three things do not. Method-by-method detail is in the
 
 `NettyWebServerFactory` extends Boot's `AbstractConfigurableWebServerFactory`, so Spring Boot binds
 and pushes the full `server.*` surface onto it. Accepting is not honouring, and these produce **no
-warning, no startup failure and no signal of any kind** — the highest-risk category here. The four
+warning, no startup failure and no signal of any kind** — the highest-risk category here. The two
 that cost the most:
 
 - `server.compression.*` — responses are never compressed ([#22](https://github.com/azholdaspaev/netty-loom-spring/issues/22))
 - `server.http2.*` — HTTP/1.1 only ([#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23))
-- `server.shutdown=immediate` — the server drains anyway ([#87](https://github.com/azholdaspaev/netty-loom-spring/issues/87))
 
 The [full list](docs/configuration.md#properties-that-are-silently-ignored) covers the rest,
 including `server.server-header`, `server.mime-mappings.*` and `spring.mvc.servlet.path`.
@@ -199,7 +198,7 @@ Twelve Netty-only properties. Types, defaults and exact semantics are in
 | `server.netty.max-initial-line-length` | Request-line cap, answered `414` |
 | `server.netty.max-chunk-size` | Largest piece of a body the decoder hands on at once |
 
-Honoured from the standard namespace: `server.port`, `server.address`,
+Honoured from the standard namespace: `server.port`, `server.address`, `server.shutdown`,
 `server.servlet.context-path`, `server.servlet.session.timeout`,
 `server.servlet.session.cookie.*`, `server.servlet.session.tracking-modes`,
 `server.servlet.context-parameters.*`, and `spring.servlet.encoding.*`. Everything else is in one of
