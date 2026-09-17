@@ -1,5 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.listener;
 
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.listener.app.InitOrderFilter;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.listener.app.ListenerTestApplication;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.listener.app.RecordingListener;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
@@ -14,6 +15,7 @@ import java.util.concurrent.TimeUnit;
 import static io.github.azholdaspaev.nettyloomspring.autoconfigure.support.NettyLoomApplications.servletContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The {@code ServletContextListener} half of issue #17, which needs the application lifecycle itself
@@ -59,6 +61,15 @@ class ContextListenerLifecycleTest {
                 "a restarted context must re-initialize its listeners rather than serve with them torn "
                     + "down; saw " + listener.snapshot());
             assertEquals(1, listener.countOf("contextDestroyed"), listener.snapshot()::toString);
+        }
+    }
+
+    @Test
+    void shouldFireContextInitializedBeforeFilterInit() {
+        try (ConfigurableApplicationContext context = run()) {
+            assertTrue(context.getBean(InitOrderFilter.class).isContextInitializedBeforeInit(),
+                "a Filter.init runs after every contextInitialized, in the spec's listenerStart, "
+                    + "filterStart, loadOnStartup order; saw " + context.getBean(RecordingListener.class).snapshot());
         }
     }
 

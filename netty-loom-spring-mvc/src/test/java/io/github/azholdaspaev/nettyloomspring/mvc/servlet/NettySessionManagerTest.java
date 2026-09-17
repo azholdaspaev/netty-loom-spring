@@ -601,6 +601,22 @@ class NettySessionManagerTest {
     }
 
     @Test
+    void shouldPublishSessionBeforeFiringSessionCreated() {
+        var resolved = new ArrayList<NettyHttpSession>();
+        servletContext.addListener(new HttpSessionListener() {
+            @Override
+            public void sessionCreated(HttpSessionEvent event) {
+                resolved.add(manager.find(event.getSession().getId()));
+            }
+        });
+
+        NettyHttpSession session = manager.create();
+
+        assertEquals(List.of(session), resolved, "a session registry resolves the session by id from "
+            + "inside sessionCreated, so it must already be in the store when the listener runs");
+    }
+
+    @Test
     void shouldFireNothingWhenCreationIsRefusedAfterClose() {
         /*
          * create() refuses once the store is closed, and a session nothing can reach must not be
