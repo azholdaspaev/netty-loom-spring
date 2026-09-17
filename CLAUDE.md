@@ -59,7 +59,7 @@ Tests use JUnit 6 (`org.junit.jupiter.api`, via `org.junit.jupiter:junit-jupiter
 
 ## Code Review
 
-Review runs in two passes. The bug pass (`/code-review`) is tuned for correctness recall: it requires a concrete failure scenario per finding and discards style and quality findings. The maintainability pass is the `maintainability-pass` skill, which owns the lenses for naming consistency, method naming, magic constants, duplication, comment budget, simplicity and scope, and module boundaries. State-dependent correctness — concurrency, lifecycle, time arithmetic — is rule 6 below, so that either pass can quote it. `/flow:review` runs both and posts what survives as inline comments, whether a maintainer invokes it or the agent pipeline does.
+Review runs in two passes. The bug pass (`/code-review`) is tuned for correctness recall: it requires a concrete failure scenario per finding and discards style and quality findings. The maintainability pass is the `maintainability-pass` skill, which owns the remaining lenses. State-dependent correctness — concurrency, lifecycle, time arithmetic — is rule 6 below, so that either pass can quote it. `/flow:review` runs both and posts what survives as inline comments, whether a maintainer invokes it or the agent pipeline does.
 
 ## Guidelines
 
@@ -144,3 +144,11 @@ Tests:
 - Shape: `should<Verb><Outcome>[<When|Once|After|While><Condition>]` — verb in base form, outcome before condition: `shouldRejectHeaderOverLimitWith431`, `shouldCloseConnectionOnceLastOwedResponseIsWritten`.
 - The subject is the class under test. When the name is ambiguous without a method name, the method becomes the condition: `shouldCommitResponseOnSendError`, not `shouldSendErrorCommitResponse`.
 - No `@DisplayName`: the method name is the display name, so the budget cannot be evaded by moving prose into an annotation.
+
+8. **Documents.** Prose outside the source is bound by rule 5's triggers, budgets and **Never** list, and by one owner per fact: a file that needs a fact another file owns links to it and does not restate it. A paragraph a link could replace is a finding.
+
+- `docs/` is a closed list, and a new file adds its row here first: `configuration.md` (every property), `compatibility-matrix.md` (every servlet method), `adr/` (decisions), `agent-pipeline.md` (the runner), `publishing.md` (state held outside the repository), `benchmarks/<date>/` (one sweep each, never edited).
+- An ADR holds the rationale for a rule in this file, or an ownership boundary. It never describes behaviour: behaviour is owned by a test, `configuration.md` or the matrix. Header: Status, Date, then Rule or Issue. Sections: Context, Decision, Consequences. A count in an ADR is pinned to a commit. A correction is a dated amendment, the one place where appending is right.
+- This file holds rules and the module map. Anything an agent does not need on every edit is one sentence here and a link.
+- `README.md` is the front page, `CONTRIBUTING.md` the human's setup, `CHANGELOG.md` the release notes; each links to the owner of a fact rather than restating it.
+- Never, beyond rule 5's list: a census a later change falsifies — a property count, a feature list in two files; a log of a past run; "current" or "latest" without a date; a version pin to `-SNAPSHOT`.
