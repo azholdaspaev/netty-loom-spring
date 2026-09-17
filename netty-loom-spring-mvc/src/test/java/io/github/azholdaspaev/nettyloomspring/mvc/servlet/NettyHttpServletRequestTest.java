@@ -33,6 +33,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
+import static io.github.azholdaspaev.nettyloomspring.mvc.servlet.UnknownSessionIds.OTHER_UNKNOWN_SESSION_ID;
+import static io.github.azholdaspaev.nettyloomspring.mvc.servlet.UnknownSessionIds.UNKNOWN_SESSION_ID;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -814,11 +816,11 @@ class NettyHttpServletRequestTest {
 
     @Test
     void shouldYieldNoSessionButStaleRequestedIdForUnknownId() {
-        var exchange = exchange(new DefaultNettyServletContext(), INSECURE, "JSESSIONID=DEADBEEF");
+        var exchange = exchange(new DefaultNettyServletContext(), INSECURE, "JSESSIONID=" + UNKNOWN_SESSION_ID);
 
         // SessionManagementFilter keys on exactly this triple to detect an expired session.
         assertNull(exchange.request().getSession(false));
-        assertEquals("DEADBEEF", exchange.request().getRequestedSessionId());
+        assertEquals(UNKNOWN_SESSION_ID, exchange.request().getRequestedSessionId());
         assertFalse(exchange.request().isRequestedSessionIdValid());
         assertTrue(exchange.request().isRequestedSessionIdFromCookie());
     }
@@ -826,11 +828,11 @@ class NettyHttpServletRequestTest {
     @Test
     void shouldStillCreateFreshSessionAfterUnknownSessionId() {
         var context = new DefaultNettyServletContext();
-        var exchange = exchange(context, INSECURE, "JSESSIONID=DEADBEEF");
+        var exchange = exchange(context, INSECURE, "JSESSIONID=" + UNKNOWN_SESSION_ID);
 
         var created = exchange.request().getSession(true);
 
-        assertNotEquals("DEADBEEF", created.getId());
+        assertNotEquals(UNKNOWN_SESSION_ID, created.getId());
         assertTrue(exchange.setCookie().startsWith(NettySessionCookieConfig.DEFAULT_NAME + "=" + created.getId()));
     }
 
@@ -844,7 +846,7 @@ class NettyHttpServletRequestTest {
         var existing = context.getSessionManager().create();
 
         var exchange = exchange(context, INSECURE,
-            NettySessionCookieConfig.DEFAULT_NAME + "=DEADBEEF; "
+            NettySessionCookieConfig.DEFAULT_NAME + "=" + UNKNOWN_SESSION_ID + "; "
                 + NettySessionCookieConfig.DEFAULT_NAME + "=" + existing.getId());
 
         assertSame(existing, exchange.request().getSession(false), "the live duplicate must be the one resolved");
@@ -855,15 +857,15 @@ class NettyHttpServletRequestTest {
     @Test
     void shouldReportLastOfAllStaleDuplicateCookiesAsRequestedId() {
         var exchange = exchange(new DefaultNettyServletContext(), INSECURE,
-            NettySessionCookieConfig.DEFAULT_NAME + "=DEAD1; "
-                + NettySessionCookieConfig.DEFAULT_NAME + "=DEAD2");
+            NettySessionCookieConfig.DEFAULT_NAME + "=" + UNKNOWN_SESSION_ID + "; "
+                + NettySessionCookieConfig.DEFAULT_NAME + "=" + OTHER_UNKNOWN_SESSION_ID);
 
         /*
          * The same triple SessionManagementFilter keys on as the single-cookie case: an id was presented
          * and it is not valid, which is an expired session -- not a request that carried none.
          */
         assertNull(exchange.request().getSession(false));
-        assertEquals("DEAD2", exchange.request().getRequestedSessionId());
+        assertEquals(OTHER_UNKNOWN_SESSION_ID, exchange.request().getRequestedSessionId());
         assertFalse(exchange.request().isRequestedSessionIdValid());
         assertTrue(exchange.request().isRequestedSessionIdFromCookie());
     }
@@ -880,10 +882,10 @@ class NettyHttpServletRequestTest {
 
         String miscased = NettySessionCookieConfig.DEFAULT_NAME.toLowerCase(Locale.ROOT);
         var exchange = exchange(context, INSECURE,
-            miscased + "=" + live.getId() + "; " + NettySessionCookieConfig.DEFAULT_NAME + "=DEADBEEF");
+            miscased + "=" + live.getId() + "; " + NettySessionCookieConfig.DEFAULT_NAME + "=" + UNKNOWN_SESSION_ID);
 
         assertNull(exchange.request().getSession(false), "the mis-cased cookie must not resolve a session");
-        assertEquals("DEADBEEF", exchange.request().getRequestedSessionId());
+        assertEquals(UNKNOWN_SESSION_ID, exchange.request().getRequestedSessionId());
         assertFalse(exchange.request().isRequestedSessionIdValid());
     }
 
