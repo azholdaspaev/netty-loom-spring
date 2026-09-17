@@ -106,36 +106,8 @@ stage, so the wait before pick-up and each stage's wall time read off that file 
 16 + 3 × (6 + 4) + 6 = 52 USD, and stops early when a fix stage pushed no commit and the review
 after it posted no inline comment: the same model on the same code returns the same verdicts
 (#262). A stage that hits its cap ends with `error_max_budget_usd` and the issue goes to
-`agent/failed`.
-
-Baseline: #239, the first issue to go from `agent/queued` to a merged pull request (#249) with no
-session opened by hand, on 2026-09-13 with `main` at `a0eecdc`.
-
-| Stage | USD | Wall | Turns | Denied calls |
-| --- | --- | --- | --- | --- |
-| implement | 2.94 | 6 min | 50 | 4 |
-| review 1 — nothing to post | 1.24 | 2 min | 14 | 2 |
-| test | 4.73 | 13 min | 68 | 3 |
-| `agent/fix`, one thread from the maintainer | 0.88 | 2 min | 20 | 2 |
-| review 1 again — resolved that thread, posted one | 1.80 | 4 min | 26 | 3 |
-| fix 1 | 1.05 | 2 min | 22 | 3 |
-| review 2 — resolved it, nothing new | 1.71 | 3 min | 20 | 4 |
-| test again | 5.22 | 11 min | 77 | 5 |
-
-19.58 USD and 43 minutes of stage time. From label to `agent/pr-ready`: 28 minutes the first
-time, 25 the second, each including up to five minutes for the tick and one for
-`dependencySources`. The second run was the `agent/queued` detour that #253 replaced: the pipeline
-had no shorter path to a review stage that settles a maintainer's thread, so it paid for a test
-stage as well. With both passes running under the 6 USD review budget, no review came near it.
-
-Of the 26 denied calls, 21 were Bash commands that no allow rule matches as a whole — `;`, `|`,
-`&&`, `for`, a heredoc, a `VAR=… ./gradlew` prefix — and the stage got the same facts another
-way each time; three were `gh api` reads of pull request comments (#245); one was
-`gh issue create --label`, denied until #317 narrowed the rule to `agent/*` values, so the ticket
-named its labels in its body; one an IntelliJ terminal call, not on the tool list. Two more
-findings: inside the stage's sandbox `/usr/bin/java` resolves no JDK, so the implement stage
-compiled and ran the tests by hand until the plist below named one; and a re-run test stage does
-not see the tickets its earlier run opened (#250 and #252 are the same gap; #254).
+`agent/failed`. What a run actually cost is in the hand-off comment on its issue; #239 was the
+first.
 
 ## Sandbox
 
