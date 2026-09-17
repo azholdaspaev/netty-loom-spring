@@ -68,8 +68,9 @@ class ContextListenerLifecycleTest {
     void shouldFireContextInitializedBeforeFilterInit() {
         try (ConfigurableApplicationContext context = run()) {
             assertTrue(context.getBean(InitOrderFilter.class).isContextInitializedBeforeInit(),
-                "a Filter.init runs after every contextInitialized, in the spec's listenerStart, "
-                    + "filterStart, loadOnStartup order; saw " + context.getBean(RecordingListener.class).snapshot());
+                "the spec notifies every ServletContextListener before any filter or servlet is initialized, "
+                    + "so a Filter.init must already see contextInitialized; saw "
+                    + context.getBean(RecordingListener.class).snapshot());
         }
     }
 
