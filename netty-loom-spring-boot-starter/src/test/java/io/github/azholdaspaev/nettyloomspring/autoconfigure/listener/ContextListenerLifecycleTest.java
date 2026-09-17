@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  * The {@code ServletContextListener} half of issue #17, which needs the application lifecycle itself
  * rather than a running server: the two events must stay balanced across shutdown and across the
  * stop/start cycle Spring replays on {@code ApplicationContext.start()}, {@code restart()} and CRaC
- * restore -- the same cycle {@code SessionStoreLifecycle} already reopens the session store for.
+ * restore -- the same cycle {@code ServletContextLifecycle} already reopens the session store for.
  */
 @Timeout(value = 60, unit = TimeUnit.SECONDS)
 class ContextListenerLifecycleTest {

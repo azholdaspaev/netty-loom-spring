@@ -1,6 +1,5 @@
-package io.github.azholdaspaev.nettyloomspring.autoconfigure.session;
+package io.github.azholdaspaev.nettyloomspring.autoconfigure.server;
 
-import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.SessionStoreLifecycle;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.DefaultNettyServletContext;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyHttpSession;
 
@@ -23,15 +22,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * checkpoint/restore. A destroy callback never had to survive that, so the round trip is what these
  * pin: stopping must tear the store down, and starting must leave it able to serve.
  */
-class SessionStoreLifecycleTest {
+class ServletContextLifecycleTest {
 
     private DefaultNettyServletContext servletContext;
-    private SessionStoreLifecycle lifecycle;
+    private ServletContextLifecycle lifecycle;
 
     @BeforeEach
     void setUp() {
         servletContext = new DefaultNettyServletContext();
-        lifecycle = new SessionStoreLifecycle(servletContext);
+        lifecycle = new ServletContextLifecycle(servletContext);
         lifecycle.start();
     }
 
