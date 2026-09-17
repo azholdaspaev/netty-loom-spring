@@ -23,4 +23,9 @@ public class ListenerTestConfig {
         RecordingListener listener) {
         return new ServletListenerRegistrationBean<>(listener);
     }
+
+    @Bean
+    public InitOrderFilter initOrderFilter(RecordingListener listener) {
+        return new InitOrderFilter(listener);
+    }
 }

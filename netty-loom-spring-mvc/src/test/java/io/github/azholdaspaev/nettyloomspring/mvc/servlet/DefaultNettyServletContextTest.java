@@ -865,6 +865,17 @@ class DefaultNettyServletContextTest {
     }
 
     @Test
+    void shouldRejectUnsupportedListenerTypeBeforeInstantiating() {
+        var thrown = assertThrows(IllegalArgumentException.class,
+            () -> context.createListener(UnsupportedUninstantiableListener.class));
+
+        assertTrue(thrown.getMessage().contains(ServletContextListener.class.getName()),
+            "the wrong-type check runs before the constructor, so a class that is both must fail for its "
+                + "type, as it does in Tomcat, rather than with a ServletException for its constructor; got "
+                + thrown.getMessage());
+    }
+
+    @Test
     void shouldCreateListenerWithItsNoArgConstructor() throws Exception {
         assertInstanceOf(StubContextListener.class, context.createListener(StubContextListener.class));
     }
@@ -1274,5 +1285,12 @@ class DefaultNettyServletContextTest {
      * A legal EventListener, but not a type addListener accepts.
      */
     static class UnsupportedListener implements java.util.EventListener {
+    }
+
+    static class UnsupportedUninstantiableListener implements java.util.EventListener {
+
+        UnsupportedUninstantiableListener() {
+            throw new IllegalStateException("cannot be built");
+        }
     }
 }
