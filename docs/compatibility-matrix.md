@@ -1,8 +1,8 @@
 # Compatibility matrix
 
-What the servlet bridge implements, method by method. Verified against the source at
-`0.1.0-SNAPSHOT`; see [README](../README.md) for the summary and
-[docs/configuration.md](configuration.md) for the property reference.
+What the servlet bridge implements, method by method, as the source on `main` has it; see
+[README](../README.md) for the summary and [docs/configuration.md](configuration.md) for the
+property reference.
 
 **Status values**
 
