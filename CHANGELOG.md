@@ -13,75 +13,16 @@ First release. Not yet published to Maven Central; a `0.1.0-SNAPSHOT` is on
 
 ### Added
 
-- **Netty-backed `ServletWebServerFactory`** that replaces the embedded Tomcat container in a
-  Spring Boot application, dispatching each request onto its own Java 25 virtual thread. Blocking
-  `@RestController` code runs unchanged.
-- **Transport auto-selection** via `server.netty.transport` — epoll on Linux, kqueue on macOS,
-  NIO everywhere else; `nio`, `epoll` and `kqueue` force a specific transport, the two native
-  values failing startup when unavailable.
-- **Two-phase graceful shutdown** with a configurable drain deadline
-  (`server.netty.shutdown-grace-period`). Idle keep-alive connections are closed rather than waited
-  on; in-flight requests are drained, then force-closed at the deadline — or earlier, when Spring's
-  `spring.lifecycle.timeout-per-shutdown-phase` expires first. `server.shutdown=immediate` skips
-  the drain, as under Tomcat.
-- **Slow-loris protection** through a per-connection read timeout (`server.netty.read-timeout`)
-  that measures client progress and exempts handler execution.
-- **Configurable listen backlog** via `server.netty.accept-count` (default `128`, the former
-  hardcoded `SO_BACKLOG`), the same concept as `server.tomcat.accept-count`. The kernel clamps it
-  silently to `net.core.somaxconn` on Linux.
-- **Configurable HTTP size limits** — `server.netty.max-initial-line-length`,
-  `server.netty.max-header-size`, `server.netty.max-chunk-size` and `server.netty.max-http-body-size`
-  (`DataSize`; defaults `10000B`, `10000B`, `10000B` and `1MB`, the former hardcoded values) —
-  answering `414`, `431` and `413` rather than passing malformed or oversized requests to the
-  application.
-- **Streaming responses** — writes flush incrementally as `Transfer-Encoding: chunked` once the
-  body outgrows the response buffer, with backpressure when the client reads more slowly than the
-  handler writes, bounded by `server.netty.write-stall-timeout` so a client that stops reading
-  altogether is given up on rather than waited on for ever.
-- **Streaming requests** — the body reaches `getInputStream()` a part at a time as it decodes, never
-  held whole, with reads withheld while the handler is behind so a fast client waits in the socket
-  rather than in heap. `Expect: 100-continue`, `417` and the `413` for an over-large body are
-  answered by the pipeline.
-- **Servlet bridge** covering requests, responses, cookies, sessions, instance-registered filters,
-  path-based `RequestDispatcher.forward` with its `FORWARD` dispatcher state,
-  error-page dispatch to Boot's `/error` with its `ERROR` dispatcher state,
-  and all seven `addListener` listener types, over `NettyHttpServletRequest`,
-  `NettyHttpServletResponse` and `DefaultNettyServletContext`, whose `getServletContextName()`
-  is `server.servlet.application-display-name`.
-- **Server-wide `OPTIONS *`** answered with Tomcat's `Allow` list before the context-path guard,
-  filters or the servlet, rather than a 404.
-- **In-memory sessions** with the standard `server.servlet.session.*` cookie and timeout
-  properties, plus `CookieSameSiteSupplier` support.
-- **Two SPI seams for extension** — `HttpRequestDispatcher` for the layer above the channel
-  pipeline and `HttpResponseWriter` for how that layer emits a response, keeping
-  `netty-loom-spring-core` free of any Spring dependency.
-- **Configuration metadata** for every `server.netty.*` property, with IDE value hints.
-- **Auto-configuration that backs off** — active only in a servlet web application with Netty on
-  the classpath, ordered after Boot's Tomcat, Jetty and Undertow auto-configurations so any of
-  them on the classpath serves instead, and every bean `@ConditionalOnMissingBean` so a
-  `ServletWebServerFactory`, `HttpRequestDispatcher` or `NettyPipelineDefinition` of your own
-  replaces the starter's without `@Primary`. Every guard searches the current application context
-  only, so a child context that starts its own Netty server registers its own dispatcher, pipeline,
-  session store and executor rather than inheriting its parent's. What those beans receive is up to
-  injection, which sees the whole hierarchy: which `DispatcherServlet` the dispatcher wraps, a parent
-  bean marked `@Primary` over the child's default, and a parent default over a child replacement
-  under any name but the default's.
-
-### Known limitations
-
-This release is deliberately partial, and several standard Spring Boot settings are accepted and
-then silently ignored. Read [What works, what doesn't](README.md#what-works-what-doesnt) and the
-[compatibility matrix](docs/compatibility-matrix.md) before adopting it. The largest gaps: no
-servlet async (so no SSE or `StreamingResponseBody`), no multipart, no static resources, no TLS, no
-HTTP/2 and no response compression.
+The list is written from [What works, what doesn't](README.md#what-works-what-doesnt) and the
+[compatibility matrix](docs/compatibility-matrix.md) when the release is tagged
+([docs/publishing.md](docs/publishing.md#before-tagging)); until then those two are the feature
+list, and this section does not keep a third copy of it.
 
 ### Migration notes
 
 For anyone tracking pre-release snapshots:
 
-- **`server.netty.port` was removed** in favour of Spring Boot's standard `server.port`. Because
-  `NettyLoomProperties` is a `@ConfigurationProperties` record, it binds with
-  `ignoreUnknownFields = true`, so a leftover `server.netty.port` is **silently ignored rather than
-  rejected** — an application that forgets to rename the key gets Boot's default of `8080` with no
-  warning. The old property's default of `0` (random port) is gone. See
+- **`server.netty.port` was removed** in favour of Spring Boot's standard `server.port`, and its
+  default of `0` (random port) with it. A leftover key is silently ignored, not rejected
+  ([why](docs/configuration.md#servernetty)); the namespace rule is
   [ADR 0001](docs/adr/0001-server-properties-namespace.md).
