@@ -14,6 +14,7 @@ import jakarta.servlet.http.HttpSession;
 import jakarta.servlet.http.HttpSessionActivationListener;
 import jakarta.servlet.http.HttpSessionAttributeListener;
 import jakarta.servlet.http.HttpSessionBindingEvent;
+import jakarta.servlet.http.HttpSessionBindingListener;
 import jakarta.servlet.http.HttpSessionEvent;
 import jakarta.servlet.http.HttpSessionIdListener;
 import jakarta.servlet.http.HttpSessionListener;
@@ -221,12 +222,9 @@ class NettyListenerRegistryTest {
             "the message must name the types that are accepted; got " + failure.getMessage());
     }
 
-    /**
-     * The two servlet listener interfaces {@code docs/compatibility-matrix.md} lists as never registered
-     * through {@code addListener}.
-     */
     static Stream<Class<? extends EventListener>> typesNoContainerRegisters() {
-        return Stream.of(HttpSessionActivationListener.class, AsyncListener.class);
+        return Stream.of(HttpSessionBindingListener.class, HttpSessionActivationListener.class,
+            AsyncListener.class);
     }
 
     @ParameterizedTest
