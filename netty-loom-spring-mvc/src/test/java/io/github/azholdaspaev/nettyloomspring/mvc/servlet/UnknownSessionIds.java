@@ -2,9 +2,8 @@ package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
 /**
  * Session ids well-formed as {@link NettySessionManager#create()} mints them -- 32 uppercase hex --
- * but naming no session. Container-shaped rather than a short marker such as {@code "DEADBEEF"}: a
- * format check on {@code isValidId} would reject a short marker for a reason unrelated to what the
- * test asserts (issue #97).
+ * but naming no session. Container-shaped rather than a short marker such as {@code "DEADBEEF"}
+ * (issue #97).
  */
 final class UnknownSessionIds {
 
