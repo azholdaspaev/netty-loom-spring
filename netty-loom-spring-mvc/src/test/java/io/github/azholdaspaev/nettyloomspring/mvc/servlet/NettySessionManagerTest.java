@@ -137,7 +137,7 @@ class NettySessionManagerTest {
 
     @Test
     void shouldReturnNullOnFindForUnknownId() {
-        assertNull(manager.find("NOTASESSIONID"));
+        assertNull(manager.find(UNKNOWN_SESSION_ID));
     }
 
     @Test
@@ -338,7 +338,7 @@ class NettySessionManagerTest {
 
         assertTrue(manager.isValidId(session.getId()));
         assertTrue(session.isNew(), "a validity query must not clear isNew");
-        assertFalse(manager.isValidId("NOTASESSIONID"));
+        assertFalse(manager.isValidId(UNKNOWN_SESSION_ID));
         assertFalse(manager.isValidId(null));
 
         session.invalidate();
