@@ -22,6 +22,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static io.github.azholdaspaev.nettyloomspring.mvc.servlet.UnknownSessionIds.OTHER_UNKNOWN_SESSION_ID;
+import static io.github.azholdaspaev.nettyloomspring.mvc.servlet.UnknownSessionIds.UNKNOWN_SESSION_ID;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -396,6 +398,20 @@ class NettySessionManagerTest {
     }
 
     @Test
+    void shouldRejectContainerShapedUnknownIdsOnIsValidId() {
+        manager.create();
+
+        for (String unknown : List.of(UNKNOWN_SESSION_ID, OTHER_UNKNOWN_SESSION_ID)) {
+            assertTrue(unknown.matches("[0-9A-F]{32}"),
+                "the sentinel must have the shape create() mints, or a format check would reject it for the wrong reason: '"
+                    + unknown + "'");
+            assertFalse(manager.isValidId(unknown), "a well-formed id the store never minted must not be live");
+        }
+        assertNotEquals(UNKNOWN_SESSION_ID, OTHER_UNKNOWN_SESSION_ID,
+            "the fallback-ordering tests assert which dead candidate is reported, so the two must differ");
+    }
+
+    @Test
     void shouldSkipStaleDuplicateAndReturnLiveIdOnReadSessionId() {
         /*
          * Issue #91: the stale duplicate routinely arrives first, and reading it hands find() an id that
@@ -403,7 +419,8 @@ class NettySessionManagerTest {
          */
         NettyHttpSession live = manager.create();
 
-        String resolved = manager.readSessionId(cookies(SESSION_COOKIE, "DEADBEEF", SESSION_COOKIE, live.getId()));
+        String resolved =
+            manager.readSessionId(cookies(SESSION_COOKIE, UNKNOWN_SESSION_ID, SESSION_COOKIE, live.getId()));
 
         assertEquals(live.getId(), resolved, "a live duplicate must win over the stale one preceding it");
     }
@@ -412,7 +429,8 @@ class NettySessionManagerTest {
     void shouldKeepFirstLiveIdOverLaterStaleDuplicateOnReadSessionId() {
         NettyHttpSession live = manager.create();
 
-        String resolved = manager.readSessionId(cookies(SESSION_COOKIE, live.getId(), SESSION_COOKIE, "DEADBEEF"));
+        String resolved =
+            manager.readSessionId(cookies(SESSION_COOKIE, live.getId(), SESSION_COOKIE, UNKNOWN_SESSION_ID));
 
         assertEquals(live.getId(), resolved);
     }
@@ -442,9 +460,10 @@ class NettySessionManagerTest {
          * expired id" from "presented none" purely by getRequestedSessionId() being non-null. Last rather
          * than first is Tomcat parity; which dead id it is cannot be observed, they are equally dead.
          */
-        String resolved = manager.readSessionId(cookies(SESSION_COOKIE, "STALE1", SESSION_COOKIE, "STALE2"));
+        String resolved = manager.readSessionId(
+            cookies(SESSION_COOKIE, UNKNOWN_SESSION_ID, SESSION_COOKIE, OTHER_UNKNOWN_SESSION_ID));
 
-        assertEquals("STALE2", resolved);
+        assertEquals(OTHER_UNKNOWN_SESSION_ID, resolved);
     }
 
     @Test
@@ -487,7 +506,7 @@ class NettySessionManagerTest {
          */
         NettyHttpSession live = manager.create();
 
-        manager.readSessionId(cookies(SESSION_COOKIE, "DEADBEEF", SESSION_COOKIE, live.getId()));
+        manager.readSessionId(cookies(SESSION_COOKIE, UNKNOWN_SESSION_ID, SESSION_COOKIE, live.getId()));
 
         assertTrue(live.isNew(), "resolving the requested id must not clear isNew");
     }
@@ -506,9 +525,10 @@ class NettySessionManagerTest {
          * and this test would stop testing anything -- if the default name ever changed.
          */
         String miscased = SESSION_COOKIE.toLowerCase(Locale.ROOT);
-        String resolved = manager.readSessionId(cookies(miscased, live.getId(), SESSION_COOKIE, "DEADBEEF"));
+        String resolved =
+            manager.readSessionId(cookies(miscased, live.getId(), SESSION_COOKIE, UNKNOWN_SESSION_ID));
 
-        assertEquals("DEADBEEF", resolved, "only the exactly-named cookie may be read as the session id");
+        assertEquals(UNKNOWN_SESSION_ID, resolved, "only the exactly-named cookie may be read as the session id");
     }
 
     @Test
@@ -537,9 +557,9 @@ class NettySessionManagerTest {
 
     @Test
     void shouldSkipTrailingEmptyDuplicateOnReadSessionIdFallback() {
-        String resolved = manager.readSessionId(cookies(SESSION_COOKIE, "DEADBEEF", SESSION_COOKIE, ""));
+        String resolved = manager.readSessionId(cookies(SESSION_COOKIE, UNKNOWN_SESSION_ID, SESSION_COOKIE, ""));
 
-        assertEquals("DEADBEEF", resolved, "an empty duplicate must not displace the id the client presented");
+        assertEquals(UNKNOWN_SESSION_ID, resolved, "an empty duplicate must not displace the id the client presented");
     }
 
     @Test
@@ -550,7 +570,7 @@ class NettySessionManagerTest {
 
     @Test
     void shouldTolerateNullDuplicateValueOnReadSessionId() {
-        assertNull(manager.readSessionId(cookies(SESSION_COOKIE, "DEADBEEF", SESSION_COOKIE, null)),
+        assertNull(manager.readSessionId(cookies(SESSION_COOKIE, UNKNOWN_SESSION_ID, SESSION_COOKIE, null)),
             "a value a filter nulled through getCookies() must not throw; it stands as the last match, as before the empty guard");
     }
 
