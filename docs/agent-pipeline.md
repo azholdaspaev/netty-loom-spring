@@ -137,6 +137,14 @@ findings: inside the stage's sandbox `/usr/bin/java` resolves no JDK, so the imp
 compiled and ran the tests by hand until the plist below named one; and a re-run test stage does
 not see the tickets its earlier run opened (#250 and #252 are the same gap; #254).
 
+## Sandbox
+
+The stages run under `.claude/agent/settings.json`, where `gh`, `git push` and `pr-comments.sh`
+are `sandbox.excludedCommands`: under Seatbelt a Go binary cannot verify TLS and SSH cannot cross
+the sandbox proxy (Claude Code sandboxing reference, § Troubleshooting:
+https://code.claude.com/docs/en/sandboxing). They still pass the permission rules. Each script
+under `scripts/agent/` has a shim-driven `test-*.sh` beside it.
+
 ## launchd
 
 The plist lives outside the repository, at `~/Library/LaunchAgents/`. launchd starts with a bare
