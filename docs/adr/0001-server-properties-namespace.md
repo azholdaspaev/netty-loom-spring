@@ -16,8 +16,8 @@ silently bound a **random** port (only `server.netty.port`, default `0`, was hon
 
 Two adjacent issues forced a decision on where configuration should live:
 
-- **#16** wants TLS under the standard `server.ssl.*` namespace.
-- **#42** wants HTTP frame-size limits, which are Netty-specific tuning with no Boot equivalent.
+- **#16** wanted TLS under the standard `server.ssl.*` namespace.
+- **#42** wanted HTTP frame-size limits, which are Netty-specific tuning with no Boot equivalent.
 
 Without a rule, contributors would guess, and the two namespaces would drift into an inconsistent
 mix.
@@ -32,9 +32,9 @@ mix.
   `AbstractConfigurableWebServerFactory` and implements `ConfigurableServletWebServerFactory`, so
   these are pushed onto the factory before `getWebServer()` runs, exactly as the Tomcat/Jetty
   factories work.
-- **Netty-only tuning → `server.netty.*`.** Knobs with no Boot equivalent — boss/worker thread
-  counts, TCP keep-alive, graceful-shutdown grace period, read-timeout, transport selection, and
-  the future frame-size limits (#42) — stay under `server.netty.*` (`NettyLoomProperties`).
+- **Netty-only tuning → `server.netty.*`.** Knobs with no Boot equivalent stay under
+  `server.netty.*` (`NettyLoomProperties`); [docs/configuration.md](../configuration.md#servernetty)
+  lists them.
 
 This reconciles #16 (SSL under `server.ssl.*`) and #42 (size limits under `server.netty.*`)
 without contradiction: the split is "does Spring Boot already own this concept?"
@@ -46,49 +46,16 @@ is gone; `server.port` follows Boot's standard default of `8080`.
 
 ## Consequences
 
-### Silent-ignore caveat
-
-`NettyLoomProperties` is a `@ConfigurationProperties` record, which binds with
-`ignoreUnknownFields = true` (the default). A stray `server.netty.port=...` left over from an
-earlier version is therefore **silently ignored — not a startup error**. Users migrating from
-`server.netty.port` to `server.port` who forget to change the key will get Boot's default `8080`
-with no warning. This is documented here and in the CHANGELOG.
-
-### Some inherited setters fail fast; the rest are silent no-ops
-
-Because the factory now extends `AbstractConfigurableWebServerFactory` and implements
-`ConfigurableServletWebServerFactory`, it **inherits** setters for capabilities the Netty server
-does not yet implement.
-
-`server.ssl.*` is treated specially: since silently serving plaintext while the application looks
-TLS-configured is a security footgun, `getWebServer()` **fails fast** with a clear
-`WebServerException` pointing at #16 whenever SSL is enabled. Wire TLS (#16) or set
-`server.ssl.enabled=false`.
-
-`setSession` is split three ways: `server.servlet.session.timeout`, `cookie.*` and
-`tracking-modes` are honoured (#13); `persistent=true` and any tracking mode other than `cookie`
-**fail startup**; only `store-dir` is read by nothing.
-
-The remaining inherited setters are silent no-ops by design (the interface contract requires them);
-these `server.*` knobs appear configurable but currently have **no effect**:
-
-- `setHttp2` (#23), `setCompression` (#22), `setServerHeader` — not applied to the Netty pipeline.
-- `setMimeMappings` — no static resource serving.
-
-[docs/configuration.md](../configuration.md#properties-that-are-silently-ignored) owns the
-per-property list and is the one to keep current.
-
-### Bypassed error handling for out-of-context requests
-
-The context-path 404 is returned directly by the dispatcher, before the filter chain, so Spring
-Security's filter and Boot's `BasicErrorController` `/error` JSON are bypassed for out-of-context
-URIs — a plain 404, by design (an out-of-context URI would otherwise throw in Boot's
-`RequestPath.parse` and surface as a 500).
-
-## Scope
-
-In scope for #49: `server.port`, `server.address`, `server.servlet.context-path`. Session timeout
-(`server.servlet.session.timeout`) is deferred to #13.
+- Removing `server.netty.port` is silent for anyone still setting it: the record binds with
+  `ignoreUnknownFields = true` ([docs/configuration.md](../configuration.md#servernetty)).
+- The factory inherits every `server.*` setter Boot models, honoured or not. Which are honoured,
+  which fail startup and which are silent no-ops is owned by
+  [docs/configuration.md](../configuration.md#properties-that-are-silently-ignored). One consequence
+  is a rule of this record: `server.ssl.*` with SSL enabled fails startup rather than serving
+  plaintext, because an application that looks TLS-configured and is not is a security footgun.
+- An out-of-context URI is answered with a bare 404 by the dispatcher, before the filter chain, so
+  Spring Security and Boot's `/error` never see it. Letting it through would throw in Boot's
+  `RequestPath.parse` and surface as a 500.
 
 ## Amendments
 
@@ -98,4 +65,8 @@ The ownership rule is unchanged; its worked example had drifted. #13 closed on 2
 `server.servlet.session.*` is no longer an inherited setter with no effect, and SSL is no longer
 the only knob that fails fast. **Consequences** was corrected in place.
 
-**Scope** above still describes #49's boundary as it stood on 2026-07-03 and is left as written.
+### 2026-09-17 — behaviour moved out (#355)
+
+**Consequences** had grown into a per-property census that #159 had already caught drifting once.
+It is cut to the rule's own consequences; the property lists live in `docs/configuration.md`, and
+the **Scope** section, which listed #49's deliverables, is gone with them.
