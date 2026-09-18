@@ -1,9 +1,13 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.serverheader;
 
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.listener.app.RecordingListener;
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.app.SmokeNettyLoomApplication;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.support.RawHttpClient;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.support.RawHttpResponse;
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.support.ThrowableChains;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.web.server.context.WebServerApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 
@@ -16,6 +20,7 @@ import static io.github.azholdaspaev.nettyloomspring.autoconfigure.support.Netty
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@code server.server-header} is bound onto the factory by Boot and must reach the wire (issue #167).
@@ -58,9 +63,27 @@ class ServerHeaderTest {
     }
 
     @Test
-    void shouldFailStartupWhenServerHeaderHasLineBreak() {
-        assertThrows(RuntimeException.class, () -> run("server.server-header=My\nApp").close(),
+    void shouldFailStartupNamingPropertyWhenServerHeaderHasLineBreak() {
+        RuntimeException failure = assertThrows(RuntimeException.class,
+            () -> run("server.server-header=My\nApp").close(),
             "a value no response head can carry must fail startup, not every response");
+
+        assertTrue(ThrowableChains.chainMentions(failure, "server.server-header"),
+            "the failure should name the property to change; was: " + failure);
+    }
+
+    @Test
+    void shouldRejectLineBreakValueBeforeFiringContextInitialized() {
+        RecordingListener listener = new RecordingListener();
+
+        assertThrows(RuntimeException.class, () -> new SpringApplicationBuilder(SmokeNettyLoomApplication.class)
+            .properties("server.port=0", "server.server-header=My\nApp")
+            .initializers(context -> context.getBeanFactory().registerSingleton("recordingListener", listener))
+            .run());
+
+        assertEquals(0, listener.countOf("contextInitialized"),
+            "a property the factory rejects must be rejected before any listener is initialized, as the "
+                + "ssl and session guards are; saw " + listener.snapshot());
     }
 
     private static int port(ConfigurableApplicationContext context) {
