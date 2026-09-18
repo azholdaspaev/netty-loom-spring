@@ -19,7 +19,7 @@ public class HttpServerHeaderHandler extends ChannelOutboundHandlerAdapter {
     public HttpServerHeaderHandler(String serverHeader) {
         /*
          * The same validator every response head's headers().set runs: a CR, LF or NUL in the value
-         * would otherwise pass construction and fail every write instead (issue #167).
+         * would otherwise pass construction and fail every write instead.
          */
         new DefaultHttpHeaders().set(HttpHeaderNames.SERVER, serverHeader);
         this.serverHeader = serverHeader;
