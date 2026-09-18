@@ -36,10 +36,19 @@ public record NettyLoomProperties(
 
     @Override
     public void validate(Object target, Errors errors) {
+        rejectNegative("bossThreads", bossThreads, errors);
+        rejectNegative("workerThreads", workerThreads, errors);
+        rejectNegative("acceptCount", acceptCount, errors);
         rejectNonPositive("maxHttpBodySize", maxHttpBodySize, errors);
         rejectOutsideInt("maxHeaderSize", maxHeaderSize, errors);
         rejectOutsideInt("maxInitialLineLength", maxInitialLineLength, errors);
         rejectOutsideInt("maxChunkSize", maxChunkSize, errors);
+    }
+
+    private static void rejectNegative(String field, int value, Errors errors) {
+        if (value < 0) {
+            errors.rejectValue(field, "negative", "must not be negative");
+        }
     }
 
     private static void rejectNonPositive(String field, DataSize size, Errors errors) {
