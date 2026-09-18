@@ -2,6 +2,9 @@ package io.github.azholdaspaev.nettyloomspring.autoconfigure.server;
 
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.properties.NettyLoomProperties;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpServerHeaderHandler;
+import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineDefinition;
+import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineStep;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyIoHandlerFactory;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyServer;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyServerChannelInitializer;
@@ -22,6 +25,7 @@ import org.springframework.boot.web.server.servlet.ServletWebServerSettings;
 import org.springframework.boot.web.server.servlet.Session;
 import org.springframework.boot.web.servlet.ServletContextInitializer;
 import org.springframework.boot.webmvc.autoconfigure.DispatcherServletAutoConfiguration;
+import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.DispatcherServlet;
 
 import java.util.HashMap;
@@ -34,20 +38,20 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
     private final ServletWebServerSettings settings = new ServletWebServerSettings();
 
     private final NettyIoHandlerFactory ioHandlerFactory;
-    private final NettyServerChannelInitializer channelInitializer;
+    private final NettyPipelineDefinition pipelineDefinition;
     private final HttpConnectionRegistry connectionRegistry;
     private final NettyServletContext servletContext;
     private final DispatcherServlet dispatcherServlet;
     private final NettyLoomProperties properties;
 
     public NettyWebServerFactory(NettyIoHandlerFactory ioHandlerFactory,
-                                 NettyServerChannelInitializer channelInitializer,
+                                 NettyPipelineDefinition pipelineDefinition,
                                  HttpConnectionRegistry connectionRegistry,
                                  NettyServletContext servletContext,
                                  DispatcherServlet dispatcherServlet,
                                  NettyLoomProperties properties) {
         this.ioHandlerFactory = ioHandlerFactory;
-        this.channelInitializer = channelInitializer;
+        this.pipelineDefinition = pipelineDefinition;
         this.connectionRegistry = connectionRegistry;
         this.servletContext = servletContext;
         this.dispatcherServlet = dispatcherServlet;
@@ -87,8 +91,24 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
         NettyServerConfiguration configuration = new NettyServerConfiguration(
             getPort(), getAddress(), properties.bossThreads(), properties.workerThreads(),
             properties.tcpKeepAlive(), properties.acceptCount());
+        /*
+         * Built here rather than injected: Boot binds server.server-header onto this factory only after
+         * the pipeline bean exists, so the header can join the pipeline no earlier than getWebServer().
+         */
+        NettyServerChannelInitializer channelInitializer =
+            new NettyServerChannelInitializer(newServerPipeline(), connectionRegistry);
         NettyServer nettyServer = new NettyServer(configuration, channelInitializer, ioHandlerFactory, connectionRegistry);
         return new NettyWebServer(nettyServer, getShutdown(), properties.shutdownGracePeriod());
+    }
+
+    private NettyPipelineDefinition newServerPipeline() {
+        // hasText, as Boot's Tomcat factory guards it (TomcatWebServerFactory.customizeConnector).
+        if (!StringUtils.hasText(getServerHeader())) {
+            return pipelineDefinition;
+        }
+        // Directly below the codec so the rejections other handlers write past the dispatcher carry it too.
+        return pipelineDefinition.withStepAfter("httpCodec",
+            NettyPipelineStep.shared("serverHeader", new HttpServerHeaderHandler(getServerHeader())));
     }
 
     private void verifySslNotConfigured() {

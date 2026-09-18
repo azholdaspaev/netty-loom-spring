@@ -15,7 +15,6 @@ import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestHandler;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineStep;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineDefinition;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyIoHandlerFactory;
-import io.github.azholdaspaev.nettyloomspring.core.server.NettyServerChannelInitializer;
 import io.github.azholdaspaev.nettyloomspring.mvc.handler.SpringHttpRequestDispatcher;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.DefaultNettyServletContext;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
@@ -68,12 +67,12 @@ public class NettyLoomAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(value = ServletWebServerFactory.class, search = SearchStrategy.CURRENT)
     public NettyWebServerFactory nettyWebServerFactory(NettyIoHandlerFactory nettyIoHandlerFactory,
-                                                       NettyServerChannelInitializer nettyServerChannelInitializer,
+                                                       NettyPipelineDefinition nettyPipelineDefinition,
                                                        HttpConnectionRegistry httpConnectionRegistry,
                                                        NettyServletContext nettyServletContext,
                                                        DispatcherServlet dispatcherServlet,
                                                        NettyLoomProperties properties) {
-        return new NettyWebServerFactory(nettyIoHandlerFactory, nettyServerChannelInitializer,
+        return new NettyWebServerFactory(nettyIoHandlerFactory, nettyPipelineDefinition,
             httpConnectionRegistry, nettyServletContext, dispatcherServlet, properties);
     }
 
@@ -99,13 +98,6 @@ public class NettyLoomAutoConfiguration {
     @ConditionalOnMissingBean(search = SearchStrategy.CURRENT)
     public HttpConnectionRegistry httpConnectionRegistry() {
         return new HttpConnectionRegistry(new DefaultChannelGroup("netty-loom-channels", GlobalEventExecutor.INSTANCE));
-    }
-
-    @Bean
-    @ConditionalOnMissingBean(search = SearchStrategy.CURRENT)
-    public NettyServerChannelInitializer nettyServerChannelInitializer(NettyPipelineDefinition nettyPipelineDefinition,
-                                                                       HttpConnectionRegistry httpConnectionRegistry) {
-        return new NettyServerChannelInitializer(nettyPipelineDefinition, httpConnectionRegistry);
     }
 
     @Bean

@@ -130,7 +130,7 @@ that cost the most:
 - `server.http2.*` — HTTP/1.1 only ([#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23))
 
 The [full list](docs/configuration.md#properties-that-are-silently-ignored) covers the rest,
-including `server.server-header` and `spring.mvc.servlet.path`.
+including `spring.mvc.servlet.path`.
 
 ### 2. Settings that fail startup loudly
 
@@ -238,6 +238,7 @@ TCP accept (boss loop)
       HttpConnectionRegistry.register(channel)   # before the pipeline is configured
   → then the pipeline, on that same loop:
       httpCodec          HttpServerCodec           # server.netty.max-initial-line-length / max-header-size / max-chunk-size
+      serverHeader       HttpServerHeaderHandler   # @Sharable; only when server.server-header is set
       httpKeepAlive      HttpServerKeepAliveHandler
       drain              HttpDrainHandler          # counts the exchange for graceful shutdown
       readTimeout        HttpReadTimeoutHandler    # client deadline; suspended while dispatching

@@ -94,7 +94,8 @@ property reference.
 | `sendRedirect` | `partial` | Sets `Location` verbatim — no relative-to-absolute resolution. Honours `clearBuffer`: the one-argument form discards the buffered body, as `sendError` does, and the three-argument form with `false` keeps it |
 | `encodeURL`, `encodeRedirectURL` | `none` | Identity functions — no URL session rewriting |
 | `setLocale` | `ignored` | No-op; `getLocale()` returns the JVM default, so `Content-Language` is never emitted |
-| `Date` and `Server` response headers | `none` | Neither is ever emitted. Tomcat always sends `Date` |
+| `Date` response header | `none` | Never emitted. Tomcat always sends it |
+| `Server` response header | `works` | Written when [`server.server-header`](configuration.md#standard-server-properties-that-are-honoured) is set, replacing any application value, as Tomcat does |
 | `setCharacterEncoding(null)` | `partial` | Throws `IllegalArgumentException`; Servlet 6.1 says it should reset to the default |
 | `setWriteListener` | `ignored` | No-op, so `onWritePossible()` never fires and a `WriteListener`-based writer stalls rather than failing fast |
 | `setReadListener` | `none` | Throws `UnsupportedOperationException` |

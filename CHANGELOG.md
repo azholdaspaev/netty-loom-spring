@@ -30,3 +30,7 @@ For anyone tracking pre-release snapshots:
   bean from `sessionStoreLifecycle` to `servletContextLifecycle`: since #103 its stop phase
   destroys the servlet and the filters and fires `contextDestroyed`, not only the session store
   (#350). A user bean of the old type no longer replaces it.
+- **The `nettyServerChannelInitializer` bean was removed** (#167): `NettyWebServerFactory` now
+  builds its `NettyServerChannelInitializer` in `getWebServer()`, where `server.server-header`
+  has been bound, and takes the `NettyPipelineDefinition` bean instead. A user bean of that type
+  is no longer consulted; customise the pipeline through `NettyPipelineDefinition`.
