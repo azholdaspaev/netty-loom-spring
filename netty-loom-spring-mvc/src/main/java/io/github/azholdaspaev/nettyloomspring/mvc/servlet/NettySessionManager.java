@@ -525,6 +525,10 @@ public class NettySessionManager {
         }
     }
 
+    boolean isClosed() {
+        return closed;
+    }
+
     /**
      * Stops the sweeper and drops every session. Package-private deliberately: the manager is reachable
      * from any request handler via {@code ServletContext.getSessionManager()}, and wiping the store

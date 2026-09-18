@@ -2,6 +2,8 @@ package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
 import jakarta.servlet.http.HttpSessionBindingEvent;
 import jakarta.servlet.http.HttpSessionBindingListener;
+import jakarta.servlet.http.HttpSessionEvent;
+import jakarta.servlet.http.HttpSessionListener;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,12 +41,14 @@ class NettySessionManagerConcurrencyTest {
     private static final int ONE_MINUTE = 60;
 
     private AtomicLong clock;
+    private DefaultNettyServletContext servletContext;
     private NettySessionManager manager;
 
     @BeforeEach
     void setUp() {
         clock = new AtomicLong(0L);
-        manager = new NettySessionManager(new DefaultNettyServletContext(), clock::get);
+        servletContext = new DefaultNettyServletContext();
+        manager = new NettySessionManager(servletContext, clock::get);
         manager.setDefaultMaxInactiveInterval(ONE_MINUTE);
     }
 
@@ -296,6 +300,37 @@ class NettySessionManagerConcurrencyTest {
             assertNull(manager.find(id), "round " + round + ": an evicted session must not resolve");
             assertTrue(session.isInvalidated(),
                 "round " + round + ": a session removed from the store must have been marked invalid");
+            clock.set(deadline);
+        }
+    }
+
+    @Test
+    void shouldFireSessionDestroyedOnceWhenInvalidateRacesSweep() throws InterruptedException {
+        var destroyed = new AtomicInteger();
+        servletContext.addListener(new HttpSessionListener() {
+            @Override
+            public void sessionDestroyed(HttpSessionEvent event) {
+                destroyed.incrementAndGet();
+            }
+        });
+        for (int round = 0; round < ROUNDS; round++) {
+            NettyHttpSession session = manager.create();
+            long deadline = clock.get() + ONE_MINUTE * 1000L;
+
+            race(() -> {
+                try {
+                    session.invalidate();
+                } catch (IllegalStateException expected) {
+                    // The eviction won.
+                }
+            }, () -> {
+                clock.set(deadline);
+                manager.sweep(deadline);
+            });
+
+            assertEquals(round + 1, destroyed.get(),
+                "round " + round + ": whichever teardown wins, the session must be announced destroyed "
+                    + "exactly once");
             clock.set(deadline);
         }
     }

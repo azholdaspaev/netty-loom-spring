@@ -1,5 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
+import jakarta.servlet.AsyncListener;
 import jakarta.servlet.ServletContextAttributeEvent;
 import jakarta.servlet.ServletContextAttributeListener;
 import jakarta.servlet.ServletContextEvent;
@@ -10,8 +11,10 @@ import jakarta.servlet.ServletRequestAttributeListener;
 import jakarta.servlet.ServletRequestEvent;
 import jakarta.servlet.ServletRequestListener;
 import jakarta.servlet.http.HttpSession;
+import jakarta.servlet.http.HttpSessionActivationListener;
 import jakarta.servlet.http.HttpSessionAttributeListener;
 import jakarta.servlet.http.HttpSessionBindingEvent;
+import jakarta.servlet.http.HttpSessionBindingListener;
 import jakarta.servlet.http.HttpSessionEvent;
 import jakarta.servlet.http.HttpSessionIdListener;
 import jakarta.servlet.http.HttpSessionListener;
@@ -219,6 +222,19 @@ class NettyListenerRegistryTest {
             "the message must name the types that are accepted; got " + failure.getMessage());
     }
 
+    static Stream<Class<? extends EventListener>> typesNoContainerRegisters() {
+        return Stream.of(HttpSessionBindingListener.class, HttpSessionActivationListener.class,
+            AsyncListener.class);
+    }
+
+    @ParameterizedTest
+    @MethodSource("typesNoContainerRegisters")
+    void shouldRejectListenerTypeNoContainerRegisters(Class<? extends EventListener> type) {
+        assertThrows(IllegalArgumentException.class, () -> registry.requireSupportedType(type),
+            type.getSimpleName() + " is filed under no bucket, so the Class-level gate must refuse it "
+                + "rather than let createListener hand back an instance nothing will ever fire");
+    }
+
     @Test
     void shouldRefuseContextListenerOnceInitPassHasStarted() {
         /*
@@ -285,6 +301,24 @@ class NettyListenerRegistryTest {
         assertEquals(List.of("contextDestroyed:second", "contextDestroyed:first",
             "requestDestroyed:second", "requestDestroyed:first",
             "sessionDestroyed:second", "sessionDestroyed:first"), events);
+    }
+
+    @Test
+    void shouldReleaseInitializedPrefixNewestFirstWhenLaterOneFails() {
+        registry.addListener(new RecordingListener("first"));
+        registry.addListener(new RecordingListener("second"));
+        registry.addListener(new ServletRequestListener() {
+            @Override
+            public void requestInitialized(ServletRequestEvent event) {
+                throw new IllegalStateException("boom");
+            }
+        });
+
+        assertThrows(IllegalStateException.class, () -> registry.fireRequestInitialized(request()));
+
+        assertEquals(List.of("requestInitialized:first", "requestInitialized:second",
+            "requestDestroyed:second", "requestDestroyed:first"), events,
+            "the unwind must release in the same reverse order as an ordinary requestDestroyed pass");
     }
 
     // --- Events ---
@@ -464,6 +498,24 @@ class NettyListenerRegistryTest {
         });
 
         assertThrows(OutOfMemoryError.class, () -> registry.fireContextDestroyed());
+    }
+
+    @Test
+    void shouldAbortStartupPassAtVirtualMachineError() {
+        registry.addListener(new RecordingListener("first"));
+        registry.addListener(new ServletContextListener() {
+            @Override
+            public void contextInitialized(ServletContextEvent event) {
+                throw new OutOfMemoryError("Java heap space");
+            }
+        });
+        registry.addListener(new RecordingListener("third"));
+
+        assertThrows(OutOfMemoryError.class, () -> registry.fireContextInitialized());
+
+        assertEquals(List.of("contextInitialized:first"), events,
+            "a VM error leaves straight away; unlike an ordinary failure it must not be recorded while "
+                + "the listeners after it are still initialized");
     }
 
     @Test

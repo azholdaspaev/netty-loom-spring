@@ -771,6 +771,17 @@ class DefaultNettyServletContextTest {
         assertEquals(0, context.getSessionManager().size());
     }
 
+    @Test
+    void shouldReportClosedOnlyBetweenCloseAndOpen() {
+        assertFalse(context.isClosed(), "a context that has never been closed is open");
+
+        context.close();
+        assertTrue(context.isClosed(), "a dispatch unwinding into a closed context must be able to tell");
+
+        context.open();
+        assertFalse(context.isClosed(), "a stop/start cycle reopens the context");
+    }
+
     // --- Cookie SameSite policy (issue #85) ---
 
     @Test
@@ -854,6 +865,17 @@ class DefaultNettyServletContextTest {
     }
 
     @Test
+    void shouldRejectUnsupportedListenerTypeBeforeInstantiating() {
+        var thrown = assertThrows(IllegalArgumentException.class,
+            () -> context.createListener(UnsupportedUninstantiableListener.class));
+
+        assertTrue(thrown.getMessage().contains(ServletContextListener.class.getName()),
+            "the wrong-type check runs before the constructor, so a class that is both must fail for its "
+                + "type rather than with a ServletException for its constructor -- unlike Tomcat, which "
+                + "instantiates first; got " + thrown.getMessage());
+    }
+
+    @Test
     void shouldCreateListenerWithItsNoArgConstructor() throws Exception {
         assertInstanceOf(StubContextListener.class, context.createListener(StubContextListener.class));
     }
@@ -912,7 +934,7 @@ class DefaultNettyServletContextTest {
     @Test
     void shouldFireContextDestroyedOnlyOnceAcrossRepeatedCloses() {
         /*
-         * close() is an idempotent backstop -- SessionStoreLifecycle.stop() and the bean-destruction
+         * close() is an idempotent backstop -- ServletContextLifecycle.stop() and the bean-destruction
          * callback both reach it -- so the event must not be delivered twice.
          */
         var listener = new CountingContextListener();
@@ -1263,5 +1285,12 @@ class DefaultNettyServletContextTest {
      * A legal EventListener, but not a type addListener accepts.
      */
     static class UnsupportedListener implements java.util.EventListener {
+    }
+
+    static class UnsupportedUninstantiableListener implements java.util.EventListener {
+
+        UnsupportedUninstantiableListener() {
+            throw new IllegalStateException("cannot be built");
+        }
     }
 }

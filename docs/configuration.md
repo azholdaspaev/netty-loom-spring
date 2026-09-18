@@ -14,10 +14,10 @@ The rule for which namespace a knob belongs to — Spring Boot's `server.*` vers
 | Property | Type | Default | Description |
 | --- | --- | --- | --- |
 | `server.netty.transport` | `NettyTransportPreference` | `auto` | `auto` picks the best native transport (epoll on Linux, kqueue on macOS) and falls back to NIO when neither is available. Only the `linux-*` epoll and `osx-*` kqueue natives are bundled, so on any other BSD `auto` falls back to NIO. `nio` forces the portable transport. `epoll` and `kqueue` force that transport and **fail startup** if it is unavailable. Any other value fails startup when the property binds; an unset or empty value falls back to `auto`. The selected transport is logged at INFO on startup |
-| `server.netty.boss-threads` | `int` | `1` | Threads in the boss event-loop group, which accepts connections. One is normally enough |
-| `server.netty.worker-threads` | `int` | `0` | Threads in the worker event-loop group. `0` applies Netty's default of `2 × availableProcessors()` |
+| `server.netty.boss-threads` | `int` | `1` | Threads in the boss event-loop group, which accepts connections. One is normally enough. `0` applies Netty's default of `2 × availableProcessors()`, the same branch as `worker-threads`; negative fails at binding and Boot's failure report names the property |
+| `server.netty.worker-threads` | `int` | `0` | Threads in the worker event-loop group. `0` applies Netty's default of `2 × availableProcessors()`; negative fails at binding and Boot's failure report names the property |
 | `server.netty.tcp-keep-alive` | `boolean` | `true` | Socket-level `SO_KEEPALIVE` on accepted channels. Unrelated to HTTP keep-alive, which is protocol behaviour and always on |
-| `server.netty.accept-count` | `int` | `128` | Listen backlog (`SO_BACKLOG`): how many connections that have completed the TCP handshake may queue before the boss loop accepts them. Same concept as `server.tomcat.accept-count`, but the edges differ. `0`: epoll and kqueue pass it to `listen()` verbatim — a queue of at most one pending connection on Linux — while the `nio` transport binds through the JDK, which substitutes `50`. Negative: the bind fails on every transport (`IllegalArgumentException: backlog : -1 (expected: >= 0)`) and the server does not start. Tomcat keeps its own `100` for anything below `1`. Otherwise the effective depth is `min(value, net.core.somaxconn)` on Linux, and the kernel clamps silently — `8192` where `somaxconn` is `4096` yields `4096`, with no error and no log. `ss -tln` shows the effective depth as `Send-Q` on the listening socket |
+| `server.netty.accept-count` | `int` | `128` | Listen backlog (`SO_BACKLOG`): how many connections that have completed the TCP handshake may queue before the boss loop accepts them. Same concept as `server.tomcat.accept-count`, but the edges differ. `0`: epoll and kqueue pass it to `listen()` verbatim — a queue of at most one pending connection on Linux — while the `nio` transport binds through the JDK, which substitutes `50`. Negative: fails at binding, and Boot's failure report names the property. Tomcat keeps its own `100` for anything below `1`. Otherwise the effective depth is `min(value, net.core.somaxconn)` on Linux, and the kernel clamps silently — `8192` where `somaxconn` is `4096` yields `4096`, with no error and no log. `ss -tln` shows the effective depth as `Send-Q` on the listening socket |
 | `server.netty.shutdown-grace-period` | `Duration` | `30s` | How long graceful shutdown waits for in-flight requests before force-closing. See [Graceful shutdown](#graceful-shutdown) |
 | `server.netty.read-timeout` | `Duration` | `30s` | Client-progress deadline. See [The read timeout](#the-read-timeout). `0` or negative disables it |
 | `server.netty.write-stall-timeout` | `Duration` | `60s` | How long a response may sit unsent against a client that has stopped reading. The clock starts only once the connection is unwritable — the outbound buffer past its high-water mark — not on every write, so a slow but progressing client is never cut off. On expiry the connection is closed mid-response. `0` or negative disables it, leaving a stalled dispatch waiting indefinitely |
@@ -117,6 +117,15 @@ as Tomcat does. The session store is torn down in the phase after that, so the d
 before the store closes. What does outlive the store is the handler thread of a request the drain
 cut off: its connection is closed, but the thread runs on, and its next session access fails
 ([#89](https://github.com/azholdaspaev/netty-loom-spring/issues/89)).
+
+Bean destruction, which follows the lifecycle phases, then interrupts that thread: the dispatch
+executor is destroyed with `shutdownNow()`, not the `close()` Spring would infer, which waits for
+every running dispatch with no bound and no interrupt. A handler parked in `Thread.sleep`,
+`Object.wait`, a `BlockingQueue` or `CountDownLatch` wait, or `Lock.lockInterruptibly` gets an
+`InterruptedException`, and a blocking socket read an `IOException`; one parked where the interrupt
+is ignored — `Lock.lock`, a `synchronized` block — is abandoned, and as a virtual thread it does not
+keep the JVM alive. Either way `context.close()`, and so JVM exit, does not wait on it
+([#205](https://github.com/azholdaspaev/netty-loom-spring/issues/205)).
 
 **Set `server.netty.shutdown-grace-period` strictly below
 `spring.lifecycle.timeout-per-shutdown-phase`**, or the phase timeout is the deadline that applies

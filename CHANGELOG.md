@@ -26,3 +26,7 @@ For anyone tracking pre-release snapshots:
   default of `0` (random port) with it. A leftover key is silently ignored, not rejected
   ([why](docs/configuration.md#servernetty)); the namespace rule is
   [ADR 0001](docs/adr/0001-server-properties-namespace.md).
+- **`SessionStoreLifecycle` was renamed to `ServletContextLifecycle`**, and the auto-configured
+  bean from `sessionStoreLifecycle` to `servletContextLifecycle`: since #103 its stop phase
+  destroys the servlet and the filters and fires `contextDestroyed`, not only the session store
+  (#350). A user bean of the old type no longer replaces it.

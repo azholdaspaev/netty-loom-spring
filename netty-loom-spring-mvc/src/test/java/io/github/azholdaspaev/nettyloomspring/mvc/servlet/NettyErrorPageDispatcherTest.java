@@ -9,14 +9,18 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.net.SocketException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -45,15 +49,26 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
         response.setBufferSize(1);
         response.getOutputStream().write("streamed".getBytes(StandardCharsets.UTF_8));
 
+        var outcome = reportCapturingStandardError(request, response, failure);
+        assertFalse(outcome.reported());
+        return outcome.logged();
+    }
+
+    private record ReportOutcome(boolean reported, String logged) {
+    }
+
+    private ReportOutcome reportCapturingStandardError(HttpServletRequest request, NettyHttpServletResponse response,
+                                                       Throwable failure) throws Exception {
         ByteArrayOutputStream captured = new ByteArrayOutputStream();
         PrintStream standardError = System.err;
         System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
+        boolean reported;
         try {
-            assertFalse(errorPages.report(request, response, failure));
+            reported = errorPages.report(request, response, failure);
         } finally {
             System.setErr(standardError);
         }
-        return captured.toString(StandardCharsets.UTF_8);
+        return new ReportOutcome(reported, captured.toString(StandardCharsets.UTF_8));
     }
 
     @Test
@@ -248,6 +263,44 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
 
         assertEquals(500, response.getStatus(),
             "the wrapper is the failure the container saw; only a filter throws one of these unwrapped");
+        assertEquals(rootCause, reached.getFirst().getAttribute(RequestDispatcher.ERROR_EXCEPTION));
+    }
+
+    static Stream<Throwable> cutOffShapes() {
+        return Stream.of(
+            new ServletException("Request processing failed", new InterruptedException()),
+            new ServletException("Request processing failed", new SocketException("Closed by interrupt")),
+            new IllegalStateException("handler rethrew the cut-off"));
+    }
+
+    @ParameterizedTest
+    @MethodSource("cutOffShapes")
+    void shouldNotAnswerFailureOnceContextIsClosed(Throwable cutOff) throws Exception {
+        pageIs("/error");
+        var response = new NettyHttpServletResponse();
+        var request = requestFor("/stuck", response);
+        context.close();
+
+        var outcome = reportCapturingStandardError(request, response, cutOff);
+
+        assertFalse(outcome.reported(),
+            "a failure once the context is closed is a dispatch the shutdown cut off, whatever it unwound with, "
+                + "not a failure a page answers");
+        assertTrue(reached.isEmpty(), "the connection is already closed; there is nobody to render a page for");
+        assertFalse(outcome.logged().contains("ERROR"),
+            "a cut-off is not an uncaught failure of the application; log was: " + outcome.logged());
+    }
+
+    @Test
+    void shouldAnswerInterruptedDispatchWhileContextIsOpen() throws Exception {
+        pageIs("/error");
+        var response = new NettyHttpServletResponse();
+        var request = requestFor("/slow", response);
+        var rootCause = new InterruptedException();
+
+        assertTrue(errorPages.report(request, response, new ServletException("Request processing failed", rootCause)),
+            "a handler interrupted at runtime, by a watchdog or a stray interrupt flag, fails like any other 500");
+        assertEquals(500, reached.getFirst().getAttribute(RequestDispatcher.ERROR_STATUS_CODE));
         assertEquals(rootCause, reached.getFirst().getAttribute(RequestDispatcher.ERROR_EXCEPTION));
     }
 
