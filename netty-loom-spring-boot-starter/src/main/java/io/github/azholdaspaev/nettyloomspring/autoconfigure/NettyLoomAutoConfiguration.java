@@ -2,7 +2,7 @@ package io.github.azholdaspaev.nettyloomspring.autoconfigure;
 
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.properties.NettyLoomProperties;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.NettyWebServerFactory;
-import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.SessionStoreLifecycle;
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.ServletContextLifecycle;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpDecoderFailureHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpDrainHandler;
@@ -91,8 +91,8 @@ public class NettyLoomAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(search = SearchStrategy.CURRENT)
-    public SessionStoreLifecycle sessionStoreLifecycle(NettyServletContext nettyServletContext) {
-        return new SessionStoreLifecycle(nettyServletContext);
+    public ServletContextLifecycle servletContextLifecycle(NettyServletContext nettyServletContext) {
+        return new ServletContextLifecycle(nettyServletContext);
     }
 
     @Bean

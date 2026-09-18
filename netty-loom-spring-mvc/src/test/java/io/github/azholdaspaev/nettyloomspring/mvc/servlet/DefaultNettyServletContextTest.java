@@ -934,7 +934,7 @@ class DefaultNettyServletContextTest {
     @Test
     void shouldFireContextDestroyedOnlyOnceAcrossRepeatedCloses() {
         /*
-         * close() is an idempotent backstop -- SessionStoreLifecycle.stop() and the bean-destruction
+         * close() is an idempotent backstop -- ServletContextLifecycle.stop() and the bean-destruction
          * callback both reach it -- so the event must not be delivered twice.
          */
         var listener = new CountingContextListener();
