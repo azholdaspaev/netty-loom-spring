@@ -33,4 +33,5 @@ For anyone tracking pre-release snapshots:
 - **The `nettyServerChannelInitializer` bean was removed** (#167): `NettyWebServerFactory` now
   builds its `NettyServerChannelInitializer` in `getWebServer()`, where `server.server-header`
   has been bound, and takes the `NettyPipelineDefinition` bean instead. A user bean of that type
-  is no longer consulted; customise the pipeline through `NettyPipelineDefinition`.
+  is no longer consulted; customise the pipeline through `NettyPipelineDefinition`'s step list,
+  which is now `final`.

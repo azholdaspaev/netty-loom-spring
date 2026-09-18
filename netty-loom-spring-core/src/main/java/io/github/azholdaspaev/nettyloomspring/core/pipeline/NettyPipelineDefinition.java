@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-public class NettyPipelineDefinition {
+public final class NettyPipelineDefinition {
 
     private final List<NettyPipelineStep> pipelineSteps;
 

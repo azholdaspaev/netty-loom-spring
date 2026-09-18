@@ -5,6 +5,7 @@ import io.netty.channel.ChannelPipeline;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -14,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NettyPipelineDefinitionTest {
 
@@ -121,6 +123,13 @@ class NettyPipelineDefinitionTest {
         ChannelPipeline originalPipeline = new EmbeddedChannel().pipeline();
         original.applyTo(originalPipeline);
         assertNull(originalPipeline.get("inserted"), "the original definition must not gain the step");
+    }
+
+    @Test
+    void shouldForbidSubclassing() {
+        assertTrue(Modifier.isFinal(NettyPipelineDefinition.class.getModifiers()),
+                "withStepAfter returns a plain instance, so an applyTo override would be dropped silently "
+                    + "once a step is inserted; the step list is the only extension point");
     }
 
     @Test
