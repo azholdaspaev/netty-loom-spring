@@ -146,6 +146,29 @@ class NettyLoomAutoConfigurationTest {
                 .getFailure().rootCause().hasMessageContaining(property));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "server.netty.boss-threads",
+        "server.netty.worker-threads",
+        "server.netty.accept-count"
+    })
+    void shouldFailStartupNamingPropertyWhenIntIsNegative(String property) {
+        runner.withPropertyValues(property + "=-1")
+            .run(context -> assertThat(context).hasFailed()
+                .getFailure().rootCause().hasMessageContaining(property));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "server.netty.boss-threads",
+        "server.netty.worker-threads",
+        "server.netty.accept-count"
+    })
+    void shouldNotFailStartupWhenIntIsZero(String property) {
+        runner.withPropertyValues(property + "=0")
+            .run(context -> assertThat(context).hasNotFailed());
+    }
+
     @Test
     void shouldFailStartupOnNonPositiveLimitWhenUserDeclaresPipeline() {
         runner.withBean("userBean", NettyPipelineDefinition.class, () -> mock(NettyPipelineDefinition.class))
