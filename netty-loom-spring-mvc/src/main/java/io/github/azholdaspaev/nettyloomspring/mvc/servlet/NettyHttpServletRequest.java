@@ -113,33 +113,15 @@ public class NettyHttpServletRequest implements HttpServletRequest {
         if (hostResolved) {
             return;
         }
-        if (!parseHostHeader(nettyRequest.headers().get(HttpHeaderNames.HOST))) {
+        HostPort host = parseHostHeader(nettyRequest.headers().get(HttpHeaderNames.HOST));
+        if (host != null) {
+            this.serverName = host.name();
+            this.serverPort = resolvePort(host.port());
+        } else {
             this.serverName = bracketIfIpv6(connection.localAddr());
             this.serverPort = resolvePort(connection.localPort());
         }
         this.hostResolved = true;
-    }
-
-    private boolean parseHostHeader(String host) {
-        if (host == null || host.isBlank()) {
-            return false;
-        }
-        host = host.trim();
-        int separator = host.startsWith("[") ? host.indexOf(':', host.indexOf(']')) : host.lastIndexOf(':');
-        String name = separator < 0 ? host : host.substring(0, separator);
-        if (name.isBlank()) {
-            return false;
-        }
-        int port = 0;
-        if (separator >= 0) {
-            try {
-                port = Integer.parseInt(host, separator + 1, host.length(), 10);
-            } catch (NumberFormatException notAPort) {
-            }
-        }
-        this.serverName = name;
-        this.serverPort = resolvePort(port);
-        return true;
     }
 
     private void ensureParametersParsed() {
@@ -219,6 +201,29 @@ public class NettyHttpServletRequest implements HttpServletRequest {
             return "[" + host + "]";
         }
         return host;
+    }
+
+    private record HostPort(String name, int port) {
+    }
+
+    private static HostPort parseHostHeader(String host) {
+        if (host == null || host.isBlank()) {
+            return null;
+        }
+        host = host.trim();
+        int separator = host.startsWith("[") ? host.indexOf(':', host.indexOf(']')) : host.lastIndexOf(':');
+        String name = separator < 0 ? host : host.substring(0, separator);
+        if (name.isBlank()) {
+            return null;
+        }
+        int port = 0;
+        if (separator >= 0) {
+            try {
+                port = Integer.parseInt(host, separator + 1, host.length(), 10);
+            } catch (NumberFormatException notAPort) {
+            }
+        }
+        return new HostPort(name, port);
     }
 
     static Map<String, String[]> toParameterMap(Map<String, List<String>> parameters) {
