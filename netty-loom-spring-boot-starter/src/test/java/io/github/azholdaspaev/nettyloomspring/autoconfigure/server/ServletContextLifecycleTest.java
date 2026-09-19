@@ -15,12 +15,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The stop-phase session teardown (issue #13).
+ * The stop-phase servlet context teardown (issues #13 and #350).
  *
  * <p>Moving the teardown out of bean destruction made it a {@code Lifecycle}, and a lifecycle can be
  * stopped and started again -- by {@code ApplicationContext.restart()}, by Actuator, and by CRaC
  * checkpoint/restore. A destroy callback never had to survive that, so the round trip is what these
- * pin: stopping must tear the store down, and starting must leave it able to serve.
+ * pin: stopping must close the servlet context, and starting must leave it able to serve.
  */
 class ServletContextLifecycleTest {
 
@@ -69,7 +69,7 @@ class ServletContextLifecycleTest {
     }
 
     @Test
-    void shouldLeaveStoreClosedAfterStopWithoutRestart() {
+    void shouldLeaveServletContextClosedAfterStopWithoutRestart() {
         /*
          * The other half of the pair: reopening must be something start() does, not something close()
          * forgot to do. Without this, "restart works" would also be satisfied by never closing at all.
@@ -80,13 +80,13 @@ class ServletContextLifecycleTest {
     }
 
     @Test
-    void shouldReportStoreNotPauseable() {
+    void shouldReportNotPauseable() {
         assertFalse(lifecycle.isPauseable(),
             "sessions may only be torn down when the server they belong to is going down too");
     }
 
     @Test
-    void shouldStopStoreAfterWebServerHasDrained() {
+    void shouldStopServletContextAfterWebServerHasDrained() {
         /*
          * stopBeans sorts descending, so a lower phase stops later. Asserted as an inequality against
          * Boot's own constant rather than as an equality with our arithmetic, which would restate the
