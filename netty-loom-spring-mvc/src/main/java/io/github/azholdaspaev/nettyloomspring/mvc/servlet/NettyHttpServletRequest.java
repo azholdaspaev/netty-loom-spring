@@ -32,7 +32,6 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
-import java.net.InetSocketAddress;
 import java.nio.charset.Charset;
 import java.nio.charset.IllegalCharsetNameException;
 import java.nio.charset.StandardCharsets;
@@ -50,8 +49,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.springframework.http.HttpHeaders;
-
 public class NettyHttpServletRequest implements HttpServletRequest {
 
     private static final AtomicLong REQUEST_IDS = new AtomicLong();
@@ -66,7 +63,8 @@ public class NettyHttpServletRequest implements HttpServletRequest {
      */
     private final NettyHttpServletResponse response;
 
-    private final Map<String, Object> attributes = new HashMap<>();
+    // The table Spring MVC's per-request attributes grew to (16 -> 32 -> 64) in the #369 profile.
+    private final Map<String, Object> attributes = new HashMap<>(64);
     private final String requestId = Long.toHexString(REQUEST_IDS.getAndIncrement());
     private final String requestURI;
     /**
@@ -116,10 +114,10 @@ public class NettyHttpServletRequest implements HttpServletRequest {
         if (hostResolved) {
             return;
         }
-        InetSocketAddress host = parseHostHeader(nettyRequest.headers().get(HttpHeaderNames.HOST));
+        HostPort host = parseHostHeader(nettyRequest.headers().get(HttpHeaderNames.HOST));
         if (host != null) {
-            this.serverName = host.getHostString();
-            this.serverPort = resolvePort(host.getPort());
+            this.serverName = host.name();
+            this.serverPort = resolvePort(host.port());
         } else {
             this.serverName = bracketIfIpv6(connection.localAddr());
             this.serverPort = resolvePort(connection.localPort());
@@ -206,17 +204,27 @@ public class NettyHttpServletRequest implements HttpServletRequest {
         return host;
     }
 
-    private static InetSocketAddress parseHostHeader(String host) {
+    private record HostPort(String name, int port) {
+    }
+
+    private static HostPort parseHostHeader(String host) {
         if (host == null || host.isBlank()) {
             return null;
         }
-        HttpHeaders headers = new HttpHeaders();
-        headers.set(HttpHeaders.HOST, host.trim());
-        InetSocketAddress address = headers.getHost();
-        if (address == null || address.getHostString().isBlank()) {
+        host = host.trim();
+        int separator = host.startsWith("[") ? host.indexOf(':', host.indexOf(']')) : host.lastIndexOf(':');
+        String name = separator < 0 ? host : host.substring(0, separator);
+        if (name.isBlank()) {
             return null;
         }
-        return address;
+        int port = 0;
+        if (separator >= 0) {
+            try {
+                port = Integer.parseInt(host, separator + 1, host.length(), 10);
+            } catch (NumberFormatException notAPort) {
+            }
+        }
+        return new HostPort(name, port);
     }
 
     static Map<String, String[]> toParameterMap(Map<String, List<String>> parameters) {
