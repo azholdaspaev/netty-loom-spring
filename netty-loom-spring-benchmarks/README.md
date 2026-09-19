@@ -211,6 +211,23 @@ k6 run --env BASE_URL=http://localhost:18080 --env VUS=10000 k6/high-concurrency
 The secured scenario logs in as `bench`/`bench` (set in each example app's `application.properties`,
 overridable with `--env USERNAME=... --env PASSWORD=...`).
 
+### Profile one target's memory
+
+[`scripts/profile-memory.sh`](scripts/profile-memory.sh) runs one target under one scenario with the
+sweep's flags and file names, and captures what the memory-per-connection figure is made of: an NMT
+diff, a heap summary and a thread census at the plateau and after the connections close, plus a JFR
+recording, a virtual-thread dump and class histograms with `PROFILE=1`. `summarize.py` renders the
+run directory as it would a sweep's.
+
+```bash
+PROFILE=1 bash scripts/profile-memory.sh netty-loom 18080 "$HOME/bench-results/head" high-concurrency.js \
+  -jar ../netty-loom-spring-example-netty/build/libs/*.jar
+```
+
+[`k6/idle-connections.js`](k6/idle-connections.js) is scenario 2 with the request taken out: `VUS`
+keep-alive connections held open with nothing in flight, so the difference against scenario 2 is the
+cost of a blocked request rather than of a connection.
+
 ## Interpreting results — and how to keep yourself honest
 
 - **Tomcat's accept ceiling is config, not architecture — so we raise it.** Tomcat's NIO connector
