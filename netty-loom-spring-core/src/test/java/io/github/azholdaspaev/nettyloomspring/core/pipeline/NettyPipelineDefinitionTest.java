@@ -5,6 +5,7 @@ import io.netty.channel.ChannelPipeline;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -13,6 +14,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NettyPipelineDefinitionTest {
 
@@ -101,6 +104,43 @@ class NettyPipelineDefinitionTest {
         assertNotNull(firstHandler);
         assertNotNull(secondHandler);
         assertNotSame(firstHandler, secondHandler);
+    }
+
+    @Test
+    void shouldInsertStepAfterNamedOneLeavingOriginalUnchanged() {
+        var original = new NettyPipelineDefinition(List.of(
+                new NettyPipelineStep("first", ChannelInboundHandlerAdapter::new),
+                new NettyPipelineStep("second", ChannelInboundHandlerAdapter::new)
+        ));
+
+        var extended = original.withStepAfter("first", new NettyPipelineStep("inserted", ChannelInboundHandlerAdapter::new));
+
+        ChannelPipeline extendedPipeline = new EmbeddedChannel().pipeline();
+        extended.applyTo(extendedPipeline);
+        assertEquals(List.of("first", "inserted", "second"), extendedPipeline.names().subList(0, 3),
+                "the new step must sit directly after the named one");
+
+        ChannelPipeline originalPipeline = new EmbeddedChannel().pipeline();
+        original.applyTo(originalPipeline);
+        assertNull(originalPipeline.get("inserted"), "the original definition must not gain the step");
+    }
+
+    @Test
+    void shouldForbidSubclassing() {
+        assertTrue(Modifier.isFinal(NettyPipelineDefinition.class.getModifiers()),
+                "withStepAfter returns a plain instance, so an applyTo override would be dropped silently "
+                    + "once a step is inserted; the step list is the only extension point");
+    }
+
+    @Test
+    void shouldRejectInsertingAfterMissingStep() {
+        var definition = new NettyPipelineDefinition(List.of(
+                new NettyPipelineStep("first", ChannelInboundHandlerAdapter::new)
+        ));
+        var step = new NettyPipelineStep("inserted", ChannelInboundHandlerAdapter::new);
+
+        assertThrows(IllegalArgumentException.class, () -> definition.withStepAfter("missing", step),
+                "a misspelled anchor must fail when the definition is built, not once per channel");
     }
 
 }

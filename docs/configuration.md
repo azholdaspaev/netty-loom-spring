@@ -45,6 +45,7 @@ in favour of `server.port`.
 | `server.servlet.context-parameters.*` | Become `ServletContext` init parameters |
 | `server.servlet.application-display-name` | Returned by `ServletContext.getServletContextName()`, as under Tomcat |
 | `server.mime-mappings.*` | Added to Boot's default table and answered by `ServletContext.getMimeType()`, as under Tomcat |
+| `server.server-header` | Written as the `Server` header of every response, the pipeline's own `4xx` rejections included, replacing any value the application set — as under Tomcat. Unset or blank writes no `Server` header; a value with a line break fails startup |
 | `spring.servlet.encoding.*` | Works because Boot implements it as a `CharacterEncodingFilter` bean, not a container setting |
 
 Two extension points also work: `WebServerFactoryCustomizer<ConfigurableServletWebServerFactory>`
@@ -69,7 +70,6 @@ Everything below is set on the factory and never read again — **no warning, no
 | --- | --- | --- |
 | `server.compression.*` | No `HttpContentCompressor` in the pipeline | [#22](https://github.com/azholdaspaev/netty-loom-spring/issues/22) |
 | `server.http2.enabled` | `HttpServerCodec` is HTTP/1.1 only | [#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23) |
-| `server.server-header` | Never written to a response | |
 | `server.max-http-request-header-size` | The header cap is `server.netty.max-header-size` ([ADR 0001](adr/0001-server-properties-namespace.md): frame-size limits are Netty-only tuning) | |
 | `server.servlet.register-default-servlet` | Only the `DispatcherServlet` is ever initialized | |
 | `server.servlet.jsp.*` | No JSP servlet | |
@@ -194,7 +194,8 @@ Requests stream too. `getInputStream()` blocks the request's virtual thread unti
 arrives, and the connection reads on only as that stream drains, so a client sending faster than the
 handler reads is made to wait in the socket rather than in heap.
 
-Two headers Tomcat always sends are never emitted here: `Date` and `Server`.
+`Date`, which Tomcat always sends, is never emitted here; `Server` follows
+[`server.server-header`](#standard-server-properties-that-are-honoured).
 
 ## Exception-to-status mapping
 

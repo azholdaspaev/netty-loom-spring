@@ -6,7 +6,6 @@ import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistr
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestDispatcher;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineDefinition;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyIoHandlerFactory;
-import io.github.azholdaspaev.nettyloomspring.core.server.NettyServerChannelInitializer;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
@@ -101,7 +100,6 @@ class NettyLoomAutoConfigurationTest {
         NettyServletContext.class,
         ServletContextLifecycle.class,
         HttpConnectionRegistry.class,
-        NettyServerChannelInitializer.class,
         NettyPipelineDefinition.class,
         HttpRequestDispatcher.class
     })
@@ -237,7 +235,6 @@ class NettyLoomAutoConfigurationTest {
         "nettyServletContext",
         "servletContextLifecycle",
         "httpConnectionRegistry",
-        "nettyServerChannelInitializer",
         "nettyPipelineDefinition",
         "httpRequestDispatcher",
         DISPATCH_EXECUTOR_BEAN
