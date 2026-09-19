@@ -165,8 +165,8 @@ public class NettySessionManager {
     /**
      * Rejects anything but {@code COOKIE} rather than quietly ignoring it -- a silently dropped
      * {@code url} would leave sessions not working with no signal at all, so this fails fast the way
-     * {@code NettyWebServerFactory} already does for {@code server.ssl.*}. An empty set is legal and
-     * disables the session cookie.
+     * {@code NettyServletWebServerFactory} already does for {@code server.ssl.*}. An empty set is
+     * legal and disables the session cookie.
      */
     public void setTrackingModes(Set<SessionTrackingMode> modes) {
         requireContextNotInitialized();

@@ -136,8 +136,8 @@ Registered through `ServletContext.addListener`, so `ServletListenerRegistration
 `HttpSessionEventPublisher` both work — each is a `ServletContextInitializer` that calls it.
 
 **`@WebListener` does not.** Under `@ServletComponentScan` Boot collects the annotated class names
-into `ServletWebServerSettings.webListenerClassNames`, which `NettyWebServerFactory` never reads, so
-they are dropped without reaching `addListener` and without a warning.
+into `ServletWebServerSettings.webListenerClassNames`, which `NettyServletWebServerFactory` never
+reads, so they are dropped without reaching `addListener` and without a warning.
 
 | Listener | Status |
 | --- | --- |

@@ -1,7 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure;
 
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.properties.NettyLoomProperties;
-import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.NettyWebServerFactory;
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.NettyServletWebServerFactory;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.ServletContextLifecycle;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpDecoderFailureHandler;
@@ -67,13 +67,14 @@ public class NettyLoomAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(value = ServletWebServerFactory.class, search = SearchStrategy.CURRENT)
-    public NettyWebServerFactory nettyWebServerFactory(NettyIoHandlerFactory nettyIoHandlerFactory,
-                                                       NettyServerChannelInitializer nettyServerChannelInitializer,
-                                                       HttpConnectionRegistry httpConnectionRegistry,
-                                                       NettyServletContext nettyServletContext,
-                                                       DispatcherServlet dispatcherServlet,
-                                                       NettyLoomProperties properties) {
-        return new NettyWebServerFactory(nettyIoHandlerFactory, nettyServerChannelInitializer,
+    public NettyServletWebServerFactory nettyServletWebServerFactory(
+            NettyIoHandlerFactory nettyIoHandlerFactory,
+            NettyServerChannelInitializer nettyServerChannelInitializer,
+            HttpConnectionRegistry httpConnectionRegistry,
+            NettyServletContext nettyServletContext,
+            DispatcherServlet dispatcherServlet,
+            NettyLoomProperties properties) {
+        return new NettyServletWebServerFactory(nettyIoHandlerFactory, nettyServerChannelInitializer,
             httpConnectionRegistry, nettyServletContext, dispatcherServlet, properties);
     }
 

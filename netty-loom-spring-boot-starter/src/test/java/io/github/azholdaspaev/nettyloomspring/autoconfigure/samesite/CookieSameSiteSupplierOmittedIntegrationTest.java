@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Pins the deviation from Tomcat at {@code same-site=omitted} (issue #161) that
- * {@code NettyWebServerFactory.configureCookieSameSite} names.
+ * {@code NettyServletWebServerFactory.configureCookieSameSite} names.
  */
 @AutoConfigureRestTestClient
 @SpringBootTest(

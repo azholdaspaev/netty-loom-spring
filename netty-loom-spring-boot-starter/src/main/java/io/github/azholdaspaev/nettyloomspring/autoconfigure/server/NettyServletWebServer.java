@@ -12,7 +12,7 @@ import org.springframework.boot.web.server.WebServerException;
 import java.time.Duration;
 import java.util.concurrent.ThreadFactory;
 
-public class NettyWebServer implements WebServer {
+public class NettyServletWebServer implements WebServer {
 
     private static final ThreadFactory SHUTDOWN_THREAD_FACTORY =
         Thread.ofPlatform().name("netty-loom-graceful-shutdown").daemon(false).factory();
@@ -21,7 +21,7 @@ public class NettyWebServer implements WebServer {
     private final Shutdown shutdown;
     private final Duration gracePeriod;
 
-    public NettyWebServer(NettyServer nettyServer, Shutdown shutdown, Duration gracePeriod) {
+    public NettyServletWebServer(NettyServer nettyServer, Shutdown shutdown, Duration gracePeriod) {
         this.nettyServer = nettyServer;
         this.shutdown = shutdown;
         this.gracePeriod = gracePeriod;

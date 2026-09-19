@@ -121,10 +121,10 @@ Three things do not. Method-by-method detail is in the
 
 ### 1. Standard settings that are accepted and silently ignored
 
-`NettyWebServerFactory` extends Boot's `AbstractConfigurableWebServerFactory`, so Spring Boot binds
-and pushes the full `server.*` surface onto it. Accepting is not honouring, and these produce **no
-warning, no startup failure and no signal of any kind** — the highest-risk category here. The two
-that cost the most:
+`NettyServletWebServerFactory` extends Boot's `AbstractConfigurableWebServerFactory`, so Spring
+Boot binds and pushes the full `server.*` surface onto it. Accepting is not honouring, and these
+produce **no warning, no startup failure and no signal of any kind** — the highest-risk category
+here. The two that cost the most:
 
 - `server.compression.*` — responses are never compressed ([#22](https://github.com/azholdaspaev/netty-loom-spring/issues/22))
 - `server.http2.*` — HTTP/1.1 only ([#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23))
@@ -228,7 +228,7 @@ Three library modules, dependency flow **`starter → mvc → core`**. `core` ha
 | --- | --- |
 | `netty-loom-spring-core` | Pure-Netty foundation: `NettyServer` lifecycle, transport selection, `HttpConnectionRegistry` (drain accounting), the virtual-thread `HttpRequestHandler`, and the SPI seams |
 | `netty-loom-spring-mvc` | Servlet bridge: `SpringHttpRequestDispatcher` runs the filter chain and `DispatcherServlet` over `NettyHttpServletRequest` / `NettyHttpServletResponse` / `DefaultNettyServletContext` |
-| `netty-loom-spring-boot-starter` | `NettyLoomAutoConfiguration`, `NettyWebServerFactory` (`ServletWebServerFactory`), `NettyWebServer`, `NettyLoomProperties` |
+| `netty-loom-spring-boot-starter` | `NettyLoomAutoConfiguration`, `NettyServletWebServerFactory` (`ServletWebServerFactory`), `NettyServletWebServer`, `NettyLoomProperties` |
 
 ### Request flow
 

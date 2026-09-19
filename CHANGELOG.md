@@ -30,3 +30,8 @@ For anyone tracking pre-release snapshots:
   bean from `sessionStoreLifecycle` to `servletContextLifecycle`: since #103 its stop phase
   destroys the servlet and the filters and fires `contextDestroyed`, not only the session store
   (#350). A user bean of the old type no longer replaces it.
+- **`NettyWebServerFactory` was renamed to `NettyServletWebServerFactory` and `NettyWebServer` to
+  `NettyServletWebServer`**, and the auto-configured bean from `nettyWebServerFactory` to
+  `nettyServletWebServerFactory`: the factory now says which stack it serves, as Boot's
+  `TomcatServletWebServerFactory` and `JettyServletWebServerFactory` do, and the server no longer
+  shares its simple name with `spring-boot-reactor-netty`'s `NettyWebServer` (#374).

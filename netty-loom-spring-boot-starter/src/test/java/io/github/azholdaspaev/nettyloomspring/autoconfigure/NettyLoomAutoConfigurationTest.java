@@ -1,6 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure;
 
-import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.NettyWebServerFactory;
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.NettyServletWebServerFactory;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.ServletContextLifecycle;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestDispatcher;
@@ -54,10 +54,10 @@ class NettyLoomAutoConfigurationTest {
     private final WebApplicationContextRunner runner = newRunnerWithServlet(mock(DispatcherServlet.class));
 
     @Test
-    void shouldRegisterNettyWebServerFactoryInServletWebApplication() {
+    void shouldRegisterNettyServletWebServerFactoryWhenServletWeb() {
         runner.run(context -> assertThat(context)
             .hasSingleBean(ServletWebServerFactory.class)
-            .hasSingleBean(NettyWebServerFactory.class));
+            .hasSingleBean(NettyServletWebServerFactory.class));
     }
 
     @Test
@@ -66,7 +66,7 @@ class NettyLoomAutoConfigurationTest {
             .withConfiguration(AutoConfigurations.of(NettyLoomAutoConfiguration.class))
             .withBean(DispatcherServlet.class)
             .run(context -> assertThat(context)
-                .doesNotHaveBean(NettyWebServerFactory.class)
+                .doesNotHaveBean(NettyServletWebServerFactory.class)
                 .doesNotHaveBean(HttpRequestDispatcher.class));
     }
 
@@ -74,7 +74,7 @@ class NettyLoomAutoConfigurationTest {
     void shouldBackOffWhenNettyIsAbsentFromClasspath() {
         runner.withClassLoader(new FilteredClassLoader(HttpServerCodec.class))
             .run(context -> assertThat(context)
-                .doesNotHaveBean(NettyWebServerFactory.class)
+                .doesNotHaveBean(NettyServletWebServerFactory.class)
                 .doesNotHaveBean(HttpRequestDispatcher.class));
     }
 
@@ -83,7 +83,7 @@ class NettyLoomAutoConfigurationTest {
         ServletWebServerFactory userFactory = mock(ServletWebServerFactory.class);
         runner.withBean("userBean", ServletWebServerFactory.class, () -> userFactory)
             .run(context -> assertThat(context)
-                .doesNotHaveBean(NettyWebServerFactory.class)
+                .doesNotHaveBean(NettyServletWebServerFactory.class)
                 .getBean(ServletWebServerFactory.class).isSameAs(userFactory));
     }
 
@@ -91,7 +91,7 @@ class NettyLoomAutoConfigurationTest {
     void shouldYieldToTomcatAutoConfigurationOnSharedClasspath() {
         runner.withConfiguration(AutoConfigurations.of(TomcatServletWebServerAutoConfiguration.class))
             .run(context -> assertThat(context)
-                .doesNotHaveBean(NettyWebServerFactory.class)
+                .doesNotHaveBean(NettyServletWebServerFactory.class)
                 .getBean(ServletWebServerFactory.class).isInstanceOf(TomcatServletWebServerFactory.class));
     }
 
@@ -207,7 +207,7 @@ class NettyLoomAutoConfigurationTest {
     void shouldKeepOwnExecutorWhenUserDeclaresAnotherExecutorService() {
         runner.withBean("workers", ExecutorService.class, () -> mock(ExecutorService.class))
             .run(context -> assertThat(context)
-                .hasSingleBean(NettyWebServerFactory.class)
+                .hasSingleBean(NettyServletWebServerFactory.class)
                 .hasBean(DISPATCH_EXECUTOR_BEAN));
     }
 
@@ -233,6 +233,7 @@ class NettyLoomAutoConfigurationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
+        "nettyServletWebServerFactory",
         "nettyIoHandlerFactory",
         "nettyServletContext",
         "servletContextLifecycle",
