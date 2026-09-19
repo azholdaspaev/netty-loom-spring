@@ -11,11 +11,12 @@ import org.springframework.context.SmartLifecycle;
  * during {@code onRefresh()} and singletons are destroyed in reverse creation order, so it closes
  * after data sources have, leaving a {@code @SessionScope} bean's {@code @PreDestroy} to run against
  * a closed {@code DataSource}. Tomcat expires in {@code StandardManager.stopInternal()}, i.e. in this
- * phase, where the same callback succeeds. Here rather than in {@code NettyWebServer.destroy()},
- * where Boot destroys Tomcat's servlet and filters: that runs after bean destruction, so it would
- * follow the {@code contextDestroyed} this phase fires -- the inversion issue #103 reports. The web
- * server's stop phase has ended the drain before this runs; a handler thread it cut off has not
- * stopped (issue #89, {@code docs/configuration.md} § Graceful shutdown).
+ * phase, where the same callback succeeds. Here rather than in
+ * {@code NettyServletWebServer.destroy()}, where Boot destroys Tomcat's servlet and filters: that
+ * runs after bean destruction, so it would follow the {@code contextDestroyed} this phase fires --
+ * the inversion issue #103 reports. The web server's stop phase has ended the drain before this
+ * runs; a handler thread it cut off has not stopped (issue #89, {@code docs/configuration.md}
+ * § Graceful shutdown).
  */
 public class ServletContextLifecycle implements SmartLifecycle {
 

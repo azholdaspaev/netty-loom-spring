@@ -61,9 +61,10 @@ beans and `CookieSameSiteSupplier` beans.
 
 ## Properties that are silently ignored
 
-`NettyWebServerFactory` extends Boot's `AbstractConfigurableWebServerFactory`, so Boot binds and
-pushes the entire `server.*` surface onto it. The factory reads only the properties listed above.
-Everything below is set on the factory and never read again — **no warning, no startup failure**.
+`NettyServletWebServerFactory` extends Boot's `AbstractConfigurableWebServerFactory`, so Boot binds
+and pushes the entire `server.*` surface onto it. The factory reads only the properties listed
+above. Everything below is set on the factory and never read again — **no warning, no startup
+failure**.
 
 | Property | Why it does nothing | Issue |
 | --- | --- | --- |

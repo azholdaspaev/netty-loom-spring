@@ -28,7 +28,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
+public class NettyServletWebServerFactory extends AbstractConfigurableWebServerFactory
     implements ConfigurableServletWebServerFactory {
 
     private final ServletWebServerSettings settings = new ServletWebServerSettings();
@@ -40,7 +40,7 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
     private final DispatcherServlet dispatcherServlet;
     private final NettyLoomProperties properties;
 
-    public NettyWebServerFactory(NettyIoHandlerFactory ioHandlerFactory,
+    public NettyServletWebServerFactory(NettyIoHandlerFactory ioHandlerFactory,
                                  NettyServerChannelInitializer channelInitializer,
                                  HttpConnectionRegistry connectionRegistry,
                                  NettyServletContext servletContext,
@@ -88,7 +88,7 @@ public class NettyWebServerFactory extends AbstractConfigurableWebServerFactory
             getPort(), getAddress(), properties.bossThreads(), properties.workerThreads(),
             properties.tcpKeepAlive(), properties.acceptCount());
         NettyServer nettyServer = new NettyServer(configuration, channelInitializer, ioHandlerFactory, connectionRegistry);
-        return new NettyWebServer(nettyServer, getShutdown(), properties.shutdownGracePeriod());
+        return new NettyServletWebServer(nettyServer, getShutdown(), properties.shutdownGracePeriod());
     }
 
     private void verifySslNotConfigured() {
