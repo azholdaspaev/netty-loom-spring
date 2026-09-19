@@ -3,15 +3,44 @@ package io.github.azholdaspaev.nettyloomspring.autoconfigure.properties;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyTransportPreference;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.boot.context.properties.bind.DataObjectPropertyName;
 import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
 import org.springframework.util.unit.DataSize;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
+import java.io.InputStream;
+import java.lang.reflect.RecordComponent;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NettyLoomPropertiesTest {
+
+    @Test
+    void shouldPointEveryMetadataDescriptionAtConfigurationDocs() throws Exception {
+        Map<String, String> descriptions = new HashMap<>();
+        try (InputStream metadata = NettyLoomProperties.class.getClassLoader()
+            .getResourceAsStream("META-INF/spring-configuration-metadata.json")) {
+            assertNotNull(metadata, "spring-configuration-metadata.json must be generated");
+            for (JsonNode property : new ObjectMapper().readTree(metadata).path("properties")) {
+                descriptions.put(property.path("name").asString(), property.path("description").asString(""));
+            }
+        }
+
+        for (RecordComponent component : NettyLoomProperties.class.getRecordComponents()) {
+            String name = "server.netty." + DataObjectPropertyName.toDashedForm(component.getName());
+            String description = descriptions.get(name);
+            assertNotNull(description, name + " must have a metadata entry");
+            assertTrue(description.contains("docs/configuration.md"),
+                name + " must point at docs/configuration.md, the owner of its semantics, but reads: "
+                    + description);
+        }
+    }
 
     @Test
     void shouldApplyDefaultReadTimeout() {
