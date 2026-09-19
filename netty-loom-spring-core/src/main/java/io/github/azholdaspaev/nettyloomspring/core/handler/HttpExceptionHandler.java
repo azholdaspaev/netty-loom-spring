@@ -50,7 +50,7 @@ public class HttpExceptionHandler extends ChannelInboundHandlerAdapter {
             return;
         }
 
-        ctx.writeAndFlush(buildResponse(status))
+        ctx.writeAndFlush(newResponse(status))
             .addListener(ChannelFutureListener.CLOSE);
     }
 
@@ -78,7 +78,7 @@ public class HttpExceptionHandler extends ChannelInboundHandlerAdapter {
         return HttpResponseStatus.INTERNAL_SERVER_ERROR;
     }
 
-    private static FullHttpResponse buildResponse(HttpResponseStatus status) {
+    private static FullHttpResponse newResponse(HttpResponseStatus status) {
         ByteBuf body = Unpooled.copiedBuffer(status.reasonPhrase(), StandardCharsets.UTF_8);
         FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, status, body);
         response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain; charset=utf-8");

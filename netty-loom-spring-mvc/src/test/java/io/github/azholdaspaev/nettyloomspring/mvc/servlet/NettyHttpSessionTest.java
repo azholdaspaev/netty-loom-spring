@@ -80,7 +80,7 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldRoundTripAttribute() {
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
 
         session.setAttribute("user", "alice");
 
@@ -90,7 +90,7 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldRemoveSessionAttributeWhenSetToNull() {
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         session.setAttribute("user", "alice");
 
         session.setAttribute("user", null);
@@ -102,14 +102,14 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldReturnNullAttributeForUnknownName() {
-        assertNull(manager.create().getAttribute("absent"));
+        assertNull(manager.newSession().getAttribute("absent"));
     }
 
     // --- Binding listeners ---
 
     @Test
     void shouldNotifyBindingListenerWhenBound() {
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         RecordingValue value = new RecordingValue();
 
         session.setAttribute("callback", value);
@@ -119,7 +119,7 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldNotifyBindingListenerWhenRemoved() {
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         RecordingValue value = new RecordingValue();
         session.setAttribute("callback", value);
 
@@ -130,7 +130,7 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldUnbindPreviousValueWhenReplacingAttribute() {
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         RecordingValue replaced = new RecordingValue();
         RecordingValue replacement = new RecordingValue();
         session.setAttribute("callback", replaced);
@@ -143,7 +143,7 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldNotifyNeitherSideWhenRebindingSameInstance() {
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         RecordingValue value = new RecordingValue();
         session.setAttribute("callback", value);
 
@@ -166,7 +166,7 @@ class NettyHttpSessionTest {
          * Deterministic rather than threaded: valueBound is application code that runs inside exactly
          * that window, so re-entering setAttribute from it occupies the window the second request would.
          */
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         var events = new ArrayList<String>();
         var reentered = new boolean[1];
         var value = new HttpSessionBindingListener() {
@@ -198,7 +198,7 @@ class NettyHttpSessionTest {
          * The canonical HttpSessionBindingListener is a resource holder that reads event.getValue() to
          * know what to release; the two-argument HttpSessionBindingEvent leaves it null.
          */
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         var seen = new java.util.ArrayList<Object>();
         var value = new HttpSessionBindingListener() {
             @Override
@@ -220,7 +220,7 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldUnbindEveryAttributeOnInvalidate() {
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         RecordingValue value = new RecordingValue();
         session.setAttribute("callback", value);
 
@@ -231,7 +231,7 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldUnbindEveryAttributeOnExpiry() {
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         RecordingValue value = new RecordingValue();
         session.setAttribute("callback", value);
 
@@ -244,7 +244,7 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldKeepUnbindingOtherAttributesWhenBindingListenerThrows() {
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         RecordingValue survivor = new RecordingValue();
         session.setAttribute("bad", new HttpSessionBindingListener() {
             @Override
@@ -268,7 +268,7 @@ class NettyHttpSessionTest {
          * above: the values ordered after it in the teardown are otherwise left bound, with the
          * @PreDestroy of every @SessionScope bean among them unrun.
          */
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         RecordingValue survivor = new RecordingValue();
         session.setAttribute("bad", new HttpSessionBindingListener() {
             @Override
@@ -286,7 +286,7 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldNotSwallowVirtualMachineErrorFromValueUnbound() {
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         session.setAttribute("bad", new HttpSessionBindingListener() {
             @Override
             public void valueUnbound(HttpSessionBindingEvent event) {
@@ -304,7 +304,7 @@ class NettyHttpSessionTest {
          * -- so by the time it fails the previous value is already out of the map and nothing else can
          * reach it. Its release is owed regardless, or a failed bind strands whatever it was holding.
          */
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         RecordingValue displaced = new RecordingValue();
         session.setAttribute("cart", displaced);
         var failing = new HttpSessionBindingListener() {
@@ -330,7 +330,7 @@ class NettyHttpSessionTest {
          * finally completing abruptly discards whatever the try was throwing (JLS 14.20.2), with nothing
          * attached as suppressed: addSuppressed is try-with-resources only.
          */
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         session.setAttribute("cart", new HttpSessionBindingListener() {
             @Override
             public void valueUnbound(HttpSessionBindingEvent event) {
@@ -354,7 +354,7 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldThrowOnSecondInvalidate() {
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         session.invalidate();
 
         assertThrows(IllegalStateException.class, session::invalidate);
@@ -362,7 +362,7 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldThrowOnAttributeAccessAfterInvalidate() {
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         session.invalidate();
 
         assertThrows(IllegalStateException.class, () -> session.getAttribute("user"));
@@ -373,7 +373,7 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldThrowFromTimeAndFreshnessAccessorsAfterInvalidate() {
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         session.invalidate();
 
         assertThrows(IllegalStateException.class, session::getCreationTime);
@@ -383,7 +383,7 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldStillAnswerGetIdAfterInvalidate() {
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         String id = session.getId();
 
         session.invalidate();
@@ -393,7 +393,7 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldStillAnswerIntervalAndContextAccessorsAfterInvalidate() {
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         session.invalidate();
 
         assertDoesNotThrow(session::getMaxInactiveInterval);
@@ -403,7 +403,7 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldTreatExpiredSessionAsInvalidated() {
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         clock.set(ONE_MINUTE * 1000L);
         manager.sweep(clock.get());
 
@@ -416,7 +416,7 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldReportPreviousRequestNotCurrentAsLastAccessedTime() {
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
 
         clock.set(5_000L);
         manager.find(session.getId());
@@ -430,7 +430,7 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldFixCreationTimeAtCreation() {
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
 
         clock.set(5_000L);
         manager.find(session.getId());
@@ -440,7 +440,7 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldStayNewForWholeRequestThatCreatedSession() {
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
 
         clock.set(5_000L);
 
@@ -449,7 +449,7 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldOverrideManagerDefaultOnSetMaxInactiveInterval() {
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
 
         session.setMaxInactiveInterval(ONE_MINUTE * 10);
         clock.set(ONE_MINUTE * 1000L * 5);
@@ -460,8 +460,8 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldDisableExpiryForThatSessionOnlyWhenIntervalIsZero() {
-        NettyHttpSession immortal = manager.create();
-        NettyHttpSession mortal = manager.create();
+        NettyHttpSession immortal = manager.newSession();
+        NettyHttpSession mortal = manager.newSession();
 
         immortal.setMaxInactiveInterval(0);
         clock.set(ONE_MINUTE * 1000L);
@@ -472,7 +472,7 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldReturnOwningContextFromGetServletContext() {
-        assertSame(servletContext, manager.create().getServletContext());
+        assertSame(servletContext, manager.newSession().getServletContext());
     }
 
     // --- Container-registered session listeners (issue #17) ---
@@ -486,7 +486,7 @@ class NettyHttpSessionTest {
                 destroyed.add(event.getSession().getId());
             }
         });
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         String id = session.getId();
 
         session.invalidate();
@@ -510,7 +510,7 @@ class NettyHttpSessionTest {
                     .forEachRemaining(name -> seen.add(name + "=" + session.getAttribute(name)));
             }
         });
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         session.setAttribute("user", "alice");
 
         session.invalidate();
@@ -520,7 +520,7 @@ class NettyHttpSessionTest {
 
     @Test
     void shouldCloseDestroyWindowOnceTeardownIsOver() {
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         session.setAttribute("user", "alice");
 
         session.invalidate();
@@ -547,7 +547,7 @@ class NettyHttpSessionTest {
                 events.add("removed:" + event.getName() + "=" + event.getValue());
             }
         });
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
 
         session.setAttribute("user", "alice");
         session.setAttribute("user", "bob");
@@ -569,7 +569,7 @@ class NettyHttpSessionTest {
                 removed.add(event.getName() + "=" + event.getValue());
             }
         });
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         session.setAttribute("user", "alice");
 
         session.invalidate();
@@ -606,7 +606,7 @@ class NettyHttpSessionTest {
                 events.add("removed:" + event.getName());
             }
         });
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         session.setAttribute("cart", new HttpSessionBindingListener() {
             @Override
             public void valueUnbound(HttpSessionBindingEvent event) {
@@ -639,7 +639,7 @@ class NettyHttpSessionTest {
                 events.add("removed:" + event.getName());
             }
         });
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
 
         assertThrows(IllegalStateException.class, () -> session.setAttribute("cart",
             new HttpSessionBindingListener() {
@@ -663,7 +663,7 @@ class NettyHttpSessionTest {
                 events.add("attributeRemoved:" + event.getName());
             }
         });
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         session.setAttribute("cart", new HttpSessionBindingListener() {
             @Override
             public void valueUnbound(HttpSessionBindingEvent event) {
@@ -686,7 +686,7 @@ class NettyHttpSessionTest {
                 events.add(event.getName() + "=" + event.getValue());
             }
         });
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
 
         session.removeAttribute("never-set");
 
@@ -708,7 +708,7 @@ class NettyHttpSessionTest {
                 throw new IllegalStateException("session registry is down");
             }
         });
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         session.setAttribute("cart", new HttpSessionBindingListener() {
             @Override
             public void valueUnbound(HttpSessionBindingEvent event) {
@@ -735,7 +735,7 @@ class NettyHttpSessionTest {
                 throw new IllegalStateException("audit index is down");
             }
         });
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         for (String name : List.of("first", "second", "third")) {
             session.setAttribute(name, new HttpSessionBindingListener() {
                 @Override
@@ -766,7 +766,7 @@ class NettyHttpSessionTest {
                 events.add("removed:" + event.getValue());
             }
         });
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         session.setAttribute("user", "alice");
 
         session.setAttribute("user", null);

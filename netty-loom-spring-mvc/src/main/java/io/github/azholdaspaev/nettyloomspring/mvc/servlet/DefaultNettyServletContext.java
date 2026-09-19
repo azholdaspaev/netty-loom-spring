@@ -203,13 +203,13 @@ public final class DefaultNettyServletContext implements NettyServletContext {
     public List<RegisteredFilter> getRegisteredFilters() {
         List<RegisteredFilter> snapshot = registeredFiltersSnapshot;
         if (snapshot == null) {
-            snapshot = buildRegisteredFilters();
+            snapshot = newRegisteredFilters();
             registeredFiltersSnapshot = snapshot;
         }
         return snapshot;
     }
 
-    private List<RegisteredFilter> buildRegisteredFilters() {
+    private List<RegisteredFilter> newRegisteredFilters() {
         var registered = new ArrayList<RegisteredFilter>();
         for (var registration : filterRegistrations.values()) {
             if (registration instanceof NettyFilterRegistration filterRegistration && filterRegistration.filter != null) {
