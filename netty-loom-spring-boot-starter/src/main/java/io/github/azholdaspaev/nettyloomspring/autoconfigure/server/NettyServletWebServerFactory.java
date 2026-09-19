@@ -41,11 +41,11 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
     private final NettyLoomProperties properties;
 
     public NettyServletWebServerFactory(NettyIoHandlerFactory ioHandlerFactory,
-                                 NettyServerChannelInitializer channelInitializer,
-                                 HttpConnectionRegistry connectionRegistry,
-                                 NettyServletContext servletContext,
-                                 DispatcherServlet dispatcherServlet,
-                                 NettyLoomProperties properties) {
+                                        NettyServerChannelInitializer channelInitializer,
+                                        HttpConnectionRegistry connectionRegistry,
+                                        NettyServletContext servletContext,
+                                        DispatcherServlet dispatcherServlet,
+                                        NettyLoomProperties properties) {
         this.ioHandlerFactory = ioHandlerFactory;
         this.channelInitializer = channelInitializer;
         this.connectionRegistry = connectionRegistry;
