@@ -32,7 +32,6 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
-import java.net.InetSocketAddress;
 import java.nio.charset.Charset;
 import java.nio.charset.IllegalCharsetNameException;
 import java.nio.charset.StandardCharsets;
@@ -49,8 +48,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
-
-import org.springframework.http.HttpHeaders;
 
 public class NettyHttpServletRequest implements HttpServletRequest {
 
@@ -116,15 +113,33 @@ public class NettyHttpServletRequest implements HttpServletRequest {
         if (hostResolved) {
             return;
         }
-        InetSocketAddress host = parseHostHeader(nettyRequest.headers().get(HttpHeaderNames.HOST));
-        if (host != null) {
-            this.serverName = host.getHostString();
-            this.serverPort = resolvePort(host.getPort());
-        } else {
+        if (!parseHostHeader(nettyRequest.headers().get(HttpHeaderNames.HOST))) {
             this.serverName = bracketIfIpv6(connection.localAddr());
             this.serverPort = resolvePort(connection.localPort());
         }
         this.hostResolved = true;
+    }
+
+    private boolean parseHostHeader(String host) {
+        if (host == null || host.isBlank()) {
+            return false;
+        }
+        host = host.trim();
+        int separator = host.startsWith("[") ? host.indexOf(':', host.indexOf(']')) : host.lastIndexOf(':');
+        String name = separator < 0 ? host : host.substring(0, separator);
+        if (name.isBlank()) {
+            return false;
+        }
+        int port = 0;
+        if (separator >= 0) {
+            try {
+                port = Integer.parseInt(host, separator + 1, host.length(), 10);
+            } catch (NumberFormatException notAPort) {
+            }
+        }
+        this.serverName = name;
+        this.serverPort = resolvePort(port);
+        return true;
     }
 
     private void ensureParametersParsed() {
@@ -204,19 +219,6 @@ public class NettyHttpServletRequest implements HttpServletRequest {
             return "[" + host + "]";
         }
         return host;
-    }
-
-    private static InetSocketAddress parseHostHeader(String host) {
-        if (host == null || host.isBlank()) {
-            return null;
-        }
-        HttpHeaders headers = new HttpHeaders();
-        headers.set(HttpHeaders.HOST, host.trim());
-        InetSocketAddress address = headers.getHost();
-        if (address == null || address.getHostString().isBlank()) {
-            return null;
-        }
-        return address;
     }
 
     static Map<String, String[]> toParameterMap(Map<String, List<String>> parameters) {
