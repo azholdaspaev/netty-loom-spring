@@ -418,7 +418,7 @@ setup
 run success "" 999 fix "$PR_URL" 1
 ok=1; why=""
 [ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
-[ "$(argv_after --max-budget-usd)" = 4 ] || { ok=0; why="budget=$(argv_after --max-budget-usd)"; }
+[ "$(argv_after --max-budget-usd)" = 6 ] || { ok=0; why="budget=$(argv_after --max-budget-usd)"; }
 [ "$(argv_after --allowedTools)" = "$allowed" ] || { ok=0; why="allowedTools=$(argv_after --allowedTools)"; }
 for flag in "NL-999 fix 1" "/flow:fix $PR_URL"; do
   argv_has "$flag" || { ok=0; why="argv lacks $flag"; }

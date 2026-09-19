@@ -64,7 +64,7 @@ section by section, and open it with
 No label, and never mark it ready for review."
     ;;
   review) BUDGET=6; PROMPT="/flow:review $PR" ;;
-  fix)    BUDGET=4; PROMPT="/flow:fix $PR" ;;
+  fix)    BUDGET=6; PROMPT="/flow:fix $PR" ;;
   test)   BUDGET=6; PROMPT="/flow:test $PR" ;;
   *) fail "unknown stage '$STAGE'" ;;
 esac
