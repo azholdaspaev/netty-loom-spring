@@ -107,7 +107,7 @@ public class NettyHttpSession implements HttpSession {
         return lock;
     }
 
-    private void checkValid() {
+    private void requireValid() {
         if (invalidated.get() && !destroying) {
             throw new IllegalStateException("Session " + id + " has been invalidated");
         }
@@ -115,7 +115,7 @@ public class NettyHttpSession implements HttpSession {
 
     @Override
     public long getCreationTime() {
-        checkValid();
+        requireValid();
         return creationTime;
     }
 
@@ -130,7 +130,7 @@ public class NettyHttpSession implements HttpSession {
 
     @Override
     public long getLastAccessedTime() {
-        checkValid();
+        requireValid();
         return lastAccessedTime;
     }
 
@@ -151,19 +151,19 @@ public class NettyHttpSession implements HttpSession {
 
     @Override
     public Object getAttribute(String name) {
-        checkValid();
+        requireValid();
         return attributes.get(name);
     }
 
     @Override
     public Enumeration<String> getAttributeNames() {
-        checkValid();
+        requireValid();
         return Collections.enumeration(attributes.keySet());
     }
 
     @Override
     public void setAttribute(String name, Object value) {
-        checkValid();
+        requireValid();
         if (value == null) {
             removeAttribute(name);
             return;
@@ -219,7 +219,7 @@ public class NettyHttpSession implements HttpSession {
             }
         } finally {
             if (bound && previous[0] instanceof HttpSessionBindingListener listener) {
-                notifyUnbound(listener, name, previous[0]);
+                fireUnbound(listener, name, previous[0]);
             }
             /*
              * Published, and only then invalidated: claim the value back, and if the teardown got there
@@ -239,10 +239,10 @@ public class NettyHttpSession implements HttpSession {
 
     @Override
     public void removeAttribute(String name) {
-        checkValid();
+        requireValid();
         Object removed = attributes.remove(name);
         if (removed != null) {
-            notifyRemoved(name, removed);
+            fireRemoved(name, removed);
         }
     }
 
@@ -263,7 +263,7 @@ public class NettyHttpSession implements HttpSession {
 
     @Override
     public boolean isNew() {
-        checkValid();
+        requireValid();
         return isNew;
     }
 
@@ -300,7 +300,7 @@ public class NettyHttpSession implements HttpSession {
         if (!attributes.remove(name, value)) {
             return false;
         }
-        notifyRemoved(name, value);
+        fireRemoved(name, value);
         return true;
     }
 
@@ -308,9 +308,9 @@ public class NettyHttpSession implements HttpSession {
      * In Tomcat's order: the value's own {@code valueUnbound} first, then the container listeners'
      * {@code attributeRemoved}. Shared by {@code removeAttribute} and by teardown.
      */
-    private void notifyRemoved(String name, Object value) {
+    private void fireRemoved(String name, Object value) {
         if (value instanceof HttpSessionBindingListener listener) {
-            notifyUnbound(listener, name, value);
+            fireUnbound(listener, name, value);
         }
         manager.listeners().fireSessionAttributeRemoved(this, name, value);
     }
@@ -319,7 +319,7 @@ public class NettyHttpSession implements HttpSession {
      * Quiet: teardown has no caller in a position to handle a failure, and this also runs inside
      * {@link #setAttribute}'s {@code finally}, where throwing would discard the {@code valueBound} failure.
      */
-    private void notifyUnbound(HttpSessionBindingListener listener, String name, Object value) {
+    private void fireUnbound(HttpSessionBindingListener listener, String name, Object value) {
         try {
             listener.valueUnbound(new HttpSessionBindingEvent(this, name, value));
         } catch (Throwable failure) {

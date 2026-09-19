@@ -139,7 +139,7 @@ public class NettyServer {
         InetSocketAddress address = new InetSocketAddress(configuration.address(), configuration.port());
         ChannelFuture future = bootstrap.bind(address).await();
         if (!future.isSuccess()) {
-            throw new NettyServerException("Failed to bind " + address, asBindFailure(future.cause()));
+            throw new NettyServerException("Failed to bind " + address, toBindFailure(future.cause()));
         }
         return future.channel();
     }
@@ -148,7 +148,7 @@ public class NettyServer {
      * NIO surfaces {@link BindException} where the native transports surface a plain
      * {@link IOException} (#68). The message is carried verbatim: it is what separates errnos (#74).
      */
-    private static Throwable asBindFailure(Throwable cause) {
+    private static Throwable toBindFailure(Throwable cause) {
         if (cause instanceof IOException && !(cause instanceof BindException)) {
             BindException bindFailure = new BindException(cause.getMessage());
             bindFailure.initCause(cause);

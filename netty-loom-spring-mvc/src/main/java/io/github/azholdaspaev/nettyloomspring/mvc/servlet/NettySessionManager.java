@@ -183,7 +183,7 @@ public class NettySessionManager {
         return trackingModes.contains(SessionTrackingMode.COOKIE);
     }
 
-    public NettyHttpSession create() {
+    public NettyHttpSession newSession() {
         /*
          * Refused once closed rather than quietly stored: a request thread can still be in the
          * dispatcher while the context is being torn down, and a session added after the shutdown drain
@@ -338,9 +338,9 @@ public class NettySessionManager {
      * Creates a session and hands the client its id. The check precedes the creation, so a refusal leaves
      * nothing in the store.
      */
-    NettyHttpSession createAndTrack(NettyHttpServletResponse response, boolean secureConnection) {
+    NettyHttpSession newTrackedSession(NettyHttpServletResponse response, boolean secureConnection) {
         requireSessionCookieWritable(response);
-        NettyHttpSession session = create();
+        NettyHttpSession session = newSession();
         writeSessionCookie(response, session, secureConnection);
         return session;
     }

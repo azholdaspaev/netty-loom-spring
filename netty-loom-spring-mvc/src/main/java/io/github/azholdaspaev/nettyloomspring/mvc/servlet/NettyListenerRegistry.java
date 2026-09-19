@@ -253,11 +253,11 @@ public class NettyListenerRegistry {
             /*
              * Throwable, so an Error cannot skip the release: the dispatcher fires this outside its try,
              * so nothing else would run it. Newest first, matching the destroy order everywhere else, and
-             * quietly -- notify() swallows an Error too, or a listener failing to release would replace
+             * quietly -- fireOneQuietly() swallows an Error too, or a listener failing to release would replace
              * `failure`, which is the one the caller needs to see, and skip the listeners below it.
              */
             for (int i = notified - 1; i >= 0; i--) {
-                notify(requestListeners.get(i), "ServletRequestListener.requestDestroyed",
+                fireOneQuietly(requestListeners.get(i), "ServletRequestListener.requestDestroyed",
                     listener -> listener.requestDestroyed(event));
             }
             /*
@@ -367,7 +367,7 @@ public class NettyListenerRegistry {
      */
     private static <T> void fireQuietly(List<T> listeners, String description, Consumer<T> callback) {
         for (T listener : listeners) {
-            notify(listener, description, callback);
+            fireOneQuietly(listener, description, callback);
         }
     }
 
@@ -377,11 +377,11 @@ public class NettyListenerRegistry {
      */
     private static <T> void fireQuietlyReversed(List<T> listeners, String description, Consumer<T> callback) {
         for (int i = listeners.size() - 1; i >= 0; i--) {
-            notify(listeners.get(i), description, callback);
+            fireOneQuietly(listeners.get(i), description, callback);
         }
     }
 
-    private static <T> void notify(T listener, String description, Consumer<T> callback) {
+    private static <T> void fireOneQuietly(T listener, String description, Consumer<T> callback) {
         try {
             callback.accept(listener);
         } catch (Throwable failure) {

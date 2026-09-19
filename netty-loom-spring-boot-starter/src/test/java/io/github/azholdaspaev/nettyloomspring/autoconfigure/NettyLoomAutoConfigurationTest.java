@@ -285,7 +285,7 @@ class NettyLoomAutoConfigurationTest {
 
             assertThat(parent.getBean(DISPATCH_EXECUTOR_BEAN, ExecutorService.class).isShutdown())
                 .as("closing the child must not shut down the parent's dispatch executor").isFalse();
-            assertThatCode(() -> parent.getBean("nettyServletContext", NettyServletContext.class).getSessionManager().create())
+            assertThatCode(() -> parent.getBean("nettyServletContext", NettyServletContext.class).getSessionManager().newSession())
                 .as("closing the child must not close the parent's session store").doesNotThrowAnyException();
         });
     }

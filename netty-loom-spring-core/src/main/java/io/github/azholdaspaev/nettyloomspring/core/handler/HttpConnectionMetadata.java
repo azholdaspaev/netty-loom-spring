@@ -25,8 +25,8 @@ public record HttpConnectionMetadata(String remoteAddr,
     private static final int UNKNOWN_PORT = 0;
 
     public static HttpConnectionMetadata from(ChannelHandlerContext ctx) {
-        InetSocketAddress remote = asInet(ctx.channel().remoteAddress());
-        InetSocketAddress local = asInet(ctx.channel().localAddress());
+        InetSocketAddress remote = toInet(ctx.channel().remoteAddress());
+        InetSocketAddress local = toInet(ctx.channel().localAddress());
         boolean secure = ctx.pipeline().get(SslHandler.class) != null;
         // asLongText, not asShortText: ChannelId documents only the long form as globally unique.
         return new HttpConnectionMetadata(
@@ -51,7 +51,7 @@ public record HttpConnectionMetadata(String remoteAddr,
         return secure ? HttpScheme.HTTPS : HttpScheme.HTTP;
     }
 
-    private static InetSocketAddress asInet(SocketAddress address) {
+    private static InetSocketAddress toInet(SocketAddress address) {
         return address instanceof InetSocketAddress inet ? inet : null;
     }
 

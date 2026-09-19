@@ -56,9 +56,9 @@ class NettyListenerRegistryTest {
         events = new ArrayList<>();
         /*
          * One session for the whole class: the registry only needs a non-null event source, and every
-         * create() lazily starts the manager's sweeper thread.
+         * newSession() lazily starts the manager's sweeper thread.
          */
-        session = servletContext.getSessionManager().create();
+        session = servletContext.getSessionManager().newSession();
     }
 
     @AfterEach

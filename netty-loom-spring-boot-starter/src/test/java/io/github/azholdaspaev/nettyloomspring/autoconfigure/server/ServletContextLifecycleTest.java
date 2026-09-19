@@ -42,7 +42,7 @@ class ServletContextLifecycleTest {
 
     @Test
     void shouldExpireLiveSessionsOnStopWhileApplicationBeansAreUp() {
-        NettyHttpSession session = servletContext.getSessionManager().create();
+        NettyHttpSession session = servletContext.getSessionManager().newSession();
 
         lifecycle.stop();
 
@@ -57,13 +57,13 @@ class ServletContextLifecycleTest {
 
     @Test
     void shouldServeSessionsFromStoreAfterStopThenStart() {
-        servletContext.getSessionManager().create();
+        servletContext.getSessionManager().newSession();
         lifecycle.stop();
 
         lifecycle.start();
 
         assertTrue(lifecycle.isRunning());
-        NettyHttpSession session = assertDoesNotThrow(() -> servletContext.getSessionManager().create(),
+        NettyHttpSession session = assertDoesNotThrow(() -> servletContext.getSessionManager().newSession(),
             "a restarted application must be able to create sessions again");
         assertSame(session, servletContext.getSessionManager().find(session.getId()));
     }
@@ -76,7 +76,7 @@ class ServletContextLifecycleTest {
          */
         lifecycle.stop();
 
-        assertThrows(IllegalStateException.class, () -> servletContext.getSessionManager().create());
+        assertThrows(IllegalStateException.class, () -> servletContext.getSessionManager().newSession());
     }
 
     @Test

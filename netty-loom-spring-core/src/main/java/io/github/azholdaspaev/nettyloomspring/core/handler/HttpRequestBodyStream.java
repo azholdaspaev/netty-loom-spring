@@ -155,7 +155,7 @@ class HttpRequestBodyStream extends InputStream {
                 await();
             }
             if (failure != null) {
-                throw asIoFailure(failure);
+                throw toIoFailure(failure);
             }
             if (queued.isEmpty()) {
                 return null;
@@ -230,7 +230,7 @@ class HttpRequestBodyStream extends InputStream {
         chunk.release();
     }
 
-    private static IOException asIoFailure(Throwable cause) {
+    private static IOException toIoFailure(Throwable cause) {
         return cause instanceof IOException failure ? failure : new IOException(cause);
     }
 }

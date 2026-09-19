@@ -783,7 +783,7 @@ class NettyHttpServletRequestTest {
     @Test
     void shouldResolveExistingSessionFromCookieWithoutReEmitting() {
         var context = new DefaultNettyServletContext();
-        var existing = context.getSessionManager().create();
+        var existing = context.getSessionManager().newSession();
 
         var exchange = exchange(context, INSECURE, NettySessionCookieConfig.DEFAULT_NAME + "=" + existing.getId());
 
@@ -795,7 +795,7 @@ class NettyHttpServletRequestTest {
     @Test
     void shouldFindSessionCookieAmongOthers() {
         var context = new DefaultNettyServletContext();
-        var existing = context.getSessionManager().create();
+        var existing = context.getSessionManager().newSession();
 
         var exchange = exchange(context, INSECURE, "theme=dark; JSESSIONID=" + existing.getId() + "; lang=en");
 
@@ -831,7 +831,7 @@ class NettyHttpServletRequestTest {
          * used to win outright.
          */
         var context = new DefaultNettyServletContext();
-        var existing = context.getSessionManager().create();
+        var existing = context.getSessionManager().newSession();
 
         var exchange = exchange(context, INSECURE,
             NettySessionCookieConfig.DEFAULT_NAME + "=" + UNKNOWN_SESSION_ID + "; "
@@ -866,7 +866,7 @@ class NettyHttpServletRequestTest {
          * correctly-named one is dead.
          */
         var context = new DefaultNettyServletContext();
-        var live = context.getSessionManager().create();
+        var live = context.getSessionManager().newSession();
 
         String miscased = NettySessionCookieConfig.DEFAULT_NAME.toLowerCase(Locale.ROOT);
         var exchange = exchange(context, INSECURE,
@@ -910,7 +910,7 @@ class NettyHttpServletRequestTest {
     @Test
     void shouldReportRequestedSessionIdValidForLiveSession() {
         var context = new DefaultNettyServletContext();
-        var existing = context.getSessionManager().create();
+        var existing = context.getSessionManager().newSession();
 
         var exchange = exchange(context, INSECURE, NettySessionCookieConfig.DEFAULT_NAME + "=" + existing.getId());
 
@@ -1028,7 +1028,7 @@ class NettyHttpServletRequestTest {
     void shouldAlsoAcceptConfiguredCookieNameOnWayIn() {
         var context = new DefaultNettyServletContext();
         context.getSessionCookieConfig().setName("SID");
-        var existing = context.getSessionManager().create();
+        var existing = context.getSessionManager().newSession();
 
         var exchange = exchange(context, INSECURE, "SID=" + existing.getId());
 
@@ -1179,7 +1179,7 @@ class NettyHttpServletRequestTest {
     @Test
     void shouldRepointRequestedIdAtNewOneOnChangeSessionId() {
         var context = new DefaultNettyServletContext();
-        var existing = context.getSessionManager().create();
+        var existing = context.getSessionManager().newSession();
         var exchange = exchange(context, INSECURE, NettySessionCookieConfig.DEFAULT_NAME + "=" + existing.getId());
 
         String newId = exchange.request().changeSessionId();
@@ -1236,7 +1236,7 @@ class NettyHttpServletRequestTest {
     void shouldStillResolveExistingSessionAfterCommit() throws Exception {
         // Only *creation* is barred: an already-tracked session needs no new cookie.
         var context = new DefaultNettyServletContext();
-        var existing = context.getSessionManager().create();
+        var existing = context.getSessionManager().newSession();
         var exchange = exchange(context, INSECURE, NettySessionCookieConfig.DEFAULT_NAME + "=" + existing.getId());
         exchange.response().sendRedirect("/elsewhere");
 
@@ -1262,7 +1262,7 @@ class NettyHttpServletRequestTest {
     @Test
     void shouldReportRequestedSessionIdInvalidOnceInvalidated() {
         var context = new DefaultNettyServletContext();
-        var existing = context.getSessionManager().create();
+        var existing = context.getSessionManager().newSession();
         var exchange = exchange(context, INSECURE, NettySessionCookieConfig.DEFAULT_NAME + "=" + existing.getId());
         assertTrue(exchange.request().isRequestedSessionIdValid());
 
@@ -1278,7 +1278,7 @@ class NettyHttpServletRequestTest {
     @Test
     void shouldNotRefreshSessionOnIsRequestedSessionIdValid() {
         var context = new DefaultNettyServletContext();
-        var existing = context.getSessionManager().create();
+        var existing = context.getSessionManager().newSession();
         var exchange = exchange(context, INSECURE, NettySessionCookieConfig.DEFAULT_NAME + "=" + existing.getId());
 
         exchange.request().isRequestedSessionIdValid();

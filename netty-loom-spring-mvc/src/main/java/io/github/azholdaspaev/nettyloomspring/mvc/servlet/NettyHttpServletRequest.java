@@ -420,7 +420,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
             session = servletContext.getSessionManager().find(getRequestedSessionId());
         }
         if (session == null && create) {
-            session = servletContext.getSessionManager().createAndTrack(response, connection.secure());
+            session = servletContext.getSessionManager().newTrackedSession(response, connection.secure());
         }
         return session;
     }

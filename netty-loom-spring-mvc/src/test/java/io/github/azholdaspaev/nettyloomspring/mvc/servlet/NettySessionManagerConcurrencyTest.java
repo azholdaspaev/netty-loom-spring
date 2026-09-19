@@ -139,7 +139,7 @@ class NettySessionManagerConcurrencyTest {
          * only one, stranding an entry no removal path can ever name again.
          */
         for (int round = 0; round < ROUNDS; round++) {
-            NettyHttpSession session = manager.create();
+            NettyHttpSession session = manager.newSession();
 
             race(() -> manager.changeId(session), () -> manager.changeId(session));
 
@@ -159,7 +159,7 @@ class NettySessionManagerConcurrencyTest {
          * resolvable -- find() would keep refreshing it while every attribute access throws.
          */
         for (int round = 0; round < ROUNDS; round++) {
-            NettyHttpSession session = manager.create();
+            NettyHttpSession session = manager.newSession();
 
             race(() -> {
                 try {
@@ -178,13 +178,13 @@ class NettySessionManagerConcurrencyTest {
     @Test
     void shouldStillUnbindValueBoundWhileSessionIsTornDown() throws InterruptedException {
         /*
-         * The re-check in setAttribute exists for exactly this: checkValid() can pass and invalidation
+         * The re-check in setAttribute exists for exactly this: requireValid() can pass and invalidation
          * land during the put, leaving a value in a session nothing will ever tear down. Pairing rather
          * than a ceiling on the releases: counting only those leaves an unpaired *bind* invisible, and
          * it is the pairing that holds the remove(key, value) claim honest against a double release.
          */
         for (int round = 0; round < ROUNDS; round++) {
-            NettyHttpSession session = manager.create();
+            NettyHttpSession session = manager.newSession();
             var value = new CountingValue();
 
             race(() -> {
@@ -213,7 +213,7 @@ class NettySessionManagerConcurrencyTest {
          * double-releases; a @SessionScope bean runs @PreDestroy twice.
          */
         for (int round = 0; round < ROUNDS; round++) {
-            NettyHttpSession session = manager.create();
+            NettyHttpSession session = manager.newSession();
             var value = new CountingValue();
             /*
              * Already bound, so the re-bind below is the no-valueBound path -- what
@@ -246,7 +246,7 @@ class NettySessionManagerConcurrencyTest {
          * it a second time. A @SessionScope bean would run its @PreDestroy twice.
          */
         for (int round = 0; round < ATTRIBUTE_ROUNDS; round++) {
-            NettyHttpSession session = manager.create();
+            NettyHttpSession session = manager.newSession();
             var value = new CountingValue();
             session.setAttribute("k", value);
 
@@ -266,7 +266,7 @@ class NettySessionManagerConcurrencyTest {
          * claims the bound value and unbinds it, and the re-bind puts it back unannounced.
          */
         for (int round = 0; round < ATTRIBUTE_ROUNDS; round++) {
-            NettyHttpSession session = manager.create();
+            NettyHttpSession session = manager.newSession();
             var value = new CountingValue();
             session.setAttribute("k", value);
 
@@ -286,7 +286,7 @@ class NettySessionManagerConcurrencyTest {
          * stays reachable, nothing reachable is invalidated -- and not the locking that produces it.
          */
         for (int round = 0; round < ROUNDS; round++) {
-            NettyHttpSession session = manager.create();
+            NettyHttpSession session = manager.newSession();
             String id = session.getId();
             long deadline = clock.get() + ONE_MINUTE * 1000L;
 
@@ -314,7 +314,7 @@ class NettySessionManagerConcurrencyTest {
             }
         });
         for (int round = 0; round < ROUNDS; round++) {
-            NettyHttpSession session = manager.create();
+            NettyHttpSession session = manager.newSession();
             long deadline = clock.get() + ONE_MINUTE * 1000L;
 
             race(() -> {
@@ -342,7 +342,7 @@ class NettySessionManagerConcurrencyTest {
          * not yet unbound from the store -- is what the teardown paths pass through, and can be
          * constructed directly rather than covered by luck.
          */
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         session.markInvalidated();
 
         assertEquals(1, manager.size(), "the session must still be in the store for the guard to matter");
@@ -357,7 +357,7 @@ class NettySessionManagerConcurrencyTest {
          * monitor from the test thread is what makes this deterministic; asserting the finder actually
          * reaches BLOCKED is what stops it going quietly vacuous if find() ever stops locking.
          */
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         String id = session.getId();
 
         Thread finder;
@@ -381,7 +381,7 @@ class NettySessionManagerConcurrencyTest {
          * outside the lock and then evicting unconditionally destroys a session that is now live for
          * another hour, and the request that extended it sees IllegalStateException on its next access.
          */
-        NettyHttpSession session = manager.create();
+        NettyHttpSession session = manager.newSession();
         long deadline = ONE_MINUTE * 1000L;
         clock.set(deadline);
 

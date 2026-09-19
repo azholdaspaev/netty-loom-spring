@@ -763,7 +763,7 @@ class DefaultNettyServletContextTest {
 
     @Test
     void shouldCloseSessionManager() {
-        context.getSessionManager().create();
+        context.getSessionManager().newSession();
         assertEquals(1, context.getSessionManager().size());
 
         context.close();
@@ -975,7 +975,7 @@ class DefaultNettyServletContextTest {
             }
         });
         context.fireContextInitialized();
-        context.getSessionManager().create();
+        context.getSessionManager().newSession();
 
         context.close();
 
@@ -1119,7 +1119,7 @@ class DefaultNettyServletContextTest {
         context.fireContextInitialized();
         context.initializeFilters();
         context.initializeServlet("dispatcher", new RecordingServlet("dispatcher"));
-        context.getSessionManager().create();
+        context.getSessionManager().newSession();
         events.clear();
 
         context.close();

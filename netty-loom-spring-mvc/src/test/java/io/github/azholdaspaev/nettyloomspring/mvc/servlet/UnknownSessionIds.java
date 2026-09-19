@@ -1,7 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
 
 /**
- * Session ids well-formed as {@link NettySessionManager#create()} mints them -- 32 uppercase hex --
+ * Session ids well-formed as {@link NettySessionManager#newSession()} mints them -- 32 uppercase hex --
  * but naming no session. Container-shaped rather than a short marker such as {@code "DEADBEEF"}
  * (issue #97).
  */
