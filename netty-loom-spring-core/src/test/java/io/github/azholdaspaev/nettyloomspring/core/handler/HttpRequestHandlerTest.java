@@ -564,6 +564,31 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    void shouldBuildConnectionMetadataOncePerConnection() {
+        List<HttpConnectionMetadata> seen = new CopyOnWriteArrayList<>();
+        HttpRequestDispatcher dispatcher = (_, _, connection, writer) -> {
+            seen.add(connection);
+            writer.write(emptyOkResponse());
+        };
+        EmbeddedChannel first = new EmbeddedChannel(
+            new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+        EmbeddedChannel second = new EmbeddedChannel(
+            new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+
+        receive(first, HttpMethod.GET, "/a");
+        receive(first, HttpMethod.GET, "/b");
+        receive(second, HttpMethod.GET, "/c");
+
+        assertSame(seen.get(0), seen.get(1),
+            "every field of the record is fixed for the life of the connection, so a second instance "
+                + "for a second request is allocation and address formatting for nothing (#370)");
+        assertNotSame(seen.get(0), seen.get(2),
+            "another connection has its own addresses and id and must not share the first one's record");
+        first.finishAndReleaseAll();
+        second.finishAndReleaseAll();
+    }
+
+    @Test
     void shouldInvokeDispatcherOncePerRequest() {
         CapturingDispatcher dispatcher = new CapturingDispatcher();
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(dispatcher, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));

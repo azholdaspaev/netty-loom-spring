@@ -45,6 +45,9 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
     /** The dispatched exchange's request has reached its terminator. Event loop only. */
     private boolean requestOffWire;
 
+    /** Built at the first request head and kept for the life of the connection. Event loop only. */
+    private HttpConnectionMetadata connection;
+
     public HttpRequestHandler(HttpRequestDispatcher requestDispatcher,
                               Executor dispatchExecutor,
                               HttpConnectionRegistry connectionRegistry,
@@ -85,7 +88,10 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
                  */
                 body.offer(aggregated);
             }
-            dispatch(ctx, request, HttpConnectionMetadata.from(ctx), body, writer);
+            if (connection == null) {
+                connection = HttpConnectionMetadata.from(ctx);
+            }
+            dispatch(ctx, request, connection, body, writer);
             return;
         }
         if (msg instanceof HttpContent content) {
