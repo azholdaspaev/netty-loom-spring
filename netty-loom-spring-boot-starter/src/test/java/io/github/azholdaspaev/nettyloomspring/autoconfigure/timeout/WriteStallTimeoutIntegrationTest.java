@@ -53,7 +53,7 @@ class WriteStallTimeoutIntegrationTest {
     @Timeout(value = 60, unit = TimeUnit.SECONDS)
     void shouldDeliverWholeBodyToClientThatKeepsReading() throws Exception {
         try (Socket socket = narrowWindowedClient()) {
-            RawHttpClient.send(socket, "GET /streaming/large HTTP/1.1", "Host: localhost");
+            RawHttpClient.send(socket, "GET /streaming/large HTTP/1.1", "Host: localhost", "Connection: close");
 
             assertTrue(readToEnd(socket) > StreamingController.LARGE_BODY_BYTES,
                 "the same narrow window must deliver the whole body, plus framing, when it is drained");
@@ -64,7 +64,7 @@ class WriteStallTimeoutIntegrationTest {
     @Timeout(value = 60, unit = TimeUnit.SECONDS)
     void shouldLeaveOrdinaryResponseUntouchedByBound() throws Exception {
         try (Socket socket = narrowWindowedClient()) {
-            RawHttpClient.send(socket, "GET /streaming/sized HTTP/1.1", "Host: localhost");
+            RawHttpClient.send(socket, "GET /streaming/sized HTTP/1.1", "Host: localhost", "Connection: close");
 
             assertTrue(readToEnd(socket) > 0, "a response that never stalls must not be bounded at all");
         }
