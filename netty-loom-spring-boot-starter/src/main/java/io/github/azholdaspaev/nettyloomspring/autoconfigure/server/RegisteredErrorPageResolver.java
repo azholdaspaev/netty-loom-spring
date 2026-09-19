@@ -31,14 +31,14 @@ class RegisteredErrorPageResolver implements NettyErrorPageResolver {
 
     @Override
     public String resolve(int status, Throwable failure, Throwable rootCause) {
-        String path = byException(failure);
+        String path = resolveByException(failure);
         if (path == null) {
-            path = byException(rootCause);
+            path = resolveByException(rootCause);
         }
         return path != null ? path : byStatus.getOrDefault(status, global);
     }
 
-    private String byException(Throwable failure) {
+    private String resolveByException(Throwable failure) {
         for (Class<?> type = failure == null ? null : failure.getClass();
              type != null && type != Object.class;
              type = type.getSuperclass()) {

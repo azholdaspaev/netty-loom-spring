@@ -61,7 +61,7 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
 
     @Override
     public WebServer getWebServer(ServletContextInitializer... initializers) {
-        verifySslNotConfigured();
+        requireSslNotConfigured();
         /*
          * Set the context path before the initializer/filter/servlet startup phases so any component
          * that reads ServletContext.getContextPath() during onStartup/init sees the configured value,
@@ -91,7 +91,7 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
         return new NettyServletWebServer(nettyServer, getShutdown(), properties.shutdownGracePeriod());
     }
 
-    private void verifySslNotConfigured() {
+    private void requireSslNotConfigured() {
         /*
          * Because this factory is a ConfigurableServletWebServerFactory, Boot binds server.ssl.* onto it,
          * but the Netty pipeline has no SslHandler yet (issue #16). Fail fast rather than silently serving
@@ -117,7 +117,7 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
      */
     private void configureSessions() {
         Session session = getSettings().getSession();
-        verifySessionPersistenceNotConfigured(session);
+        requireSessionPersistenceNotConfigured(session);
         /*
          * The conversion itself belongs to the manager, which owns the field and the "zero means never
          * expires" rule; the factory only decides which setting feeds it.
@@ -149,7 +149,7 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
         servletContext.setErrorPageResolver(new RegisteredErrorPageResolver(getErrorPages()));
     }
 
-    private void verifySessionPersistenceNotConfigured(Session session) {
+    private void requireSessionPersistenceNotConfigured(Session session) {
         /*
          * Under Tomcat this writes SESSIONS.ser and survives a restart. This container has an in-memory
          * store only (issue #13 non-goal), so honouring the property is impossible and ignoring it would
