@@ -8,51 +8,51 @@
   "properties": [
     {
       "name": "server.netty.boss-threads",
-      "description": "Number of threads in the boss event loop group that accepts incoming connections. One is typically sufficient. 0 applies Netty's default of two times the number of available processors, the same as worker-threads. Must not be negative; a negative value fails startup."
+      "description": "Size of the event-loop group that accepts connections. Defaults to 1. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md"
     },
     {
       "name": "server.netty.worker-threads",
-      "description": "Number of threads in the worker event loop group that processes I/O for accepted connections. Use 0 to apply Netty's default of two times the number of available processors. Must not be negative; a negative value fails startup."
+      "description": "Size of the event-loop group that reads and writes on accepted connections. Defaults to 0. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md"
     },
     {
       "name": "server.netty.tcp-keep-alive",
-      "description": "Enables TCP SO_KEEPALIVE on accepted child channels. This is the socket-level keep-alive, independent of HTTP keep-alive semantics. HTTP keep-alive is protocol behaviour and is always on."
+      "description": "Socket-level SO_KEEPALIVE on accepted connections. Defaults to true. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md"
     },
     {
       "name": "server.netty.accept-count",
-      "description": "Maximum queue length for incoming connections that have completed the TCP handshake but not yet been accepted: the listen socket's SO_BACKLOG. The effective depth is min(value, net.core.somaxconn) on Linux; the kernel caps it silently, with no error and no log. 0 is not a default: the epoll and kqueue transports pass it to listen() verbatim, a queue of at most one pending connection on Linux, whereas the nio transport binds through the JDK, which substitutes 50 at 0. Must not be negative; a negative value fails startup. Neither matches server.tomcat.accept-count, which keeps Tomcat's 100 for anything below 1. Defaults to 128."
+      "description": "Listen backlog (SO_BACKLOG). Defaults to 128. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md"
     },
     {
       "name": "server.netty.shutdown-grace-period",
-      "description": "Maximum time to wait for in-flight HTTP requests to complete when Spring Boot invokes graceful shutdown (server.shutdown=graceful). After this deadline, remaining connections are force-closed. Defaults to 30 seconds, matching spring.lifecycle.timeout-per-shutdown-phase."
+      "description": "How long graceful shutdown drains before force-closing. Defaults to 30s. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md"
     },
     {
       "name": "server.netty.read-timeout",
-      "description": "How long the server waits on the client before closing the connection. A single interval measured from the previous response -- or from the connection being accepted, so a client that connects and sends nothing is closed one interval later, which is the slow-loris defence -- covering idle time on a keep-alive connection and delivery of the next request together, not one interval for each, so a connection that idles most of the interval has only the remainder left to deliver its next request. Time spent handling a request does not count against it, so a handler slower than the timeout still gets to answer. A connection that expires is closed without a response. Use 0 or a negative value to disable. Defaults to 30 seconds."
+      "description": "The slow-loris deadline, measured on the client rather than on your handler. Defaults to 30s. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md"
     },
     {
       "name": "server.netty.write-stall-timeout",
-      "description": "How long a response may sit unsent against a client that has stopped reading it. The clock starts only once the connection is unwritable -- its outbound buffer past the high-water mark -- and not on every write, so a client that reads slowly but steadily is never cut off; this is not Netty's WriteTimeoutHandler. On expiry the connection is closed mid-response and the handler is told the client stopped reading. Use 0 or a negative value to disable, which leaves a stalled dispatch waiting indefinitely. Defaults to 60 seconds."
+      "description": "How long a response waits on a client that has stopped reading it. Defaults to 60s. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md"
     },
     {
       "name": "server.netty.max-http-body-size",
-      "description": "Maximum request body size. A request whose Content-Length declares more is answered 413 before any of its body is read; a body without a declared length is answered 413 the moment it grows past the limit. Must be positive; 0 does not disable the limit and fails startup. Defaults to 1MB."
+      "description": "Request body cap, answered 413. Defaults to 1MB. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md"
     },
     {
       "name": "server.netty.max-header-size",
-      "description": "Maximum size of a request's header block, all header lines together. A request past it is answered 431 and the connection is closed. This is the Netty-only counterpart of server.max-http-request-header-size, which this server does not read. Must be positive; 0 does not disable the limit and fails startup. Defaults to 10000B (decimal bytes, not 10KB)."
+      "description": "Request header-block cap, answered 431. Defaults to 10000B. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md"
     },
     {
       "name": "server.netty.max-initial-line-length",
-      "description": "Maximum length of the request line -- method, target and version together. A request past it is answered 414 and the connection is closed. Must be positive; 0 does not disable the limit and fails startup. Defaults to 10000B (decimal bytes, not 10KB)."
+      "description": "Request-line cap, answered 414. Defaults to 10000B. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md"
     },
     {
       "name": "server.netty.max-chunk-size",
-      "description": "Largest piece of a request body the decoder hands on at once. Larger bodies are split into pieces of at most this size and reach getInputStream() one piece at a time; nothing is refused for exceeding it. Must be positive; 0 does not disable the limit and fails startup. Defaults to 10000B (decimal bytes, not 10KB)."
+      "description": "Size of the pieces a request body is delivered in. Defaults to 10000B. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md"
     },
     {
       "name": "server.netty.transport",
-      "description": "Netty I/O transport to use. 'auto' picks the best native transport for the platform (epoll on Linux, kqueue on macOS) and falls back to NIO when none is available. 'nio' forces the portable Java NIO transport. 'epoll' or 'kqueue' force that native transport and fail fast at startup if it is not available on the platform."
+      "description": "Netty I/O transport: auto, nio, epoll or kqueue. Defaults to auto. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md"
     }
   ],
   "hints": [
