@@ -20,6 +20,8 @@ import jakarta.servlet.http.HttpSessionIdListener;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.http.HttpHeaders;
 
 import java.io.UnsupportedEncodingException;
@@ -278,37 +280,23 @@ class NettyHttpServletRequestTest {
             "every request constructed concurrently must get its own id (Servlet 6.0 getRequestId: unique within the container)");
     }
 
-    @Test
-    void shouldReadServerNameAndPortFromHostHeader() {
+    @ParameterizedTest
+    @CsvSource({
+        "example.com, example.com, 80",
+        "example.com:8443, example.com, 8443",
+        "[::1]:8080, [::1], 8080",
+        "[::1], [::1], 80",
+        "redis_master:6379, redis_master, 6379",
+        "'', 198.51.100.9, 7070",
+        ", 198.51.100.9, 7070"
+    })
+    void shouldReadServerNameAndPortFromHostHeader(String host, String serverName, int serverPort) {
         var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
 
-        var hostOnly = request("/x", "example.com", insecure);
-        assertEquals("example.com", hostOnly.getServerName());
-        assertEquals(80, hostOnly.getServerPort());
+        var request = request("/x", host, insecure);
 
-        var hostPort = request("/x", "example.com:8443", insecure);
-        assertEquals("example.com", hostPort.getServerName());
-        assertEquals(8443, hostPort.getServerPort());
-
-        var ipv6Port = request("/x", "[::1]:8080", insecure);
-        assertEquals("[::1]", ipv6Port.getServerName());
-        assertEquals(8080, ipv6Port.getServerPort());
-
-        var ipv6NoPort = request("/x", "[::1]", insecure);
-        assertEquals("[::1]", ipv6NoPort.getServerName());
-        assertEquals(80, ipv6NoPort.getServerPort());
-
-        var noHost = request("/x", null, insecure);
-        assertEquals("198.51.100.9", noHost.getServerName());
-        assertEquals(7070, noHost.getServerPort());
-
-        var underscored = request("/x", "redis_master:6379", insecure);
-        assertEquals("redis_master", underscored.getServerName());
-        assertEquals(6379, underscored.getServerPort());
-
-        var blank = request("/x", "", insecure);
-        assertEquals("198.51.100.9", blank.getServerName());
-        assertEquals(7070, blank.getServerPort());
+        assertEquals(serverName, request.getServerName(), "server name for Host header " + host);
+        assertEquals(serverPort, request.getServerPort(), "server port for Host header " + host);
     }
 
     @Test
