@@ -9,6 +9,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.util.UrlPathHelper;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 
 public class NettyDispatchFactory {
@@ -44,9 +45,13 @@ public class NettyDispatchFactory {
     public FilterChain chainFor(HttpServletRequest request) {
         String servletPath = request.getServletPath();
         DispatcherType dispatcherType = request.getDispatcherType();
-        List<RegisteredFilter> applicable = context.getRegisteredFilters().stream()
-            .filter(filter -> filter.matches(servletPath, dispatcherType))
-            .toList();
+        List<RegisteredFilter> registered = context.getRegisteredFilters();
+        List<RegisteredFilter> applicable = new ArrayList<>(registered.size());
+        for (RegisteredFilter filter : registered) {
+            if (filter.matches(servletPath, dispatcherType)) {
+                applicable.add(filter);
+            }
+        }
         return new NettyFilterChain(applicable, terminal);
     }
 

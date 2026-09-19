@@ -66,7 +66,8 @@ public class NettyHttpServletRequest implements HttpServletRequest {
      */
     private final NettyHttpServletResponse response;
 
-    private final Map<String, Object> attributes = new HashMap<>();
+    // The table Spring MVC's per-request attributes grew to (16 -> 32 -> 64) in the #369 profile.
+    private final Map<String, Object> attributes = new HashMap<>(64);
     private final String requestId = Long.toHexString(REQUEST_IDS.getAndIncrement());
     private final String requestURI;
     /**
