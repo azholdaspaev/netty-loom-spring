@@ -1,0 +1,82 @@
+name: Consumer smoke
+
+# Runs consumer-smoke/run.sh against artifacts that are already published, so it takes no
+# repository credentials. Called by publish.yml after each of its paths, and dispatched by hand
+# when a release smoke has timed out waiting for the Portal's Publish click.
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: Maven repository URL
+        type: string
+        default: https://repo1.maven.org/maven2
+      version:
+        description: Version to resolve
+        type: string
+        required: true
+      wait-minutes:
+        description: How long to wait for the version to be served before failing
+        type: number
+        default: 30
+  workflow_call:
+    inputs:
+      repository:
+        type: string
+        required: true
+      version:
+        type: string
+        required: true
+      wait-minutes:
+        type: number
+        default: 30
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+
+    # Expressions have no arithmetic, so this cannot follow wait-minutes; the wait step keeps its
+    # own deadline and this only bounds a hung build.
+    timeout-minutes: 240
+
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # A snapshot is served as soon as the deploy returns, but a release reaches repo1 only after
+      # the Portal's Publish click and Central's sync, so the version is polled for rather than
+      # assumed. The starter's POM is the last file a consumer needs; a snapshot has no fixed POM
+      # name, so its maven-metadata.xml stands in.
+      - name: Wait for the version to be served
+        env:
+          REPOSITORY: ${{ inputs.repository }}
+          VERSION: ${{ inputs.version }}
+          WAIT_MINUTES: ${{ inputs.wait-minutes }}
+        run: |
+          set -euo pipefail
+          base="${REPOSITORY%/}/io/github/azholdaspaev/netty-loom-spring-boot-starter/${VERSION}"
+          case "$VERSION" in
+            *-SNAPSHOT) url="$base/maven-metadata.xml" ;;
+            *)          url="$base/netty-loom-spring-boot-starter-${VERSION}.pom" ;;
+          esac
+          deadline=$(( $(date +%s) + WAIT_MINUTES * 60 ))
+          until curl -fsS -o /dev/null "$url"; do
+            [ "$(date +%s)" -lt "$deadline" ] \
+              || { echo "::error::${url} is still not served after ${WAIT_MINUTES} minutes"; exit 1; }
+            echo "waiting for ${url}"
+            sleep 30
+          done
+
+      - name: Consumer smoke
+        env:
+          REPOSITORY: ${{ inputs.repository }}
+          VERSION: ${{ inputs.version }}
+        run: consumer-smoke/run.sh "$REPOSITORY" "$VERSION"

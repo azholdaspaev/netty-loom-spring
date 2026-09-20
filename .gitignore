@@ -28,6 +28,9 @@ replay_pid*
 build/
 !gradle/wrapper/gradle-wrapper.jar
 
+# Maven
+target/
+
 # IDE
 .idea/
 *.iml
