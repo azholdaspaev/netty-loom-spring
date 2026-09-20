@@ -13,7 +13,7 @@ First release. Not yet published to Maven Central; a `0.1.0-SNAPSHOT` is on
 
 ### Added
 
-The list is written from [What works, what doesn't](README.md#what-works-what-doesnt) and the
+The list is written from [Scope](README.md#scope) and the
 [compatibility matrix](docs/compatibility-matrix.md) when the release is tagged
 ([docs/publishing.md](docs/publishing.md#before-tagging)); until then those two are the feature
 list, and this section does not keep a third copy of it.
