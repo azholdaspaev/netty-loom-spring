@@ -26,8 +26,14 @@ jobs:
     permissions:
       contents: read
 
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
     steps:
       - uses: actions/checkout@v4
+
+      - id: version
+        run: echo "version=$(sed -n 's/^version=//p' gradle.properties)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-java@v4
         with:
@@ -59,6 +65,9 @@ jobs:
 
     permissions:
       contents: write  # gh release create; the job never pushes a commit
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4
@@ -94,6 +103,7 @@ jobs:
       # The second check refuses a tag for a version the repository was not working toward. Without
       # it, `git tag v9.9.9` on today's tree publishes 9.9.9 to a registry that never forgets.
       - name: Resolve the release version
+        id: version
         run: |
           set -euo pipefail
           version=${GITHUB_REF_NAME#v}
@@ -103,6 +113,7 @@ jobs:
           [ "$version" = "${declared%-SNAPSHOT}" ] \
             || { echo "::error::Tag ${GITHUB_REF_NAME} does not match gradle.properties version=${declared}"; exit 1; }
           echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       # Ahead of the build rather than beside the `gh release create` that consumes it: past the
       # Portal upload nothing can be taken back, so a CHANGELOG mistake has to fail before it.
@@ -205,3 +216,29 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
             --notes-file "$RUNNER_TEMP/notes.md"
+
+  smoke-snapshot:
+    needs: snapshot
+
+    permissions:
+      contents: read
+
+    uses: ./.github/workflows/consumer-smoke.yml
+    with:
+      repository: https://central.sonatype.com/repository/maven-snapshots
+      version: ${{ needs.snapshot.outputs.version }}
+
+  # 180 minutes rather than the called workflow's 30: `release` ends at VALIDATED, and the version
+  # is served from repo1 only after the Publish click in the Portal and Central's sync. Past the
+  # wait this job is red and Consumer smoke is dispatched by hand.
+  smoke-release:
+    needs: release
+
+    permissions:
+      contents: read
+
+    uses: ./.github/workflows/consumer-smoke.yml
+    with:
+      repository: https://repo1.maven.org/maven2
+      version: ${{ needs.release.outputs.version }}
+      wait-minutes: 180

@@ -131,12 +131,28 @@ on releases it has already accepted, so revoking does not retract them.
 | Protocol | Maven deploy to the snapshot endpoint | zipped bundle, multipart POST |
 | Signed | no | yes |
 | Ends at | uploaded | `VALIDATED`, awaiting your *Publish* click |
+| Then | consumer smoke against Central Snapshots | consumer smoke against `repo1`, once the artifact is served |
 
 The release path uploads with `publishingType=USER_MANAGED`, so the last step is manual. That is
 what makes a rehearsal possible: a `VALIDATED` deployment can still be dropped with
 `DELETE /api/v1/publisher/deployment/<id>`, while a published one is on Maven Central permanently.
 The bundle omits every `maven-metadata.xml` Gradle writes into `build/staging`, which the Portal
 does not accept.
+
+### Consumer smoke
+
+`consumer-smoke/run.sh <repository-url> <version>` is what an outside user does with the
+coordinates: a standalone Gradle consumer and a standalone Maven consumer each resolve the starter,
+compile a controller against `HttpServletRequest`, start a Boot application and request it, then
+resolve the sources and javadoc jars of all three modules. It publishes nothing and takes no
+credentials; a failure names the consumer and the phase — resolution, compilation, startup, http or
+auxiliary. Locally it needs JDK 25 and `mvn` on the path.
+
+`.github/workflows/consumer-smoke.yml` runs it after polling the repository until the version is
+served. `publish.yml` calls it after each path: at once for a snapshot, and for a release with a
+180-minute wait, because the artifact reaches `repo1` only after your *Publish* click and Central's
+sync. If the click comes later than that, the job is red; dispatch **Consumer smoke** by hand
+(Actions ▸ Consumer smoke ▸ *Run workflow*) with the version, and the default repository.
 
 ### Before tagging
 

@@ -28,6 +28,7 @@ A Spring Boot integration library that replaces Tomcat/Jetty with a Netty-based 
 | `netty-loom-spring-boot-starter` | Auto-configuration. `NettyServletWebServerFactory` implements the `ServletWebServerFactory` SPI, `NettyServletWebServer` implements `WebServer`; registered via `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` |
 | `netty-loom-spring-example-netty` / `-tomcat` | Runnable Boot apps (`bootRun`), each with a `BenchmarkController` (`/ping`, `/work`) and an e2e test; ports 18080 and 18081/18082 (`platform`/`virtual` profiles). Load targets for the benchmark harness; `-tomcat` is the baseline |
 | `netty-loom-spring-benchmarks` | k6 harness — **not a Gradle module** (no `src/`, absent from `settings.gradle.kts` by design). README.md § Benchmarks says how to run it and read the numbers |
+| `consumer-smoke` | Standalone Gradle and Maven consumers of a *published* starter — **not a Gradle module**; `run.sh <repository> <version>` is the release gate, and `docs/publishing.md` § Consumer smoke says when it runs |
 
 **Seams:** `core.handler.HttpRequestDispatcher` separates the Netty pipeline from any higher-layer dispatcher and keeps `core` free of Spring. README.md § Architecture has the request flow and the pipeline handler names.
 
