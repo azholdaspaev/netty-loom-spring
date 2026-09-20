@@ -61,6 +61,7 @@ SHIM
   echo '[]' > "$tmp/state/running.json"
   echo '[]' > "$tmp/state/closed.json"
   echo '[]' > "$tmp/state/fix-prs.json"
+  echo '[]' > "$tmp/state/open-prs.json"
   : > "$tmp/state/merged"
   jq -n '["agent/running", "agent/queued", "agent/needs-input", "agent/fix", "agent/failed", "agent/pr-ready", "agent/retried", "area/agent"] | map({name: .})' \
     > "$tmp/state/labels.json"
@@ -79,6 +80,7 @@ case "$*" in
   "issue edit "*) echo "https://github.com/o/r/issues/$3" ;;
   "issue comment "*" --body-file -") cat > "$SHIM_STATE/issue-comment-$3"; echo "https://github.com/o/r/issues/$3#issuecomment-1" ;;
   "pr list --label agent/fix --state open --json url,headRefName --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/fix-prs.json" ;;
+  "pr list --state open --limit 100 --json headRefName --jq "*) jq -r "$(jqarg "$@")" "$SHIM_STATE/open-prs.json" ;;
   "pr list --head "*" --state merged --json number --jq "*)
     if grep -qx "$4" "$SHIM_STATE/merged"; then echo '[{"number": 1}]'; else echo '[]'; fi | jq -r "$(jqarg "$@")" ;;
   "pr edit "*) echo "$3" ;;
@@ -107,14 +109,28 @@ queue() { issue "$1" "$2" "agent/queued"; listed "$1" queued; }
 running() { issue "$1" "$2" "${3:-agent/running}"; listed "$1" running "${3:-agent/running}"; }
 closed() { issue "$1" "Closed" "$2" CLOSED; listed "$1" closed "$2"; }
 
-# fixpr <url> <branch>: an open pull request labelled agent/fix; merged <branch>: its pull request is merged;
-# worktree <branch>: what a previous tick left in netty-loom-wt
+# fixpr <url> <branch>: an open pull request labelled agent/fix; openpr <branch>: an open pull request on
+# that branch, whatever its labels; merged <branch>: its pull request is merged; worktree <branch>: what a
+# previous tick left in netty-loom-wt; pushed <branch>: the branch on origin with a commit of its own, made
+# in a clone of the maintainer's, so the main clone has no local branch
 fixpr() {
   jq --arg url "$1" --arg branch "$2" '. + [{url: $url, headRefName: $branch}]' "$tmp/state/fix-prs.json" > "$tmp/state/fix.new"
   mv "$tmp/state/fix.new" "$tmp/state/fix-prs.json"
 }
+openpr() {
+  jq --arg branch "$1" '. + [{headRefName: $branch}]' "$tmp/state/open-prs.json" > "$tmp/state/open.new"
+  mv "$tmp/state/open.new" "$tmp/state/open-prs.json"
+}
 merged() { echo "$1" >> "$tmp/state/merged"; }
 worktree() { git -C "$tmp/main" worktree add -q "$tmp/netty-loom-wt/$1" -b "$1" origin/main; }
+pushed() {
+  git clone -q "$tmp/origin" "$tmp/theirs" 2>/dev/null
+  git -C "$tmp/theirs" checkout -q -b "$1"
+  echo hand > "$tmp/theirs/hand.txt"
+  git -C "$tmp/theirs" add hand.txt
+  git -C "$tmp/theirs" commit -q -m "NL-7 By hand"
+  git -C "$tmp/theirs" push -q origin "$1"
+}
 
 TS='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z'
 RUN_TS='[0-9]{8}T[0-9]{6}Z'
@@ -139,6 +155,7 @@ contains() { case "$1" in *"$2"*) return 0 ;; *) return 1 ;; esac; }
 said_in() { grep -E "^$TS runner\.sh: " "$1" 2>/dev/null | sed -E "s/^$TS runner\.sh: //" | tr '\n' '|' || true; }
 
 WT7="netty-loom-wt/NL-7-fix-the-thing"
+WTH="netty-loom-wt/NL-7-by-hand"
 PICK7="gh issue edit 7 --remove-label agent/queued --add-label agent/running|"
 
 # --- a tick while another holds the lock exits at once and touches nothing ---
@@ -271,6 +288,128 @@ ok=1; why="rc=$rc stderr=$err actions=$actions comment=$comment"
 contains "$comment" "Pipeline failed (exit 124, infrastructure, retried once already)" \
   && contains "$comment" "pipeline stderr line 40" && contains "$comment" 'Replace `agent/failed` with `agent/queued`' || ok=0
 check infrastructure-twice "$ok" "$why"
+rm -rf "$tmp"
+
+# --- a pull request opened by hand on the issue's branch: the worktree tracks that branch, the title's slug names nothing ---
+setup
+queue 7 "Fix the Thing: quickly!"
+openpr NL-7-by-hand
+pushed NL-7-by-hand
+run
+wt=$(cd "$tmp/$WTH" 2>/dev/null && pwd -P || echo missing)
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" = 0 ] || ok=0
+[ "$actions" = "requeue|${PICK7}gradlew dependencySources in $wt|pipeline 7 in $wt|gh issue edit 7 --remove-label agent/running|" ] || ok=0
+[ "$(git -C "$tmp/$WTH" branch --show-current 2>/dev/null)" = NL-7-by-hand ] || { ok=0; why="$why branch=$(git -C "$tmp/$WTH" branch --show-current 2>&1 || true)"; }
+[ "$(git -C "$tmp/$WTH" rev-parse HEAD 2>/dev/null)" = "$(git -C "$tmp/origin" rev-parse NL-7-by-hand)" ] || { ok=0; why="$why HEAD is not the pushed branch"; }
+[ "$(git -C "$tmp/$WTH" rev-parse --abbrev-ref '@{u}' 2>/dev/null)" = origin/NL-7-by-hand ] || { ok=0; why="$why upstream=$(git -C "$tmp/$WTH" rev-parse --abbrev-ref '@{u}' 2>&1 || true)"; }
+[ ! -d "$tmp/$WT7" ] || { ok=0; why="$why a worktree was added under the title's slug"; }
+contains "$said" "queued: NL-7 picked up on NL-7-by-hand|" || { ok=0; why="$why said=$said"; }
+check hand-pr "$ok" "$why"
+rm -rf "$tmp"
+
+# --- two open pull requests on the issue's branches: agent/failed with both names, and no worktree ---
+setup
+queue 7 "Fix the Thing: quickly!"
+openpr NL-7-a
+openpr NL-7-b
+run
+comment=$(cat "$tmp/state/issue-comment-7" 2>/dev/null || true)
+ok=1; why="rc=$rc stderr=$err actions=$actions comment=$comment"
+[ "$rc" = 0 ] || ok=0
+[ "$actions" = "requeue|gh issue edit 7 --remove-label agent/queued --add-label agent/failed|gh issue comment 7 --body-file -|" ] || ok=0
+contains "$comment" "NL-7-a" && contains "$comment" "NL-7-b" && contains "$comment" 'replace `agent/failed` with `agent/queued`' || ok=0
+[ ! -d "$tmp/netty-loom-wt" ] || { ok=0; why="$why a worktree was added"; }
+[ "$said" = "tick start|requeue|queued: NL-7 NL-7-a NL-7-b all open, agent/failed|tick end (exit 0)|" ] || { ok=0; why="$why said=$said"; }
+check hand-pr-two "$ok" "$why"
+rm -rf "$tmp"
+
+# --- the same, with a local branch already at origin's tip: the worktree takes it ---
+setup
+queue 7 "Fix the Thing: quickly!"
+openpr NL-7-by-hand
+pushed NL-7-by-hand
+git -C "$tmp/main" fetch -q origin
+git -C "$tmp/main" branch -q NL-7-by-hand origin/NL-7-by-hand
+run
+wt=$(cd "$tmp/$WTH" 2>/dev/null && pwd -P || echo missing)
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" = 0 ] || ok=0
+[ "$actions" = "requeue|${PICK7}gradlew dependencySources in $wt|pipeline 7 in $wt|gh issue edit 7 --remove-label agent/running|" ] || ok=0
+[ "$(git -C "$tmp/$WTH" branch --show-current 2>/dev/null)" = NL-7-by-hand ] || { ok=0; why="$why branch=$(git -C "$tmp/$WTH" branch --show-current 2>&1 || true)"; }
+[ "$(git -C "$tmp/$WTH" rev-parse HEAD 2>/dev/null)" = "$(git -C "$tmp/origin" rev-parse NL-7-by-hand)" ] || { ok=0; why="$why HEAD is not the pushed branch"; }
+check hand-pr-local-branch "$ok" "$why"
+rm -rf "$tmp"
+
+# --- the branch is checked out elsewhere in the clone (the main clone, or a worktree of another tool): agent/failed naming the path, nothing added ---
+for where in main elsewhere; do
+  setup
+  queue 7 "Fix the Thing: quickly!"
+  openpr NL-7-by-hand
+  pushed NL-7-by-hand
+  git -C "$tmp/main" fetch -q origin
+  case "$where" in
+    main) git -C "$tmp/main" checkout -q -b NL-7-by-hand origin/NL-7-by-hand; at="$tmp/main" ;;
+    elsewhere) git -C "$tmp/main" worktree add -q "$tmp/theirs-wt" NL-7-by-hand; at="$tmp/theirs-wt" ;;
+  esac
+  at=$(cd "$at" && pwd -P)
+  run
+  comment=$(cat "$tmp/state/issue-comment-7" 2>/dev/null || true)
+  ok=1; why="rc=$rc stderr=$err actions=$actions comment=$comment"
+  [ "$rc" = 0 ] || ok=0
+  [ "$actions" = "requeue|${PICK7}gh issue edit 7 --remove-label agent/running --add-label agent/failed|gh issue comment 7 --body-file -|" ] || ok=0
+  contains "$comment" "checked out at \`$at\`" && contains "$comment" 'replace `agent/failed` with `agent/queued`' || ok=0
+  [ ! -d "$tmp/$WTH" ] || { ok=0; why="$why a worktree was added"; }
+  contains "$said" "|queued: NL-7 picked up on NL-7-by-hand|queued: NL-7 NL-7-by-hand checked out at $at, agent/failed|tick end (exit 0)|" || { ok=0; why="$why said=$said"; }
+  check "hand-pr-checked-out-$where" "$ok" "$why"
+  rm -rf "$tmp"
+done
+
+# --- the branch was checked out in a worktree since deleted from disk: the stale registration is pruned, and the tick goes on ---
+setup
+queue 7 "Fix the Thing: quickly!"
+openpr NL-7-by-hand
+pushed NL-7-by-hand
+git -C "$tmp/main" fetch -q origin
+git -C "$tmp/main" worktree add -q "$tmp/theirs-wt" NL-7-by-hand
+rm -rf "$tmp/theirs-wt"
+run
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" = 0 ] && contains "$actions" "pipeline 7 in " || ok=0
+[ "$(git -C "$tmp/$WTH" branch --show-current 2>/dev/null)" = NL-7-by-hand ] || { ok=0; why="$why worktree missing or on another branch"; }
+check hand-pr-pruned "$ok" "$why"
+rm -rf "$tmp"
+
+# --- a local branch off origin's tip: agent/failed naming both commits, and the branch is not moved ---
+setup
+queue 7 "Fix the Thing: quickly!"
+openpr NL-7-by-hand
+pushed NL-7-by-hand
+git -C "$tmp/main" fetch -q origin
+git -C "$tmp/main" branch -q NL-7-by-hand origin/main
+run
+comment=$(cat "$tmp/state/issue-comment-7" 2>/dev/null || true)
+ok=1; why="rc=$rc stderr=$err actions=$actions comment=$comment"
+[ "$rc" = 0 ] || ok=0
+[ "$actions" = "requeue|${PICK7}gh issue edit 7 --remove-label agent/running --add-label agent/failed|gh issue comment 7 --body-file -|" ] || ok=0
+contains "$comment" "is at $(git -C "$tmp/main" rev-parse --short origin/main)" && contains "$comment" "\`origin/NL-7-by-hand\` at $(git -C "$tmp/origin" rev-parse --short NL-7-by-hand)" || ok=0
+[ ! -d "$tmp/$WTH" ] || { ok=0; why="$why a worktree was added"; }
+[ "$(git -C "$tmp/main" rev-parse NL-7-by-hand)" = "$(git -C "$tmp/main" rev-parse origin/main)" ] || { ok=0; why="$why the local branch was moved"; }
+contains "$said" "|queued: NL-7 NL-7-by-hand is not at origin/NL-7-by-hand, agent/failed|" || { ok=0; why="$why said=$said"; }
+check hand-pr-diverged "$ok" "$why"
+rm -rf "$tmp"
+
+# --- the issue was renamed since an earlier run opened its pull request: the pull request's branch, not a second worktree under the new slug ---
+setup
+queue 7 "Renamed since"
+openpr NL-7-fix-the-thing
+worktree NL-7-fix-the-thing
+run
+ok=1; why="rc=$rc stderr=$err actions=$actions"
+[ "$rc" = 0 ] && contains "$actions" "pipeline 7 in $(cd "$tmp/$WT7" && pwd -P)|" || ok=0
+[ ! -d "$tmp/netty-loom-wt/NL-7-renamed-since" ] || { ok=0; why="$why a worktree was added under the new slug"; }
+contains "$said" "queued: NL-7 picked up on NL-7-fix-the-thing|" || { ok=0; why="$why said=$said"; }
+check own-pr-title-changed "$ok" "$why"
 rm -rf "$tmp"
 
 # --- agent/fix on a pull request: a fix stage then a review stage in its worktree under one run id, no test stage, then the label comes off ---

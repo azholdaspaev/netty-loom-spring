@@ -5,8 +5,11 @@
 # stage per agent/fix pull request whose issue is open and not on agent/needs-input (a question
 # from either stage puts it there, and the label stays on the pull request; an issue closed,
 # unreadable or not named by the branch fails the pull request), then take the oldest agent/queued
-# issue to a worktree of its own and run pipeline.sh there; its first infrastructure failure goes
-# back to agent/queued with agent/retried, any other to agent/failed.
+# issue to a worktree of its own -- on the branch of the open pull request whose head starts with
+# NL-<n>- when there is one, else NL-<n>-<title slug> from origin/main -- and run pipeline.sh there;
+# more than one such pull request, or a branch checked out elsewhere in the clone or with a local
+# tip off origin's, is agent/failed with no worktree added; the pipeline's first infrastructure
+# failure goes back to agent/queued with agent/retried, any other to agent/failed.
 # Usage: scripts/agent/runner.sh    (any cwd; the main clone is this script's grandparent)
 set -euo pipefail
 
@@ -41,6 +44,8 @@ BODY
 RETRY='Replace `agent/failed` with `agent/queued` to retry from the worktree as it is.'
 # fail_fix <pr url> <log line>: agent/fix off, agent/failed on, and stdin as the comment
 fail_fix() { say "fix: $2, agent/failed"; gh pr edit "$1" --remove-label agent/fix --add-label agent/failed >/dev/null; gh pr comment "$1" --body-file - >/dev/null; }
+# fail_queued <n> <label to remove> <log line>: agent/failed on, and stdin as the comment
+fail_queued() { note "queued: NL-$1 $3, agent/failed"; gh issue edit "$1" --remove-label "$2" --add-label agent/failed >/dev/null; gh issue comment "$1" --body-file - >/dev/null; }
 
 # --- sweep ---
 # The lock held above proves no pipeline is running, so agent/running on an open issue is a tick
@@ -129,15 +134,41 @@ done
 # --- queued ---
 n=$(gh issue list --label agent/queued --state open --json number --jq 'min_by(.number).number // empty')
 [ -n "$n" ] || exit 0
-slug=$(gh issue view "$n" --json title --jq .title | tr 'A-Z' 'a-z' | sed -E 's/[^a-z0-9]+/-/g; s/^-//; s/-$//' | cut -d- -f1-3)
-branch="NL-$n-$slug"
 log=$(log_of "$n")
+# The open pull request's branch rather than the title's slug when there is one: the maintainer's,
+# opened by hand, or an earlier run's under a title since changed.
+heads=$(gh pr list --state open --limit 100 --json headRefName --jq "[.[].headRefName | select(startswith(\"NL-$n-\"))] | join(\" \")")
+case "$heads" in
+  '') branch="NL-$n-$(gh issue view "$n" --json title --jq .title | tr 'A-Z' 'a-z' | sed -E 's/[^a-z0-9]+/-/g; s/^-//; s/-$//' | cut -d- -f1-3)" ;;
+  *' '*)
+    echo "More than one open pull request is on a \`NL-$n-\` branch: $heads. Close all but one, then replace \`agent/failed\` with \`agent/queued\`." \
+      | fail_queued "$n" agent/queued "$heads all open"
+    exit 0 ;;
+  *) branch=$heads ;;
+esac
 # A stale agent/pr-ready (failed at hand-over, or its pull request closed unmerged) comes off
 # here, so beside agent/running it means the pipeline finished, as the sweep reads it.
 stale=$(gh issue view "$n" --json labels --jq '.labels[].name | select(. == "agent/pr-ready")')
 note "queued: NL-$n picked up on $branch"
 gh issue edit "$n" --remove-label "agent/queued${stale:+,$stale}" --add-label agent/running >/dev/null
-[ -d "$WT/$branch" ] || git worktree add -q "$WT/$branch" -b "$branch" origin/main
+if [ ! -d "$WT/$branch" ] && [ -z "$heads" ]; then
+  git worktree add -q "$WT/$branch" -b "$branch" origin/main
+elif [ ! -d "$WT/$branch" ]; then
+  git worktree prune
+  at=$(git worktree list --porcelain | awk -v ref="refs/heads/$branch" '/^worktree / { wt = substr($0, 10) } $0 == ("branch " ref) { print wt }')
+  tip=$(git rev-parse -q --verify "refs/heads/$branch" || true)
+  if [ -n "$at" ]; then
+    echo "Branch \`$branch\` is checked out at \`$at\`. Switch that checkout to another branch or remove the worktree, then replace \`agent/failed\` with \`agent/queued\`." \
+      | fail_queued "$n" agent/running "$branch checked out at $at"
+    exit 0
+  elif [ -n "$tip" ] && [ "$tip" != "$(git rev-parse "origin/$branch")" ]; then
+    # Fail rather than move the local branch to origin's tip: it may be the maintainer's, with work not pushed yet.
+    echo "Local branch \`$branch\` is at $(git rev-parse --short "$tip"), \`origin/$branch\` at $(git rev-parse --short "origin/$branch"). Bring the two together, then replace \`agent/failed\` with \`agent/queued\`." \
+      | fail_queued "$n" agent/running "$branch is not at origin/$branch"
+    exit 0
+  fi
+  git worktree add -q "$WT/$branch" "$branch"
+fi
 rc=0
 (cd "$WT/$branch" && { ./gradlew dependencySources || exit 2; } && "$HERE/pipeline.sh" "$n") 2>>"$log" || rc=$?
 if [ "$rc" = 0 ]; then
