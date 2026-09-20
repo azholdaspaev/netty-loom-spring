@@ -54,7 +54,8 @@ mutations you ran with what each one broke.
 
 Merging needs both CI cells green (`CLAUDE.md` § CI). Review is advisory: `/flow:review <PR>` from
 a Claude Code session posts a bug pass and a maintainability pass as inline comments, and nothing
-in CI triggers it.
+in CI triggers it. To have the runner review, fix and test the pull request with no session, label
+the issue `agent/queued` ([`docs/agent-pipeline.md`](docs/agent-pipeline.md)).
 
 ## Benchmarks
 

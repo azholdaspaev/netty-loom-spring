@@ -12,13 +12,13 @@ decisions behind it: #211.
 
 | Label | Meaning | Set by | Cleared by |
 | --- | --- | --- | --- |
-| `agent/queued` | waiting for a tick | maintainer; `requeue.sh` after an answer, unless an `agent/fix` pull request is open on the issue's branch — then only `agent/needs-input` comes off and the runner reruns its stages | runner, on pick-up |
+| `agent/queued` | waiting for a tick | maintainer — on a new issue, or on one whose pull request they opened by hand, for the review, fix and test stages alone; `requeue.sh` after an answer, unless an `agent/fix` pull request is open on the issue's branch — then only `agent/needs-input` comes off and the runner reruns its stages | runner, on pick-up |
 | `agent/running` | a pipeline is running in the issue's worktree | runner | runner, when the pipeline returns; the next tick, when the tick died — to `agent/failed`, or just off when `agent/pr-ready` or `agent/queued` is already there |
 | `agent/needs-input` | a question is posted on the issue | `pipeline.sh`; runner, when an `agent/fix` stage asked; `requeue.sh`, when an `agent/pr-ready` issue's newest comment is a question — one an `agent/fix` stage asked and could not read back, since those post nothing else on the issue | `requeue.sh`, once the owner has answered |
 | `agent/pr-ready` | the pull request is ready for review | `pipeline.sh` | runner, after the merge, or on pick-up when the issue is queued again |
 | `agent/fix` | on a pull request: run a fix stage, then a review stage; stays on while a question from either waits on the issue, and the runner skips the pull request until the answer | maintainer | runner, after those stages |
 | `agent/retried` | the pipeline's one infrastructure failure — a stage timeout, a dropped API connection, a failed `gh` call — was retried from the worktree | runner | runner, after the merge |
-| `agent/failed` | the work failed, the infrastructure failed twice, an `agent/fix` stage failed or its pull request's issue is closed, unreadable or not named by the branch (`NL-<issue>-<slug>`), or a tick died with the issue on `agent/running`; the comment has the log tail | runner | maintainer |
+| `agent/failed` | the work failed, the infrastructure failed twice, an `agent/fix` stage failed or its pull request's issue is closed, unreadable or not named by the branch (`NL-<issue>-<slug>`), more than one open pull request is on a `NL-<issue>-` branch, that branch is checked out elsewhere in the clone or its local tip is off `origin`'s, or a tick died with the issue on `agent/running`; the comment has the log tail | runner | maintainer |
 
 One tick, in order: sweep — every open `agent/running` issue to `agent/failed` with the usual
 comment, since the lock proves no pipeline is running (one that also carries `agent/pr-ready`
@@ -31,9 +31,14 @@ and the labels are the maintainer's to clean up, because git drops the registrat
 delete fails, so no later tick can), `requeue.sh`, a fix stage then a review stage per `agent/fix`
 pull request whose issue is open and not on `agent/needs-input` (one closed or unreadable goes to
 `agent/failed`: the sweep strips a closed issue's labels every tick, so a question waiting there
-would otherwise be asked again on every tick), then one `agent/queued` issue. A tick that finds
-the lock held exits at once, so one pipeline runs at a time; the next queued issue waits for the
-next free tick.
+would otherwise be asked again on every tick), then one `agent/queued` issue, on the branch of the
+open pull request whose head starts with `NL-<n>-` when there is one — the maintainer's, or an
+earlier run's under a title since changed — else `NL-<n>-<first three title words>`; the worktree
+is added from that branch, or from `origin/main` when there is no pull request. Two such pull
+requests, or a branch checked out elsewhere in the clone (a Claude Code or supacode worktree
+included) or with a local tip off `origin`'s, are `agent/failed` with the names, the path or the
+two commits in the comment, and nothing is added. A tick that finds the lock held exits at once,
+so one pipeline runs at a time; the next queued issue waits for the next free tick.
 
 ## The maintainer's two touch points
 
@@ -51,6 +56,13 @@ next free tick.
    resolves the thread or says why not; the label comes off. A finding the review stage posts
    waits for the next `agent/fix`; no test stage runs on this path. Merge when satisfied: the
    next tick removes the worktree and branch and clears the labels.
+
+An issue implemented by hand enters at the review: push the branch (`NL-<n>-<slug>`,
+`CONTRIBUTING.md` § Commits), open the pull request, draft or not, take your checkout off the
+branch — archiving the Claude Code session that holds it is enough — and label the issue
+`agent/queued`. The tick hands over as in 2, and from then on the branch lives in its worktree
+under `../netty-loom-wt/`, where the merge cleans it up; do not push to it while the issue is on
+`agent/running`.
 
 A pipeline that fails on the infrastructure — `stage.sh` exits 124 on a timeout, 2 when a `gh`
 call failed or `claude` ended with `error_during_execution`; `pipeline.sh` exits 2 when one of its
