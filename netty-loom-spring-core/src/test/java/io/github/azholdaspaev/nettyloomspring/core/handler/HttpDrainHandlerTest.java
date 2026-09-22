@@ -1,6 +1,9 @@
 package io.github.azholdaspaev.nettyloomspring.core.handler;
 
 import io.netty.buffer.Unpooled;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -16,8 +19,11 @@ import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HttpDrainHandlerTest {
@@ -34,6 +40,38 @@ class HttpDrainHandlerTest {
 
         assertTrue(channel.isOpen(), "a connection whose request body is still arriving is not idle");
         assertEquals(1, registry.inFlight(channel));
+    }
+
+    @Test
+    void shouldDropRequestArrivingOnIdleConnectionWhileDraining() {
+        HttpConnectionRegistry registry = newRegistry();
+        AtomicBoolean closeRequested = new AtomicBoolean();
+        /*
+         * The close is swallowed because EmbeddedChannel.close() runs pending tasks (EmbeddedChannel.java:628),
+         * deregistering at once and stripping the pipeline, so the body would bypass this handler either way.
+         * A real channel defers deregistration past the read batch (AbstractChannel.java:667).
+         */
+        EmbeddedChannel channel = new EmbeddedChannel(
+            new ChannelOutboundHandlerAdapter() {
+                @Override
+                public void close(ChannelHandlerContext ctx, ChannelPromise promise) {
+                    closeRequested.set(true);
+                }
+            },
+            new HttpServerKeepAliveHandler(),
+            new HttpDrainHandler(registry));
+        registry.register(channel);
+
+        registry.beginDrain();
+        channel.writeInbound(
+            new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/upload"),
+            LastHttpContent.EMPTY_LAST_CONTENT);
+
+        assertNull(channel.readInbound(),
+            "neither the head nor the body of a refused request may reach the dispatcher");
+        assertTrue(closeRequested.get(),
+            "an idle connection is closed while draining, whether or not a request beat the close");
+        assertEquals(0, registry.inFlight(channel));
     }
 
     @Test
