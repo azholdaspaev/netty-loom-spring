@@ -204,8 +204,8 @@ public class NettyServer {
     }
 
     /**
-     * Waits for in-flight requests, not open sockets (issues #67, #108). Closes unconditionally
-     * rather than only what failed to drain: a drained verdict no longer shuts them (issue #206).
+     * Waits for in-flight requests, not open sockets (issues #67, #108). Closes unconditionally rather
+     * than only what failed to drain, because the verdict counts requests, not sockets (issue #206).
      */
     private boolean drainThenClose(Deadline deadline) throws InterruptedException {
         boolean drained = connectionRegistry.awaitDrained(deadline.remainingMillis());
