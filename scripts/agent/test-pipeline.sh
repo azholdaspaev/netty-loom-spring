@@ -15,7 +15,7 @@ export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 # the tree's layout beside a stage.sh shim, a clone on NL-999-x, gh first on PATH and a fresh HOME.
 # The stage shim records the tree it found in tree-<stage> and the run id it was given in run-id,
 # writes the result file pipeline.sh sums under that id, pushes the branch on implement as the
-# real stage does before it opens the pull request, moves the pull request head on the fix
+# real stage does before it opens the pull request, commits and pushes on the fix
 # rounds SHIM_FIX_PUSHES lists ("1,0" = fix 1 pushes a commit, fix 2 does not; unset = every fix
 # pushes), posts inline comments as the runner on the review rounds SHIM_REVIEW_POSTS counts
 # ("0,1" = review 2 posts one; unset = none), commits an edit to src.txt in the stage SHIM_COMMIT
@@ -26,8 +26,7 @@ export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 # only through pr-comments.sh's own call, the issue's comments from issue-comments, keeps the
 # body of a pull request pipeline.sh opens itself in pr-body, and answers each GraphQL thread query with the count
 # SHIM_OPEN holds for the latest review round ("2,0" = two open threads after the first review,
-# none after the second); every call whose arguments start with SHIM_GH_FAIL exits 1 instead, from
-# the first event line starting with SHIM_GH_FAIL_AFTER on when that is set.
+# none after the second); every call whose arguments start with SHIM_GH_FAIL exits 1 instead.
 setup() {
   tmp=$(mktemp -d)
   mkdir -p "$tmp/scripts/agent" "$tmp/.claude/scripts" "$tmp/.github" "$tmp/bin" "$tmp/home" "$tmp/state"
@@ -74,20 +73,21 @@ case "$stage" in
       "$SHIM_STATE/comments" > "$SHIM_STATE/comments.new" && mv "$SHIM_STATE/comments.new" "$SHIM_STATE/comments" ;;
   fix)
     pushes=$(echo "${SHIM_FIX_PUSHES-1,1,1}" | cut -d, -f"$round")
-    if [ "${pushes:-0}" = 1 ]; then echo "fix-$round" > "$SHIM_STATE/head"; fi ;;
+    if [ "${pushes:-0}" = 1 ]; then
+      echo "fix-$round" >> src.txt; git commit -qam "NL-999 fix $round"; git push -q origin NL-999-x
+    fi ;;
 esac
 SHIM
   cat > "$tmp/bin/gh" <<'SHIM'
 #!/usr/bin/env bash
 echo "gh $*" >> "$SHIM_EVENTS"
-if [ -n "${SHIM_GH_FAIL:-}" ] && { [ -z "${SHIM_GH_FAIL_AFTER:-}" ] || grep -q "^$SHIM_GH_FAIL_AFTER" "$SHIM_EVENTS"; }; then
+if [ -n "${SHIM_GH_FAIL:-}" ]; then
   case "$*" in "$SHIM_GH_FAIL"*) echo "gh: dial tcp: no route to host" >&2; exit 1 ;; esac
 fi
 case "$*" in
   "pr list --head NL-999-x "*) if [ -n "${SHIM_PR_URL:-}" ]; then echo "$SHIM_PR_URL"; fi ;;
   "pr create --draft --title "*" --body-file -") cat > "$SHIM_STATE/pr-body"; echo "$SHIM_URL" ;;
   "pr view "*" --json url "*) echo "$3" ;;
-  "pr view "*" --json headRefOid "*) cat "$SHIM_STATE/head" ;;
   "api user --jq .login") echo runner ;;
   "api --paginate repos/o/r/pulls/7/comments?per_page=100 --jq "*) jq "$5" "$SHIM_STATE/comments" ;;
   "api --paginate repos/o/r/issues/999/comments?per_page=100") cat "$SHIM_STATE/issue-comments" ;;
@@ -104,7 +104,6 @@ case "$*" in
 esac
 SHIM
   chmod +x "$tmp/scripts/agent/stage.sh" "$tmp/bin/gh"
-  echo implement > "$tmp/state/head"
   echo '[{"user": {"login": "maintainer"}, "created_at": "2025-12-31T00:00:00Z"}]' > "$tmp/state/comments"
   echo '[]' > "$tmp/state/issue-comments"
   export SHIM_EVENTS="$tmp/events" SHIM_STATE="$tmp/state" SHIM_URL="$PR_URL"
@@ -484,16 +483,6 @@ unset SHIM_QUESTION SHIM_GH_FAIL
 ok=1; why="rc=$rc stderr=$err stages=$stages comment=$comment"
 [ "$rc" = 1 ] && [ -z "$comment" ] && [ "$stages" = "$IMPLEMENT$R1$F1$R2$NEEDS_INPUT" ] || ok=0
 check question-label-failure "$ok" "$why"
-rm -rf "$tmp"
-
-# --- the head check after a fix fails on its gh call: the same class, and no next round ---
-setup
-export SHIM_GH_FAIL="pr view $PR_URL --json headRefOid" SHIM_GH_FAIL_AFTER="stage 999 fix"
-run 1,0 ""
-unset SHIM_GH_FAIL SHIM_GH_FAIL_AFTER
-ok=1; why="rc=$rc stderr=$err stages=$stages comment=$comment"
-[ "$rc" = 2 ] && contains "$err" "gh pr view failed" && [ -z "$comment" ] && [ "$stages" = "$IMPLEMENT$R1$F1" ] || ok=0
-check head-check-failure "$ok" "$why"
 rm -rf "$tmp"
 
 # --- pr-comments.sh fails on its gh call: the same class ---
