@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Until 1.0.0 the public API may change
 in any minor release.
 
+## [Unreleased]
+
+### Fixed
+
+- `HttpServletResponse.getWriter()` after `getOutputStream()`, and the reverse, now throw
+  `IllegalStateException` as the Servlet spec requires, instead of handing out two sinks whose
+  bytes reached the body in flush order (#118).
+
 ## [0.1.0] — 2026-09-20
 
 First release, on Maven Central as `io.github.azholdaspaev:netty-loom-spring-boot-starter:0.1.0`.
