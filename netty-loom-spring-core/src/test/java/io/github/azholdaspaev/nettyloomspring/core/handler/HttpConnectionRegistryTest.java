@@ -1,6 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.core.handler;
 
 import io.github.azholdaspaev.nettyloomspring.core.support.SpinWait;
+import io.netty.channel.Channel;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.util.concurrent.GlobalEventExecutor;
@@ -8,6 +9,8 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -245,6 +248,32 @@ class HttpConnectionRegistryTest {
 
         assertFalse(registry.awaitDrained(5_000),
             "an abort that closed a connection still owing a response must not be reported as drained");
+    }
+
+    @Test
+    void shouldReportNotDrainedWhenQueuedExchangeDispatchesMidVerdict() throws Exception {
+        AtomicReference<Runnable> onStream = new AtomicReference<>(() -> { });
+        HttpConnectionRegistry registry = new HttpConnectionRegistry(
+            new DefaultChannelGroup(GlobalEventExecutor.INSTANCE) {
+                @Override
+                public Stream<Channel> stream() {
+                    onStream.getAndSet(() -> { }).run();
+                    return super.stream();
+                }
+            });
+        EmbeddedChannel connection = register(registry);
+        registry.admitExchange(connection);
+        /*
+         * The hook stands in for the event loop running between the verdict's two reads: the queued
+         * exchange is dispatched, and its response written, while its dispatch is still inside the handler.
+         */
+        onStream.set(() -> {
+            registry.dispatchStarted();
+            registry.exchangeFinished(connection);
+        });
+
+        assertFalse(registry.awaitDrained(0),
+            "a dispatch started after the dispatch count was read must not be reported as drained");
     }
 
     private static HttpConnectionRegistry newRegistry() {
