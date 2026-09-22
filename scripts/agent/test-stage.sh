@@ -63,6 +63,7 @@ commit() { echo x > "$SHIM_MODE.txt"; git add "$SHIM_MODE.txt"; git commit -q -m
 ask() { printf '<!-- agent:question -->\nWhich one?\n' | gh issue comment 999 --body-file -; }
 case "$SHIM_MODE" in
   success)  commit; result success false ;;
+  pushed)   commit; git push -q origin HEAD; result success false ;;
   budget)   commit; result error_max_budget_usd true ;;
   nocommit) result success false ;;
   question) ask; result success false ;;
@@ -415,7 +416,8 @@ rm -rf "$tmp"
 
 # --- fix ---
 setup
-run success "" 999 fix "$PR_URL" 1
+git -C "$tmp/work" push -q origin NL-999-x
+run pushed "" 999 fix "$PR_URL" 1
 ok=1; why=""
 [ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
 [ "$(argv_after --max-budget-usd)" = 6 ] || { ok=0; why="budget=$(argv_after --max-budget-usd)"; }
@@ -423,29 +425,50 @@ ok=1; why=""
 for flag in "NL-999 fix 1" "/flow:fix $PR_URL"; do
   argv_has "$flag" || { ok=0; why="argv lacks $flag"; }
 done
-grep -qxF -- "gh pr view $PR_URL --json headRefOid --jq .headRefOid" "$SHIM_EVENTS" 2>/dev/null \
-  || { ok=0; why="events=$(tr '\n' '|' 2>/dev/null < "$SHIM_EVENTS" || true)"; }
 [ "$(jq -r .subtype "$tmp/home/.netty-loom-agent/logs/NL-999/$RUN/fix-1.json" 2>/dev/null)" = success ] \
   || { ok=0; why="$RUN/fix-1.json missing or wrong"; }
 check fix "$ok" "$why"
 rm -rf "$tmp"
 
+# --- fix pushed, and the pull request head has not caught up: origin decides ---
+setup
+git -C "$tmp/work" push -q origin NL-999-x
+export SHIM_HEAD
+SHIM_HEAD=$(git -C "$tmp/work" rev-parse HEAD)
+run pushed "" 999 fix "$PR_URL" 1
+unset SHIM_HEAD
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 0 ] || ok=0
+check fix-head-lag "$ok" "$why"
+rm -rf "$tmp"
+
 # --- fix leaves uncommitted edits ---
 setup
+git -C "$tmp/work" push -q origin NL-999-x
 run dirty "" 999 fix "$PR_URL" 1
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "uncommitted" || ok=0
 check fix-dirty "$ok" "$why"
 rm -rf "$tmp"
 
-# --- fix did not push ---
+# --- fix did not push, and the pull request head claims it did: origin decides ---
 setup
-export SHIM_HEAD=0000000000000000000000000000000000000000
+git -C "$tmp/work" push -q origin NL-999-x
+root=$(git -C "$tmp/work" rev-parse HEAD)
 run success "" 999 fix "$PR_URL" 1
-unset SHIM_HEAD
 ok=1; why="rc=$rc stderr=$err"
-[ "$rc" = 1 ] && contains "$err" "not pushed" || ok=0
+[ "$rc" = 1 ] && contains "$err" "HEAD is not pushed: origin's NL-999-x is $root" || ok=0
 check fix-unpushed "$ok" "$why"
+rm -rf "$tmp"
+
+# --- origin unreachable after a fix: infrastructure, so exit 2 ---
+setup
+git -C "$tmp/work" push -q origin NL-999-x
+git -C "$tmp/work" remote set-url origin "$tmp/gone"
+run success "" 999 fix "$PR_URL" 1
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 2 ] && contains "$err" "git ls-remote origin failed" || ok=0
+check fix-origin-unreachable "$ok" "$why"
 rm -rf "$tmp"
 
 # --- test ---

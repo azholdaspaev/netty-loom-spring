@@ -2,8 +2,8 @@
 # Run one pipeline stage for a GitHub issue as an unattended claude -p and report how it ended:
 # exit 0 (with the pull request URL after implement), 3 when a question is pending -- this stage's,
 # or an earlier run's the owner has not replied to -- 124 on timeout, 2 when the infrastructure failed
-# (a gh call, or claude's error_during_execution), else 1. The result and stderr land under
-# $RUN_ID, the directory of the run the caller chose, or of this stage alone when none was.
+# (a gh call, git ls-remote, or claude's error_during_execution), else 1. The result and stderr land
+# under $RUN_ID, the directory of the run the caller chose, or of this stage alone when none was.
 # Usage (cwd = the issue's worktree): scripts/agent/stage.sh <issue number> implement
 #                                     scripts/agent/stage.sh <issue number> review|fix|test <pr url> [<round>]
 set -euo pipefail
@@ -132,7 +132,9 @@ case "$STAGE" in
     ;;
   fix)
     [ -z "$(git status --porcelain)" ] || fail "uncommitted edits left on $branch"
-    head=$(gh pr view "$PR" --json headRefOid --jq .headRefOid)
-    [ "$(git rev-parse HEAD)" = "$head" ] || fail "HEAD is not pushed: pull request head is $head"
+    # origin rather than the pull request's headRefOid: GitHub moves that some seconds after the push (#401).
+    pushed=$(git ls-remote origin "refs/heads/$branch") || fail "git ls-remote origin failed" 2
+    pushed=${pushed%%[[:space:]]*}
+    [ "$(git rev-parse HEAD)" = "$pushed" ] || fail "HEAD is not pushed: origin's $branch is $pushed"
     ;;
 esac

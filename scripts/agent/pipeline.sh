@@ -93,8 +93,6 @@ elif [ -z "$url" ]; then
   url=$stage_out
 fi
 
-pr_head() { gh pr view "$url" --json headRefOid --jq .headRefOid; }
-
 converged=0
 stalled=0
 moved=1
@@ -107,11 +105,11 @@ for round in $(seq 1 "$ROUNDS"); do
   open=$(jq '[.threads[] | select(.isResolved | not)] | length' <<<"$comments")
   if [ "$open" = 0 ]; then converged=1; break; fi
   if [ "$moved" = 0 ] && [ "$posted" = 0 ]; then stalled=1; break; fi
-  before=$(pr_head)
+  # HEAD rather than headRefOid: stage.sh has checked HEAD is on origin, and GitHub moves headRefOid later (#401).
+  before=$(git rev-parse HEAD)
   stage fix "$url" "$round"
   moved=0
-  after=$(pr_head)
-  [ "$after" = "$before" ] || moved=1
+  [ "$(git rev-parse HEAD)" = "$before" ] || moved=1
 done
 
 stage test "$url"
