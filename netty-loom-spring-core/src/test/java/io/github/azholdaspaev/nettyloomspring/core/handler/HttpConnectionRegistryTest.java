@@ -30,7 +30,7 @@ class HttpConnectionRegistryTest {
     void shouldKeepConnectionOpenUntilItsInFlightExchangeFinishes() {
         HttpConnectionRegistry registry = newRegistry();
         EmbeddedChannel connection = register(registry);
-        registry.exchangeStarted(connection);
+        registry.admitExchange(connection);
 
         registry.beginDrain();
         connection.runPendingTasks();
@@ -47,8 +47,8 @@ class HttpConnectionRegistryTest {
     void shouldOnlyCloseAfterLastPipelinedExchangeFinishes() {
         HttpConnectionRegistry registry = newRegistry();
         EmbeddedChannel connection = register(registry);
-        registry.exchangeStarted(connection);
-        registry.exchangeStarted(connection);
+        registry.admitExchange(connection);
+        registry.admitExchange(connection);
         registry.beginDrain();
         connection.runPendingTasks();
 
@@ -68,7 +68,7 @@ class HttpConnectionRegistryTest {
         HttpConnectionRegistry registry = newRegistry();
         EmbeddedChannel connection = register(registry);
 
-        registry.exchangeStarted(connection);
+        registry.admitExchange(connection);
         registry.exchangeFinished(connection);
         connection.runPendingTasks();
 
@@ -205,7 +205,7 @@ class HttpConnectionRegistryTest {
         EmbeddedChannel connection = register(registry);
         assertTrue(registry.awaitDrained(0), "nothing was in flight when the verdict was taken");
 
-        registry.exchangeStarted(connection);
+        registry.admitExchange(connection);
         connection.runPendingTasks();
 
         assertFalse(connection.isOpen(),
@@ -216,7 +216,7 @@ class HttpConnectionRegistryTest {
     void shouldReportNotDrainedWhileExchangeIsInFlight() throws Exception {
         HttpConnectionRegistry registry = newRegistry();
         EmbeddedChannel connection = register(registry);
-        registry.exchangeStarted(connection);
+        registry.admitExchange(connection);
 
         assertFalse(registry.awaitDrained(0),
             "a connection still owing a response must be reported, not passed off as drained");
@@ -235,7 +235,7 @@ class HttpConnectionRegistryTest {
     void shouldReportNotDrainedOnceAbortCutsOffExchange() throws Exception {
         HttpConnectionRegistry registry = newRegistry();
         EmbeddedChannel connection = register(registry);
-        registry.exchangeStarted(connection);
+        registry.admitExchange(connection);
 
         Thread drain = Thread.currentThread();
         Thread.ofPlatform().start(() -> {

@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-09-13
+- Amended: 2026-09-23 ([#206](https://github.com/azholdaspaev/netty-loom-spring/issues/206))
 - Rule: `CLAUDE.md` § Guidelines, rule 7 (the rule itself; this record holds only its rationale)
 
 ## Context
@@ -39,9 +40,9 @@ Rule 7 in `CLAUDE.md` § Guidelines is the decision. The choices behind it:
   vocabulary) — because the hook would otherwise fail every edit of a test file that is not yet
   renamed.
 
-Outside the `mark*` row: `HttpConnectionRegistry.exchangeStarted` and `dispatchFinished` are
-event callbacks the handlers deliver to the registry, in the shape of Netty's own
-`channelActive`/`channelInactive`, not commands to record a transition. They keep their names.
+Outside the `mark*` row: `HttpConnectionRegistry.dispatchFinished` is an event callback the
+handlers deliver to the registry, in the shape of Netty's own `channelActive`/`channelInactive`,
+not a command to record a transition. It keeps its name.
 
 ## Consequences
 
@@ -49,3 +50,11 @@ event callbacks the handlers deliver to the registry, in the shape of Netty's ow
   over 60 characters or a verb from the **Not** column is a finding.
 - `.claude/scripts/check-naming.sh` counts what can be counted. Whether a `require*` throws, and
   whether one concept keeps one verb in a file, stay with the reviewer.
+
+## Amendments
+
+### 2026-09-23 — `exchangeStarted` became a command (#206)
+
+`HttpConnectionRegistry.exchangeStarted` now returns whether the exchange is admitted and closes
+an idle connection while draining, so it is no longer a callback. It is `admitExchange`, and the
+list of callbacks that keep their names was corrected in place.
