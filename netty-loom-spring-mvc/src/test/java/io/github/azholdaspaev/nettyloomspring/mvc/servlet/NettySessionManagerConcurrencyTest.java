@@ -62,9 +62,9 @@ class NettySessionManagerConcurrencyTest {
      * established rather than hoped for: a sleep that lost would leave the assertions vacuously green.
      */
     private static void awaitBlockedOnSessionLock(Thread thread) {
-        long limit = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         while (thread.getState() != Thread.State.BLOCKED) {
-            assertTrue(System.nanoTime() < limit, "the thread never blocked on the session lock");
+            assertTrue(System.nanoTime() - deadlineNanos < 0, "the thread never blocked on the session lock");
             Thread.onSpinWait();
         }
     }
