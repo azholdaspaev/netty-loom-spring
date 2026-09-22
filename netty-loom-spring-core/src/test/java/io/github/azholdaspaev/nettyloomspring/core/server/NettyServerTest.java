@@ -5,15 +5,18 @@ import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistr
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineStep;
 import io.github.azholdaspaev.nettyloomspring.core.support.NettyServerFixture;
 import io.netty.buffer.ByteBuf;
+import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelOption;
+import io.netty.channel.ChannelPromise;
 import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.net.BindException;
 import java.net.ConnectException;
 import java.net.InetAddress;
@@ -253,6 +256,35 @@ class NettyServerTest {
 
             assertEquals(NettyShutdownResult.IDLE, nettyServer.shutdown(Duration.ZERO),
                 "an open connection carrying no request is nothing to drain, so no grace is needed");
+        }
+    }
+
+    @Test
+    void shouldFinishShutdownWhenConnectionFailsToClose() throws Exception {
+        CountDownLatch accepted = new CountDownLatch(1);
+        nettyServer = NettyServerFixture.newServer(
+            new NettyServerConfiguration(0, null, 0, 0, false, 128),
+            new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)),
+            List.of(new NettyPipelineStep("unclosable", () -> new ChannelDuplexHandler() {
+                @Override
+                public void channelActive(ChannelHandlerContext ctx) {
+                    accepted.countDown();
+                    ctx.fireChannelActive();
+                }
+
+                @Override
+                public void close(ChannelHandlerContext ctx, ChannelPromise promise) {
+                    promise.setFailure(new IOException("close failed"));
+                }
+            })));
+        nettyServer.start();
+
+        try (Socket idle = new Socket()) {
+            idle.connect(new InetSocketAddress("127.0.0.1", nettyServer.getPort()), 1_000);
+            assertTrue(accepted.await(5, TimeUnit.SECONDS), "server must have accepted the connection");
+
+            assertEquals(NettyShutdownResult.IDLE, nettyServer.shutdown(Duration.ZERO),
+                "a connection that fails to close must not abort the shutdown before the event loops stop");
         }
     }
 
