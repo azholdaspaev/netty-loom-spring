@@ -37,6 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NettyServerTest {
@@ -285,6 +286,35 @@ class NettyServerTest {
 
             assertEquals(NettyShutdownResult.IDLE, nettyServer.shutdown(Duration.ZERO),
                 "a connection that fails to close must not abort the shutdown before the event loops stop");
+        }
+    }
+
+    @Test
+    void shouldFinishShutdownWhenConnectionNeverCloses() throws Exception {
+        CountDownLatch accepted = new CountDownLatch(1);
+        nettyServer = NettyServerFixture.newServer(
+            new NettyServerConfiguration(0, null, 0, 0, false, 128),
+            new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)),
+            List.of(new NettyPipelineStep("closeNeverCompletes", () -> new ChannelDuplexHandler() {
+                @Override
+                public void channelActive(ChannelHandlerContext ctx) {
+                    accepted.countDown();
+                    ctx.fireChannelActive();
+                }
+
+                @Override
+                public void close(ChannelHandlerContext ctx, ChannelPromise promise) {
+                }
+            })));
+        nettyServer.start();
+
+        try (Socket idle = new Socket()) {
+            idle.connect(new InetSocketAddress("127.0.0.1", nettyServer.getPort()), 1_000);
+            assertTrue(accepted.await(5, TimeUnit.SECONDS), "server must have accepted the connection");
+
+            assertEquals(NettyShutdownResult.IDLE,
+                assertTimeoutPreemptively(Duration.ofSeconds(10), () -> nettyServer.shutdown(Duration.ZERO)),
+                "a close that never completes must not hold the shutdown past its grace period");
         }
     }
 
