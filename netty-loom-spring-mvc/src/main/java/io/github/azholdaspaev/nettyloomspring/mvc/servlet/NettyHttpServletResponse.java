@@ -51,6 +51,12 @@ public class NettyHttpServletResponse implements HttpServletResponse {
     private Charset characterEncoding = StandardCharsets.ISO_8859_1;
     private ServletOutputStream outputStream;
     private PrintWriter writer;
+    /**
+     * Flags rather than the fields above: resetBuffer nulls those, and the spec has only reset() reopen
+     * the choice (ServletResponse#reset javadoc; Tomcat's Response.resetBuffer(boolean)).
+     */
+    private boolean usingOutputStream;
+    private boolean usingWriter;
     private int bufferSize = DEFAULT_BUFFER_SIZE;
     /**
      * The Servlet spec requires status and header mutations after a commit to be ignored; without that,
@@ -297,6 +303,14 @@ public class NettyHttpServletResponse implements HttpServletResponse {
 
     @Override
     public ServletOutputStream getOutputStream() throws IOException {
+        if (usingWriter) {
+            throw new IllegalStateException("getWriter() has already been called on this response");
+        }
+        usingOutputStream = true;
+        return ensureOutputStream();
+    }
+
+    private ServletOutputStream ensureOutputStream() {
         if (outputStream == null) {
             outputStream = new ServletOutputStream() {
                 @Override
@@ -342,14 +356,18 @@ public class NettyHttpServletResponse implements HttpServletResponse {
     }
 
     /**
-     * Layered over {@link #getOutputStream()} rather than over the buffer directly, so text overflowing
-     * the buffer streams on the same terms bytes do. Writing straight to the buffer would keep a large
-     * body in heap however far past the buffer size it grew.
+     * Layered over the same stream {@link #getOutputStream()} hands out rather than over the buffer
+     * directly, so text overflowing the buffer streams on the same terms bytes do. Writing straight to
+     * the buffer would keep a large body in heap however far past the buffer size it grew.
      */
     @Override
     public PrintWriter getWriter() throws IOException {
+        if (usingOutputStream) {
+            throw new IllegalStateException("getOutputStream() has already been called on this response");
+        }
+        usingWriter = true;
         if (writer == null) {
-            writer = new PrintWriter(new OutputStreamWriter(getOutputStream(), characterEncoding), false);
+            writer = new PrintWriter(new OutputStreamWriter(ensureOutputStream(), characterEncoding), false);
         }
         return writer;
     }
@@ -453,6 +471,8 @@ public class NettyHttpServletResponse implements HttpServletResponse {
          * response the client has already begun reading.
          */
         resetBuffer();
+        usingOutputStream = false;
+        usingWriter = false;
         committed = false;
         errorSent = false;
         errorMessage = null;
