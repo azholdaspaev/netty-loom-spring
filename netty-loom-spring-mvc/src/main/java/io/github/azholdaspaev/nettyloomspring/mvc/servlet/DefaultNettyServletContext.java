@@ -254,9 +254,9 @@ public final class DefaultNettyServletContext implements NettyServletContext {
     @Override
     public <T extends EventListener> T createListener(Class<T> clazz) throws ServletException {
         /*
-         * The spec puts the same wrong-type clause on createListener as on addListener, and Tomcat runs
-         * the checks before instantiating. Without it an application following the documented
-         * create-customize-then-addListener idiom gets no signal until the later addListener call.
+         * Type check before the constructor, unlike Tomcat's ApplicationContext.createListener, which
+         * instantiates first: a class of the wrong type fails with the IllegalArgumentException the spec
+         * names for it, never with a ServletException from a constructor that had no business running.
          */
         listeners.requireSupportedType(clazz);
         try {
