@@ -5,10 +5,10 @@ import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistr
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineStep;
 import io.github.azholdaspaev.nettyloomspring.core.support.NettyServerFixture;
 import io.netty.buffer.ByteBuf;
-import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelOption;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
 import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.util.concurrent.GlobalEventExecutor;
@@ -26,6 +26,7 @@ import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
@@ -107,16 +108,20 @@ class NettyServerTest {
      * @param accepted counted down on accept, so a test acts on a connection the server knows about
      * @param port     0 to let the OS choose; a specific port to bind exactly there
      */
-    private static NettyServer newServer(InetAddress address, CountDownLatch accepted, int port) {
+    private static NettyServer newServer(
+        InetAddress address, CountDownLatch accepted, int port, NettyPipelineStep... extra) {
         NettyServerConfiguration configuration = new NettyServerConfiguration(port, address, 0, 0, false, 128);
-        List<NettyPipelineStep> handlers = accepted == null ? List.of()
-            : List.of(new NettyPipelineStep("accepted", () -> new ChannelInboundHandlerAdapter() {
+        List<NettyPipelineStep> handlers = new ArrayList<>();
+        if (accepted != null) {
+            handlers.add(new NettyPipelineStep("accepted", () -> new ChannelInboundHandlerAdapter() {
                 @Override
                 public void channelActive(ChannelHandlerContext ctx) {
                     accepted.countDown();
                     ctx.fireChannelActive();
                 }
             }));
+        }
+        handlers.addAll(List.of(extra));
         HttpConnectionRegistry connectionRegistry = new HttpConnectionRegistry(
             new DefaultChannelGroup(GlobalEventExecutor.INSTANCE));
         return NettyServerFixture.newServer(configuration, connectionRegistry, handlers);
@@ -263,21 +268,13 @@ class NettyServerTest {
     @Test
     void shouldFinishShutdownWhenConnectionFailsToClose() throws Exception {
         CountDownLatch accepted = new CountDownLatch(1);
-        nettyServer = NettyServerFixture.newServer(
-            new NettyServerConfiguration(0, null, 0, 0, false, 128),
-            new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)),
-            List.of(new NettyPipelineStep("unclosable", () -> new ChannelDuplexHandler() {
-                @Override
-                public void channelActive(ChannelHandlerContext ctx) {
-                    accepted.countDown();
-                    ctx.fireChannelActive();
-                }
-
+        nettyServer = newServer(null, accepted, 0,
+            new NettyPipelineStep("unclosable", () -> new ChannelOutboundHandlerAdapter() {
                 @Override
                 public void close(ChannelHandlerContext ctx, ChannelPromise promise) {
                     promise.setFailure(new IOException("close failed"));
                 }
-            })));
+            }));
         nettyServer.start();
 
         try (Socket idle = new Socket()) {
@@ -292,20 +289,12 @@ class NettyServerTest {
     @Test
     void shouldFinishShutdownWhenConnectionNeverCloses() throws Exception {
         CountDownLatch accepted = new CountDownLatch(1);
-        nettyServer = NettyServerFixture.newServer(
-            new NettyServerConfiguration(0, null, 0, 0, false, 128),
-            new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)),
-            List.of(new NettyPipelineStep("closeNeverCompletes", () -> new ChannelDuplexHandler() {
-                @Override
-                public void channelActive(ChannelHandlerContext ctx) {
-                    accepted.countDown();
-                    ctx.fireChannelActive();
-                }
-
+        nettyServer = newServer(null, accepted, 0,
+            new NettyPipelineStep("closeNeverCompletes", () -> new ChannelOutboundHandlerAdapter() {
                 @Override
                 public void close(ChannelHandlerContext ctx, ChannelPromise promise) {
                 }
-            })));
+            }));
         nettyServer.start();
 
         try (Socket idle = new Socket()) {
