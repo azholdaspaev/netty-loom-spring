@@ -218,6 +218,22 @@ class HttpConnectionRegistryTest {
             "a running dispatch must be reported even once its connection is gone");
     }
 
+    @Test
+    void shouldReportNotDrainedOnceAbortCutsOffExchange() throws Exception {
+        HttpConnectionRegistry registry = newRegistry();
+        EmbeddedChannel connection = register(registry);
+        registry.exchangeStarted(connection);
+
+        Thread drain = Thread.currentThread();
+        Thread.ofPlatform().start(() -> {
+            SpinWait.untilParked(() -> drain, Duration.ofSeconds(10), "the drain never parked");
+            registry.abortDrain();
+        });
+
+        assertFalse(registry.awaitDrained(5_000),
+            "an abort that closed a connection still owing a response must not be reported as drained");
+    }
+
     private static HttpConnectionRegistry newRegistry() {
         return new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE));
     }

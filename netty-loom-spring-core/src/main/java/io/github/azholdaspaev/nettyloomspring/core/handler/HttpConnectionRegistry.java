@@ -122,8 +122,13 @@ public class HttpConnectionRegistry {
         long startNanos = System.nanoTime();
         connections.newCloseFuture().await(timeoutMillis, TimeUnit.MILLISECONDS);
         long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
+        /*
+         * aborted is read last: abortDrain sets it before closing the group, so a group the abort
+         * emptied of cut-off exchanges is seen here rather than read as idle.
+         */
         return awaitDispatchesFinished(Math.max(0L, timeoutMillis - elapsedMillis))
-            && !hasExchangeInFlight();
+            && !hasExchangeInFlight()
+            && !aborted;
     }
 
     boolean awaitDispatchesFinished(long timeoutMillis) throws InterruptedException {
