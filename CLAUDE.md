@@ -138,7 +138,7 @@ Production:
   | convert from or to another type | `from(x)` / `toX()` | `as*` |
   | lazily initialise, idempotent | `ensure*` | — |
 
-- Names an external interface dictates (`shutDownGracefully`, `initChannel`, Servlet `getInitParameter`) are outside the rule; the method implementing it must not share the name in another case. An inbound event callback the caller names (`exchangeStarted`) is not a `mark*` command; the ADR lists the ones that stay.
+- Names an external interface dictates (`shutDownGracefully`, `initChannel`, Servlet `getInitParameter`) are outside the rule; the method implementing it must not share the name in another case. An inbound event callback the caller names (`dispatchFinished`) is not a `mark*` command; the ADR lists the ones that stay.
 
 Tests:
 

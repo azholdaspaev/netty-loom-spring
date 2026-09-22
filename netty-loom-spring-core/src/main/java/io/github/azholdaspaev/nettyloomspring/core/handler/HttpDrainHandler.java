@@ -32,7 +32,7 @@ public class HttpDrainHandler extends ChannelDuplexHandler {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
         if (msg instanceof HttpRequest) {
-            refused = !connectionRegistry.exchangeStarted(ctx.channel());
+            refused = !connectionRegistry.admitExchange(ctx.channel());
         }
         if (refused) {
             ReferenceCountUtil.release(msg);

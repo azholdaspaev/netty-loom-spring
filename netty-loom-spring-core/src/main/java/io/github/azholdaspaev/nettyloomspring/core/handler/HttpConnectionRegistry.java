@@ -69,7 +69,7 @@ public class HttpConnectionRegistry {
      * would have done had its close run first. Counting before reading {@code draining} is what makes
      * the drained verdict sound: either it sees this count, or this sees the drain and refuses.
      */
-    public boolean exchangeStarted(Channel connection) {
+    public boolean admitExchange(Channel connection) {
         AtomicInteger inFlight = counter(connection);
         if (inFlight.incrementAndGet() == 1 && draining) {
             inFlight.decrementAndGet();
@@ -212,7 +212,7 @@ public class HttpConnectionRegistry {
 
     private static void closeIfIdle(Channel connection) {
         /*
-         * Decided on the connection's own event loop: exchangeStarted runs there too, so a request
+         * Decided on the connection's own event loop: admitExchange runs there too, so a request
          * already read off the wire has necessarily been counted before this check observes it.
          */
         connection.eventLoop().execute(() -> {
