@@ -219,6 +219,47 @@ class NettyHttpServletResponseTest {
     }
 
     @Test
+    void shouldThrowOnGetWriterAfterGetOutputStream() throws Exception {
+        var response = new NettyHttpServletResponse();
+        response.getOutputStream();
+
+        assertThrows(IllegalStateException.class, response::getWriter,
+            "a writer over a body the stream already writes to would interleave bytes in flush order");
+    }
+
+    @Test
+    void shouldThrowOnGetOutputStreamAfterGetWriter() throws Exception {
+        var response = new NettyHttpServletResponse();
+        response.getWriter();
+
+        assertThrows(IllegalStateException.class, response::getOutputStream,
+            "a stream beside a writer whose encoder buffer is still unflushed would interleave bytes");
+    }
+
+    @Test
+    void shouldKeepWriterOrStreamChoiceAfterResetBuffer() throws Exception {
+        var response = new NettyHttpServletResponse();
+        response.getWriter();
+
+        response.resetBuffer();
+
+        assertThrows(IllegalStateException.class, response::getOutputStream,
+            "resetBuffer clears the body, not the choice of writer over stream");
+        assertDoesNotThrow(response::getWriter);
+    }
+
+    @Test
+    void shouldReopenWriterOrStreamChoiceOnReset() throws Exception {
+        var response = new NettyHttpServletResponse();
+        response.getWriter();
+
+        response.reset();
+
+        assertDoesNotThrow(response::getOutputStream,
+            "the spec makes getWriter, reset, getOutputStream a legal sequence");
+    }
+
+    @Test
     void shouldWriteSetCookieHeaderOnAddCookie() throws Exception {
         var response = new NettyHttpServletResponse();
         response.addCookie(new Cookie("foo", "bar"));
