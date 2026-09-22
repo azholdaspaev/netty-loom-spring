@@ -209,7 +209,8 @@ public class NettyServer {
      */
     private boolean drainThenClose(Deadline deadline) throws InterruptedException {
         boolean drained = connectionRegistry.awaitDrained(deadline.remainingMillis());
-        connectionRegistry.closeAll().sync();
+        // await, not sync: a failed close must not skip stopping the event loops, which close it anyway.
+        connectionRegistry.closeAll().await();
         return drained;
     }
 
