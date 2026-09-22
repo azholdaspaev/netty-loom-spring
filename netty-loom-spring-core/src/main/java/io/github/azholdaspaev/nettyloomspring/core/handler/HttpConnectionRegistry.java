@@ -110,18 +110,20 @@ public class HttpConnectionRegistry {
 
     /**
      * Starts draining and waits up to {@code timeoutMillis} for the server to fall quiet, reporting
-     * whether it did. Connections first, then dispatches: once the connections are gone nothing can
-     * start another dispatch, so from there the count only descends. Awaiting dispatches alone would
-     * read a count that can rise again, which is why this is one method and not two calls.
+     * whether anything is left in flight. The close future is what this waits on, not what it
+     * reports: {@link #beginDrain()} closes an idle connection on that connection's own event loop,
+     * so with no grace left that hop has not run, and a socket still in the group is not a request
+     * (issue #206). Both counts are read, because neither brackets a request on its own — a
+     * connection carries what no dispatch has reached yet, and a dispatch outlives the connection
+     * whose client has hung up.
      */
     public boolean awaitDrained(long timeoutMillis) throws InterruptedException {
         beginDrain();
         long startNanos = System.nanoTime();
-        if (!connections.newCloseFuture().await(timeoutMillis, TimeUnit.MILLISECONDS)) {
-            return false;
-        }
+        connections.newCloseFuture().await(timeoutMillis, TimeUnit.MILLISECONDS);
         long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
-        return awaitDispatchesFinished(Math.max(0L, timeoutMillis - elapsedMillis));
+        return awaitDispatchesFinished(Math.max(0L, timeoutMillis - elapsedMillis))
+            && !hasExchangeInFlight();
     }
 
     boolean awaitDispatchesFinished(long timeoutMillis) throws InterruptedException {
@@ -182,6 +184,16 @@ public class HttpConnectionRegistry {
     public void reset() {
         draining = false;
         aborted = false;
+    }
+
+    /**
+     * Read off the event loop, and not through {@link #counter(Channel)}: that installs the
+     * attribute, so the shutdown thread would touch every connection that never served a request.
+     */
+    private boolean hasExchangeInFlight() {
+        return connections.stream()
+            .map(connection -> connection.attr(IN_FLIGHT).get())
+            .anyMatch(inFlight -> inFlight != null && inFlight.get() > 0);
     }
 
     private static void closeIfIdle(Channel connection) {

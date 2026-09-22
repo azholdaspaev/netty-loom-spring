@@ -242,6 +242,21 @@ class NettyServerTest {
     }
 
     @Test
+    void shouldReportIdleWithNoGraceWhileConnectionIsOpen() throws Exception {
+        CountDownLatch accepted = new CountDownLatch(1);
+        nettyServer = newServer(null, accepted, 0);
+        nettyServer.start();
+
+        try (Socket idle = new Socket()) {
+            idle.connect(new InetSocketAddress("127.0.0.1", nettyServer.getPort()), 1_000);
+            assertTrue(accepted.await(5, TimeUnit.SECONDS), "server must have accepted the connection");
+
+            assertEquals(NettyShutdownResult.IDLE, nettyServer.shutdown(Duration.ZERO),
+                "an open connection carrying no request is nothing to drain, so no grace is needed");
+        }
+    }
+
+    @Test
     void shouldAcceptConnectionsAgainAfterRestart() throws Exception {
         nettyServer.start();
         nettyServer.shutdown(Duration.ofSeconds(1));

@@ -186,6 +186,38 @@ class HttpConnectionRegistryTest {
             "a restarted server must not inherit the previous shutdown's abort");
     }
 
+    @Test
+    void shouldReportDrainedWithNoGraceWhileIdleConnectionIsOpen() throws Exception {
+        HttpConnectionRegistry registry = newRegistry();
+        register(registry);
+
+        /*
+         * No runPendingTasks: the idle-close task has not run, which is the state issue #206
+         * reported. A drain that read the close future here would call the connection a live request.
+         */
+        assertTrue(registry.awaitDrained(0),
+            "a connection with nothing in flight leaves nothing to drain, however little grace is left");
+    }
+
+    @Test
+    void shouldReportNotDrainedWhileExchangeIsInFlight() throws Exception {
+        HttpConnectionRegistry registry = newRegistry();
+        EmbeddedChannel connection = register(registry);
+        registry.exchangeStarted(connection);
+
+        assertFalse(registry.awaitDrained(0),
+            "a connection still owing a response must be reported, not passed off as drained");
+    }
+
+    @Test
+    void shouldReportNotDrainedWhileDispatchIsInFlight() throws Exception {
+        HttpConnectionRegistry registry = newRegistry();
+        registry.dispatchStarted();
+
+        assertFalse(registry.awaitDrained(0),
+            "a running dispatch must be reported even once its connection is gone");
+    }
+
     private static HttpConnectionRegistry newRegistry() {
         return new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE));
     }
