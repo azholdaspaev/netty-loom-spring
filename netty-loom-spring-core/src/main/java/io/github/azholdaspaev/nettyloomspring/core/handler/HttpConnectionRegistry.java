@@ -124,7 +124,9 @@ public class HttpConnectionRegistry {
      * so with no grace left that hop has not run, and a socket still in the group is not a request
      * (issue #206). Both counts are read, because neither brackets a request on its own — a
      * connection carries what no dispatch has reached yet, and a dispatch outlives the connection
-     * whose client has hung up.
+     * whose client has hung up. Exchanges first: a dispatch starts while its exchange is counted, and
+     * {@link #admitExchange} refuses new ones, so once no connection carries one the dispatch count
+     * only descends.
      */
     public boolean awaitDrained(long timeoutMillis) throws InterruptedException {
         beginDrain();
@@ -135,8 +137,8 @@ public class HttpConnectionRegistry {
          * aborted is read last: abortDrain sets it before closing the group, so a group the abort
          * emptied of cut-off exchanges is seen here rather than read as idle.
          */
-        return awaitDispatchesFinished(Math.max(0L, timeoutMillis - elapsedMillis))
-            && !hasExchangeInFlight()
+        return !hasExchangeInFlight()
+            && awaitDispatchesFinished(Math.max(0L, timeoutMillis - elapsedMillis))
             && !aborted;
     }
 
