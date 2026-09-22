@@ -7,6 +7,7 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.LastHttpContent;
+import io.netty.util.ReferenceCountUtil;
 
 /**
  * Marks a connection busy while it is serving an HTTP exchange, so graceful shutdown can tell a
@@ -22,6 +23,8 @@ public class HttpDrainHandler extends ChannelDuplexHandler {
 
     private final HttpConnectionRegistry connectionRegistry;
 
+    private boolean refused;
+
     public HttpDrainHandler(HttpConnectionRegistry connectionRegistry) {
         this.connectionRegistry = connectionRegistry;
     }
@@ -29,7 +32,11 @@ public class HttpDrainHandler extends ChannelDuplexHandler {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
         if (msg instanceof HttpRequest) {
-            connectionRegistry.exchangeStarted(ctx.channel());
+            refused = !connectionRegistry.exchangeStarted(ctx.channel());
+        }
+        if (refused) {
+            ReferenceCountUtil.release(msg);
+            return;
         }
         ctx.fireChannelRead(msg);
     }

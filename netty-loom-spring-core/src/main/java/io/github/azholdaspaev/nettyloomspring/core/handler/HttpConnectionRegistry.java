@@ -64,10 +64,19 @@ public class HttpConnectionRegistry {
     }
 
     /**
-     * Called on the event loop as the head of a request comes off the wire.
+     * Called on the event loop as the head of a request comes off the wire; returns whether the
+     * exchange is admitted. An idle connection is closed while draining, as {@link #beginDrain()}
+     * would have done had its close run first. Counting before reading {@code draining} is what makes
+     * the drained verdict sound: either it sees this count, or this sees the drain and refuses.
      */
-    public void exchangeStarted(Channel connection) {
-        counter(connection).incrementAndGet();
+    public boolean exchangeStarted(Channel connection) {
+        AtomicInteger inFlight = counter(connection);
+        if (inFlight.incrementAndGet() == 1 && draining) {
+            inFlight.decrementAndGet();
+            connection.close();
+            return false;
+        }
+        return true;
     }
 
     /**

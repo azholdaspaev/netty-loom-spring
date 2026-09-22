@@ -200,6 +200,19 @@ class HttpConnectionRegistryTest {
     }
 
     @Test
+    void shouldRefuseExchangeOnIdleConnectionAfterDrainedVerdict() throws Exception {
+        HttpConnectionRegistry registry = newRegistry();
+        EmbeddedChannel connection = register(registry);
+        assertTrue(registry.awaitDrained(0), "nothing was in flight when the verdict was taken");
+
+        registry.exchangeStarted(connection);
+        connection.runPendingTasks();
+
+        assertFalse(connection.isOpen(),
+            "a request admitted after a drained verdict would be cut off by closeAll behind an IDLE result");
+    }
+
+    @Test
     void shouldReportNotDrainedWhileExchangeIsInFlight() throws Exception {
         HttpConnectionRegistry registry = newRegistry();
         EmbeddedChannel connection = register(registry);
