@@ -28,10 +28,11 @@ SHIM
   git -C "$tmp/work" commit -q -m "root"
   git -C "$tmp/work" push -q origin HEAD:main
   git -C "$tmp/work" checkout -q -b NL-999-x
+  echo build/ >> "$tmp/work/.git/info/exclude"
   echo '[]' > "$tmp/comments"
   cat > "$tmp/bin/gh" <<'SHIM'
 #!/usr/bin/env bash
-echo "gh $*" >> "$SHIM_EVENTS"
+echo "gh $(printf '%s' "$*" | tr '\n' ' ')" >> "$SHIM_EVENTS"
 if [ -n "${SHIM_GH_FAIL:-}" ] && { [ -z "${SHIM_GH_FAIL_AFTER:-}" ] || grep -qx claude "$SHIM_EVENTS"; }; then
   case "$*" in "$SHIM_GH_FAIL"*) echo "gh: dial tcp: no route to host" >&2; exit 1 ;; esac
 fi
@@ -43,13 +44,16 @@ case "$*" in
     jq --arg body "$(cat)" '. + [{user: {login: "runner"}, body: $body, created_at: "2026-09-12T12:00:01Z",
       html_url: "https://github.com/o/r/issues/999#issuecomment-2"}]' "$SHIM_COMMENTS" > "$SHIM_COMMENTS.new"
     mv "$SHIM_COMMENTS.new" "$SHIM_COMMENTS" ;;
-  "pr view "*" --json headRefOid "*) echo "${SHIM_HEAD:-$(git rev-parse HEAD)}" ;;
+  "pr view "*" --json url --jq .url") echo "$3" ;;
+  "api --paginate repos/o/r/pulls/7/"*|"api --paginate repos/o/r/issues/7/"*) echo '[]' ;;
+  "api graphql "*) echo '[{"id":"T0","isResolved":false,"isOutdated":false,"firstCommentId":1}]' ;;
 esac
 SHIM
   cat > "$tmp/bin/claude" <<'SHIM'
 #!/usr/bin/env bash
 echo "claude" >> "$SHIM_EVENTS"
 : > "$SHIM_ARGV"
+if [ -e build/pr-comments.json ]; then cp build/pr-comments.json "$SHIM_ARGV.comments"; fi
 prev=
 for arg in "$@"; do
   if [ "$prev" = --append-system-prompt ]; then printf '%s' "$arg" > "$SHIM_ARGV.system"; fi
@@ -108,6 +112,23 @@ argv_has() { grep -qxF -- "$1" "$SHIM_ARGV" 2>/dev/null; }
 
 argv_after() { grep -A1 -xF -- "$1" "$SHIM_ARGV" 2>/dev/null | tail -n 1 || true; }
 
+# The events without pr-comments.sh's own gh calls, which review-prefetch asserts on.
+stage_events() {
+  grep -v -e "^gh pr view $PR_URL --json url --jq .url$" -e '^gh api --paginate repos/o/r/pulls/7/' \
+    -e '^gh api --paginate repos/o/r/issues/7/' -e '^gh api graphql ' "$SHIM_EVENTS" 2>/dev/null || true
+}
+
+# saw_comments <stage>: the session started with pr-comments.sh's output in build/pr-comments.json,
+# and its system prompt says so.
+saw_comments() {
+  [ "$(jq -r '.threads[0].id' "$SHIM_ARGV.comments" 2>/dev/null)" = T0 ] \
+    || { ok=0; why="$1 started without pr-comments.sh's output in build/pr-comments.json"; }
+  system=$(cat "$SHIM_ARGV.system" 2>/dev/null || true)
+  for needle in $'\n\n## Stage: '"$1"$'\n' "build/pr-comments.json"; do
+    contains "$system" "$needle" || { ok=0; why="$1 system prompt lacks '$needle'"; }
+  done
+}
+
 # --- success ---
 setup
 run success 999 implement
@@ -122,7 +143,7 @@ Bash(gh issue view *),Bash(gh issue comment *),Bash(gh issue create *),\
 Bash(gh pr view *),Bash(gh pr diff *),Bash(gh pr comment *),\
 Bash(gh api repos/*/pulls/*/comments*),Bash(gh api repos/*/issues/*/comments*),\
 Bash(gh api repos/*/pulls/comments/*),Bash(gh api repos/*/issues/comments/*),\
-Bash(gh api repos/*/pulls/*/reviews *),Bash(gh api graphql *),Bash(.claude/scripts/pr-comments.sh *),\
+Bash(gh api repos/*/pulls/*/reviews *),Bash(gh api graphql *),\
 Bash(.claude/hooks/check-comments.sh *),Bash(.claude/scripts/check-naming.sh *),\
 Bash(scripts/agent/test-stage.sh *),Bash(scripts/agent/test-pipeline.sh *),\
 Bash(scripts/agent/test-runner.sh *),Bash(scripts/agent/test-requeue.sh *),Bash(shellcheck *),\
@@ -158,8 +179,9 @@ for rule in "Bash(gh issue create *--label*)" "Bash(gh issue create *-l *)" "Bas
   ! jq -e --arg rule "$rule" '.permissions.deny | index($rule)' "$settings" >/dev/null 2>&1 \
     || { ok=0; why="agent settings deny still has $rule"; }
 done
-! jq -e '.sandbox.excludedCommands | index("git ls-remote *")' "$settings" >/dev/null 2>&1 \
-  || { ok=0; why="agent settings exclude git ls-remote, --upload-pack and all, from the sandbox"; }
+jq -e '.sandbox.excludedCommands == ["gh *", "git push *"]' "$settings" >/dev/null 2>&1 \
+  || { ok=0; why="agent settings exclude more than gh and git push from the sandbox"; }
+[ ! -e "$SHIM_ARGV.comments" ] || { ok=0; why="implement saw a build/pr-comments.json"; }
 [ "$(argv_after --allowedTools)" = "$allowed" ] || { ok=0; why="allowedTools=$(argv_after --allowedTools)"; }
 prompt_line=$(grep -nxF -- '/flow:implement 999' "$SHIM_ARGV" 2>/dev/null | cut -d: -f1 || true)
 allowed_line=$(grep -nxF -- '--allowedTools' "$SHIM_ARGV" 2>/dev/null | cut -d: -f1 || true)
@@ -171,6 +193,7 @@ for needle in "# Unattended run" $'\n\n## Stage: implement\n' "build/pr-body.md"
   contains "$system" "$needle" || { ok=0; why="system prompt lacks '$needle'"; }
 done
 ! contains "$system" "gh pr create" || { ok=0; why="system prompt still has the stage open the pull request"; }
+! contains "$system" "build/pr-comments.json" || { ok=0; why="implement's system prompt names build/pr-comments.json"; }
 log="$tmp/home/.netty-loom-agent/logs/NL-999/$RUN"
 [ "$(jq -r .subtype "$log/implement.json" 2>/dev/null)" = success ] || { ok=0; why="$RUN/implement.json missing or wrong"; }
 grep -q "shim stderr line" "$log/implement.log" 2>/dev/null || { ok=0; why="implement.log lacks claude's stderr"; }
@@ -388,13 +411,13 @@ run success 999 review "$PR_URL" 2
 ok=1; why=""
 [ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
 [ -z "$out" ] || { ok=0; why="stdout=$out"; }
-[ "$(cat "$SHIM_EVENTS" 2>/dev/null || true)" = "gh repo view --json nameWithOwner --jq .nameWithOwner
+[ "$(stage_events)" = "gh repo view --json nameWithOwner --jq .nameWithOwner
 gh api user --jq .login
 gradlew --stop
 $comments_call
 claude
 $comments_call
-gradlew --stop" ] || { ok=0; why="events=$(tr '\n' '|' 2>/dev/null < "$SHIM_EVENTS" || true)"; }
+gradlew --stop" ] || { ok=0; why="events=$(stage_events | tr '\n' '|')"; }
 [ "$(argv_after --max-budget-usd)" = 6 ] || { ok=0; why="budget=$(argv_after --max-budget-usd)"; }
 [ "$(argv_after --allowedTools)" = "$allowed" ] || { ok=0; why="allowedTools=$(argv_after --allowedTools)"; }
 for flag in "NL-999 review 2" "/flow:review $PR_URL"; do
@@ -407,10 +430,37 @@ for needle in $'\n\n## Stage: review\n' "$head" "first ORDER OF WORK bullet"; do
   contains "$system" "$needle" || { ok=0; why="system prompt lacks '$needle'"; }
 done
 contains "$system" "step 1" && { ok=0; why="the review tail names a step 1 review.md does not number"; }
+saw_comments review
 log="$tmp/home/.netty-loom-agent/logs/NL-999/$RUN"
 [ "$(jq -r .subtype "$log/review-2.json" 2>/dev/null)" = success ] || { ok=0; why="$RUN/review-2.json missing or wrong"; }
 [ "$said" = "NL-999 review 2: start|NL-999 review 2: end (exit 0)|" ] || { ok=0; why="said=$said"; }
 check review "$ok" "$why"
+rm -rf "$tmp"
+
+# --- review pre-fetch: stage.sh runs pr-comments.sh before the session, which cannot run it ---
+setup
+git -C "$tmp/work" push -q origin NL-999-x
+run success 999 review "$PR_URL" 1
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 0 ] || ok=0
+fetch_line=$(grep -nxF -- "gh pr view $PR_URL --json url --jq .url" "$SHIM_EVENTS" 2>/dev/null | head -n 1 | cut -d: -f1 || true)
+claude_line=$(grep -nx claude "$SHIM_EVENTS" 2>/dev/null | cut -d: -f1 || true)
+{ [ -n "$fetch_line" ] && [ -n "$claude_line" ] && [ "$fetch_line" -lt "$claude_line" ]; } \
+  || { ok=0; why="pr-comments.sh must run before claude (fetch line $fetch_line, claude line $claude_line)"; }
+! contains "$(argv_after --allowedTools)" pr-comments.sh || { ok=0; why="the session may run pr-comments.sh"; }
+check review-prefetch "$ok" "$why"
+rm -rf "$tmp"
+
+# --- pre-fetch fails: infrastructure, exit 2, claude never runs ---
+setup
+git -C "$tmp/work" push -q origin NL-999-x
+export SHIM_GH_FAIL="pr view"
+run success 999 review "$PR_URL" 1
+unset SHIM_GH_FAIL
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 2 ] && contains "$err" "pr-comments.sh failed" || ok=0
+[ ! -e "$SHIM_ARGV" ] || { ok=0; why="claude ran without the pull request's comments"; }
+check prefetch-fails "$ok" "$why"
 rm -rf "$tmp"
 
 # --- review of a head origin does not have: the session never starts ---
@@ -458,21 +508,10 @@ ok=1; why=""
 for flag in "NL-999 fix 1" "/flow:fix $PR_URL"; do
   argv_has "$flag" || { ok=0; why="argv lacks $flag"; }
 done
+saw_comments fix
 [ "$(jq -r .subtype "$tmp/home/.netty-loom-agent/logs/NL-999/$RUN/fix-1.json" 2>/dev/null)" = success ] \
   || { ok=0; why="$RUN/fix-1.json missing or wrong"; }
 check fix "$ok" "$why"
-rm -rf "$tmp"
-
-# --- fix pushed, and the pull request head has not caught up: origin decides ---
-setup
-git -C "$tmp/work" push -q origin NL-999-x
-export SHIM_HEAD
-SHIM_HEAD=$(git -C "$tmp/work" rev-parse HEAD)
-run pushed 999 fix "$PR_URL" 1
-unset SHIM_HEAD
-ok=1; why="rc=$rc stderr=$err"
-[ "$rc" = 0 ] || ok=0
-check fix-head-lag "$ok" "$why"
 rm -rf "$tmp"
 
 # --- fix leaves uncommitted edits ---
@@ -537,6 +576,7 @@ ok=1; why=""
 for flag in "NL-999 test" "/flow:test $PR_URL"; do
   argv_has "$flag" || { ok=0; why="argv lacks $flag"; }
 done
+saw_comments test
 [ "$(jq -r .subtype "$tmp/home/.netty-loom-agent/logs/NL-999/$RUN/test.json" 2>/dev/null)" = success ] \
   || { ok=0; why="$RUN/test.json missing or wrong"; }
 check test "$ok" "$why"

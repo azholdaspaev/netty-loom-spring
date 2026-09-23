@@ -5,8 +5,7 @@
     "allowUnsandboxedCommands": false,
     "excludedCommands": [
       "gh *",
-      "git push *",
-      ".claude/scripts/pr-comments.sh *"
+      "git push *"
     ],
     "filesystem": {
       "allowWrite": [

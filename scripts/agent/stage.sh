@@ -17,6 +17,7 @@ STAGE_TIMEOUT="${STAGE_TIMEOUT:-45m}"
 LS_REMOTE_TIMEOUT="${LS_REMOTE_TIMEOUT:-1m}"
 RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 AGENT="$(cd "$(dirname "$0")/../../.claude/agent" && pwd)"
+PR_COMMENTS="$(cd "$(dirname "$0")/../../.claude/scripts" && pwd)/pr-comments.sh"
 
 say() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) stage.sh: NL-$N $NAME: $*" >&2; }
 fail() { say "$1"; exit "${2:-1}"; }
@@ -50,7 +51,7 @@ Bash(gh issue view *),Bash(gh issue comment *),Bash(gh issue create *),\
 Bash(gh pr view *),Bash(gh pr diff *),Bash(gh pr comment *),\
 Bash(gh api repos/*/pulls/*/comments*),Bash(gh api repos/*/issues/*/comments*),\
 Bash(gh api repos/*/pulls/comments/*),Bash(gh api repos/*/issues/comments/*),\
-Bash(gh api repos/*/pulls/*/reviews *),Bash(gh api graphql *),Bash(.claude/scripts/pr-comments.sh *),\
+Bash(gh api repos/*/pulls/*/reviews *),Bash(gh api graphql *),\
 Bash(.claude/hooks/check-comments.sh *),Bash(.claude/scripts/check-naming.sh *),\
 Bash(scripts/agent/test-stage.sh *),Bash(scripts/agent/test-pipeline.sh *),\
 Bash(scripts/agent/test-runner.sh *),Bash(scripts/agent/test-requeue.sh *),Bash(shellcheck *),\
@@ -110,6 +111,17 @@ if [ "$STAGE" = review ]; then
 \`$(git rev-parse HEAD)\`. Do not run \`git rev-parse HEAD\`, \`git ls-remote\` or
 \`git status --porcelain\` for it again; reading the PR still comes first. Post with that sha as
 \`commit_id\`."
+fi
+# The main clone's pr-comments.sh, run here rather than by the session unsandboxed: a sandboxed
+# write can rewrite the worktree's copy (#423).
+if [ "$STAGE" != implement ]; then
+  mkdir -p build
+  "$PR_COMMENTS" "$PR" >build/pr-comments.json || fail "pr-comments.sh failed" 2
+  TAIL="${TAIL:-## Stage: $STAGE}
+
+\`stage.sh\` has written the output of \`.claude/scripts/pr-comments.sh $PR\` to
+\`build/pr-comments.json\`. Read that file with \`cat\` wherever the command runs
+\`pr-comments.sh\`, which is not on this session's tool list."
 fi
 since=$(jq -r 'map(.created_at) | max // ""' <<<"$before")
 
