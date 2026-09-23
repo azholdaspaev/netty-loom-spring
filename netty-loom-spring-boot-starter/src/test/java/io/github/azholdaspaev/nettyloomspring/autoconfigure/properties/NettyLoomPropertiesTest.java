@@ -28,12 +28,8 @@ class NettyLoomPropertiesTest {
     @Test
     void shouldPointEveryMetadataDescriptionAtConfigurationDocs() throws Exception {
         Map<String, String> descriptions = new HashMap<>();
-        try (InputStream metadata = NettyLoomProperties.class.getClassLoader()
-            .getResourceAsStream("META-INF/spring-configuration-metadata.json")) {
-            assertNotNull(metadata, "spring-configuration-metadata.json must be generated");
-            for (JsonNode property : new ObjectMapper().readTree(metadata).path("properties")) {
-                descriptions.put(property.path("name").asString(), property.path("description").asString(""));
-            }
+        for (JsonNode property : readMetadata().path("properties")) {
+            descriptions.put(property.path("name").asString(), property.path("description").asString(""));
         }
 
         for (RecordComponent component : NettyLoomProperties.class.getRecordComponents()) {
@@ -48,6 +44,26 @@ class NettyLoomPropertiesTest {
                 name + " must summarise in one sentence, leaving the rest and the default to their owners,"
                     + " but reads: " + description);
         }
+    }
+
+    @Test
+    void shouldSummariseEveryMetadataHintInOneSentence() throws Exception {
+        int hintValues = 0;
+        for (JsonNode hint : readMetadata().path("hints")) {
+            String name = hint.path("name").asString();
+            if (!name.startsWith("server.netty.")) {
+                continue;
+            }
+            for (JsonNode value : hint.path("values")) {
+                String description = value.path("description").asString("");
+                assertFalse(description.contains(". "),
+                    name + "=" + value.path("value").asString() + " must summarise in one sentence,"
+                        + " leaving edge cases, substituted values and Tomcat comparisons to "
+                        + CONFIGURATION_DOCS_URL + ", but reads: " + description);
+                hintValues++;
+            }
+        }
+        assertTrue(hintValues > 0, "the metadata must carry server.netty.* hints for this test to check");
     }
 
     @Test
@@ -167,6 +183,14 @@ class NettyLoomPropertiesTest {
         NettyLoomProperties properties = bind(Map.of("server.netty.transport", ""));
 
         assertEquals(NettyTransportPreference.AUTO, properties.transport());
+    }
+
+    private static JsonNode readMetadata() throws Exception {
+        try (InputStream metadata = NettyLoomProperties.class.getClassLoader()
+            .getResourceAsStream("META-INF/spring-configuration-metadata.json")) {
+            assertNotNull(metadata, "spring-configuration-metadata.json must be generated");
+            return new ObjectMapper().readTree(metadata);
+        }
     }
 
     private static NettyLoomProperties bind(Map<String, Object> source) {
