@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Run one pipeline stage for a GitHub issue as an unattended claude -p and report how it ended:
-# exit 0 (with the pull request URL after implement), 3 when a question is pending -- this stage's,
-# or an earlier run's the owner has not replied to -- 124 on timeout, 2 when the infrastructure failed
-# (a gh call, git ls-remote, or claude's error_during_execution), else 1. The result and stderr land
-# under $RUN_ID, the directory of the run the caller chose, or of this stage alone when none was.
+# exit 0, 3 when a question is pending -- this stage's, or an earlier run's the owner has not
+# replied to -- 124 on timeout, 2 when the infrastructure failed (a gh call, git ls-remote, or
+# claude's error_during_execution), else 1. The result and stderr land under $RUN_ID, the directory
+# of the run the caller chose, or of this stage alone when none was.
 # Usage (cwd = the issue's worktree): scripts/agent/stage.sh <issue number> implement
 #                                     scripts/agent/stage.sh <issue number> review|fix|test <pr url> [<round>]
 set -euo pipefail
@@ -39,7 +39,7 @@ ALLOWED="Read,Edit,Write,Grep,Glob,Agent,Skill,Bash(./gradlew *),\
 Bash(git status *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git add *),\
 Bash(git commit *),Bash(git push *),Bash(git stash *),Bash(git checkout -- *),\
 Bash(gh issue view *),Bash(gh issue comment *),Bash(gh issue create *),\
-Bash(gh pr view *),Bash(gh pr diff *),Bash(gh pr create *),Bash(gh pr comment *),\
+Bash(gh pr view *),Bash(gh pr diff *),Bash(gh pr comment *),\
 Bash(gh api repos/*/pulls/*/comments*),Bash(gh api repos/*/issues/*/comments*),\
 Bash(gh api repos/*/pulls/comments/*),Bash(gh api repos/*/issues/comments/*),\
 Bash(gh api repos/*/pulls/*/reviews *),Bash(gh api graphql *),Bash(.claude/scripts/pr-comments.sh *),\
@@ -56,13 +56,13 @@ case "$STAGE" in
   implement)
     BUDGET=16
     PROMPT="/flow:implement $N"
+    # pipeline.sh opens the pull request, not the stage: a command holding a backtick, as a title quoting
+    # an identifier does, runs sandboxed despite gh in excludedCommands, and gh fails TLS there (#400).
     TAIL="## Stage: implement
 
-When the work is committed: \`git push -u origin $branch\`. Then write the pull request body
-with the Write tool to \`build/pr-body.md\`, following \`.github/PULL_REQUEST_TEMPLATE.md\`
-section by section, and open it with
-\`gh pr create --draft --title \"NL-$N <the issue's title>\" --body-file build/pr-body.md\`.
-No label, and never mark it ready for review."
+When the work is committed, write the pull request body with the Write tool to
+\`build/pr-body.md\`, following \`.github/PULL_REQUEST_TEMPLATE.md\` section by section.
+\`pipeline.sh\` pushes the branch and opens the draft pull request from that file: do neither."
     ;;
   review) BUDGET=6; PROMPT="/flow:review $PR" ;;
   fix)    BUDGET=6; PROMPT="/flow:fix $PR" ;;
@@ -109,7 +109,7 @@ timeout "$STAGE_TIMEOUT" claude -p "$PROMPT" \
 question=$(comments | jq -r --arg me "$me" --arg since "$since" --arg marker "$MARKER" \
   '[.[] | select(.user.login == $me and (.body | startswith($marker)) and .created_at > $since)]
    | first // empty | .html_url') \
-  || { question=; echo "stage.sh: NL-$N $STAGE: comments unreadable after the stage; the pull request and commits decide" >&2; }
+  || { question=; echo "stage.sh: NL-$N $STAGE: comments unreadable after the stage; its result decides" >&2; }
 [ -z "$question" ] || fail "asked a question: $question" 3
 
 [ "$rc" = 124 ] && fail "timed out after $STAGE_TIMEOUT" 124
@@ -127,9 +127,6 @@ code=1; [ "$subtype" != error_during_execution ] || code=2
 case "$STAGE" in
   implement)
     [ -n "$(git log --oneline origin/main..HEAD)" ] || fail "no commits on $branch"
-    url=$(gh pr list --head "$branch" --json url --jq '.[0].url')
-    [ -n "$url" ] || fail "no open pull request for $branch"
-    echo "$url"
     ;;
   fix)
     [ -z "$(git status --porcelain)" ] || fail "uncommitted edits left on $branch"

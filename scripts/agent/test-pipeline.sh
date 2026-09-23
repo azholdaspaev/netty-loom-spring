@@ -14,8 +14,8 @@ export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 # pipeline.sh finds stage.sh and pr-comments.sh relative to itself, so each case gets a copy of
 # the tree's layout beside a stage.sh shim, a clone on NL-999-x, gh first on PATH and a fresh HOME.
 # The stage shim records the tree it found in tree-<stage> and the run id it was given in run-id,
-# writes the result file pipeline.sh sums under that id, pushes the branch on implement as the
-# real stage does before it opens the pull request, commits on the fix rounds SHIM_FIX_COMMITS
+# writes the result file pipeline.sh sums under that id, writes SHIM_BODY, when set, to
+# build/pr-body.md on implement, commits on the fix rounds SHIM_FIX_COMMITS
 # lists ("1,0" = fix 1 commits, fix 2 does not; unset = every fix does) and pushes after every fix,
 # posts inline comments as the runner on the review rounds SHIM_REVIEW_POSTS counts
 # ("0,1" = review 2 posts one; unset = none), commits an edit to src.txt in the stage SHIM_COMMIT
@@ -23,8 +23,8 @@ export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 # scratch.txt in the stage SHIM_DIRTY names, and
 # exits SHIM_FAIL_RC (1 unset) from the stage SHIM_FAIL names or 3 from the one SHIM_QUESTION names ("review 2"). The
 # gh shim serves that state back, inline comments
-# only through pr-comments.sh's own call, the issue's comments from issue-comments, keeps the
-# body of a pull request pipeline.sh opens itself in pr-body, and answers each GraphQL thread query with the count
+# only through pr-comments.sh's own call, the issue's comments from issue-comments, the issue's
+# title from SHIM_TITLE, keeps the body of the pull request pipeline.sh opens in pr-body, and answers each GraphQL thread query with the count
 # SHIM_OPEN holds for the latest review round ("2,0" = two open threads after the first review,
 # none after the second); every call whose arguments start with SHIM_GH_FAIL exits 1 instead.
 setup() {
@@ -64,7 +64,7 @@ mkdir -p "$HOME/.netty-loom-agent/logs/NL-$1/${RUN_ID:-}"
 echo '{"subtype":"success","total_cost_usd":0.5,"duration_ms":60000}' \
   > "$HOME/.netty-loom-agent/logs/NL-$1/${RUN_ID:-}/$stage${round:+-$round}.json"
 case "$stage" in
-  implement) git push -q origin NL-999-x; echo "$SHIM_URL" ;;
+  implement) if [ -n "${SHIM_BODY:-}" ]; then mkdir -p build; printf '%s\n' "$SHIM_BODY" > build/pr-body.md; fi ;;
   review)
     echo "$round" > "$SHIM_STATE/review-round"
     posts=$(echo "${SHIM_REVIEW_POSTS:-}" | cut -d, -f"$round")
@@ -97,7 +97,7 @@ case "$*" in
     open=$(echo "$SHIM_OPEN" | cut -d, -f"$round")
     [ -n "$open" ] || { echo "gh shim: SHIM_OPEN exhausted" >&2; exit 1; }
     jq -n --argjson n "$open" '[range($n) | {id: "T\(.)", isResolved: false, isOutdated: false, firstCommentId: .}]' ;;
-  "issue view 999 --json title --jq .title") echo "Decide the retry" ;;
+  "issue view 999 --json title --jq .title") echo "${SHIM_TITLE:-Decide the retry}" ;;
   "issue edit 999 "*) echo "https://github.com/o/r/issues/999" ;;
   "issue comment 999 --body-file -") cat > "$SHIM_STATE/comment"; echo "https://github.com/o/r/issues/999#issuecomment-1" ;;
 esac
@@ -141,7 +141,7 @@ run 2,0 ""
 ok=1; why=""
 [ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
 [ "$out" = "$PR_URL" ] || { ok=0; why="stdout=$out"; }
-[ "$stages" = "$IMPLEMENT$R1$F1$R2$TEST$HANDOFF" ] || { ok=0; why="stages=$stages"; }
+[ "$stages" = "$IMPLEMENT$CREATE$R1$F1$R2$TEST$HANDOFF" ] || { ok=0; why="stages=$stages"; }
 for needle in "$PR_URL" "rounds: 2" "converged" "2.50 USD" "5 min" \
               "from 5 stage results in $tmp/home/.netty-loom-agent/logs/NL-999/$run_id."; do
   contains "$comment" "$needle" || { ok=0; why="comment lacks '$needle': $comment"; }
@@ -152,6 +152,45 @@ contains "$comment" "stash" && { ok=0; why="comment names a stash on a clean pic
 check converges "$ok" "$why"
 rm -rf "$tmp"
 
+# --- a backtick in the issue's title: the script opens the pull request with it verbatim, from the stage's body ---
+setup
+echo build/ >> "$tmp/work/.git/info/exclude"
+export SHIM_TITLE="\`ServletContextLifecycleTest\` still names the store" SHIM_BODY="Closes #999. Written by the stage."
+run 0 ""
+unset SHIM_TITLE SHIM_BODY
+body=$(cat "$SHIM_STATE/pr-body" 2>/dev/null || true)
+ok=1; why="rc=$rc stderr=$err stages=$stages body=$body"
+[ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] \
+  && [ "$stages" = "${IMPLEMENT}gh issue view 999 --json title --jq .title|gh pr create --draft --title NL-999 \`ServletContextLifecycleTest\` still names the store --body-file -|$R1$TEST$HANDOFF" ] \
+  && [ "$body" = "Closes #999. Written by the stage." ] \
+  && [ "$(git -C "$tmp/origin" rev-parse refs/heads/NL-999-x)" = "$(git -C "$tmp/work" rev-parse HEAD)" ] || ok=0
+check implement-title-backtick "$ok" "$why"
+rm -rf "$tmp"
+
+# --- the implement stage wrote no body: the template, with the note that no stage wrote it ---
+setup
+run 0 ""
+body=$(cat "$SHIM_STATE/pr-body" 2>/dev/null || true)
+ok=1; why="rc=$rc stderr=$err stages=$stages body=$body"
+[ "$rc" = 0 ] && [ "$stages" = "$IMPLEMENT$CREATE$R1$TEST$HANDOFF" ] || ok=0
+for needle in "Closes #999." "no implement stage wrote" "## Problem"; do
+  contains "$body" "$needle" || { ok=0; why="body lacks '$needle': $body"; }
+done
+check implement-no-body "$ok" "$why"
+rm -rf "$tmp"
+
+# --- a body an earlier run left, and an implement stage that writes none: the template, not the stale body ---
+setup
+echo build/ >> "$tmp/work/.git/info/exclude"
+mkdir -p "$tmp/work/build"; echo "An earlier run's body." > "$tmp/work/build/pr-body.md"
+run 0 ""
+body=$(cat "$SHIM_STATE/pr-body" 2>/dev/null || true)
+ok=1; why="rc=$rc stderr=$err stages=$stages body=$body"
+[ "$rc" = 0 ] && [ "$stages" = "$IMPLEMENT$CREATE$R1$TEST$HANDOFF" ] \
+  && ! contains "$body" "An earlier run's body." && contains "$body" "no implement stage wrote" || ok=0
+check implement-stale-body "$ok" "$why"
+rm -rf "$tmp"
+
 # --- a retry on a dirty worktree: stashed by name, so the stage starts clean and the maintainer can find the hunks ---
 setup
 echo staged >> "$tmp/work/src.txt"; git -C "$tmp/work" add src.txt
@@ -160,7 +199,7 @@ run 0 ""
 stash=$(git -C "$tmp/work" stash list --format=%gs)
 tree=$(cat "$SHIM_STATE/tree-implement" 2>/dev/null || echo unread)
 ok=1; why="rc=$rc stderr=$err stages=$stages stash=$stash tree=$tree comment=$comment"
-[ "$rc" = 0 ] && [ "$stages" = "$IMPLEMENT$R1$TEST$HANDOFF" ] && [ -z "$tree" ] \
+[ "$rc" = 0 ] && [ "$stages" = "$IMPLEMENT$CREATE$R1$TEST$HANDOFF" ] && [ -z "$tree" ] \
   && [ "$(git -C "$tmp/work" stash list | wc -l | tr -d ' ')" = 1 ] \
   && contains "$stash" "NL-999 retry 20" \
   && contains "$err" "${stash#On NL-999-x: }" && contains "$comment" "${stash#On NL-999-x: }" || ok=0
@@ -176,7 +215,7 @@ unset SHIM_QUESTION
 run 0 ""
 stash=$(git -C "$tmp/work" stash list --format=%gs)
 ok=1; why="rc=$rc stderr=$err stages=$stages stash=$stash comment=$comment"
-[ "$rc" = 0 ] && [ "$stages" = "$IMPLEMENT$NEEDS_INPUT$IMPLEMENT$R1$TEST$HANDOFF" ] \
+[ "$rc" = 0 ] && [ "$stages" = "$IMPLEMENT$NEEDS_INPUT$IMPLEMENT$CREATE$R1$TEST$HANDOFF" ] \
   && [ "$(git -C "$tmp/work" stash list | wc -l | tr -d ' ')" = 1 ] \
   && contains "$comment" "${stash#On NL-999-x: }" || ok=0
 check retry-dirty-then-question "$ok" "$why"
@@ -197,6 +236,18 @@ contains "$comment" "1.00 USD" || { ok=0; why="comment lacks '1.00 USD': $commen
 check retry-unpushed "$ok" "$why"
 rm -rf "$tmp"
 
+# --- the same commits, and the body the implement stage that made them wrote: that body, not the template ---
+setup
+echo build/ >> "$tmp/work/.git/info/exclude"
+echo work >> "$tmp/work/src.txt"; git -C "$tmp/work" commit -qam "NL-999 work"
+mkdir -p "$tmp/work/build"; echo "Closes #999. Written by the stage." > "$tmp/work/build/pr-body.md"
+run 0 ""
+body=$(cat "$SHIM_STATE/pr-body" 2>/dev/null || true)
+ok=1; why="rc=$rc stderr=$err stages=$stages body=$body"
+[ "$rc" = 0 ] && [ "$stages" = "$CREATE$R1$TEST$HANDOFF" ] && [ "$body" = "Closes #999. Written by the stage." ] || ok=0
+check retry-unpushed-stage-body "$ok" "$why"
+rm -rf "$tmp"
+
 # --- the same commits, then an answered question: implement runs, the one stage that reads the answer ---
 setup
 echo work >> "$tmp/work/src.txt"
@@ -205,7 +256,7 @@ echo '[{"user": {"login": "runner"}, "body": "<!-- agent:question --> Which?", "
        {"user": {"login": "o"}, "body": "The first.", "created_at": "2026-01-03T00:00:00Z"}]' > "$tmp/state/issue-comments"
 run 0 ""
 ok=1; why="rc=$rc stderr=$err stages=$stages"
-[ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] && [ "$stages" = "$IMPLEMENT$R1$TEST$HANDOFF" ] || ok=0
+[ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] && [ "$stages" = "$IMPLEMENT$CREATE$R1$TEST$HANDOFF" ] || ok=0
 check retry-unpushed-answered "$ok" "$why"
 rm -rf "$tmp"
 
@@ -246,7 +297,7 @@ echo '[{"user": {"login": "runner"}, "body": "<!-- agent:question --> Which?", "
        {"user": {"login": "runner"}, "body": "Failed: infrastructure.", "created_at": "2026-01-05T00:00:00Z"}]' > "$tmp/state/issue-comments"
 run 0 ""
 ok=1; why="rc=$rc stderr=$err stages=$stages"
-[ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] && [ "$stages" = "$IMPLEMENT$R1$TEST$HANDOFF" ] || ok=0
+[ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] && [ "$stages" = "$IMPLEMENT$CREATE$R1$TEST$HANDOFF" ] || ok=0
 check retry-unpushed-answered-then-commented "$ok" "$why"
 rm -rf "$tmp"
 
@@ -267,7 +318,7 @@ setup
 run 1,1,1 ""
 ok=1; why=""
 [ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
-[ "$stages" = "$IMPLEMENT$R1$F1$R2$F2$R3$F3$TEST$HANDOFF" ] || { ok=0; why="stages=$stages"; }
+[ "$stages" = "$IMPLEMENT$CREATE$R1$F1$R2$F2$R3$F3$TEST$HANDOFF" ] || { ok=0; why="stages=$stages"; }
 for needle in "did not converge after 3 rounds; 1 thread open" "4.00 USD" "8 min"; do
   contains "$comment" "$needle" || { ok=0; why="comment lacks '$needle': $comment"; }
 done
@@ -281,7 +332,7 @@ run 1,1 ""
 unset SHIM_FIX_COMMITS
 ok=1; why=""
 [ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
-[ "$stages" = "$IMPLEMENT$R1$F1$R2$TEST$HANDOFF" ] || { ok=0; why="stages=$stages"; }
+[ "$stages" = "$IMPLEMENT$CREATE$R1$F1$R2$TEST$HANDOFF" ] || { ok=0; why="stages=$stages"; }
 for needle in "rounds: 2" "did not converge" "fix 1 pushed no commit and review 2 posted no comment" "1 thread open" "2.50 USD"; do
   contains "$comment" "$needle" || { ok=0; why="comment lacks '$needle': $comment"; }
 done
@@ -296,7 +347,7 @@ run 1,1,1 ""
 unset SHIM_FIX_COMMITS
 ok=1; why=""
 [ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
-[ "$stages" = "$IMPLEMENT$R1$F1$R2$F2$R3$TEST$HANDOFF" ] || { ok=0; why="stages=$stages"; }
+[ "$stages" = "$IMPLEMENT$CREATE$R1$F1$R2$F2$R3$TEST$HANDOFF" ] || { ok=0; why="stages=$stages"; }
 contains "$comment" "fix 2 pushed no commit and review 3 posted no comment" || { ok=0; why="comment: $comment"; }
 check moved-head-continues "$ok" "$why"
 rm -rf "$tmp"
@@ -321,7 +372,7 @@ run 1,1,1 ""
 unset SHIM_FIX_COMMITS SHIM_REVIEW_POSTS
 ok=1; why=""
 [ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
-[ "$stages" = "$IMPLEMENT$R1$F1$R2$F2$R3$TEST$HANDOFF" ] || { ok=0; why="stages=$stages"; }
+[ "$stages" = "$IMPLEMENT$CREATE$R1$F1$R2$F2$R3$TEST$HANDOFF" ] || { ok=0; why="stages=$stages"; }
 contains "$comment" "fix 2 pushed no commit and review 3 posted no comment" || { ok=0; why="comment: $comment"; }
 check new-comment-continues "$ok" "$why"
 rm -rf "$tmp"
@@ -331,7 +382,7 @@ setup
 run 0 ""
 ok=1; why=""
 [ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
-[ "$stages" = "$IMPLEMENT$R1$TEST$HANDOFF" ] || { ok=0; why="stages=$stages"; }
+[ "$stages" = "$IMPLEMENT$CREATE$R1$TEST$HANDOFF" ] || { ok=0; why="stages=$stages"; }
 contains "$comment" "rounds: 1" || { ok=0; why="comment lacks 'rounds: 1': $comment"; }
 check clean-review "$ok" "$why"
 rm -rf "$tmp"
@@ -378,7 +429,7 @@ run 1,1 ""
 unset SHIM_QUESTION
 ok=1; why="rc=$rc stdout=$out stderr=$err stages=$stages comment=$comment"
 [ "$rc" = 0 ] && [ -z "$out" ] && [ -z "$comment" ] \
-  && [ "$stages" = "$IMPLEMENT$R1$F1$R2$NEEDS_INPUT" ] || ok=0
+  && [ "$stages" = "$IMPLEMENT$CREATE$R1$F1$R2$NEEDS_INPUT" ] || ok=0
 check review-question "$ok" "$why"
 rm -rf "$tmp"
 
@@ -389,7 +440,7 @@ run 1,1 ""
 unset SHIM_QUESTION SHIM_DIRTY
 ok=1; why="rc=$rc stdout=$out stderr=$err stages=$stages comment=$comment tree=$(git -C "$tmp/work" status --porcelain)"
 [ "$rc" = 0 ] && [ -z "$out" ] && [ -z "$comment" ] && [ -z "$(git -C "$tmp/work" status --porcelain)" ] \
-  && [ "$stages" = "$IMPLEMENT$R1$F1$NEEDS_INPUT" ] && ! contains "$err" "discarded" || ok=0
+  && [ "$stages" = "$IMPLEMENT$CREATE$R1$F1$NEEDS_INPUT" ] && ! contains "$err" "discarded" || ok=0
 check fix-question-dirty "$ok" "$why"
 rm -rf "$tmp"
 
@@ -400,7 +451,7 @@ run 1,1 ""
 unset SHIM_QUESTION SHIM_COMMIT
 ok=1; why="rc=$rc stderr=$err stages=$stages ahead=$(git -C "$tmp/work" log --oneline origin/NL-999-x..HEAD | tr '\n' '|')"
 [ "$rc" = 0 ] && [ "$(git -C "$tmp/work" rev-parse HEAD)" = "$(git -C "$tmp/origin" rev-parse refs/heads/NL-999-x)" ] \
-  && [ -z "$(git -C "$tmp/work" status --porcelain)" ] && [ "$stages" = "$IMPLEMENT$R1$F1$NEEDS_INPUT" ] \
+  && [ -z "$(git -C "$tmp/work" status --porcelain)" ] && [ "$stages" = "$IMPLEMENT$CREATE$R1$F1$NEEDS_INPUT" ] \
   && contains "$err" "discarded by the reset to origin/NL-999-x: " && contains "$err" " NL-999 fix" || ok=0
 check fix-question-committed "$ok" "$why"
 rm -rf "$tmp"
@@ -426,7 +477,7 @@ run 0 ""
 unset SHIM_QUESTION
 ok=1; why="rc=$rc stdout=$out stderr=$err stages=$stages comment=$comment"
 [ "$rc" = 0 ] && [ -z "$out" ] && [ -z "$comment" ] \
-  && [ "$stages" = "$IMPLEMENT$R1$TEST$NEEDS_INPUT" ] || ok=0
+  && [ "$stages" = "$IMPLEMENT$CREATE$R1$TEST$NEEDS_INPUT" ] || ok=0
 check test-question "$ok" "$why"
 rm -rf "$tmp"
 
@@ -437,7 +488,7 @@ run 0 ""
 unset SHIM_QUESTION SHIM_DIRTY
 ok=1; why="rc=$rc stderr=$err stages=$stages tree=$(git -C "$tmp/work" status --porcelain)"
 [ "$rc" = 0 ] && [ -z "$(git -C "$tmp/work" status --porcelain)" ] \
-  && [ "$stages" = "$IMPLEMENT$R1$TEST$NEEDS_INPUT" ] || ok=0
+  && [ "$stages" = "$IMPLEMENT$CREATE$R1$TEST$NEEDS_INPUT" ] || ok=0
 check test-question-dirty "$ok" "$why"
 rm -rf "$tmp"
 
@@ -471,7 +522,7 @@ run 1,1 ""
 unset SHIM_FAIL
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "review: claude ended with error_max_budget_usd" || ok=0
-[ "$stages" = "$IMPLEMENT$R1$F1$R2" ] || { ok=0; why="stages=$stages"; }
+[ "$stages" = "$IMPLEMENT$CREATE$R1$F1$R2" ] || { ok=0; why="stages=$stages"; }
 [ -z "$comment" ] || { ok=0; why="issue comment posted: $comment"; }
 check stage-failure "$ok" "$why"
 rm -rf "$tmp"
@@ -483,7 +534,7 @@ run 0 ""
 unset SHIM_GH_FAIL
 ok=1; why="rc=$rc stderr=$err stages=$stages comment=$comment"
 [ "$rc" = 2 ] && contains "$err" "gh pr ready failed" && [ -z "$comment" ] \
-  && [ "$stages" = "$IMPLEMENT$R1${TEST}gh pr ready $PR_URL|" ] || ok=0
+  && [ "$stages" = "$IMPLEMENT$CREATE$R1${TEST}gh pr ready $PR_URL|" ] || ok=0
 check gh-failure "$ok" "$why"
 rm -rf "$tmp"
 
@@ -493,7 +544,7 @@ export SHIM_QUESTION="review 2" SHIM_GH_FAIL="issue edit 999 --remove-label agen
 run 1,1 ""
 unset SHIM_QUESTION SHIM_GH_FAIL
 ok=1; why="rc=$rc stderr=$err stages=$stages comment=$comment"
-[ "$rc" = 1 ] && [ -z "$comment" ] && [ "$stages" = "$IMPLEMENT$R1$F1$R2$NEEDS_INPUT" ] || ok=0
+[ "$rc" = 1 ] && [ -z "$comment" ] && [ "$stages" = "$IMPLEMENT$CREATE$R1$F1$R2$NEEDS_INPUT" ] || ok=0
 check question-label-failure "$ok" "$why"
 rm -rf "$tmp"
 
@@ -503,7 +554,7 @@ export SHIM_GH_FAIL="pr view $PR_URL --json url"
 run 0 ""
 unset SHIM_GH_FAIL
 ok=1; why="rc=$rc stderr=$err stages=$stages"
-[ "$rc" = 2 ] && contains "$err" "pr-comments.sh failed" && [ "$stages" = "$IMPLEMENT" ] || ok=0
+[ "$rc" = 2 ] && contains "$err" "pr-comments.sh failed" && [ "$stages" = "$IMPLEMENT$CREATE" ] || ok=0
 check pr-comments-failure "$ok" "$why"
 rm -rf "$tmp"
 
@@ -515,7 +566,7 @@ for stage_rc in 124 2; do
   unset SHIM_FAIL SHIM_FAIL_RC SHIM_DIRTY
   ok=1; why="rc=$rc stderr=$err stages=$stages tree=$(git -C "$tmp/work" status --porcelain)"
   [ "$rc" = "$stage_rc" ] && [ -z "$(git -C "$tmp/work" status --porcelain)" ] \
-    && [ "$stages" = "$IMPLEMENT$R1$TEST" ] && [ -z "$comment" ] || ok=0
+    && [ "$stages" = "$IMPLEMENT$CREATE$R1$TEST" ] && [ -z "$comment" ] || ok=0
   check "test-exit-$stage_rc-dirty" "$ok" "$why"
   rm -rf "$tmp"
 done
@@ -528,7 +579,7 @@ for stage_rc in 124 2; do
   unset SHIM_FAIL SHIM_FAIL_RC SHIM_COMMIT
   ok=1; why="rc=$rc stderr=$err stages=$stages ahead=$(git -C "$tmp/work" log --oneline origin/NL-999-x..HEAD | tr '\n' '|')"
   [ "$rc" = "$stage_rc" ] && [ "$(git -C "$tmp/work" rev-parse HEAD)" = "$(git -C "$tmp/origin" rev-parse refs/heads/NL-999-x)" ] \
-    && [ "$stages" = "$IMPLEMENT$R1$F1" ] && [ -z "$comment" ] \
+    && [ "$stages" = "$IMPLEMENT$CREATE$R1$F1" ] && [ -z "$comment" ] \
     && contains "$err" "discarded by the reset to origin/NL-999-x: " && contains "$err" " NL-999 fix" || ok=0
   check "fix-exit-$stage_rc-committed" "$ok" "$why"
   rm -rf "$tmp"
@@ -552,7 +603,7 @@ run 0 ""
 unset SHIM_FAIL SHIM_DIRTY
 ok=1; why="rc=$rc stderr=$err stages=$stages tree=$(git -C "$tmp/work" status --porcelain)"
 [ "$rc" = 1 ] && [ "$(git -C "$tmp/work" status --porcelain)" = $'MM src.txt\n?? scratch.txt' ] \
-  && [ "$stages" = "$IMPLEMENT$R1$TEST" ] || ok=0
+  && [ "$stages" = "$IMPLEMENT$CREATE$R1$TEST" ] || ok=0
 check test-exit-1-dirty "$ok" "$why"
 rm -rf "$tmp"
 

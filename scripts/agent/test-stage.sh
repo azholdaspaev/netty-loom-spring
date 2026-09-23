@@ -43,7 +43,6 @@ case "$*" in
     jq --arg body "$(cat)" '. + [{user: {login: "runner"}, body: $body, created_at: "2026-09-12T12:00:01Z",
       html_url: "https://github.com/o/r/issues/999#issuecomment-2"}]' "$SHIM_COMMENTS" > "$SHIM_COMMENTS.new"
     mv "$SHIM_COMMENTS.new" "$SHIM_COMMENTS" ;;
-  "pr list --head NL-999-x "*) if [ -n "${SHIM_PR_URL:-}" ]; then echo "$SHIM_PR_URL"; fi ;;
   "pr view "*" --json headRefOid "*) echo "${SHIM_HEAD:-$(git rev-parse HEAD)}" ;;
 esac
 SHIM
@@ -87,12 +86,12 @@ SHIM
 TS='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z'
 RUN_TS='[0-9]{8}T[0-9]{6}Z'
 
-# run <mode> <pr-url-or-empty> <stage args...>; sets rc, out, err and said (stderr with the stage's
-# own timestamped prefix stripped, so a line without it stands out)
+# run <mode> <stage args...>; sets rc, out, err and said (stderr with the stage's own timestamped
+# prefix stripped, so a line without it stands out)
 run() {
-  local mode=$1 url=$2; shift 2
+  local mode=$1; shift
   rc=0
-  out=$(cd "$tmp/work" && SHIM_MODE=$mode SHIM_PR_URL=$url HOME=$tmp/home PATH="$tmp/bin:$PATH" \
+  out=$(cd "$tmp/work" && SHIM_MODE=$mode HOME=$tmp/home PATH="$tmp/bin:$PATH" \
         "$STAGE_SH" "$@" 2> "$tmp/stderr") || rc=$?
   err=$(cat "$tmp/stderr")
   said=$(sed -E "s/^$TS stage\.sh: //" "$tmp/stderr" | tr '\n' '|')
@@ -111,16 +110,16 @@ argv_after() { grep -A1 -xF -- "$1" "$SHIM_ARGV" 2>/dev/null | tail -n 1 || true
 
 # --- success ---
 setup
-run success "$PR_URL" 999 implement
+run success 999 implement
 ok=1; why=""
 [ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
-[ "$out" = "$PR_URL" ] || { ok=0; why="stdout=$out"; }
+[ -z "$out" ] || { ok=0; why="stdout=$out"; }
 comments_call="gh api --paginate repos/o/r/issues/999/comments?per_page=100"
 allowed="Read,Edit,Write,Grep,Glob,Agent,Skill,Bash(./gradlew *),\
 Bash(git status *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git add *),\
 Bash(git commit *),Bash(git push *),Bash(git stash *),Bash(git checkout -- *),\
 Bash(gh issue view *),Bash(gh issue comment *),Bash(gh issue create *),\
-Bash(gh pr view *),Bash(gh pr diff *),Bash(gh pr create *),Bash(gh pr comment *),\
+Bash(gh pr view *),Bash(gh pr diff *),Bash(gh pr comment *),\
 Bash(gh api repos/*/pulls/*/comments*),Bash(gh api repos/*/issues/*/comments*),\
 Bash(gh api repos/*/pulls/comments/*),Bash(gh api repos/*/issues/comments/*),\
 Bash(gh api repos/*/pulls/*/reviews *),Bash(gh api graphql *),Bash(.claude/scripts/pr-comments.sh *),\
@@ -135,7 +134,6 @@ gradlew --stop
 $comments_call
 claude
 $comments_call
-gh pr list --head NL-999-x --json url --jq .[0].url
 gradlew --stop" ] || { ok=0; why="events=$(tr '\n' '|' 2>/dev/null < "$SHIM_EVENTS" || true)"; }
 for flag in --permission-mode acceptEdits --permission-prompts none --output-format json \
             "NL-999 implement" "/flow:implement 999"; do
@@ -166,10 +164,11 @@ allowed_line=$(grep -nxF -- '--allowedTools' "$SHIM_ARGV" 2>/dev/null | cut -d: 
 { [ -n "$prompt_line" ] && [ -n "$allowed_line" ] && [ "$prompt_line" -lt "$allowed_line" ]; } \
   || { ok=0; why="prompt must precede --allowedTools (prompt line $prompt_line, allowedTools line $allowed_line)"; }
 system=$(cat "$SHIM_ARGV.system" 2>/dev/null || true)
-for needle in "# Unattended run" $'\n\n## Stage: implement\n' "git push -u origin NL-999-x" "--draft" \
-              "--body-file build/pr-body.md" ".github/PULL_REQUEST_TEMPLATE.md" "NL-999 "; do
+for needle in "# Unattended run" $'\n\n## Stage: implement\n' "build/pr-body.md" \
+              ".github/PULL_REQUEST_TEMPLATE.md" "pipeline.sh"; do
   contains "$system" "$needle" || { ok=0; why="system prompt lacks '$needle'"; }
 done
+! contains "$system" "gh pr create" || { ok=0; why="system prompt still has the stage open the pull request"; }
 log="$tmp/home/.netty-loom-agent/logs/NL-999/$RUN"
 [ "$(jq -r .subtype "$log/implement.json" 2>/dev/null)" = success ] || { ok=0; why="$RUN/implement.json missing or wrong"; }
 grep -q "shim stderr line" "$log/implement.log" 2>/dev/null || { ok=0; why="implement.log lacks claude's stderr"; }
@@ -182,7 +181,7 @@ rm -rf "$tmp"
 
 # --- budget ---
 setup
-run budget "$PR_URL" 999 implement
+run budget 999 implement
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "ended with error_max_budget_usd" || ok=0
 [ "$(jq -r .subtype "$tmp/home/.netty-loom-agent/logs/NL-999/$RUN/implement.json" 2>/dev/null || true)" = error_max_budget_usd ] || ok=0
@@ -190,17 +189,9 @@ case "$said" in "NL-999 implement: start|NL-999 implement: claude ended with err
 check budget "$ok" "$why"
 rm -rf "$tmp"
 
-# --- no pull request ---
-setup
-run success "" 999 implement
-ok=1; why="rc=$rc stderr=$err"
-[ "$rc" = 1 ] && contains "$err" "no open pull request" || ok=0
-check no-pr "$ok" "$why"
-rm -rf "$tmp"
-
 # --- no commits ---
 setup
-run nocommit "$PR_URL" 999 implement
+run nocommit 999 implement
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "no commits" || ok=0
 check no-commits "$ok" "$why"
@@ -208,11 +199,10 @@ rm -rf "$tmp"
 
 # --- question: the marker comment, posted during the stage, is the outcome ---
 setup
-run question "$PR_URL" 999 implement
+run question 999 implement
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 3 ] && contains "$err" "asked a question: https://github.com/o/r/issues/999#issuecomment-2" || ok=0
 [ -z "$out" ] || { ok=0; why="stdout=$out"; }
-! grep -q "gh pr list" "$SHIM_EVENTS" || { ok=0; why="pull request looked up after a question"; }
 case "$said" in *"|NL-999 implement: end (exit 3)|") ;; *) ok=0; why="$why said=$said" ;; esac
 check question "$ok" "$why"
 rm -rf "$tmp"
@@ -221,7 +211,7 @@ rm -rf "$tmp"
 setup
 echo '[{"user":{"login":"runner"},"body":"<!-- agent:question -->\nOld?","created_at":"2026-09-12T11:00:00Z","html_url":"u1"},
        {"user":{"login":"o"},"body":"The first.","created_at":"2026-09-12T11:30:00Z","html_url":"u2"}]' > "$SHIM_COMMENTS"
-run nocommit "$PR_URL" 999 implement
+run nocommit 999 implement
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "no commits" || ok=0
 check stale-question "$ok" "$why"
@@ -230,7 +220,7 @@ rm -rf "$tmp"
 # --- pending question: the runner's marker is the newest comment before the stage, so the stage does not run ---
 setup
 echo '[{"user":{"login":"runner"},"body":"<!-- agent:question -->\nWhich one?","created_at":"2026-09-12T11:00:00Z","html_url":"u1"}]' > "$SHIM_COMMENTS"
-run success "$PR_URL" 999 implement
+run success 999 implement
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 3 ] && contains "$err" "question pending: u1" || ok=0
 [ ! -e "$SHIM_ARGV" ] || { ok=0; why="claude ran with a question pending"; }
@@ -241,7 +231,7 @@ rm -rf "$tmp"
 setup
 echo '[{"user":{"login":"runner"},"body":"<!-- agent:question -->\nWhich one?","created_at":"2026-09-12T11:00:00Z","html_url":"u1"},
        {"user":{"login":"runner"},"body":"Pipeline failed (exit 1, work).","created_at":"2026-09-12T11:30:00Z","html_url":"u2"}]' > "$SHIM_COMMENTS"
-run success "$PR_URL" 999 implement
+run success 999 implement
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 3 ] && contains "$err" "question pending: u1" || ok=0
 [ ! -e "$SHIM_ARGV" ] || { ok=0; why="claude ran with a question pending"; }
@@ -251,15 +241,15 @@ rm -rf "$tmp"
 # --- pending question from a third party: not the runner's, so the stage runs ---
 setup
 echo '[{"user":{"login":"o"},"body":"<!-- agent:question -->\nMine?","created_at":"2026-09-12T11:00:00Z","html_url":"u1"}]' > "$SHIM_COMMENTS"
-run success "$PR_URL" 999 implement
+run success 999 implement
 ok=1; why="rc=$rc stderr=$err"
-[ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] || ok=0
+[ "$rc" = 0 ] || ok=0
 check third-party-marker "$ok" "$why"
 rm -rf "$tmp"
 
 # --- question, then a crash: the comment decides, not claude's exit ---
 setup
-run question-crash "$PR_URL" 999 implement
+run question-crash 999 implement
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 3 ] && contains "$err" "asked a question" || ok=0
 check question-crash "$ok" "$why"
@@ -267,7 +257,7 @@ rm -rf "$tmp"
 
 # --- crash: no result JSON ---
 setup
-run crash "$PR_URL" 999 implement
+run crash 999 implement
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "no result (claude exited 1)" || ok=0
 check crash "$ok" "$why"
@@ -275,7 +265,7 @@ rm -rf "$tmp"
 
 # --- api error: is_error decides, not a subtype of success ---
 setup
-run api-error "" 999 review "$PR_URL" 1
+run api-error 999 review "$PR_URL" 1
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "claude ended with api_error: API Error: 403 blocked" || ok=0
 check api-error "$ok" "$why"
@@ -283,7 +273,7 @@ rm -rf "$tmp"
 
 # --- is_error with a success subtype and a clean exit ---
 setup
-run is-error "$PR_URL" 999 implement
+run is-error 999 implement
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "claude ended with is_error (exited 0)" || ok=0
 [ -z "$out" ] || { ok=0; why="stdout=$out"; }
@@ -292,7 +282,7 @@ rm -rf "$tmp"
 
 # --- non-success subtype with is_error false and a clean exit: the subtype alone decides ---
 setup
-run subtype-only "$PR_URL" 999 implement
+run subtype-only 999 implement
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "claude ended with error_max_turns (exited 0)" || ok=0
 [ -z "$out" ] || { ok=0; why="stdout=$out"; }
@@ -301,15 +291,15 @@ rm -rf "$tmp"
 
 # --- no is_error field: a CLI that predates it is not an error ---
 setup
-run no-is-error "$PR_URL" 999 implement
+run no-is-error 999 implement
 ok=1; why="rc=$rc stderr=$err"
-[ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] || ok=0
+[ "$rc" = 0 ] || ok=0
 check no-is-error "$ok" "$why"
 rm -rf "$tmp"
 
 # --- no terminal_reason field: the subtype names the outcome ---
 setup
-run no-terminal-reason "$PR_URL" 999 implement
+run no-terminal-reason 999 implement
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "claude ended with error_max_budget_usd (exited 0)" || ok=0
 check no-terminal-reason "$ok" "$why"
@@ -317,7 +307,7 @@ rm -rf "$tmp"
 
 # --- success result, non-zero exit: only the first line of .result reaches the failure line ---
 setup
-run exit-1 "$PR_URL" 999 implement
+run exit-1 999 implement
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "claude ended with success: Done. (exited 1)" || ok=0
 ! contains "$err" "second line" || { ok=0; why="whole .result in stderr: $err"; }
@@ -327,7 +317,7 @@ rm -rf "$tmp"
 
 # --- error_during_execution: infrastructure, so exit 2 ---
 setup
-run dropped "$PR_URL" 999 implement
+run dropped 999 implement
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 2 ] && contains "$err" "claude ended with error_during_execution" || ok=0
 [ -z "$out" ] || { ok=0; why="stdout=$out"; }
@@ -337,7 +327,7 @@ rm -rf "$tmp"
 # --- gh fails before the stage: infrastructure, exit 2, claude never runs ---
 setup
 export SHIM_GH_FAIL="api --paginate"
-run success "$PR_URL" 999 implement
+run success 999 implement
 unset SHIM_GH_FAIL
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 2 ] && contains "$err" "gh api --paginate failed" || ok=0
@@ -348,17 +338,17 @@ rm -rf "$tmp"
 # --- comments unreadable after the stage: logged, and the pull request and commits decide ---
 setup
 export SHIM_GH_FAIL="api --paginate" SHIM_GH_FAIL_AFTER=1
-run success "$PR_URL" 999 implement
+run success 999 implement
 unset SHIM_GH_FAIL SHIM_GH_FAIL_AFTER
 ok=1; why="rc=$rc stdout=$out stderr=$err"
-[ "$rc" = 0 ] && [ "$out" = "$PR_URL" ] && contains "$err" "comments unreadable after the stage" || ok=0
+[ "$rc" = 0 ] && contains "$err" "comments unreadable after the stage" || ok=0
 check comments-unread "$ok" "$why"
 rm -rf "$tmp"
 
 # --- timeout ---
 setup
 export STAGE_TIMEOUT=1
-run hang "$PR_URL" 999 implement
+run hang 999 implement
 unset STAGE_TIMEOUT
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 124 ] && contains "$err" "timed out" || ok=0
@@ -370,7 +360,7 @@ rm -rf "$tmp"
 # --- wrong branch ---
 setup
 git -C "$tmp/work" checkout -q main
-run success "$PR_URL" 999 implement
+run success 999 implement
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "expected NL-999-" || ok=0
 [ ! -e "$SHIM_ARGV" ] || { ok=0; why="claude ran on branch main"; }
@@ -380,7 +370,7 @@ rm -rf "$tmp"
 
 # --- unknown stage ---
 setup
-run success "$PR_URL" 999 deploy
+run success 999 deploy
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "unknown stage" || ok=0
 [ ! -e "$SHIM_ARGV" ] || { ok=0; why="claude ran for an unknown stage"; }
@@ -389,7 +379,7 @@ rm -rf "$tmp"
 
 # --- review ---
 setup
-run success "" 999 review "$PR_URL" 2
+run success 999 review "$PR_URL" 2
 ok=1; why=""
 [ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
 [ -z "$out" ] || { ok=0; why="stdout=$out"; }
@@ -407,7 +397,7 @@ for flag in "NL-999 review 2" "/flow:review $PR_URL"; do
 done
 system=$(cat "$SHIM_ARGV.system" 2>/dev/null || true)
 contains "$system" "# Unattended run" || { ok=0; why="system prompt lacks unattended.md"; }
-contains "$system" "--draft" && { ok=0; why="system prompt carries the implement tail"; }
+contains "$system" "build/pr-body.md" && { ok=0; why="system prompt carries the implement tail"; }
 log="$tmp/home/.netty-loom-agent/logs/NL-999/$RUN"
 [ "$(jq -r .subtype "$log/review-2.json" 2>/dev/null)" = success ] || { ok=0; why="$RUN/review-2.json missing or wrong"; }
 [ "$said" = "NL-999 review 2: start|NL-999 review 2: end (exit 0)|" ] || { ok=0; why="said=$said"; }
@@ -417,7 +407,7 @@ rm -rf "$tmp"
 # --- fix ---
 setup
 git -C "$tmp/work" push -q origin NL-999-x
-run pushed "" 999 fix "$PR_URL" 1
+run pushed 999 fix "$PR_URL" 1
 ok=1; why=""
 [ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
 [ "$(argv_after --max-budget-usd)" = 6 ] || { ok=0; why="budget=$(argv_after --max-budget-usd)"; }
@@ -435,7 +425,7 @@ setup
 git -C "$tmp/work" push -q origin NL-999-x
 export SHIM_HEAD
 SHIM_HEAD=$(git -C "$tmp/work" rev-parse HEAD)
-run pushed "" 999 fix "$PR_URL" 1
+run pushed 999 fix "$PR_URL" 1
 unset SHIM_HEAD
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 0 ] || ok=0
@@ -445,7 +435,7 @@ rm -rf "$tmp"
 # --- fix leaves uncommitted edits ---
 setup
 git -C "$tmp/work" push -q origin NL-999-x
-run dirty "" 999 fix "$PR_URL" 1
+run dirty 999 fix "$PR_URL" 1
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "uncommitted" || ok=0
 check fix-dirty "$ok" "$why"
@@ -455,7 +445,7 @@ rm -rf "$tmp"
 setup
 git -C "$tmp/work" push -q origin NL-999-x
 root=$(git -C "$tmp/work" rev-parse HEAD)
-run success "" 999 fix "$PR_URL" 1
+run success 999 fix "$PR_URL" 1
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "HEAD is not pushed: origin's NL-999-x is $root" || ok=0
 check fix-unpushed "$ok" "$why"
@@ -463,7 +453,7 @@ rm -rf "$tmp"
 
 # --- fix did not push, and origin has no such branch: the message says so ---
 setup
-run success "" 999 fix "$PR_URL" 1
+run success 999 fix "$PR_URL" 1
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "HEAD is not pushed: origin's NL-999-x is absent" || ok=0
 check fix-branch-absent "$ok" "$why"
@@ -473,7 +463,7 @@ rm -rf "$tmp"
 setup
 git -C "$tmp/work" push -q origin NL-999-x
 git -C "$tmp/work" remote set-url origin "$tmp/gone"
-run success "" 999 fix "$PR_URL" 1
+run success 999 fix "$PR_URL" 1
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 2 ] && contains "$err" "git ls-remote origin failed" || ok=0
 check fix-origin-unreachable "$ok" "$why"
@@ -487,7 +477,7 @@ printf '#!/usr/bin/env bash\nsleep 30\n' > "$tmp/bin/ssh"
 chmod +x "$tmp/bin/ssh"
 export GIT_SSH_COMMAND="$tmp/bin/ssh" LS_REMOTE_TIMEOUT=1
 SECONDS=0
-run nocommit "" 999 fix "$PR_URL" 1
+run nocommit 999 fix "$PR_URL" 1
 unset GIT_SSH_COMMAND LS_REMOTE_TIMEOUT
 ok=1; why="rc=$rc after ${SECONDS}s stderr=$err"
 [ "$rc" = 2 ] && contains "$err" "git ls-remote origin failed" && [ "$SECONDS" -lt 10 ] || ok=0
@@ -496,7 +486,7 @@ rm -rf "$tmp"
 
 # --- test ---
 setup
-run nocommit "" 999 test "$PR_URL"
+run nocommit 999 test "$PR_URL"
 ok=1; why=""
 [ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
 [ "$(argv_after --max-budget-usd)" = 6 ] || { ok=0; why="budget=$(argv_after --max-budget-usd)"; }
@@ -512,7 +502,7 @@ rm -rf "$tmp"
 # --- no run id given: the stage picks one from its start time, so a hand run overwrites nothing ---
 setup
 unset RUN_ID
-run nocommit "" 999 test "$PR_URL"
+run nocommit 999 test "$PR_URL"
 export RUN_ID="$RUN"
 runs=$(cd "$tmp/home/.netty-loom-agent/logs/NL-999" 2>/dev/null && printf '%s|' * || true)
 ok=1; why="rc=$rc stderr=$err runs=$runs"
@@ -523,7 +513,7 @@ rm -rf "$tmp"
 
 # --- pull request stage without a pull request ---
 setup
-run success "" 999 review
+run success 999 review
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "pull request" || ok=0
 [ ! -e "$SHIM_ARGV" ] || { ok=0; why="claude ran without a pull request"; }
