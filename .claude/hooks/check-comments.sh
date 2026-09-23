@@ -2,7 +2,7 @@
 # The part of CLAUDE.md rule 5 a script can check: no javadoc on a @Test or @ParameterizedTest
 # method, a class javadoc within 20 lines, a private member's within 2, and no run of two or more
 # full-line // comments -- a paragraph is a /** */ or /* */ block, so the budgets can see it.
-# Usage: .claude/scripts/check-comments.sh <file.java>...
+# Usage: .claude/hooks/check-comments.sh <file.java>...
 #
 # Length is the number of lines between /** and */, counting the /** and */ lines themselves only
 # when they carry text; `/** text */` is 1.
