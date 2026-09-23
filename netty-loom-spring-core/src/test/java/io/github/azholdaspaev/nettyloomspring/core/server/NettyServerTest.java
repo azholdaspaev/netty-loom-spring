@@ -2,6 +2,7 @@ package io.github.azholdaspaev.nettyloomspring.core.server;
 
 import io.github.azholdaspaev.nettyloomspring.core.exception.NettyServerException;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
+import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineDefinition;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineStep;
 import io.github.azholdaspaev.nettyloomspring.core.support.NettyServerFixture;
 import io.netty.buffer.ByteBuf;
@@ -10,7 +11,10 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
+import io.netty.channel.EventLoop;
+import io.netty.channel.ServerChannel;
 import io.netty.channel.group.DefaultChannelGroup;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -125,6 +129,22 @@ class NettyServerTest {
         HttpConnectionRegistry connectionRegistry = new HttpConnectionRegistry(
             new DefaultChannelGroup(GlobalEventExecutor.INSTANCE));
         return NettyServerFixture.newServer(configuration, connectionRegistry, handlers);
+    }
+
+    private static NettyServer newServerWithCloseFailingListener(NettyPipelineStep step) {
+        NettyServerConfiguration configuration = new NettyServerConfiguration(
+            0, InetAddress.getLoopbackAddress(), 0, 0, false, 128);
+        HttpConnectionRegistry connectionRegistry = new HttpConnectionRegistry(
+            new DefaultChannelGroup(GlobalEventExecutor.INSTANCE));
+        return new NettyServer(configuration,
+            new NettyServerChannelInitializer(new NettyPipelineDefinition(List.of(step)), connectionRegistry),
+            new NettyIoHandlerFactory(NettyTransportPreference.NIO) {
+                @Override
+                public Class<? extends ServerChannel> getServerChannelClass() {
+                    return CloseFailingServerChannel.class;
+                }
+            },
+            connectionRegistry);
     }
 
     @AfterEach
@@ -308,6 +328,55 @@ class NettyServerTest {
     }
 
     @Test
+    void shouldStopEventLoopsWhenServerChannelFailsToClose() throws Exception {
+        CompletableFuture<List<EventLoop>> eventLoops = new CompletableFuture<>();
+        nettyServer = newServerWithCloseFailingListener(new NettyPipelineStep("eventLoops",
+            () -> new ChannelInboundHandlerAdapter() {
+                @Override
+                public void channelActive(ChannelHandlerContext ctx) {
+                    eventLoops.complete(List.of(ctx.channel().parent().eventLoop(), ctx.channel().eventLoop()));
+                    ctx.fireChannelActive();
+                }
+            }));
+        nettyServer.start();
+
+        try (Socket idle = new Socket()) {
+            idle.connect(new InetSocketAddress("127.0.0.1", nettyServer.getPort()), 1_000);
+            List<EventLoop> loops = eventLoops.get(5, TimeUnit.SECONDS);
+
+            assertEquals(NettyShutdownResult.IDLE, nettyServer.shutdown(Duration.ofSeconds(5)),
+                "a listening socket that fails to close must not abort the shutdown");
+            assertTrue(loops.stream().allMatch(EventLoop::isTerminated),
+                "the boss and worker event loops must stop although the listening socket failed to close");
+        }
+    }
+
+    @Test
+    void shouldBeginDrainWhenServerChannelFailsToClose() throws Exception {
+        CountDownLatch accepted = new CountDownLatch(1);
+        nettyServer = newServerWithCloseFailingListener(new NettyPipelineStep("accepted",
+            () -> new ChannelInboundHandlerAdapter() {
+                @Override
+                public void channelActive(ChannelHandlerContext ctx) {
+                    accepted.countDown();
+                    ctx.fireChannelActive();
+                }
+            }));
+        nettyServer.start();
+
+        try (Socket idle = new Socket()) {
+            idle.connect(new InetSocketAddress("127.0.0.1", nettyServer.getPort()), 1_000);
+            assertTrue(accepted.await(5, TimeUnit.SECONDS), "server must have accepted the connection");
+
+            assertDoesNotThrow(nettyServer::stopAcceptingConnections,
+                "a listening socket that fails to close must not escape into the caller");
+            idle.setSoTimeout(5_000);
+            assertEquals(-1, idle.getInputStream().read(),
+                "the drain must still begin and close the idle keep-alive connection");
+        }
+    }
+
+    @Test
     void shouldAcceptConnectionsAgainAfterRestart() throws Exception {
         nettyServer.start();
         nettyServer.shutdown(Duration.ofSeconds(1));
@@ -330,5 +399,15 @@ class NettyServerTest {
         assertDoesNotThrow(() -> {
             assertEquals(NettyShutdownResult.IDLE, nettyServer.shutdown(Duration.ofSeconds(1)));
         });
+    }
+
+    public static final class CloseFailingServerChannel extends NioServerSocketChannel {
+
+        @Override
+        protected void doClose() throws Exception {
+            // Closes the socket before failing, so the test does not leak a listening port.
+            super.doClose();
+            throw new IOException("close failed");
+        }
     }
 }

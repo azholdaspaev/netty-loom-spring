@@ -13,6 +13,9 @@ in any minor release.
 - `HttpServletResponse.getWriter()` after `getOutputStream()`, and the reverse, now throw
   `IllegalStateException` as the Servlet spec requires, instead of handing out two sinks whose
   bytes reached the body in flush order (#118).
+- A listening socket that fails to close no longer aborts shutdown: the drain still begins and the
+  event loops still stop, so Boot's graceful shutdown completes instead of waiting out
+  `spring.lifecycle.timeout-per-shutdown-phase` (#399).
 
 ## [0.1.0] — 2026-09-20
 
