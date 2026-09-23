@@ -3,11 +3,12 @@
 # and fix until no review thread is left open or a round changed nothing -- the fix pushed no
 # commit and the review after it posted no comment -- three rounds at most, then verify by test
 # and hand over. A stage that asked a question moves the issue to agent/needs-input instead.
+# The script, not the implement stage, pushes the branch and opens the draft pull request, with the
+# body the stage wrote to build/pr-body.md, or the template when there is none.
 # A reused worktree is settled first: uncommitted edits go to a named stash, and commits without
-# a pull request get one opened here, with the template as its body, rather than a second
-# implement stage on a branch that already carries the work -- unless the issue's last question is
-# still pending, or the owner's answer to it is newer than every commit, so no implement stage has
-# read it yet.
+# a pull request get one opened here rather than a second implement stage on a branch that already
+# carries the work -- unless the issue's last question is still pending, or the owner's answer to it
+# is newer than every commit, so no implement stage has read it yet.
 # Usage: scripts/agent/pipeline.sh <issue number>    (cwd = the issue's worktree)
 set -euo pipefail
 
@@ -45,12 +46,10 @@ answered_at() {
         | if . == null then "pending" else .created_at | fromdateiso8601 end'
 }
 
-# stage <stage> [<pr url> [<round>]] -- runs stage.sh with its stdout in $stage_out rather than
-# echoed for a $(...) caller: an exit inside a command substitution ends only the subshell, and the
-# pipeline must end here on a question (issue to agent/needs-input, exit 0) or a failure (its code).
+# stage <stage> [<pr url> [<round>]]
 stage() {
   local rc=0
-  stage_out=$("$HERE/stage.sh" "$N" "$@") || rc=$?
+  "$HERE/stage.sh" "$N" "$@" || rc=$?
   case "$rc" in
     0) ;;
     3) # Implement's edits stay for the retry's stash; a later stage's, and a commit it left unpushed, are discarded: scratch from a stage that only asked, and the resume reviews the pull request head.
@@ -77,20 +76,26 @@ answered=$(answered_at)
 newest=$(git log -1 --format=%ct origin/main..HEAD)
 # An answer older than the newest commit was read by the implement stage that made the commit; a
 # pending question has none to read, so implement runs and stops on it.
-if [ -z "$url" ] && [ -n "$newest" ] && [ "$answered" != pending ] && [ "${answered:-0}" -lt "$newest" ]; then
+if [ -z "$url" ] && { [ -z "$newest" ] || [ "$answered" = pending ] || [ "${answered:-0}" -ge "$newest" ]; }; then
+  # Else a body an earlier run left is opened as this stage's when it writes none.
+  rm -f build/pr-body.md
+  stage implement
+fi
+if [ -z "$url" ]; then
   git push -q -u origin "$branch" || fail "git push"
   title=$(gh issue view "$N" --json title --jq .title)
-  body="$(sed "s/#NN/#$N/" "$PR_TEMPLATE")
+  if [ -s build/pr-body.md ]; then
+    body=$(cat build/pr-body.md)
+  else
+    body="$(sed "s/#NN/#$N/" "$PR_TEMPLATE")
 
 ---
 
-Opened by \`pipeline.sh\` on a retry that found these commits on the branch and no pull request:
-no implement stage wrote this body, so the sections above are the template's."
+Opened by \`pipeline.sh\` with no \`build/pr-body.md\` in the worktree: no implement stage wrote
+this body, so the sections above are the template's."
+  fi
   url=$(gh pr create --draft --title "NL-$N $title" --body-file - <<<"$body")
-  say "commits found on pick-up without a pull request, opened $url"
-elif [ -z "$url" ]; then
-  stage implement
-  url=$stage_out
+  say "opened $url"
 fi
 
 converged=0
