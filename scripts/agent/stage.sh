@@ -77,17 +77,6 @@ When the work is committed, write the pull request body with the Write tool to
   *) fail "unknown stage '$STAGE'" ;;
 esac
 [ "$STAGE" = implement ] || [ -n "$PR" ] || fail "no pull request given"
-# The review's step 1 here rather than in the session: a session that fails it stops and posts
-# nothing, and pipeline.sh reads a first round with no thread open as converged.
-if [ "$STAGE" = review ]; then
-  [ -z "$(git status --porcelain)" ] || fail "uncommitted edits left on $branch"
-  require_pushed
-  TAIL="## Stage: review
-
-\`stage.sh\` has run step 1 before this session: \`git status --porcelain\` printed nothing, and
-\`HEAD\` and origin's \`$branch\` are both \`$(git rev-parse HEAD)\`. Do not run step 1 again, and
-post with that sha as \`commit_id\`."
-fi
 
 LOG="$HOME/.netty-loom-agent/logs/NL-$N/$RUN_ID"
 mkdir -p "$LOG"
@@ -109,6 +98,17 @@ pending=$(jq -r --arg me "$me" --arg owner "${repo%%/*}" --arg marker "$MARKER" 
   | select($question != null)
   | select(.[$question + 1:] | all(.user.login != $owner)) | .[$question].html_url' <<<"$before")
 [ -z "$pending" ] || fail "question pending: $pending" 3
+# The review's step 1 here rather than in the session: a session that fails it stops and posts
+# nothing, and pipeline.sh reads a first round with no thread open as converged.
+if [ "$STAGE" = review ]; then
+  [ -z "$(git status --porcelain)" ] || fail "uncommitted edits left on $branch"
+  require_pushed
+  TAIL="## Stage: review
+
+\`stage.sh\` has run step 1 before this session: \`git status --porcelain\` printed nothing, and
+\`HEAD\` and origin's \`$branch\` are both \`$(git rev-parse HEAD)\`. Do not run step 1 again, and
+post with that sha as \`commit_id\`."
+fi
 since=$(jq -r 'map(.created_at) | max // ""' <<<"$before")
 
 SYSTEM=$(cat "$AGENT/unattended.md")

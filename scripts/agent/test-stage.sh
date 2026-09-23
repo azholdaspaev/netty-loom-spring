@@ -421,6 +421,20 @@ ok=1; why="rc=$rc stderr=$err"
 check review-unpushed "$ok" "$why"
 rm -rf "$tmp"
 
+# --- pending question before a review of an unpushed commit: the question decides, so exit 3 ---
+setup
+git -C "$tmp/work" push -q origin NL-999-x
+echo z > "$tmp/work/unpushed.txt"
+git -C "$tmp/work" add unpushed.txt
+git -C "$tmp/work" commit -q -m "NL-999 Unpushed"
+echo '[{"user":{"login":"runner"},"body":"<!-- agent:question -->\nWhich one?","created_at":"2026-09-12T11:00:00Z","html_url":"u1"}]' > "$SHIM_COMMENTS"
+run success 999 review "$PR_URL" 1
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 3 ] && contains "$err" "question pending: u1" || ok=0
+[ ! -e "$SHIM_ARGV" ] || { ok=0; why="claude ran with a question pending"; }
+check review-pending-question-unpushed "$ok" "$why"
+rm -rf "$tmp"
+
 # --- review of a tree with uncommitted edits: the session never starts ---
 setup
 git -C "$tmp/work" push -q origin NL-999-x
