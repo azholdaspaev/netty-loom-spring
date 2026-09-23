@@ -403,9 +403,10 @@ done
 system=$(cat "$SHIM_ARGV.system" 2>/dev/null || true)
 contains "$system" "# Unattended run" || { ok=0; why="system prompt lacks unattended.md"; }
 contains "$system" "build/pr-body.md" && { ok=0; why="system prompt carries the implement tail"; }
-for needle in $'\n\n## Stage: review\n' "$head"; do
+for needle in $'\n\n## Stage: review\n' "$head" "first ORDER OF WORK bullet"; do
   contains "$system" "$needle" || { ok=0; why="system prompt lacks '$needle'"; }
 done
+contains "$system" "step 1" && { ok=0; why="the review tail names a step 1 review.md does not number"; }
 log="$tmp/home/.netty-loom-agent/logs/NL-999/$RUN"
 [ "$(jq -r .subtype "$log/review-2.json" 2>/dev/null)" = success ] || { ok=0; why="$RUN/review-2.json missing or wrong"; }
 [ "$said" = "NL-999 review 2: start|NL-999 review 2: end (exit 0)|" ] || { ok=0; why="said=$said"; }
