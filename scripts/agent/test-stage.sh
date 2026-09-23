@@ -335,7 +335,7 @@ ok=1; why="rc=$rc stderr=$err"
 check gh-before "$ok" "$why"
 rm -rf "$tmp"
 
-# --- comments unreadable after the stage: logged, and the pull request and commits decide ---
+# --- comments unreadable after the stage: logged, and its result decides ---
 setup
 export SHIM_GH_FAIL="api --paginate" SHIM_GH_FAIL_AFTER=1
 run success 999 implement
