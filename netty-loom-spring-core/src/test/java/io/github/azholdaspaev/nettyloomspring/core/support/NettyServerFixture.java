@@ -23,7 +23,7 @@ import java.util.concurrent.ExecutorService;
 
 /**
  * Test helper assembling the {@link NettyServer} the core tests exercise, on the platform's
- * auto-selected transport.
+ * auto-selected transport unless a test passes its own {@link NettyIoHandlerFactory}.
  *
  * <p>The registry is a parameter rather than a local because pipelines need it inside their own
  * handlers, and it must be the same instance the server receives: two instances compile, and leave
@@ -62,9 +62,17 @@ public final class NettyServerFixture {
     public static NettyServer newServer(NettyServerConfiguration configuration,
                                         HttpConnectionRegistry connectionRegistry,
                                         List<NettyPipelineStep> handlers) {
+        return newServer(configuration, connectionRegistry, handlers,
+            new NettyIoHandlerFactory(NettyTransportPreference.AUTO));
+    }
+
+    public static NettyServer newServer(NettyServerConfiguration configuration,
+                                        HttpConnectionRegistry connectionRegistry,
+                                        List<NettyPipelineStep> handlers,
+                                        NettyIoHandlerFactory ioHandlerFactory) {
         return new NettyServer(configuration,
             new NettyServerChannelInitializer(new NettyPipelineDefinition(handlers), connectionRegistry),
-            new NettyIoHandlerFactory(NettyTransportPreference.AUTO),
+            ioHandlerFactory,
             connectionRegistry);
     }
 }
