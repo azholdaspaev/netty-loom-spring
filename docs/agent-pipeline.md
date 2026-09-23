@@ -119,7 +119,7 @@ stage, so the wait before pick-up and each stage's wall time read off that file 
 cap + 3 × (review cap + fix cap) + the test cap, and stops early when a fix stage pushed no commit
 and the review after it posted no inline comment: the same model on the same code returns the same
 verdicts (#262). A retry, an answered question and each `agent/fix` run capped stages on top of
-that. A stage that hits its cap ends with `error_max_budget_usd` and the issue goes to
+that. A stage that hits its USD cap ends with `error_max_budget_usd` and the issue goes to
 `agent/failed`. What a run actually cost is in the hand-off comment on its issue; #239 was the
 first.
 
