@@ -21,6 +21,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NettyLoomPropertiesTest {
 
+    private static final String CONFIGURATION_DOCS_URL =
+        "https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty";
+
     @Test
     void shouldPointEveryMetadataDescriptionAtConfigurationDocs() throws Exception {
         Map<String, String> descriptions = new HashMap<>();
@@ -36,9 +39,9 @@ class NettyLoomPropertiesTest {
             String name = "server.netty." + DataObjectPropertyName.toDashedForm(component.getName());
             String description = descriptions.get(name);
             assertNotNull(description, name + " must have a metadata entry");
-            assertTrue(description.contains("docs/configuration.md"),
-                name + " must point at docs/configuration.md, the owner of its semantics, but reads: "
-                    + description);
+            assertTrue(description.endsWith(" See " + CONFIGURATION_DOCS_URL),
+                name + " must end by pointing at " + CONFIGURATION_DOCS_URL
+                    + ", the owner of its semantics, but reads: " + description);
         }
     }
 
