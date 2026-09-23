@@ -61,7 +61,7 @@
       "values": [
         {
           "value": 0,
-          "description": "Use Netty's default (2 x Runtime.getRuntime().availableProcessors())."
+          "description": "Use Netty's default."
         }
       ]
     },
@@ -70,7 +70,7 @@
       "values": [
         {
           "value": 0,
-          "description": "Not a default. Passed to listen() verbatim on epoll and kqueue (a queue of at most one pending connection on Linux); the nio transport substitutes 50. Tomcat would keep 100."
+          "description": "Not a default; the backlog it yields depends on the transport."
         }
       ]
     },
@@ -79,7 +79,7 @@
       "values": [
         {
           "value": "0",
-          "description": "Disable the read timeout entirely; connections are never closed for client inactivity."
+          "description": "Disable the read timeout."
         },
         {
           "value": "-1",
