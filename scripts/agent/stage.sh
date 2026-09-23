@@ -14,6 +14,7 @@ PR="${3:-}"
 ROUND="${4:-}"
 NAME="$STAGE${ROUND:+ $ROUND}"
 STAGE_TIMEOUT="${STAGE_TIMEOUT:-45m}"
+LS_REMOTE_TIMEOUT="${LS_REMOTE_TIMEOUT:-1m}"
 RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 AGENT="$(cd "$(dirname "$0")/../../.claude/agent" && pwd)"
 
@@ -133,7 +134,7 @@ case "$STAGE" in
   fix)
     [ -z "$(git status --porcelain)" ] || fail "uncommitted edits left on $branch"
     # origin rather than the pull request's headRefOid: GitHub moves that some seconds after the push (#401).
-    pushed=$(timeout 1m git ls-remote origin "refs/heads/$branch") || fail "git ls-remote origin failed" 2
+    pushed=$(timeout "$LS_REMOTE_TIMEOUT" git ls-remote origin "refs/heads/$branch") || fail "git ls-remote origin failed" 2
     pushed=${pushed%%[[:space:]]*}
     [ "$(git rev-parse HEAD)" = "$pushed" ] || fail "HEAD is not pushed: origin's $branch is ${pushed:-absent}"
     ;;
