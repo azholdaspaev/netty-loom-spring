@@ -421,6 +421,17 @@ ok=1; why="rc=$rc stderr=$err"
 check review-unpushed "$ok" "$why"
 rm -rf "$tmp"
 
+# --- review of a tree with uncommitted edits: the session never starts ---
+setup
+git -C "$tmp/work" push -q origin NL-999-x
+echo y > "$tmp/work/left-behind.txt"
+run success 999 review "$PR_URL" 1
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 1 ] && contains "$err" "uncommitted edits left on NL-999-x" || ok=0
+[ ! -e "$SHIM_ARGV" ] || { ok=0; why="claude ran on a tree with uncommitted edits"; }
+check review-dirty "$ok" "$why"
+rm -rf "$tmp"
+
 # --- origin unreachable before a review: infrastructure, so exit 2, and the session never starts ---
 setup
 git -C "$tmp/work" push -q origin NL-999-x
