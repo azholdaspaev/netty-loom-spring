@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -42,6 +43,10 @@ class NettyLoomPropertiesTest {
             assertTrue(description.endsWith(" See " + CONFIGURATION_DOCS_URL),
                 name + " must end by pointing at " + CONFIGURATION_DOCS_URL
                     + ", the owner of its semantics, but reads: " + description);
+            String summary = description.substring(0, description.lastIndexOf(" See "));
+            assertFalse(summary.contains(". "),
+                name + " must summarise in one sentence, leaving the rest and the default to their owners,"
+                    + " but reads: " + description);
         }
     }
 
