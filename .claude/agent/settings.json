@@ -6,6 +6,7 @@
     "excludedCommands": [
       "gh *",
       "git push *",
+      "git ls-remote *",
       ".claude/scripts/pr-comments.sh *"
     ],
     "filesystem": {
