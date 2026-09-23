@@ -19,7 +19,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.net.BindException;
 import java.net.ConnectException;
 import java.net.InetAddress;
@@ -364,6 +366,25 @@ class NettyServerTest {
             assertEquals(-1, idle.getInputStream().read(),
                 "the drain must still begin and close the idle keep-alive connection");
         }
+    }
+
+    @Test
+    void shouldLogCauseWhenServerChannelFailsToClose() {
+        nettyServer = newServer(InetAddress.getLoopbackAddress(), null, 0, newCloseFailingListenerTransport());
+        nettyServer.start();
+
+        ByteArrayOutputStream captured = new ByteArrayOutputStream();
+        PrintStream standardError = System.err;
+        System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
+        try {
+            nettyServer.stopAcceptingConnections();
+        } finally {
+            System.setErr(standardError);
+        }
+
+        String logged = captured.toString(StandardCharsets.UTF_8);
+        assertTrue(logged.contains("WARN") && logged.contains("close failed"),
+            "a listening socket that fails to close must leave its cause in the log; logged: " + logged);
     }
 
     @Test
