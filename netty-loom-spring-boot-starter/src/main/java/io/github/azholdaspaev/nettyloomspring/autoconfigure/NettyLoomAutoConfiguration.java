@@ -122,16 +122,9 @@ public class NettyLoomAutoConfiguration {
         return new NettyPipelineDefinition(List.of(
             new NettyPipelineStep("httpCodec", () -> new HttpServerCodec(maxInitialLineLength, maxHeaderSize, maxChunkSize)),
             new NettyPipelineStep("httpKeepAlive", HttpServerKeepAliveHandler::new),
-            /*
-             * Directly below the codec so a connection counts as busy from the head of a request, before
-             * its body has finished arriving; outbound of httpKeepAlive so it can stamp
-             * Connection: close before that handler decides whether to close.
-             */
+            // HttpDrainHandler's javadoc owns why it sits here.
             new NettyPipelineStep("drain", () -> new HttpDrainHandler(httpConnectionRegistry)),
-            /*
-             * Above the pipelining gate so its count stays a property of what the client has delivered
-             * rather than of what that handler has released; correctness holds on either side.
-             */
+            // HttpReadTimeoutHandler's javadoc owns why it sits above the pipelining gate.
             new NettyPipelineStep("readTimeout", () -> new HttpReadTimeoutHandler(properties.readTimeout())),
             /*
              * Above the dispatcher so requests are gated before dispatch while responses still pass back
