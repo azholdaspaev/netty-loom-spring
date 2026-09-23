@@ -14,7 +14,7 @@ own mutations from real work.
 
 ORDER OF WORK:
 - understand the root cause the change claims to address — from the PR body and the issue it closes — and what behaviour should now differ
-- choose the path from the diff. The check path is for a diff with no production behaviour to break: every changed line under `*/src/main/` is a comment, javadoc, or an identifier renamed at every use — or no such line changed at all. Every other diff, and any diff you are unsure of, takes the mutation path (#403)
+- choose the path from the diff. The check path is for a diff with no behaviour to break: every changed file is a test source, a document, or a `.java` file under `*/src/main/` whose every changed line is a comment, javadoc, or an identifier renamed at every use. A diff that changes any other file — a script, a build file, a workflow, a resource — and any diff you are unsure of, takes the mutation path (#403)
 - check path: run `./gradlew build`, then `.claude/scripts/check-naming.sh` over the touched `.java` files — a failure on a line the diff touched is a finding, one on an untouched line predates the PR. Mutate nothing, unless the PR claims a new or changed test binds a behaviour: then prove that one test binds, as the mutation path does, and no other
 - mutation path:
   - write the test plan before you read the existing tests: the observable behaviours that must hold if the fix is real. Reading first turns the plan into a mirror of what was already written
