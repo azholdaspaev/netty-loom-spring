@@ -22,11 +22,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NettyLoomPropertiesTest {
 
-    private static final String CONFIGURATION_DOCS_URL =
-        "https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty";
-
     @Test
-    void shouldPointEveryMetadataDescriptionAtConfigurationDocs() throws Exception {
+    void shouldPointEveryMetadataDescriptionAtDocsOfBuildVersion() throws Exception {
+        String version = System.getProperty("nettyloomspring.version");
+        assertNotNull(version, "the test task must pass the build version as nettyloomspring.version");
+        String gitRef = version.endsWith("-SNAPSHOT") ? "main" : "v" + version;
+        String docsUrl = "https://github.com/azholdaspaev/netty-loom-spring/blob/" + gitRef
+            + "/docs/configuration.md#servernetty";
+
         Map<String, String> descriptions = new HashMap<>();
         try (InputStream metadata = NettyLoomProperties.class.getClassLoader()
             .getResourceAsStream("META-INF/spring-configuration-metadata.json")) {
@@ -40,9 +43,10 @@ class NettyLoomPropertiesTest {
             String name = "server.netty." + DataObjectPropertyName.toDashedForm(component.getName());
             String description = descriptions.get(name);
             assertNotNull(description, name + " must have a metadata entry");
-            assertTrue(description.endsWith(" See " + CONFIGURATION_DOCS_URL),
-                name + " must end by pointing at " + CONFIGURATION_DOCS_URL
-                    + ", the owner of its semantics, but reads: " + description);
+            assertTrue(description.endsWith(" See " + docsUrl),
+                name + " must end by pointing at " + docsUrl
+                    + ", the owner of its semantics at the version this jar was built from, but reads: "
+                    + description);
             String summary = description.substring(0, description.lastIndexOf(" See "));
             assertFalse(summary.contains(". "),
                 name + " must summarise in one sentence, leaving the rest and the default to their owners,"

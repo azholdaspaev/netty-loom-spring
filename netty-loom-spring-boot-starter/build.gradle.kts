@@ -30,6 +30,19 @@ dependencies {
     "mockitoAgent"(libs.mockito.core)
 }
 
+tasks.named<ProcessResources>("processResources") {
+    // A snapshot links main rather than a commit: it has no tag, and main carries -SNAPSHOT by design.
+    val docsRef = version.toString().let { if (it.endsWith("-SNAPSHOT")) "main" else "v$it" }
+    inputs.property("docsRef", docsRef)
+    filesMatching("META-INF/additional-spring-configuration-metadata.json") {
+        expand("docsRef" to docsRef)
+    }
+}
+
 tasks.named<JavaCompile>("compileJava") {
     inputs.files(tasks.named("processResources"))
+}
+
+tasks.named<Test>("test") {
+    systemProperty("nettyloomspring.version", version.toString())
 }

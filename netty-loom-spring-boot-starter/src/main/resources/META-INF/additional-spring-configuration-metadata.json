@@ -8,51 +8,51 @@
   "properties": [
     {
       "name": "server.netty.boss-threads",
-      "description": "Size of the event-loop group that accepts connections; 0 applies Netty's default. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
+      "description": "Size of the event-loop group that accepts connections; 0 applies Netty's default. See https://github.com/azholdaspaev/netty-loom-spring/blob/${docsRef}/docs/configuration.md#servernetty"
     },
     {
       "name": "server.netty.worker-threads",
-      "description": "Size of the event-loop group that reads and writes on accepted connections; 0 applies Netty's default. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
+      "description": "Size of the event-loop group that reads and writes on accepted connections; 0 applies Netty's default. See https://github.com/azholdaspaev/netty-loom-spring/blob/${docsRef}/docs/configuration.md#servernetty"
     },
     {
       "name": "server.netty.tcp-keep-alive",
-      "description": "Socket-level SO_KEEPALIVE on accepted connections. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
+      "description": "Socket-level SO_KEEPALIVE on accepted connections. See https://github.com/azholdaspaev/netty-loom-spring/blob/${docsRef}/docs/configuration.md#servernetty"
     },
     {
       "name": "server.netty.accept-count",
-      "description": "Listen backlog (SO_BACKLOG). See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
+      "description": "Listen backlog (SO_BACKLOG). See https://github.com/azholdaspaev/netty-loom-spring/blob/${docsRef}/docs/configuration.md#servernetty"
     },
     {
       "name": "server.netty.shutdown-grace-period",
-      "description": "How long graceful shutdown drains before force-closing. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
+      "description": "How long graceful shutdown drains before force-closing. See https://github.com/azholdaspaev/netty-loom-spring/blob/${docsRef}/docs/configuration.md#servernetty"
     },
     {
       "name": "server.netty.read-timeout",
-      "description": "The slow-loris deadline, measured on the client rather than on your handler. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
+      "description": "The slow-loris deadline, measured on the client rather than on your handler. See https://github.com/azholdaspaev/netty-loom-spring/blob/${docsRef}/docs/configuration.md#servernetty"
     },
     {
       "name": "server.netty.write-stall-timeout",
-      "description": "How long a response waits on a client that has stopped reading it; 0 or negative disables it. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
+      "description": "How long a response waits on a client that has stopped reading it; 0 or negative disables it. See https://github.com/azholdaspaev/netty-loom-spring/blob/${docsRef}/docs/configuration.md#servernetty"
     },
     {
       "name": "server.netty.max-http-body-size",
-      "description": "Request body cap, answered 413. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
+      "description": "Request body cap, answered 413. See https://github.com/azholdaspaev/netty-loom-spring/blob/${docsRef}/docs/configuration.md#servernetty"
     },
     {
       "name": "server.netty.max-header-size",
-      "description": "Request header-block cap, answered 431. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
+      "description": "Request header-block cap, answered 431. See https://github.com/azholdaspaev/netty-loom-spring/blob/${docsRef}/docs/configuration.md#servernetty"
     },
     {
       "name": "server.netty.max-initial-line-length",
-      "description": "Request-line cap, answered 414. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
+      "description": "Request-line cap, answered 414. See https://github.com/azholdaspaev/netty-loom-spring/blob/${docsRef}/docs/configuration.md#servernetty"
     },
     {
       "name": "server.netty.max-chunk-size",
-      "description": "Upper bound on the pieces a request body is delivered in. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
+      "description": "Upper bound on the pieces a request body is delivered in. See https://github.com/azholdaspaev/netty-loom-spring/blob/${docsRef}/docs/configuration.md#servernetty"
     },
     {
       "name": "server.netty.transport",
-      "description": "Netty I/O transport: auto, nio, epoll or kqueue. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
+      "description": "Netty I/O transport: auto, nio, epoll or kqueue. See https://github.com/azholdaspaev/netty-loom-spring/blob/${docsRef}/docs/configuration.md#servernetty"
     }
   ],
   "hints": [
