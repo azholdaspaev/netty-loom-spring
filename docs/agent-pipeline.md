@@ -125,9 +125,9 @@ What a run actually cost is in the hand-off comment on its issue; #239 was the f
 
 ## Sandbox
 
-The stages run under `.claude/agent/settings.json`, where `gh`, `git push` and `pr-comments.sh`
-are `sandbox.excludedCommands`: under Seatbelt a Go binary cannot verify TLS and SSH cannot cross
-the sandbox proxy (Claude Code sandboxing reference, § Troubleshooting:
+The stages run under `.claude/agent/settings.json`, where `gh`, `git push`, `git ls-remote` and
+`pr-comments.sh` are `sandbox.excludedCommands`: under Seatbelt a Go binary cannot verify TLS
+and SSH cannot cross the sandbox proxy (Claude Code sandboxing reference, § Troubleshooting:
 https://code.claude.com/docs/en/sandboxing). They still pass the permission rules. Each script
 under `scripts/agent/` has a shim-driven `test-*.sh` beside it.
 

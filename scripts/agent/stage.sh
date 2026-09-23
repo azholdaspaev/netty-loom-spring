@@ -37,7 +37,7 @@ comments() { gh api --paginate "repos/$repo/issues/$N/comments?per_page=100" | j
 # is the rule's sole wildcard (Claude Code permissions reference, "Wildcard patterns").
 ALLOWED="Read,Edit,Write,Grep,Glob,Agent,Skill,Bash(./gradlew *),\
 Bash(git status *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git add *),\
-Bash(git commit *),Bash(git push *),Bash(git stash *),Bash(git checkout -- *),\
+Bash(git commit *),Bash(git push *),Bash(git stash *),Bash(git checkout -- *),Bash(git ls-remote *),\
 Bash(gh issue view *),Bash(gh issue comment *),Bash(gh issue create *),\
 Bash(gh pr view *),Bash(gh pr diff *),Bash(gh pr comment *),\
 Bash(gh api repos/*/pulls/*/comments*),Bash(gh api repos/*/issues/*/comments*),\
