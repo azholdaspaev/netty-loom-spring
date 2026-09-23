@@ -77,15 +77,16 @@ When the work is committed, write the pull request body with the Write tool to
   *) fail "unknown stage '$STAGE'" ;;
 esac
 [ "$STAGE" = implement ] || [ -n "$PR" ] || fail "no pull request given"
-# The review's head check here rather than in the session: a session whose ls-remote fails stops and
-# posts nothing, and pipeline.sh reads a first round with no thread open as converged.
+# The review's step 1 here rather than in the session: a session that fails it stops and posts
+# nothing, and pipeline.sh reads a first round with no thread open as converged.
 if [ "$STAGE" = review ]; then
+  [ -z "$(git status --porcelain)" ] || fail "uncommitted edits left on $branch"
   require_pushed
   TAIL="## Stage: review
 
-\`stage.sh\` has compared \`HEAD\` with origin's \`$branch\` before this session: both are
-\`$(git rev-parse HEAD)\`. That is what step 1's \`git ls-remote\` would print, so do not run it,
-and post with that sha as \`commit_id\`."
+\`stage.sh\` has run step 1 before this session: \`git status --porcelain\` printed nothing, and
+\`HEAD\` and origin's \`$branch\` are both \`$(git rev-parse HEAD)\`. Do not run step 1 again, and
+post with that sha as \`commit_id\`."
 fi
 
 LOG="$HOME/.netty-loom-agent/logs/NL-$N/$RUN_ID"
