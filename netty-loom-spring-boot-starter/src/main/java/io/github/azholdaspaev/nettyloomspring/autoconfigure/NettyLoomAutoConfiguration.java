@@ -124,11 +124,6 @@ public class NettyLoomAutoConfiguration {
             new NettyPipelineStep("httpKeepAlive", HttpServerKeepAliveHandler::new),
             new NettyPipelineStep("drain", () -> new HttpDrainHandler(httpConnectionRegistry)),
             new NettyPipelineStep("readTimeout", () -> new HttpReadTimeoutHandler(properties.readTimeout())),
-            /*
-             * Above the dispatcher so requests are gated before dispatch while responses still pass back
-             * through, and above bodyLimit so that handler's 100 Continue and 413 are sequenced rather
-             * than travelling towards the head unsequenced (issue #78).
-             */
             new NettyPipelineStep("pipelining", HttpPipeliningHandler::new),
             /*
              * Below the gate so the rejection is sequenced behind an earlier pipelined response and releases
@@ -136,10 +131,6 @@ public class NettyLoomAutoConfiguration {
              * byte after a bad message, so no request can be queued behind one.
              */
             NettyPipelineStep.shared("decoderFailure", new HttpDecoderFailureHandler()),
-            /*
-             * Below decoderFailure so it counts only what decoded, and above the dispatcher so a body it
-             * refuses never reaches one.
-             */
             new NettyPipelineStep("bodyLimit", () -> new HttpRequestBodyLimitHandler(maxHttpBodyBytes)),
             new NettyPipelineStep("dispatcher", () -> new HttpRequestHandler(httpRequestDispatcher, nettyLoomDispatchExecutor,
                 httpConnectionRegistry, properties.writeStallTimeout())),
