@@ -94,7 +94,7 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
     private void requireSslNotConfigured() {
         /*
          * Because this factory is a ConfigurableServletWebServerFactory, Boot binds server.ssl.* onto it,
-         * but the Netty pipeline has no SslHandler yet (issue #16). Fail fast rather than silently serving
+         * but the Netty pipeline has no SslHandler (issue #16). Fail fast rather than silently serving
          * plaintext while the application looks TLS-configured.
          */
         if (Ssl.isEnabled(getSsl())) {
@@ -135,10 +135,7 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
      * {@link #configureSessions()} writes {@code same-site} as an attribute {@code addCookie} prefers.
      */
     private void configureCookieSameSite() {
-        /*
-         * Diverges from Tomcat at same-site=omitted, which writes no attribute: a supplier matching the
-         * session cookie applies to it here, where Tomcat suppresses that supplier instead.
-         */
+        // Diverges from Tomcat at same-site=omitted: docs/compatibility-matrix.md, CookieSameSiteSupplier beans.
         List<? extends CookieSameSiteSupplier> suppliers = getSettings().getCookieSameSiteSuppliers();
         if (!suppliers.isEmpty()) {
             servletContext.setCookieSameSiteResolver(new SuppliedCookieSameSiteResolver(suppliers));

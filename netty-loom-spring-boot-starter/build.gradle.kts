@@ -31,5 +31,6 @@ dependencies {
 }
 
 tasks.named<JavaCompile>("compileJava") {
+    // Boot's configuration processor reads additional-spring-configuration-metadata.json from build/resources/main (MetadataStore.locateGradleResourcesDirectory).
     inputs.files(tasks.named("processResources"))
 }
