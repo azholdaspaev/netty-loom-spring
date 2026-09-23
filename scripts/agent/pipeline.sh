@@ -105,8 +105,8 @@ for round in $(seq 1 "$ROUNDS"); do
   open=$(jq '[.threads[] | select(.isResolved | not)] | length' <<<"$comments")
   if [ "$open" = 0 ]; then converged=1; break; fi
   if [ "$moved" = 0 ] && [ "$posted" = 0 ]; then stalled=1; break; fi
-  # HEAD rather than headRefOid: stage.sh has checked HEAD is on origin, and GitHub moves headRefOid later (#401).
-  before=$(git rev-parse HEAD)
+  # origin/$branch rather than headRefOid (#401) or HEAD, which can carry a commit an earlier run left unpushed.
+  before=$(git rev-parse "origin/$branch")
   stage fix "$url" "$round"
   moved=0
   [ "$(git rev-parse HEAD)" = "$before" ] || moved=1
