@@ -64,9 +64,9 @@ branch — archiving the Claude Code session that holds it is enough — and lab
 under `../netty-loom-wt/`, where the merge cleans it up; do not push to it while the issue is on
 `agent/running`.
 
-A pipeline that fails on the infrastructure — `stage.sh` exits 124 on a timeout, 2 when a `gh`
-call failed or `claude` ended with `error_during_execution`; `pipeline.sh` exits 2 when one of its
-own `gh` calls failed, the runner when `./gradlew dependencySources` did — goes back to
+A pipeline that fails on the infrastructure — `stage.sh` exits 124 on a timeout, 2 on a cause
+its header comment lists; `pipeline.sh` exits 2 when one of its own `gh` calls failed, the runner
+when `./gradlew dependencySources` did — goes back to
 `agent/queued` with `agent/retried` and no comment, once; every other failure, and a second
 infrastructure failure, is `agent/failed`. The comment on the issue then names the class and holds
 the last 30 lines of stderr and the log path. Replace `agent/failed` with `agent/queued` to retry:
