@@ -15,9 +15,9 @@ export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 # the tree's layout beside a stage.sh shim, a clone on NL-999-x, gh first on PATH and a fresh HOME.
 # The stage shim records the tree it found in tree-<stage> and the run id it was given in run-id,
 # writes the result file pipeline.sh sums under that id, pushes the branch on implement as the
-# real stage does before it opens the pull request, commits and pushes on the fix
-# rounds SHIM_FIX_PUSHES lists ("1,0" = fix 1 pushes a commit, fix 2 does not; unset = every fix
-# pushes), posts inline comments as the runner on the review rounds SHIM_REVIEW_POSTS counts
+# real stage does before it opens the pull request, pushes the branch on every fix as the real stage
+# has checked it did, committing first on the rounds SHIM_FIX_PUSHES lists ("1,0" = fix 1 pushes a
+# commit, fix 2 does not; unset = every fix does), posts inline comments as the runner on the review rounds SHIM_REVIEW_POSTS counts
 # ("0,1" = review 2 posts one; unset = none), commits an edit to src.txt in the stage SHIM_COMMIT
 # names, edits src.txt -- staged and unstaged -- and adds
 # scratch.txt in the stage SHIM_DIRTY names, and
@@ -73,9 +73,8 @@ case "$stage" in
       "$SHIM_STATE/comments" > "$SHIM_STATE/comments.new" && mv "$SHIM_STATE/comments.new" "$SHIM_STATE/comments" ;;
   fix)
     pushes=$(echo "${SHIM_FIX_PUSHES-1,1,1}" | cut -d, -f"$round")
-    if [ "${pushes:-0}" = 1 ]; then
-      echo "fix-$round" >> src.txt; git commit -qam "NL-999 fix $round"; git push -q origin NL-999-x
-    fi ;;
+    if [ "${pushes:-0}" = 1 ]; then echo "fix-$round" >> src.txt; git commit -qam "NL-999 fix $round"; fi
+    git push -q origin NL-999-x ;;
 esac
 SHIM
   cat > "$tmp/bin/gh" <<'SHIM'
@@ -300,6 +299,19 @@ ok=1; why=""
 [ "$stages" = "$IMPLEMENT$R1$F1$R2$F2$R3$TEST$HANDOFF" ] || { ok=0; why="stages=$stages"; }
 contains "$comment" "fix 2 pushed no commit and review 3 posted no comment" || { ok=0; why="comment: $comment"; }
 check moved-head-continues "$ok" "$why"
+rm -rf "$tmp"
+
+# --- a fix that pushed only a commit an earlier run left unpushed still moved the head ---
+setup
+git -C "$tmp/work" push -q origin NL-999-x
+echo hand >> "$tmp/work/src.txt"; git -C "$tmp/work" commit -qam "NL-999 left unpushed"
+export SHIM_FIX_PUSHES=0
+run 1,1,1 "$PR_URL"
+unset SHIM_FIX_PUSHES
+ok=1; why="rc=$rc stderr=$err stages=$stages comment=$comment"
+[ "$rc" = 0 ] && [ "$stages" = "$R1$F1$R2$F2$R3$TEST$HANDOFF" ] \
+  && contains "$comment" "fix 2 pushed no commit and review 3 posted no comment" || ok=0
+check moved-head-leftover-commit "$ok" "$why"
 rm -rf "$tmp"
 
 # --- a review that posted a comment earns the next round ---
