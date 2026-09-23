@@ -8,7 +8,7 @@
   "properties": [
     {
       "name": "server.netty.boss-threads",
-      "description": "Size of the event-loop group that accepts connections. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
+      "description": "Size of the event-loop group that accepts connections; 0 applies Netty's default. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
     },
     {
       "name": "server.netty.worker-threads",
