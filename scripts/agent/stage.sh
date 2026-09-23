@@ -133,7 +133,7 @@ case "$STAGE" in
   fix)
     [ -z "$(git status --porcelain)" ] || fail "uncommitted edits left on $branch"
     # origin rather than the pull request's headRefOid: GitHub moves that some seconds after the push (#401).
-    pushed=$(git ls-remote origin "refs/heads/$branch") || fail "git ls-remote origin failed" 2
+    pushed=$(timeout 1m git ls-remote origin "refs/heads/$branch") || fail "git ls-remote origin failed" 2
     pushed=${pushed%%[[:space:]]*}
     [ "$(git rev-parse HEAD)" = "$pushed" ] || fail "HEAD is not pushed: origin's $branch is ${pushed:-absent}"
     ;;

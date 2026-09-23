@@ -479,6 +479,22 @@ ok=1; why="rc=$rc stderr=$err"
 check fix-origin-unreachable "$ok" "$why"
 rm -rf "$tmp"
 
+# --- origin stalls after a fix: the check is bounded, and infrastructure, so exit 2 ---
+setup
+git -C "$tmp/work" push -q origin NL-999-x
+git -C "$tmp/work" remote set-url origin ssh://origin.invalid/r.git
+printf '#!/usr/bin/env bash\nsleep 30\n' > "$tmp/bin/ssh"
+printf '#!/usr/bin/env bash\nshift\nexec %q 1 "$@"\n' "$(command -v timeout)" > "$tmp/bin/timeout"
+chmod +x "$tmp/bin/ssh" "$tmp/bin/timeout"
+export GIT_SSH_COMMAND="$tmp/bin/ssh"
+SECONDS=0
+run nocommit "" 999 fix "$PR_URL" 1
+unset GIT_SSH_COMMAND
+ok=1; why="rc=$rc after ${SECONDS}s stderr=$err"
+[ "$rc" = 2 ] && contains "$err" "git ls-remote origin failed" && [ "$SECONDS" -lt 10 ] || ok=0
+check fix-origin-stalls "$ok" "$why"
+rm -rf "$tmp"
+
 # --- test ---
 setup
 run nocommit "" 999 test "$PR_URL"
