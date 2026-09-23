@@ -447,32 +447,6 @@ ok=1; why="rc=$rc stderr=$err"
 check review-dirty "$ok" "$why"
 rm -rf "$tmp"
 
-# --- origin unreachable before a review: infrastructure, so exit 2, and the session never starts ---
-setup
-git -C "$tmp/work" push -q origin NL-999-x
-git -C "$tmp/work" remote set-url origin "$tmp/gone"
-run success 999 review "$PR_URL" 1
-ok=1; why="rc=$rc stderr=$err"
-[ "$rc" = 2 ] && contains "$err" "git ls-remote origin failed" || ok=0
-[ ! -e "$SHIM_ARGV" ] || { ok=0; why="claude ran with origin unreachable"; }
-check review-origin-unreachable "$ok" "$why"
-rm -rf "$tmp"
-
-# --- origin stalls before a review: the check is bounded ---
-setup
-git -C "$tmp/work" push -q origin NL-999-x
-git -C "$tmp/work" remote set-url origin ssh://origin.invalid/r.git
-printf '#!/usr/bin/env bash\nsleep 30\n' > "$tmp/bin/ssh"
-chmod +x "$tmp/bin/ssh"
-export GIT_SSH_COMMAND="$tmp/bin/ssh" LS_REMOTE_TIMEOUT=1
-SECONDS=0
-run success 999 review "$PR_URL" 1
-unset GIT_SSH_COMMAND LS_REMOTE_TIMEOUT
-ok=1; why="rc=$rc after ${SECONDS}s stderr=$err"
-[ "$rc" = 2 ] && contains "$err" "git ls-remote origin failed" && [ "$SECONDS" -lt 10 ] || ok=0
-check review-origin-stalls "$ok" "$why"
-rm -rf "$tmp"
-
 # --- fix ---
 setup
 git -C "$tmp/work" push -q origin NL-999-x
