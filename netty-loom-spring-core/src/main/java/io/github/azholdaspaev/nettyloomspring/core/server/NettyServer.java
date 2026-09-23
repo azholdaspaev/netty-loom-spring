@@ -200,7 +200,8 @@ public class NettyServer {
     }
 
     private static void closeServerChannel(State current) {
-        current.serverChannel().close().syncUninterruptibly();
+        // Await, not sync: a failed close must not skip beginning the drain or stopping the event loops.
+        current.serverChannel().close().awaitUninterruptibly();
     }
 
     /**
