@@ -31,7 +31,7 @@ dependencies {
 }
 
 tasks.named<ProcessResources>("processResources") {
-    // A snapshot links main rather than a commit: it has no tag, and main carries -SNAPSHOT by design.
+    // A snapshot links main rather than its commit: a dirty build would link a SHA that does not contain it.
     val docsRef = version.toString().let { if (it.endsWith("-SNAPSHOT")) "main" else "v$it" }
     inputs.property("docsRef", docsRef)
     filesMatching("META-INF/additional-spring-configuration-metadata.json") {
