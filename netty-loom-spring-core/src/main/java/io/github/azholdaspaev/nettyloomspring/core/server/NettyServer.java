@@ -9,6 +9,8 @@ import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
 import io.netty.util.concurrent.Future;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.BindException;
@@ -19,6 +21,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 public class NettyServer {
+
+    private static final Logger log = LoggerFactory.getLogger(NettyServer.class);
 
     private final Object lock = new Object();
 
@@ -201,7 +205,10 @@ public class NettyServer {
 
     private static void closeServerChannel(State current) {
         // Await, not sync: a failed close must not skip beginning the drain or stopping the event loops.
-        current.serverChannel().close().awaitUninterruptibly();
+        ChannelFuture closed = current.serverChannel().close().awaitUninterruptibly();
+        if (!closed.isSuccess()) {
+            log.warn("Failed to close the listening socket {}", current.serverChannel(), closed.cause());
+        }
     }
 
     /**
