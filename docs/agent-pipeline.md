@@ -114,9 +114,9 @@ stage, so the wait before pick-up and each stage's wall time read off that file 
 
 ## Cost
 
-`stage.sh` caps each `claude -p`: implement 16 USD, review 6, fix 4, test 6, 45 minutes each;
+`stage.sh` caps each `claude -p` at its stage's `BUDGET` in USD and at 45 minutes;
 `pipeline.sh` runs at most three review/fix rounds, so one issue is bounded by
-16 + 3 × (6 + 4) + 6 = 52 USD, and stops early when a fix stage pushed no commit and the review
+implement + 3 × (review + fix) + test of those caps, and stops early when a fix stage pushed no commit and the review
 after it posted no inline comment: the same model on the same code returns the same verdicts
 (#262). A stage that hits its cap ends with `error_max_budget_usd` and the issue goes to
 `agent/failed`. What a run actually cost is in the hand-off comment on its issue; #239 was the
