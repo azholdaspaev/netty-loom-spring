@@ -461,6 +461,14 @@ ok=1; why="rc=$rc stderr=$err"
 check fix-unpushed "$ok" "$why"
 rm -rf "$tmp"
 
+# --- fix did not push, and origin has no such branch: the message says so ---
+setup
+run success "" 999 fix "$PR_URL" 1
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 1 ] && contains "$err" "HEAD is not pushed: origin's NL-999-x is absent" || ok=0
+check fix-branch-absent "$ok" "$why"
+rm -rf "$tmp"
+
 # --- origin unreachable after a fix: infrastructure, so exit 2 ---
 setup
 git -C "$tmp/work" push -q origin NL-999-x
