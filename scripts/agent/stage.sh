@@ -32,6 +32,13 @@ MARKER='<!-- agent:question -->'
 repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 me=$(gh api user --jq .login)
 comments() { gh api --paginate "repos/$repo/issues/$N/comments?per_page=100" | jq -s 'add // []'; }
+require_pushed() {
+  local pushed
+  # origin rather than the pull request's headRefOid: GitHub moves that some seconds after the push (#401).
+  pushed=$(timeout "$LS_REMOTE_TIMEOUT" git ls-remote origin "refs/heads/$branch") || fail "git ls-remote origin failed" 2
+  pushed=${pushed%%[[:space:]]*}
+  [ "$(git rev-parse HEAD)" = "$pushed" ] || fail "HEAD is not pushed: origin's $branch is ${pushed:-absent}"
+}
 
 # One entry per suite rather than test-*.sh *: a trailing " *" matches the bare command only when it
 # is the rule's sole wildcard (Claude Code permissions reference, "Wildcard patterns").
@@ -70,6 +77,16 @@ When the work is committed, write the pull request body with the Write tool to
   *) fail "unknown stage '$STAGE'" ;;
 esac
 [ "$STAGE" = implement ] || [ -n "$PR" ] || fail "no pull request given"
+# The review's head check here rather than in the session: a session whose ls-remote fails stops and
+# posts nothing, and pipeline.sh reads a first round with no thread open as converged.
+if [ "$STAGE" = review ]; then
+  require_pushed
+  TAIL="## Stage: review
+
+\`stage.sh\` has compared \`HEAD\` with origin's \`$branch\` before this session: both are
+\`$(git rev-parse HEAD)\`. That is what step 1's \`git ls-remote\` would print, so do not run it,
+and post with that sha as \`commit_id\`."
+fi
 
 LOG="$HOME/.netty-loom-agent/logs/NL-$N/$RUN_ID"
 mkdir -p "$LOG"
@@ -130,9 +147,6 @@ case "$STAGE" in
     ;;
   fix)
     [ -z "$(git status --porcelain)" ] || fail "uncommitted edits left on $branch"
-    # origin rather than the pull request's headRefOid: GitHub moves that some seconds after the push (#401).
-    pushed=$(timeout "$LS_REMOTE_TIMEOUT" git ls-remote origin "refs/heads/$branch") || fail "git ls-remote origin failed" 2
-    pushed=${pushed%%[[:space:]]*}
-    [ "$(git rev-parse HEAD)" = "$pushed" ] || fail "HEAD is not pushed: origin's $branch is ${pushed:-absent}"
+    require_pushed
     ;;
 esac

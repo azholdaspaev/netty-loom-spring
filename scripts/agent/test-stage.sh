@@ -265,6 +265,7 @@ rm -rf "$tmp"
 
 # --- api error: is_error decides, not a subtype of success ---
 setup
+git -C "$tmp/work" push -q origin NL-999-x
 run api-error 999 review "$PR_URL" 1
 ok=1; why="rc=$rc stderr=$err"
 [ "$rc" = 1 ] && contains "$err" "claude ended with api_error: API Error: 403 blocked" || ok=0
@@ -379,6 +380,8 @@ rm -rf "$tmp"
 
 # --- review ---
 setup
+git -C "$tmp/work" push -q origin NL-999-x
+head=$(git -C "$tmp/work" rev-parse HEAD)
 run success 999 review "$PR_URL" 2
 ok=1; why=""
 [ "$rc" = 0 ] || { ok=0; why="rc=$rc stderr=$err"; }
@@ -398,10 +401,48 @@ done
 system=$(cat "$SHIM_ARGV.system" 2>/dev/null || true)
 contains "$system" "# Unattended run" || { ok=0; why="system prompt lacks unattended.md"; }
 contains "$system" "build/pr-body.md" && { ok=0; why="system prompt carries the implement tail"; }
+for needle in $'\n\n## Stage: review\n' "$head"; do
+  contains "$system" "$needle" || { ok=0; why="system prompt lacks '$needle'"; }
+done
 log="$tmp/home/.netty-loom-agent/logs/NL-999/$RUN"
 [ "$(jq -r .subtype "$log/review-2.json" 2>/dev/null)" = success ] || { ok=0; why="$RUN/review-2.json missing or wrong"; }
 [ "$said" = "NL-999 review 2: start|NL-999 review 2: end (exit 0)|" ] || { ok=0; why="said=$said"; }
 check review "$ok" "$why"
+rm -rf "$tmp"
+
+# --- review of a head origin does not have: the session never starts ---
+setup
+run success 999 review "$PR_URL" 1
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 1 ] && contains "$err" "HEAD is not pushed: origin's NL-999-x is absent" || ok=0
+[ ! -e "$SHIM_ARGV" ] || { ok=0; why="claude ran on a head origin does not have"; }
+check review-unpushed "$ok" "$why"
+rm -rf "$tmp"
+
+# --- origin unreachable before a review: infrastructure, so exit 2, and the session never starts ---
+setup
+git -C "$tmp/work" push -q origin NL-999-x
+git -C "$tmp/work" remote set-url origin "$tmp/gone"
+run success 999 review "$PR_URL" 1
+ok=1; why="rc=$rc stderr=$err"
+[ "$rc" = 2 ] && contains "$err" "git ls-remote origin failed" || ok=0
+[ ! -e "$SHIM_ARGV" ] || { ok=0; why="claude ran with origin unreachable"; }
+check review-origin-unreachable "$ok" "$why"
+rm -rf "$tmp"
+
+# --- origin stalls before a review: the check is bounded ---
+setup
+git -C "$tmp/work" push -q origin NL-999-x
+git -C "$tmp/work" remote set-url origin ssh://origin.invalid/r.git
+printf '#!/usr/bin/env bash\nsleep 30\n' > "$tmp/bin/ssh"
+chmod +x "$tmp/bin/ssh"
+export GIT_SSH_COMMAND="$tmp/bin/ssh" LS_REMOTE_TIMEOUT=1
+SECONDS=0
+run success 999 review "$PR_URL" 1
+unset GIT_SSH_COMMAND LS_REMOTE_TIMEOUT
+ok=1; why="rc=$rc after ${SECONDS}s stderr=$err"
+[ "$rc" = 2 ] && contains "$err" "git ls-remote origin failed" && [ "$SECONDS" -lt 10 ] || ok=0
+check review-origin-stalls "$ok" "$why"
 rm -rf "$tmp"
 
 # --- fix ---
