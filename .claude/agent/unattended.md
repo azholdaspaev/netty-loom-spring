@@ -50,5 +50,4 @@ comment or a pull request body about what one of them does cites the file and li
 ## Branch
 
 Stay on the branch that is checked out: create no branch, switch to none, never push to
-`main`, and name the branch on every push. Open a pull request only when
-`git log origin/main..HEAD` shows at least one commit.
+`main`, and name the branch on every push. Never open a pull request: `pipeline.sh` opens it.

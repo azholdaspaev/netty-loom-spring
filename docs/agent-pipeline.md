@@ -75,9 +75,10 @@ edits — a stage killed mid-edit — go to a stash named `NL-<n> retry <timesta
 the issue's log, so the stage starts on a clean tree and the hunks wait in `git stash list` for
 the maintainer; nothing is discarded, and the hand-off comment lists every such stash still on
 the worktree, whichever run made it. Commits on the branch with no pull
-request — a stage that committed but never pushed — are pushed and get a draft pull request
-opened by the script, whose body is the template with a note that no implement stage wrote it, and
-the pipeline goes on to review without an implement stage. Once a pull request exists, the
+request — an implement stage that ended before the script opened one — are pushed and get a draft
+pull request opened by the script, as after any implement stage: its body is the stage's
+`build/pr-body.md`, or the template with a note that no implement stage wrote it, and the pipeline
+goes on to review without an implement stage. Once a pull request exists, the
 pipeline resumes at the review stage. The answer to a question comes back through the same path,
 with one difference: commits with no pull request, all older than the answer, go to an implement
 stage, not a script-opened pull request, because the implement stage is the one that reads the
