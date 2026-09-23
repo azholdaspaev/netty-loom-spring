@@ -122,9 +122,7 @@ public class NettyLoomAutoConfiguration {
         return new NettyPipelineDefinition(List.of(
             new NettyPipelineStep("httpCodec", () -> new HttpServerCodec(maxInitialLineLength, maxHeaderSize, maxChunkSize)),
             new NettyPipelineStep("httpKeepAlive", HttpServerKeepAliveHandler::new),
-            // HttpDrainHandler's javadoc owns why it sits here.
             new NettyPipelineStep("drain", () -> new HttpDrainHandler(httpConnectionRegistry)),
-            // HttpReadTimeoutHandler's javadoc owns why it sits above the pipelining gate.
             new NettyPipelineStep("readTimeout", () -> new HttpReadTimeoutHandler(properties.readTimeout())),
             /*
              * Above the dispatcher so requests are gated before dispatch while responses still pass back
