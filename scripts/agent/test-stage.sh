@@ -117,7 +117,7 @@ ok=1; why=""
 comments_call="gh api --paginate repos/o/r/issues/999/comments?per_page=100"
 allowed="Read,Edit,Write,Grep,Glob,Agent,Skill,Bash(./gradlew *),\
 Bash(git status *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git add *),\
-Bash(git commit *),Bash(git push *),Bash(git stash *),Bash(git checkout -- *),Bash(git ls-remote *),\
+Bash(git commit *),Bash(git push *),Bash(git stash *),Bash(git checkout -- *),\
 Bash(gh issue view *),Bash(gh issue comment *),Bash(gh issue create *),\
 Bash(gh pr view *),Bash(gh pr diff *),Bash(gh pr comment *),\
 Bash(gh api repos/*/pulls/*/comments*),Bash(gh api repos/*/issues/*/comments*),\
@@ -158,6 +158,8 @@ for rule in "Bash(gh issue create *--label*)" "Bash(gh issue create *-l *)" "Bas
   ! jq -e --arg rule "$rule" '.permissions.deny | index($rule)' "$settings" >/dev/null 2>&1 \
     || { ok=0; why="agent settings deny still has $rule"; }
 done
+! jq -e '.sandbox.excludedCommands | index("git ls-remote *")' "$settings" >/dev/null 2>&1 \
+  || { ok=0; why="agent settings exclude git ls-remote, --upload-pack and all, from the sandbox"; }
 [ "$(argv_after --allowedTools)" = "$allowed" ] || { ok=0; why="allowedTools=$(argv_after --allowedTools)"; }
 prompt_line=$(grep -nxF -- '/flow:implement 999' "$SHIM_ARGV" 2>/dev/null | cut -d: -f1 || true)
 allowed_line=$(grep -nxF -- '--allowedTools' "$SHIM_ARGV" 2>/dev/null | cut -d: -f1 || true)
