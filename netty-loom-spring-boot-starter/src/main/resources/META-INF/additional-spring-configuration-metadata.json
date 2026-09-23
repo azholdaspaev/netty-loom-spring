@@ -32,7 +32,7 @@
     },
     {
       "name": "server.netty.write-stall-timeout",
-      "description": "How long a response waits on a client that has stopped reading it. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
+      "description": "How long a response waits on a client that has stopped reading it; 0 or negative disables it. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
     },
     {
       "name": "server.netty.max-http-body-size",
