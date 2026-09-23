@@ -11,6 +11,9 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.io.InputStream;
 import java.lang.reflect.RecordComponent;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
@@ -22,12 +25,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NettyLoomPropertiesTest {
 
+    private static final String ADDITIONAL_METADATA = "META-INF/additional-spring-configuration-metadata.json";
+
     @Test
     void shouldPointEveryMetadataDescriptionAtDocsOfBuildVersion() throws Exception {
-        String version = System.getProperty("nettyloomspring.version");
-        assertNotNull(version, "the test task must pass the build version as nettyloomspring.version");
-        String gitRef = version.endsWith("-SNAPSHOT") ? "main" : "v" + version;
-        String docsUrl = "https://github.com/azholdaspaev/netty-loom-spring/blob/" + gitRef
+        String docsUrl = "https://github.com/azholdaspaev/netty-loom-spring/blob/" + docsRef()
             + "/docs/configuration.md#servernetty";
 
         Map<String, String> descriptions = new HashMap<>();
@@ -51,6 +53,19 @@ class NettyLoomPropertiesTest {
             assertFalse(summary.contains(". "),
                 name + " must summarise in one sentence, leaving the rest and the default to their owners,"
                     + " but reads: " + description);
+        }
+    }
+
+    @Test
+    void shouldChangeNothingInAdditionalMetadataButDocsRef() throws Exception {
+        String source = Files.readString(Path.of("src/main/resources", ADDITIONAL_METADATA));
+        try (InputStream processed = NettyLoomProperties.class.getClassLoader()
+            .getResourceAsStream(ADDITIONAL_METADATA)) {
+            assertNotNull(processed, ADDITIONAL_METADATA + " must be on the classpath");
+            assertEquals(source.replace("${docsRef}", docsRef()),
+                new String(processed.readAllBytes(), StandardCharsets.UTF_8),
+                "processResources must substitute ${docsRef} and leave every other character,"
+                    + " a backslash or a dollar sign included, as written");
         }
     }
 
@@ -171,6 +186,12 @@ class NettyLoomPropertiesTest {
         NettyLoomProperties properties = bind(Map.of("server.netty.transport", ""));
 
         assertEquals(NettyTransportPreference.AUTO, properties.transport());
+    }
+
+    private static String docsRef() {
+        String version = System.getProperty("nettyloomspring.version");
+        assertNotNull(version, "the test task must pass the build version as nettyloomspring.version");
+        return version.endsWith("-SNAPSHOT") ? "main" : "v" + version;
     }
 
     private static NettyLoomProperties bind(Map<String, Object> source) {

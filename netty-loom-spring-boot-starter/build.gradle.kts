@@ -35,7 +35,7 @@ tasks.named<ProcessResources>("processResources") {
     val docsRef = version.toString().let { if (it.endsWith("-SNAPSHOT")) "main" else "v$it" }
     inputs.property("docsRef", docsRef)
     filesMatching("META-INF/additional-spring-configuration-metadata.json") {
-        expand("docsRef" to docsRef)
+        filter { it.replace("\${docsRef}", docsRef) }
     }
 }
 
