@@ -34,6 +34,7 @@ me=$(gh api user --jq .login)
 comments() { gh api --paginate "repos/$repo/issues/$N/comments?per_page=100" | jq -s 'add // []'; }
 require_pushed() {
   local pushed
+  [ -z "$(git status --porcelain)" ] || fail "uncommitted edits left on $branch"
   # origin rather than the pull request's headRefOid: GitHub moves that some seconds after the push (#401).
   pushed=$(timeout "$LS_REMOTE_TIMEOUT" git ls-remote origin "refs/heads/$branch") || fail "git ls-remote origin failed" 2
   pushed=${pushed%%[[:space:]]*}
@@ -101,7 +102,6 @@ pending=$(jq -r --arg me "$me" --arg owner "${repo%%/*}" --arg marker "$MARKER" 
 # The review's step 1 here rather than in the session: a session that fails it stops and posts
 # nothing, and pipeline.sh reads a first round with no thread open as converged.
 if [ "$STAGE" = review ]; then
-  [ -z "$(git status --porcelain)" ] || fail "uncommitted edits left on $branch"
   require_pushed
   TAIL="## Stage: review
 
@@ -147,7 +147,6 @@ case "$STAGE" in
     [ -n "$(git log --oneline origin/main..HEAD)" ] || fail "no commits on $branch"
     ;;
   fix)
-    [ -z "$(git status --porcelain)" ] || fail "uncommitted edits left on $branch"
     require_pushed
     ;;
 esac
