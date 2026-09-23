@@ -2,7 +2,6 @@ package io.github.azholdaspaev.nettyloomspring.core.server;
 
 import io.github.azholdaspaev.nettyloomspring.core.exception.NettyServerException;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
-import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineDefinition;
 import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineStep;
 import io.github.azholdaspaev.nettyloomspring.core.support.NettyServerFixture;
 import io.netty.buffer.ByteBuf;
@@ -114,6 +113,11 @@ class NettyServerTest {
      */
     private static NettyServer newServer(
         InetAddress address, CountDownLatch accepted, int port, NettyPipelineStep... extra) {
+        return newServer(address, accepted, port, new NettyIoHandlerFactory(NettyTransportPreference.AUTO), extra);
+    }
+
+    private static NettyServer newServer(InetAddress address, CountDownLatch accepted, int port,
+                                         NettyIoHandlerFactory ioHandlerFactory, NettyPipelineStep... extra) {
         NettyServerConfiguration configuration = new NettyServerConfiguration(port, address, 0, 0, false, 128);
         List<NettyPipelineStep> handlers = new ArrayList<>();
         if (accepted != null) {
@@ -128,23 +132,16 @@ class NettyServerTest {
         handlers.addAll(List.of(extra));
         HttpConnectionRegistry connectionRegistry = new HttpConnectionRegistry(
             new DefaultChannelGroup(GlobalEventExecutor.INSTANCE));
-        return NettyServerFixture.newServer(configuration, connectionRegistry, handlers);
+        return NettyServerFixture.newServer(configuration, connectionRegistry, handlers, ioHandlerFactory);
     }
 
-    private static NettyServer newServerWithCloseFailingListener(NettyPipelineStep step) {
-        NettyServerConfiguration configuration = new NettyServerConfiguration(
-            0, InetAddress.getLoopbackAddress(), 0, 0, false, 128);
-        HttpConnectionRegistry connectionRegistry = new HttpConnectionRegistry(
-            new DefaultChannelGroup(GlobalEventExecutor.INSTANCE));
-        return new NettyServer(configuration,
-            new NettyServerChannelInitializer(new NettyPipelineDefinition(List.of(step)), connectionRegistry),
-            new NettyIoHandlerFactory(NettyTransportPreference.NIO) {
-                @Override
-                public Class<? extends ServerChannel> getServerChannelClass() {
-                    return CloseFailingServerChannel.class;
-                }
-            },
-            connectionRegistry);
+    private static NettyIoHandlerFactory newCloseFailingListenerTransport() {
+        return new NettyIoHandlerFactory(NettyTransportPreference.NIO) {
+            @Override
+            public Class<? extends ServerChannel> getServerChannelClass() {
+                return CloseFailingServerChannel.class;
+            }
+        };
     }
 
     @AfterEach
@@ -330,8 +327,8 @@ class NettyServerTest {
     @Test
     void shouldStopEventLoopsWhenServerChannelFailsToClose() throws Exception {
         CompletableFuture<List<EventLoop>> eventLoops = new CompletableFuture<>();
-        nettyServer = newServerWithCloseFailingListener(new NettyPipelineStep("eventLoops",
-            () -> new ChannelInboundHandlerAdapter() {
+        nettyServer = newServer(InetAddress.getLoopbackAddress(), null, 0, newCloseFailingListenerTransport(),
+            new NettyPipelineStep("eventLoops", () -> new ChannelInboundHandlerAdapter() {
                 @Override
                 public void channelActive(ChannelHandlerContext ctx) {
                     eventLoops.complete(List.of(ctx.channel().parent().eventLoop(), ctx.channel().eventLoop()));
@@ -354,14 +351,7 @@ class NettyServerTest {
     @Test
     void shouldBeginDrainWhenServerChannelFailsToClose() throws Exception {
         CountDownLatch accepted = new CountDownLatch(1);
-        nettyServer = newServerWithCloseFailingListener(new NettyPipelineStep("accepted",
-            () -> new ChannelInboundHandlerAdapter() {
-                @Override
-                public void channelActive(ChannelHandlerContext ctx) {
-                    accepted.countDown();
-                    ctx.fireChannelActive();
-                }
-            }));
+        nettyServer = newServer(InetAddress.getLoopbackAddress(), accepted, 0, newCloseFailingListenerTransport());
         nettyServer.start();
 
         try (Socket idle = new Socket()) {
