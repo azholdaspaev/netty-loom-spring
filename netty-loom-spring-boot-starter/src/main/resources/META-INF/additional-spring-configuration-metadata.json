@@ -12,7 +12,7 @@
     },
     {
       "name": "server.netty.worker-threads",
-      "description": "Size of the event-loop group that reads and writes on accepted connections. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
+      "description": "Size of the event-loop group that reads and writes on accepted connections; 0 applies Netty's default. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
     },
     {
       "name": "server.netty.tcp-keep-alive",
@@ -48,7 +48,7 @@
     },
     {
       "name": "server.netty.max-chunk-size",
-      "description": "Size of the pieces a request body is delivered in. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
+      "description": "Upper bound on the pieces a request body is delivered in. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
     },
     {
       "name": "server.netty.transport",
