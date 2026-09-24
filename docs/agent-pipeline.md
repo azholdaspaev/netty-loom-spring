@@ -129,7 +129,7 @@ The stages run under `.claude/agent/settings.json`, where `gh` and `git push` ar
 `sandbox.excludedCommands`: under Seatbelt a Go binary cannot verify TLS and SSH cannot cross
 the sandbox proxy (Claude Code sandboxing reference, § Troubleshooting:
 https://code.claude.com/docs/en/sandboxing). They still pass the permission rules. Nothing that
-runs outside the sandbox is read from the worktree, whose unprotected paths a sandboxed command
+runs outside the sandbox is read from the worktree's `.claude/scripts`, which a sandboxed command
 can write (same reference, § Protected paths). Each script under `scripts/agent/` has a
 shim-driven `test-*.sh` beside it.
 
