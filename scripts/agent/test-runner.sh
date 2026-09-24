@@ -56,6 +56,7 @@ SHIM
 #!/usr/bin/env bash
 echo "requeue" >> "$SHIM_EVENTS"
 SHIM
+  echo test-token > "$tmp/home/.netty-loom-agent/gh-token"
   : > "$tmp/events"
   echo '[]' > "$tmp/state/queued.json"
   echo '[]' > "$tmp/state/running.json"
@@ -68,6 +69,7 @@ SHIM
   cat > "$tmp/bin/gh" <<'SHIM'
 #!/usr/bin/env bash
 echo "gh $*" >> "$SHIM_EVENTS"
+echo "${GH_TOKEN-unset}" >> "$SHIM_STATE/gh-tokens"
 [ -z "${SHIM_GH_RC:-}" ] || exit "$SHIM_GH_RC"
 jqarg() { local prev=; for a in "$@"; do [ "$prev" = --jq ] && { printf '%s' "$a"; return; }; prev=$a; done; }
 agent_labels=$(jq -r '[.[].name | select(startswith("agent/"))] | join(",")' "$SHIM_STATE/labels.json")
@@ -774,5 +776,27 @@ ok=1; why="rc=$rc stdout=$out stderr=$err events=$(cat "$SHIM_EVENTS" 2>/dev/nul
 [ "$rc" = 127 ] && [ -z "$out" ] && [ ! -s "$SHIM_EVENTS" ] && [ "$said" = "tick failed: flock exit 127|" ] || ok=0
 check flock-failure "$ok" "$why"
 rm -rf "$tmp"
+
+# --- the token file reaches every gh call as GH_TOKEN ---
+setup
+queue 7 "Fix the Thing: quickly!"
+run
+tokens=$(sort -u "$tmp/state/gh-tokens" 2>/dev/null | tr '\n' '|')
+ok=1; why="rc=$rc stderr=$err tokens=$tokens"
+[ "$rc" = 0 ] && [ "$tokens" = "test-token|" ] || ok=0
+check token "$ok" "$why"
+rm -rf "$tmp"
+
+# --- no token, or an empty file: the tick fails before its first gh or git fetch ---
+for token in missing empty; do
+  setup
+  case "$token" in missing) rm "$tmp/home/.netty-loom-agent/gh-token" ;; empty) : > "$tmp/home/.netty-loom-agent/gh-token" ;; esac
+  run
+  ok=1; why="rc=$rc stdout=$out stderr=$err events=$(cat "$SHIM_EVENTS" 2>/dev/null | tr '\n' '|')"
+  [ "$rc" = 1 ] && [ -z "$out" ] && [ ! -s "$SHIM_EVENTS" ] && [ ! -e "$tmp/home/.netty-loom-agent/runner.lock" ] || ok=0
+  [ "$said" = "tick failed: no token in $tmp/home/.netty-loom-agent/gh-token|" ] || ok=0
+  check "token-$token" "$ok" "$why"
+  rm -rf "$tmp"
+done
 
 exit "$failed"

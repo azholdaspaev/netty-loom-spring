@@ -7,6 +7,12 @@
       "gh *",
       "git push *"
     ],
+    "credentials": {
+      "envVars": [
+        { "name": "GH_TOKEN", "mode": "deny" },
+        { "name": "GITHUB_TOKEN", "mode": "deny" }
+      ]
+    },
     "filesystem": {
       "allowWrite": [
         "~/.gradle",

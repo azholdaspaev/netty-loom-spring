@@ -126,12 +126,13 @@ What a run actually cost is in the hand-off comment on its issue; #239 was the f
 ## Sandbox
 
 The stages run under `.claude/agent/settings.json`, where `gh` and `git push` are
-`sandbox.excludedCommands`: under Seatbelt a Go binary cannot verify TLS and SSH cannot cross
-the sandbox proxy (Claude Code sandboxing reference, § Troubleshooting:
-https://code.claude.com/docs/en/sandboxing). They still pass the permission rules. Nothing that
-runs outside the sandbox is read from the worktree's `.claude/scripts`, which a sandboxed command
-can write (same reference, § Protected paths). Each script under `scripts/agent/` has a
-shim-driven `test-*.sh` beside it.
+`sandbox.excludedCommands`: under Seatbelt a Go binary cannot verify TLS (Claude Code sandboxing
+reference, § Troubleshooting: https://code.claude.com/docs/en/sandboxing), and both authenticate
+with `GH_TOKEN`, which `sandbox.credentials` unsets for every sandboxed command (same reference,
+§ Protect credentials). They still pass the permission rules. Nothing that runs outside the
+sandbox is read from the worktree's `.claude/scripts`, which a sandboxed command can write (same
+reference, § Protected paths). Each script under `scripts/agent/` has a shim-driven `test-*.sh`
+beside it.
 
 ## launchd
 
@@ -158,6 +159,22 @@ live — the same JDK the shell uses, first:
   <dict>
     <key>PATH</key>
     <string>/Users/you/.sdkman/candidates/java/current/bin:/opt/homebrew/bin:/Users/you/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>SSH_AUTH_SOCK</key>
+    <string></string>
+    <key>GIT_CONFIG_COUNT</key>
+    <string>3</string>
+    <key>GIT_CONFIG_KEY_0</key>
+    <string>url.https://github.com/.insteadOf</string>
+    <key>GIT_CONFIG_VALUE_0</key>
+    <string>git@github.com:</string>
+    <key>GIT_CONFIG_KEY_1</key>
+    <string>credential.https://github.com.helper</string>
+    <key>GIT_CONFIG_VALUE_1</key>
+    <string></string>
+    <key>GIT_CONFIG_KEY_2</key>
+    <string>credential.https://github.com.helper</string>
+    <key>GIT_CONFIG_VALUE_2</key>
+    <string>!gh auth git-credential</string>
   </dict>
   <key>StandardOutPath</key>
   <string>/Users/you/.netty-loom-agent/runner.log</string>
@@ -165,6 +182,21 @@ live — the same JDK the shell uses, first:
   <string>/Users/you/.netty-loom-agent/runner.log</string>
 </dict>
 </plist>
+```
+
+The runner authenticates with a fine-grained personal access token limited to this repository:
+Contents, Issues and Pull requests read and write, Metadata read, nothing else, expiring within a
+year. Without Workflows, a push touching `.github/workflows/` is refused by GitHub rather than by a
+permission rule. The token lives in `~/.netty-loom-agent/gh-token`, not in the plist, which is
+world-readable; `runner.sh` exports it as `GH_TOKEN` and fails a tick that finds no token. The
+`GIT_CONFIG_*` entries send git over HTTPS with `gh` answering its credential request; the empty
+helper first clears the helpers inherited from system config, such as Homebrew git's
+`osxkeychain` (gitcredentials(7), `credential.helper`). The empty `SSH_AUTH_SOCK` keeps the stages
+off the maintainer's SSH agent. The main clone's `.git/config` is untouched, so interactive
+sessions still push over SSH. To install a new token, copy it, then:
+
+```bash
+install -m 600 /dev/null ~/.netty-loom-agent/gh-token && pbpaste > ~/.netty-loom-agent/gh-token
 ```
 
 ```bash
