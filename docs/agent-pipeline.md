@@ -126,12 +126,13 @@ What a run actually cost is in the hand-off comment on its issue; #239 was the f
 ## Sandbox
 
 The stages run under `.claude/agent/settings.json`, where `gh` and `git push` are
-`sandbox.excludedCommands`: under Seatbelt a Go binary cannot verify TLS and SSH cannot cross
-the sandbox proxy (Claude Code sandboxing reference, § Troubleshooting:
-https://code.claude.com/docs/en/sandboxing). They still pass the permission rules. Nothing that
-runs outside the sandbox is read from the worktree's `.claude/scripts`, which a sandboxed command
-can write (same reference, § Protected paths). Each script under `scripts/agent/` has a
-shim-driven `test-*.sh` beside it.
+`sandbox.excludedCommands`: under Seatbelt a Go binary cannot verify TLS (Claude Code sandboxing
+reference, § Troubleshooting: https://code.claude.com/docs/en/sandboxing), and both authenticate
+with `GH_TOKEN`, which `sandbox.credentials` unsets for every sandboxed command (same reference,
+§ Protect credentials). They still pass the permission rules. Nothing that runs outside the
+sandbox is read from the worktree's `.claude/scripts`, which a sandboxed command can write (same
+reference, § Protected paths). Each script under `scripts/agent/` has a shim-driven `test-*.sh`
+beside it.
 
 ## launchd
 
