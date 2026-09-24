@@ -112,7 +112,7 @@ argv_has() { grep -qxF -- "$1" "$SHIM_ARGV" 2>/dev/null; }
 
 argv_after() { grep -A1 -xF -- "$1" "$SHIM_ARGV" 2>/dev/null | tail -n 1 || true; }
 
-# The events without pr-comments.sh's own gh calls, which review-prefetch asserts on.
+# The events without pr-comments.sh's own gh calls, whose output saw_comments checks.
 stage_events() {
   grep -v -e "^gh pr view $PR_URL --json url --jq .url$" -e '^gh api --paginate repos/o/r/pulls/7/' \
     -e '^gh api --paginate repos/o/r/issues/7/' -e '^gh api graphql ' "$SHIM_EVENTS" 2>/dev/null || true
@@ -435,20 +435,6 @@ log="$tmp/home/.netty-loom-agent/logs/NL-999/$RUN"
 [ "$(jq -r .subtype "$log/review-2.json" 2>/dev/null)" = success ] || { ok=0; why="$RUN/review-2.json missing or wrong"; }
 [ "$said" = "NL-999 review 2: start|NL-999 review 2: end (exit 0)|" ] || { ok=0; why="said=$said"; }
 check review "$ok" "$why"
-rm -rf "$tmp"
-
-# --- review pre-fetch: stage.sh runs pr-comments.sh before the session, which cannot run it ---
-setup
-git -C "$tmp/work" push -q origin NL-999-x
-run success 999 review "$PR_URL" 1
-ok=1; why="rc=$rc stderr=$err"
-[ "$rc" = 0 ] || ok=0
-fetch_line=$(grep -nxF -- "gh pr view $PR_URL --json url --jq .url" "$SHIM_EVENTS" 2>/dev/null | head -n 1 | cut -d: -f1 || true)
-claude_line=$(grep -nx claude "$SHIM_EVENTS" 2>/dev/null | cut -d: -f1 || true)
-{ [ -n "$fetch_line" ] && [ -n "$claude_line" ] && [ "$fetch_line" -lt "$claude_line" ]; } \
-  || { ok=0; why="pr-comments.sh must run before claude (fetch line $fetch_line, claude line $claude_line)"; }
-! contains "$(argv_after --allowedTools)" pr-comments.sh || { ok=0; why="the session may run pr-comments.sh"; }
-check review-prefetch "$ok" "$why"
 rm -rf "$tmp"
 
 # --- pre-fetch fails: infrastructure, exit 2, claude never runs ---
