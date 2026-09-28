@@ -1,5 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.server;
 
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
 import org.springframework.boot.web.server.context.WebServerApplicationContext;
 import org.springframework.context.SmartLifecycle;
@@ -15,8 +16,9 @@ import org.springframework.context.SmartLifecycle;
  * {@code NettyServletWebServer.destroy()}, where Boot destroys Tomcat's servlet and filters: that
  * runs after bean destruction, so it would follow the {@code contextDestroyed} this phase fires --
  * the inversion issue #103 reports. The web server's stop phase has ended the drain before this
- * runs; a handler thread it cut off has not stopped (issue #89, {@code docs/configuration.md}
- * § Graceful shutdown).
+ * runs, but not the handler threads it cut off: {@link #stop()} interrupts them and waits up to two
+ * seconds -- the {@code unloadDelay} Tomcat's {@code StandardWrapper.unload()} gives requests still
+ * inside a servlet (tomcat-embed-core 11.0.20) -- so they unwind against live sessions (issue #89).
  */
 public class ServletContextLifecycle implements SmartLifecycle {
 
@@ -26,12 +28,17 @@ public class ServletContextLifecycle implements SmartLifecycle {
      */
     private static final int PHASE = WebServerApplicationContext.START_STOP_LIFECYCLE_PHASE - 1;
 
+    private static final long UNLOAD_DELAY_MILLIS = 2_000;
+
     private final NettyServletContext servletContext;
+
+    private final HttpConnectionRegistry connectionRegistry;
 
     private volatile boolean running;
 
-    public ServletContextLifecycle(NettyServletContext servletContext) {
+    public ServletContextLifecycle(NettyServletContext servletContext, HttpConnectionRegistry connectionRegistry) {
         this.servletContext = servletContext;
+        this.connectionRegistry = connectionRegistry;
     }
 
     @Override
@@ -49,7 +56,17 @@ public class ServletContextLifecycle implements SmartLifecycle {
     @Override
     public void stop() {
         this.running = false;
+        boolean interrupted = false;
+        try {
+            connectionRegistry.interruptAndAwaitDispatches(UNLOAD_DELAY_MILLIS);
+        } catch (InterruptedException e) {
+            interrupted = true;
+        }
         servletContext.close();
+        // Restored after close() rather than before, so the @PreDestroy callbacks it runs do not start interrupted.
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     @Override

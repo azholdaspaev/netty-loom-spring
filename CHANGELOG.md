@@ -16,6 +16,9 @@ in any minor release.
 - A listening socket that fails to close no longer aborts shutdown. Boot's graceful shutdown now
   drains in-flight requests instead of cutting them at once, and `NettyServer.shutdown` still
   stops the event loops. The failure is logged at WARN (#399).
+- A request cut off by shutdown is now interrupted, and waited for up to two seconds, before the
+  servlet, the filters and the session store are torn down, so its handler no longer fails its
+  next session access with `IllegalStateException` while it unwinds (#89).
 
 ## [0.1.0] — 2026-09-20
 
