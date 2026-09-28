@@ -9,6 +9,9 @@ import io.netty.util.concurrent.GlobalEventExecutor;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.web.server.context.WebServerApplicationContext;
 
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -159,6 +162,24 @@ class ServletContextLifecycleTest {
 
         assertThrows(IllegalStateException.class, () -> servletContext.getSessionManager().newSession(),
             "a dispatch that ignores the interrupt must not hold the shutdown open");
+    }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    void shouldWarnWhenDispatchesOutliveWait(CapturedOutput output) {
+        ServletContextLifecycle awaiting = startLifecycle(new HttpConnectionRegistry(
+            new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)) {
+            @Override
+            public boolean interruptAndAwaitDispatches(long timeoutMillis) {
+                return false;
+            }
+        });
+
+        awaiting.stop();
+
+        assertTrue(output.getAll().contains("WARN") && output.getAll().contains("still running"),
+            "a handler that later fails on its closed session must be traceable to the shutdown; log was: "
+                + output.getAll());
     }
 
     @Test
