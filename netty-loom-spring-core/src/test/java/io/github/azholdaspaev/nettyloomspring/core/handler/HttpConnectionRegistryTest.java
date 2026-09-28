@@ -8,7 +8,9 @@ import io.netty.util.concurrent.GlobalEventExecutor;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
@@ -274,6 +276,106 @@ class HttpConnectionRegistryTest {
 
         assertFalse(registry.awaitDrained(0),
             "a dispatch started after the dispatch count was read must not be reported as drained");
+    }
+
+    @Test
+    void shouldInterruptRunningDispatchAndReportItFinished() throws Exception {
+        HttpConnectionRegistry registry = newRegistry();
+        CountDownLatch registered = new CountDownLatch(1);
+        AtomicBoolean interrupted = new AtomicBoolean();
+        registry.dispatchStarted();
+        Thread.ofPlatform().start(() -> {
+            try (HttpConnectionRegistry.DispatchThread _ = registry.registerDispatchThread()) {
+                registered.countDown();
+                new CountDownLatch(1).await();
+            } catch (InterruptedException e) {
+                interrupted.set(true);
+            } finally {
+                registry.dispatchFinished();
+            }
+        });
+        assertTrue(registered.await(5, TimeUnit.SECONDS), "the dispatch never registered its thread");
+
+        assertTrue(registry.interruptAndAwaitDispatches(5_000),
+            "an interrupted dispatch that unwinds must be reported as finished");
+        assertTrue(interrupted.get(), "a dispatch parked in an interruptible wait must be interrupted");
+    }
+
+    @Test
+    void shouldWakeOnceLastDispatchFinishesWhileNotDraining() throws Exception {
+        HttpConnectionRegistry registry = newRegistry();
+        registry.dispatchStarted();
+
+        Thread waiter = Thread.currentThread();
+        long startNanos = System.nanoTime();
+        Thread.ofPlatform().start(() -> {
+            SpinWait.untilParked(() -> waiter, Duration.ofSeconds(10), "the waiter never parked");
+            registry.dispatchFinished();
+        });
+
+        assertTrue(registry.interruptAndAwaitDispatches(10_000));
+        assertTrue(System.nanoTime() - startNanos < TimeUnit.SECONDS.toNanos(2),
+            "the waiter must be woken by the dispatch, not released by its own timeout, while not draining");
+    }
+
+    @Test
+    void shouldReportUninterruptibleDispatchOnceTimeoutExpires() throws Exception {
+        HttpConnectionRegistry registry = newRegistry();
+        registry.dispatchStarted();
+
+        long startNanos = System.nanoTime();
+        assertFalse(registry.interruptAndAwaitDispatches(100),
+            "a dispatch with no thread to interrupt must be reported as still running");
+        assertTrue(System.nanoTime() - startNanos >= TimeUnit.MILLISECONDS.toNanos(100),
+            "a dispatch nobody can interrupt must still be waited for until the deadline");
+    }
+
+    @Test
+    void shouldNotInterruptThreadAfterItsDispatchReleasedIt() throws Exception {
+        HttpConnectionRegistry registry = newRegistry();
+        registry.registerDispatchThread().close();
+
+        registry.interruptAndAwaitDispatches(0);
+
+        assertFalse(Thread.interrupted(), "a thread its dispatch has released must not be interrupted");
+    }
+
+    @Test
+    void shouldClearShutdownInterruptWhenDispatchReleasesThread() throws Exception {
+        HttpConnectionRegistry registry = newRegistry();
+        HttpConnectionRegistry.DispatchThread dispatch = registry.registerDispatchThread();
+        Thread dispatchThread = Thread.currentThread();
+        Thread.ofPlatform().start(() -> {
+            try {
+                registry.interruptAndAwaitDispatches(0);
+            } catch (InterruptedException e) {
+                throw new AssertionError(e);
+            }
+        });
+        /* Spun on, not joined: join() is itself interruptible, so the interrupt under test would throw out of it. */
+        SpinWait.until(dispatchThread::isInterrupted, Duration.ofSeconds(10),
+            "the shutdown must interrupt the dispatch thread");
+
+        dispatch.close();
+
+        assertFalse(Thread.interrupted(),
+            "a pooled thread must not carry a shutdown interrupt into the next task it runs");
+    }
+
+    @Test
+    void shouldAwaitDispatchesAfterDrainIsAborted() throws Exception {
+        HttpConnectionRegistry registry = newRegistry();
+        registry.dispatchStarted();
+        registry.abortDrain();
+
+        Thread waiter = Thread.currentThread();
+        Thread.ofPlatform().start(() -> {
+            SpinWait.untilParked(() -> waiter, Duration.ofSeconds(10), "the waiter never parked");
+            registry.dispatchFinished();
+        });
+
+        assertTrue(registry.interruptAndAwaitDispatches(10_000),
+            "an aborted drain must not stop a later wait for the dispatches it cut off");
     }
 
     private static HttpConnectionRegistry newRegistry() {

@@ -6,10 +6,13 @@ import io.netty.channel.group.ChannelGroupFuture;
 import io.netty.util.Attribute;
 import io.netty.util.AttributeKey;
 
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.BooleanSupplier;
 
 /**
  * Tracks what graceful shutdown must wait for: open connections, how many HTTP exchanges each is
@@ -33,6 +36,10 @@ public class HttpConnectionRegistry {
     private final ReentrantLock dispatchLock = new ReentrantLock();
 
     private final Condition dispatchesIdle = dispatchLock.newCondition();
+
+    private final AtomicInteger dispatchWaiters = new AtomicInteger();
+
+    private final Set<DispatchThread> dispatchThreads = ConcurrentHashMap.newKeySet();
 
     private volatile boolean draining;
 
@@ -104,10 +111,10 @@ public class HttpConnectionRegistry {
 
     public void dispatchFinished() {
         /*
-         * Only signal while draining: outside a shutdown nobody is waiting, and at low load every
-         * request returns the count to zero, so this would take the lock on each one.
+         * Only signal while a drain or interruptAndAwaitDispatches may be waiting: at low load every
+         * request returns the count to zero, so signalling always would take the lock on each one.
          */
-        if (dispatchesInFlight.decrementAndGet() <= 0 && draining) {
+        if (dispatchesInFlight.decrementAndGet() <= 0 && (draining || dispatchWaiters.get() > 0)) {
             dispatchLock.lock();
             try {
                 dispatchesIdle.signalAll();
@@ -143,11 +150,40 @@ public class HttpConnectionRegistry {
     }
 
     boolean awaitDispatchesFinished(long timeoutMillis) throws InterruptedException {
+        return awaitDispatches(timeoutMillis, () -> aborted);
+    }
+
+    /**
+     * Unlike {@link #awaitDrained(long)}, an abort does not end this wait: its caller tears down
+     * what the dispatches a shutdown cut off are still using.
+     */
+    public boolean interruptAndAwaitDispatches(long timeoutMillis) throws InterruptedException {
+        dispatchWaiters.incrementAndGet();
+        try {
+            for (DispatchThread dispatch : dispatchThreads) {
+                dispatch.interrupt();
+            }
+            return awaitDispatches(timeoutMillis, () -> false);
+        } finally {
+            dispatchWaiters.decrementAndGet();
+        }
+    }
+
+    /**
+     * Called on the dispatch thread as the dispatch begins; closing the result releases the thread.
+     */
+    DispatchThread registerDispatchThread() {
+        DispatchThread dispatch = new DispatchThread(Thread.currentThread());
+        dispatchThreads.add(dispatch);
+        return dispatch;
+    }
+
+    private boolean awaitDispatches(long timeoutMillis, BooleanSupplier giveUp) throws InterruptedException {
         long remainingNanos = TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
         dispatchLock.lock();
         try {
             while (dispatchesInFlight.get() > 0) {
-                if (aborted || remainingNanos <= 0) {
+                if (giveUp.getAsBoolean() || remainingNanos <= 0) {
                     return false;
                 }
                 remainingNanos = dispatchesIdle.awaitNanos(remainingNanos);
@@ -233,5 +269,45 @@ public class HttpConnectionRegistry {
         AtomicInteger created = new AtomicInteger();
         AtomicInteger raced = attribute.setIfAbsent(created);
         return raced != null ? raced : created;
+    }
+
+    /**
+     * A dispatch's hold on the thread running it. The executor may be a pool that reuses the thread
+     * for unrelated work once the dispatch is done, so a shutdown interrupt must never outlive it.
+     */
+    final class DispatchThread implements AutoCloseable {
+
+        private final Thread thread;
+
+        // Guards released and interrupted, so an interrupt lands only while the dispatch owns the thread.
+        private final Object monitor = new Object();
+
+        private boolean released;
+
+        private boolean interrupted;
+
+        private DispatchThread(Thread thread) {
+            this.thread = thread;
+        }
+
+        private void interrupt() {
+            synchronized (monitor) {
+                if (!released) {
+                    interrupted = true;
+                    thread.interrupt();
+                }
+            }
+        }
+
+        @Override
+        public void close() {
+            synchronized (monitor) {
+                released = true;
+                if (interrupted) {
+                    Thread.interrupted();
+                }
+            }
+            dispatchThreads.remove(this);
+        }
     }
 }

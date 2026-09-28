@@ -246,6 +246,31 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    void shouldLetShutdownInterruptDispatchThread() throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch interrupted = new CountDownLatch(1);
+        EmbeddedChannel channel = new EmbeddedChannel(
+            new HttpRequestHandler((_, _, _, _) -> {
+                    entered.countDown();
+                    try {
+                        new CountDownLatch(1).await();
+                    } catch (InterruptedException e) {
+                        interrupted.countDown();
+                        throw e;
+                    }
+                },
+                task -> startQuietly(task), connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+
+        receive(channel, HttpMethod.GET, "/");
+        assertTrue(entered.await(5, TimeUnit.SECONDS), "the dispatch never reached the dispatcher");
+
+        assertTrue(connectionRegistry.interruptAndAwaitDispatches(5_000),
+            "an interrupted dispatch must unwind and be counted out");
+        assertEquals(0, interrupted.getCount(), "the shutdown interrupt must reach the thread running the dispatcher");
+        assertFalse(Thread.interrupted(), "the interrupt must not land on the event loop that submitted the dispatch");
+    }
+
+    @Test
     @Timeout(value = 30, unit = TimeUnit.SECONDS)
     void shouldParkDispatchThreadWhileConnectionIsUnwritable() throws Exception {
         CountDownLatch responseFinished = new CountDownLatch(1);
