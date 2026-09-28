@@ -352,14 +352,19 @@ class HttpConnectionRegistryTest {
                 throw new AssertionError(e);
             }
         });
-        /* Spun on, not joined: join() is itself interruptible, so the interrupt under test would throw out of it. */
-        SpinWait.until(dispatchThread::isInterrupted, Duration.ofSeconds(10),
-            "the shutdown must interrupt the dispatch thread");
+        try {
+            /* Spun on, not joined: join() is itself interruptible, so the interrupt under test would throw out of it. */
+            SpinWait.until(dispatchThread::isInterrupted, Duration.ofSeconds(10),
+                "the shutdown must interrupt the dispatch thread");
 
-        dispatch.close();
+            dispatch.close();
 
-        assertFalse(Thread.interrupted(),
-            "a pooled thread must not carry a shutdown interrupt into the next task it runs");
+            assertFalse(Thread.interrupted(),
+                "a pooled thread must not carry a shutdown interrupt into the next task it runs");
+        } finally {
+            /* The JUnit worker runs the next test: an interrupt left here would fail that test's first wait instead. */
+            Thread.interrupted();
+        }
     }
 
     @Test
