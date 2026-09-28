@@ -2,6 +2,8 @@ package io.github.azholdaspaev.nettyloomspring.autoconfigure.server;
 
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.web.server.context.WebServerApplicationContext;
 import org.springframework.context.SmartLifecycle;
 
@@ -21,6 +23,8 @@ import org.springframework.context.SmartLifecycle;
  * inside a servlet (tomcat-embed-core 11.0.20) -- so they unwind against live sessions (issue #89).
  */
 public class ServletContextLifecycle implements SmartLifecycle {
+
+    private static final Logger log = LoggerFactory.getLogger(ServletContextLifecycle.class);
 
     /**
      * Read from Boot's constant rather than hardcoded: were the number to move, this bean would land
@@ -59,7 +63,10 @@ public class ServletContextLifecycle implements SmartLifecycle {
         servletContext.markStopping();
         boolean interrupted = false;
         try {
-            connectionRegistry.interruptAndAwaitDispatches(UNLOAD_DELAY_MILLIS);
+            if (!connectionRegistry.interruptAndAwaitDispatches(UNLOAD_DELAY_MILLIS)) {
+                log.warn("Closing the servlet context with dispatches still running {} ms after the shutdown "
+                    + "interrupted them", UNLOAD_DELAY_MILLIS);
+            }
         } catch (InterruptedException e) {
             interrupted = true;
         }
