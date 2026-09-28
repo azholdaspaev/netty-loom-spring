@@ -11,6 +11,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.web.server.context.WebServerApplicationContext;
 
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -123,6 +124,25 @@ class ServletContextLifecycleTest {
             "a dispatch unwinding from the shutdown interrupt must still find its session");
         assertThrows(IllegalStateException.class, () -> session.getAttribute("state"),
             "the sessions must be dropped once the dispatches are done");
+    }
+
+    @Test
+    void shouldMarkContextStoppingBeforeInterruptingDispatches() {
+        AtomicBoolean stoppingOnInterrupt = new AtomicBoolean();
+        ServletContextLifecycle awaiting = startLifecycle(new HttpConnectionRegistry(
+            new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)) {
+            @Override
+            public boolean interruptAndAwaitDispatches(long timeoutMillis) {
+                stoppingOnInterrupt.set(servletContext.isStopping());
+                return true;
+            }
+        });
+
+        awaiting.stop();
+
+        assertTrue(stoppingOnInterrupt.get(),
+            "a dispatch failing from the shutdown interrupt must find the context stopping, "
+                + "or it is answered with an error page on a closed connection");
     }
 
     @Test
