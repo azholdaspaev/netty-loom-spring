@@ -772,14 +772,24 @@ class DefaultNettyServletContextTest {
     }
 
     @Test
-    void shouldReportClosedOnlyBetweenCloseAndOpen() {
-        assertFalse(context.isClosed(), "a context that has never been closed is open");
+    void shouldReportStoppingOnlyBetweenCloseAndOpen() {
+        assertFalse(context.isStopping(), "a context that has never been closed is open");
 
         context.close();
-        assertTrue(context.isClosed(), "a dispatch unwinding into a closed context must be able to tell");
+        assertTrue(context.isStopping(), "a dispatch unwinding into a closed context must be able to tell");
 
         context.open();
-        assertFalse(context.isClosed(), "a stop/start cycle reopens the context");
+        assertFalse(context.isStopping(), "a stop/start cycle reopens the context");
+    }
+
+    @Test
+    void shouldReportStoppingFromMarkStoppingUntilOpen() {
+        context.markStopping();
+        assertTrue(context.isStopping(),
+            "a dispatch the shutdown interrupts before the context closes must be able to tell");
+
+        context.open();
+        assertFalse(context.isStopping(), "a stop/start cycle reopens the context");
     }
 
     // --- Cookie SameSite policy (issue #85) ---

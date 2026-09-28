@@ -56,6 +56,7 @@ public class ServletContextLifecycle implements SmartLifecycle {
     @Override
     public void stop() {
         this.running = false;
+        servletContext.markStopping();
         boolean interrupted = false;
         try {
             connectionRegistry.interruptAndAwaitDispatches(UNLOAD_DELAY_MILLIS);

@@ -82,6 +82,8 @@ public final class DefaultNettyServletContext implements NettyServletContext {
     private final AtomicBoolean servletInitialized = new AtomicBoolean();
     private volatile String servletName;
     private volatile Servlet servlet;
+    // Written by the lifecycle thread, read by dispatch threads unwinding from its interrupt.
+    private volatile boolean stopping;
 
     /**
      * Only {@code STOPPED} is a state {@link #open()} re-initializes from, so a first start -- which the
@@ -470,12 +472,18 @@ public final class DefaultNettyServletContext implements NettyServletContext {
     }
 
     @Override
-    public boolean isClosed() {
-        return sessionManager.isClosed();
+    public void markStopping() {
+        stopping = true;
+    }
+
+    @Override
+    public boolean isStopping() {
+        return stopping || sessionManager.isClosed();
     }
 
     @Override
     public void open() {
+        stopping = false;
         sessionManager.open();
         /*
          * Only from STOPPED. open() also runs on a first start, where the factory has already fired

@@ -36,12 +36,12 @@ public class NettyErrorPageDispatcher {
             return false;
         }
         /*
-         * Left to the connection, not answered here: the context closes only after the server's stop
-         * phase has closed every connection and stopped the event loops, so a dispatch still failing
-         * once it is closed is one the shutdown cut off (#205), whatever the interrupt surfaced as --
-         * InterruptedException, SocketException, a rethrow. HttpRequestHandler reports it as abandoned.
+         * Left to the connection, not answered here: the context starts stopping only after the server's
+         * stop phase has closed every connection and stopped the event loops, so a dispatch still failing
+         * once it is stopping is one the shutdown cut off (#205, #89), whatever the interrupt surfaced as
+         * -- InterruptedException, SocketException, a rethrow. HttpRequestHandler reports it as abandoned.
          */
-        if (context.isClosed()) {
+        if (context.isStopping()) {
             return false;
         }
         /*

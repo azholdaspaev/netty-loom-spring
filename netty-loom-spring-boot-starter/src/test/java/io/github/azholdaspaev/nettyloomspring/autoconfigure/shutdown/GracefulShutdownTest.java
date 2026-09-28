@@ -4,7 +4,10 @@ import io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.app.SmokeNetty
 import jakarta.servlet.http.HttpSession;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.web.server.context.WebServerApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,6 +22,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -171,6 +175,24 @@ class GracefulShutdownTest {
 
     @Test
     void shouldKeepSessionUsableForDispatchInterruptedByShutdown() throws Exception {
+        SessionHoldingController holding = closeWhileSessionRequestIsHeld();
+
+        assertEquals("held", holding.sessionOnInterrupt.get(5, TimeUnit.SECONDS),
+            "a dispatch the drain cut off must be interrupted while its session is still usable, "
+                + "not after the session store has closed under it");
+    }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    void shouldNotAnswerDispatchInterruptedByShutdownWithErrorPage(CapturedOutput output) throws Exception {
+        closeWhileSessionRequestIsHeld();
+
+        assertFalse(output.getAll().contains("Answering /session-hold with error page"),
+            "the shutdown interrupt is not an uncaught failure of the application; its connection is "
+                + "already closed, so there is nobody to render a page for; log was: " + output.getAll());
+    }
+
+    private static SessionHoldingController closeWhileSessionRequestIsHeld() throws Exception {
         HttpClient client = HttpClient.newHttpClient();
         ConfigurableApplicationContext context = new SpringApplicationBuilder(
             SmokeNettyLoomApplication.class, SessionHoldingController.class)
@@ -191,10 +213,7 @@ class GracefulShutdownTest {
                 context.close();
             }
         }
-
-        assertEquals("held", holding.sessionOnInterrupt.get(5, TimeUnit.SECONDS),
-            "a dispatch the drain cut off must be interrupted while its session is still usable, "
-                + "not after the session store has closed under it");
+        return holding;
     }
 
     @RestController

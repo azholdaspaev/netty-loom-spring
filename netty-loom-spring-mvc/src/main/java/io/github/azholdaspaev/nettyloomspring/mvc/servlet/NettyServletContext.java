@@ -141,8 +141,18 @@ public interface NettyServletContext extends ServletContext, AutoCloseable {
     default void open() {
     }
 
-    /** Between {@link #close()} and {@link #open()}: a dispatch unwinding into a context being torn down. */
-    default boolean isClosed() {
+    /**
+     * Declares the teardown begun before {@link #close()} runs, so a dispatch the shutdown interrupts
+     * first can already tell.
+     */
+    default void markStopping() {
+    }
+
+    /**
+     * From {@link #markStopping()} or {@link #close()} until {@link #open()}: a dispatch unwinding
+     * into a context being torn down.
+     */
+    default boolean isStopping() {
         return false;
     }
 

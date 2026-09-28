@@ -275,16 +275,16 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
 
     @ParameterizedTest
     @MethodSource("cutOffShapes")
-    void shouldNotAnswerFailureOnceContextIsClosed(Throwable cutOff) throws Exception {
+    void shouldNotAnswerFailureOnceContextIsStopping(Throwable cutOff) throws Exception {
         pageIs("/error");
         var response = new NettyHttpServletResponse();
         var request = requestFor("/stuck", response);
-        context.close();
+        context.markStopping();
 
         var outcome = reportCapturingStandardError(request, response, cutOff);
 
         assertFalse(outcome.reported(),
-            "a failure once the context is closed is a dispatch the shutdown cut off, whatever it unwound with, "
+            "a failure once the context is stopping is a dispatch the shutdown cut off, whatever it unwound with, "
                 + "not a failure a page answers");
         assertTrue(reached.isEmpty(), "the connection is already closed; there is nobody to render a page for");
         assertFalse(outcome.logged().contains("ERROR"),
