@@ -168,7 +168,8 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
         connectionRegistry.dispatchStarted();
         try {
             dispatchExecutor.execute(() -> {
-                try {
+                // Released before the catch and finally run, so a shutdown interrupt never reaches them.
+                try (HttpConnectionRegistry.DispatchThread _ = connectionRegistry.registerDispatchThread()) {
                     requestDispatcher.handle(request, requestBody, connection, writer);
                     if (writer.state.get() != ResponseState.ENDED && ctx.channel().isActive()) {
                         /*
