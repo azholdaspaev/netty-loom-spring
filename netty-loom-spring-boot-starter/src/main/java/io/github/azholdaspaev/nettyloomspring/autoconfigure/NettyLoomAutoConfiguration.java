@@ -92,8 +92,9 @@ public class NettyLoomAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(search = SearchStrategy.CURRENT)
-    public ServletContextLifecycle servletContextLifecycle(NettyServletContext nettyServletContext) {
-        return new ServletContextLifecycle(nettyServletContext);
+    public ServletContextLifecycle servletContextLifecycle(NettyServletContext nettyServletContext,
+                                                           HttpConnectionRegistry httpConnectionRegistry) {
+        return new ServletContextLifecycle(nettyServletContext, httpConnectionRegistry);
     }
 
     @Bean

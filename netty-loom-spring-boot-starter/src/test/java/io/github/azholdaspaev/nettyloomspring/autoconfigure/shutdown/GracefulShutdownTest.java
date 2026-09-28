@@ -1,6 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.shutdown;
 
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.smoke.app.SmokeNettyLoomApplication;
+import jakarta.servlet.http.HttpSession;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -165,7 +166,60 @@ class GracefulShutdownTest {
             "closing the context must not wait for a dispatch that never finishes on its own, took "
                 + elapsedMillis + "ms");
         assertTrue(stuck.interrupted.await(5, TimeUnit.SECONDS),
-            "destroying the dispatch executor must interrupt the stuck dispatch, not just abandon it");
+            "shutdown must interrupt the stuck dispatch, not just abandon it");
+    }
+
+    @Test
+    void shouldKeepSessionUsableForDispatchInterruptedByShutdown() throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+        ConfigurableApplicationContext context = new SpringApplicationBuilder(
+            SmokeNettyLoomApplication.class, SessionHoldingController.class)
+            .properties("server.port=0", "server.netty.shutdown-grace-period=1s")
+            .run();
+        SessionHoldingController holding = context.getBean(SessionHoldingController.class);
+
+        try {
+            int port = ((WebServerApplicationContext) context).getWebServer().getPort();
+            client.sendAsync(
+                HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/session-hold")).build(),
+                HttpResponse.BodyHandlers.ofString());
+            assertTrue(holding.entered.await(5, TimeUnit.SECONDS),
+                "the request must be inside the controller before shutdown begins");
+            context.close();
+        } finally {
+            if (context.isActive()) {
+                context.close();
+            }
+        }
+
+        assertEquals("held", holding.sessionOnInterrupt.get(5, TimeUnit.SECONDS),
+            "a dispatch the drain cut off must be interrupted while its session is still usable, "
+                + "not after the session store has closed under it");
+    }
+
+    @RestController
+    static class SessionHoldingController {
+
+        final CountDownLatch entered = new CountDownLatch(1);
+        final CompletableFuture<Object> sessionOnInterrupt = new CompletableFuture<>();
+        private final CountDownLatch neverReleased = new CountDownLatch(1);
+
+        @GetMapping("/session-hold")
+        String hold(HttpSession session) throws InterruptedException {
+            session.setAttribute("state", "held");
+            entered.countDown();
+            try {
+                neverReleased.await();
+            } catch (InterruptedException e) {
+                try {
+                    sessionOnInterrupt.complete(session.getAttribute("state"));
+                } catch (IllegalStateException closed) {
+                    sessionOnInterrupt.complete(closed.getMessage());
+                }
+                throw e;
+            }
+            return "unreachable";
+        }
     }
 
     @RestController

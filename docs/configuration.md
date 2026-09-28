@@ -114,18 +114,21 @@ While draining, the last response owed on each connection carries `Connection: c
 
 `spring.lifecycle.timeout-per-shutdown-phase` bounds the drain from the other side: when it expires
 first, Spring moves on to the stop phase, which cuts the drain short and force-closes what is left,
-as Tomcat does. The session store is torn down in the phase after that, so the drain is always over
-before the store closes. What does outlive the store is the handler thread of a request the drain
-cut off: its connection is closed, but the thread runs on, and its next session access fails
-([#89](https://github.com/azholdaspaev/netty-loom-spring/issues/89)).
+as Tomcat does. A request the drain cut off loses its connection, but its handler thread runs on.
+The phase after that tears down the servlet, the filters and the session store, and first
+interrupts those threads and waits up to two seconds for them, as Tomcat waits for requests still
+inside a servlet, so a handler unwinding from the interrupt still finds its session
+([#89](https://github.com/azholdaspaev/netty-loom-spring/issues/89)). A handler parked in
+`Thread.sleep`, `Object.wait`, a `BlockingQueue` or `CountDownLatch` wait, or
+`Lock.lockInterruptibly` gets an `InterruptedException`, and a blocking socket read an
+`IOException`; one parked where the interrupt is ignored — `Lock.lock`, a `synchronized` block —
+outlasts the wait, and its next session access fails.
 
-Bean destruction, which follows the lifecycle phases, then interrupts that thread: the dispatch
-executor is destroyed with `shutdownNow()`, not the `close()` Spring would infer, which waits for
-every running dispatch with no bound and no interrupt. A handler parked in `Thread.sleep`,
-`Object.wait`, a `BlockingQueue` or `CountDownLatch` wait, or `Lock.lockInterruptibly` gets an
-`InterruptedException`, and a blocking socket read an `IOException`; one parked where the interrupt
-is ignored — `Lock.lock`, a `synchronized` block — is abandoned, and as a virtual thread it does not
-keep the JVM alive. Either way `context.close()`, and so JVM exit, does not wait on it
+Bean destruction, which follows the lifecycle phases, then interrupts whatever is still running:
+the dispatch executor is destroyed with `shutdownNow()`, not the `close()` Spring would infer,
+which waits for every running dispatch with no bound and no interrupt. A handler that ignores the
+interrupt is abandoned, and as a virtual thread it does not keep the JVM alive. Either way
+`context.close()`, and so JVM exit, does not wait on it
 ([#205](https://github.com/azholdaspaev/netty-loom-spring/issues/205)).
 
 **Set `server.netty.shutdown-grace-period` strictly below

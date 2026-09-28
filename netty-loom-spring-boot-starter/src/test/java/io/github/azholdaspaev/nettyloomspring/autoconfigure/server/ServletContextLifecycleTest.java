@@ -1,14 +1,20 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.server;
 
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.DefaultNettyServletContext;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyHttpSession;
+import io.netty.channel.group.DefaultChannelGroup;
+import io.netty.util.concurrent.GlobalEventExecutor;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.web.server.context.WebServerApplicationContext;
 
+import java.util.concurrent.atomic.AtomicReference;
+
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -30,7 +36,8 @@ class ServletContextLifecycleTest {
     @BeforeEach
     void setUp() {
         servletContext = new DefaultNettyServletContext();
-        lifecycle = new ServletContextLifecycle(servletContext);
+        lifecycle = new ServletContextLifecycle(servletContext,
+            new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)));
         lifecycle.start();
     }
 
@@ -94,5 +101,66 @@ class ServletContextLifecycleTest {
          */
         assertTrue(lifecycle.getPhase() < WebServerApplicationContext.START_STOP_LIFECYCLE_PHASE,
             "tearing sessions down before the server drains would hit requests still in flight");
+    }
+
+    @Test
+    void shouldAwaitCutOffDispatchesBeforeClosingServletContext() {
+        NettyHttpSession session = servletContext.getSessionManager().newSession();
+        session.setAttribute("state", "live");
+        AtomicReference<Object> seenByDispatch = new AtomicReference<>();
+        ServletContextLifecycle awaiting = startLifecycle(new HttpConnectionRegistry(
+            new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)) {
+            @Override
+            public boolean interruptAndAwaitDispatches(long timeoutMillis) {
+                seenByDispatch.set(session.getAttribute("state"));
+                return true;
+            }
+        });
+
+        awaiting.stop();
+
+        assertEquals("live", seenByDispatch.get(),
+            "a dispatch unwinding from the shutdown interrupt must still find its session");
+        assertThrows(IllegalStateException.class, () -> session.getAttribute("state"),
+            "the sessions must be dropped once the dispatches are done");
+    }
+
+    @Test
+    void shouldCloseServletContextWhenDispatchesOutliveWait() {
+        ServletContextLifecycle awaiting = startLifecycle(new HttpConnectionRegistry(
+            new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)) {
+            @Override
+            public boolean interruptAndAwaitDispatches(long timeoutMillis) {
+                return false;
+            }
+        });
+
+        awaiting.stop();
+
+        assertThrows(IllegalStateException.class, () -> servletContext.getSessionManager().newSession(),
+            "a dispatch that ignores the interrupt must not hold the shutdown open");
+    }
+
+    @Test
+    void shouldCloseServletContextWhenDispatchWaitIsInterrupted() {
+        ServletContextLifecycle awaiting = startLifecycle(new HttpConnectionRegistry(
+            new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)) {
+            @Override
+            public boolean interruptAndAwaitDispatches(long timeoutMillis) throws InterruptedException {
+                throw new InterruptedException();
+            }
+        });
+
+        awaiting.stop();
+
+        assertTrue(Thread.interrupted(), "the interrupt that cut the wait short must be restored");
+        assertThrows(IllegalStateException.class, () -> servletContext.getSessionManager().newSession(),
+            "an interrupted wait must still close the servlet context");
+    }
+
+    private ServletContextLifecycle startLifecycle(HttpConnectionRegistry registry) {
+        ServletContextLifecycle started = new ServletContextLifecycle(servletContext, registry);
+        started.start();
+        return started;
     }
 }
