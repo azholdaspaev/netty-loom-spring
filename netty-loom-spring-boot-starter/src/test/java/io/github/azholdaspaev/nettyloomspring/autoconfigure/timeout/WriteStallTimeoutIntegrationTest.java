@@ -3,10 +3,16 @@ package io.github.azholdaspaev.nettyloomspring.autoconfigure.timeout;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.streaming.app.StreamingController;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.streaming.app.StreamingTestApplication;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.support.RawHttpClient;
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
+import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineDefinition;
+import io.github.azholdaspaev.nettyloomspring.core.server.NettyServerChannelInitializer;
+import io.netty.channel.socket.SocketChannel;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Bean;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -22,13 +28,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * that are silently ignored"). Mirrors {@code ReadTimeoutSlowLorisTest} on the write side.
  */
 @SpringBootTest(
-    classes = StreamingTestApplication.class,
+    classes = {StreamingTestApplication.class, WriteStallTimeoutIntegrationTest.SmallSendBufferConfig.class},
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = "server.netty.write-stall-timeout=200ms"
 )
 class WriteStallTimeoutIntegrationTest {
 
     private static final int CLIENT_WINDOW_BYTES = 4096;
+
+    private static final int SERVER_SEND_BUFFER_BYTES = 64 * 1024;
 
     /** Two orders past the configured bound, so what follows tests the give-up and not the clock. */
     private static final long PAST_THE_BOUND_MILLIS = 2_000;
@@ -97,5 +105,25 @@ class WriteStallTimeoutIntegrationTest {
              */
         }
         return total;
+    }
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class SmallSendBufferConfig {
+
+        /**
+         * An unset send buffer autotunes up to a host ceiling, {@code tcp_wmem}'s maximum on Linux (tcp(7)),
+         * often 4 MiB, which holds the whole body without the channel ever turning unwritable (#436).
+         */
+        @Bean
+        NettyServerChannelInitializer smallSendBufferChannelInitializer(NettyPipelineDefinition definition,
+                                                                        HttpConnectionRegistry registry) {
+            return new NettyServerChannelInitializer(definition, registry) {
+                @Override
+                protected void initChannel(SocketChannel ch) throws Exception {
+                    ch.config().setSendBufferSize(SERVER_SEND_BUFFER_BYTES);
+                    super.initChannel(ch);
+                }
+            };
+        }
     }
 }
