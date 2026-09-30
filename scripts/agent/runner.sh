@@ -24,6 +24,10 @@ say() { stamp "$@" >&2; }
 note() { stamp "$@" | tee -a "$log" >&2; }
 
 mkdir -p "$STATE"
+# Fail rather than fall back to gh's keyring login, which holds the maintainer's account-wide token (#424).
+[ -s "$STATE/gh-token" ] || { say "tick failed: no token in $STATE/gh-token"; exit 1; }
+GH_TOKEN=$(cat "$STATE/gh-token")
+export GH_TOKEN
 exec 9>"$STATE/runner.lock"
 rc=0; flock -n 9 || rc=$?
 case "$rc" in 0) ;; 1) say "tick skipped: lock held"; exit 0 ;; *) say "tick failed: flock exit $rc"; exit "$rc" ;; esac
