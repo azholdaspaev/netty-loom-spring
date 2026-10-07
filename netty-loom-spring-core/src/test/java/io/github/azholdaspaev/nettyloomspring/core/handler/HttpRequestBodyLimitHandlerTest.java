@@ -324,13 +324,31 @@ class HttpRequestBodyLimitHandlerTest {
     }
 
     @Test
-    void shouldCloseOncePastSwallowLimitWhileRefusalIsUnsent() {
-        EmbeddedChannel channel = newChannelNeverSending(UNREACHED_SWALLOW_TIMEOUT);
+    void shouldStopReadingPastSwallowLimitWhileRefusalIsUnsent() {
+        HeldWrite held = new HeldWrite();
+        EmbeddedChannel channel = new EmbeddedChannel(held,
+            new HttpRequestBodyLimitHandler(MAX_BODY_BYTES, MAX_SWALLOW_BYTES, UNREACHED_SWALLOW_TIMEOUT));
         channel.writeInbound(declaringLength(Integer.MAX_VALUE));
 
         channel.writeInbound(content("x".repeat(MAX_SWALLOW_BYTES + 1)));
+        held.reads = 0;
+        channel.read();
 
-        assertFalse(channel.isOpen(), "a client not reading its responses must not get an unbounded drain");
+        assertTrue(channel.isOpen(), "closing now would fail the queued 413 and every response queued ahead of it");
+        assertEquals(0, held.reads, "a client not reading its responses must not get an unbounded drain");
+    }
+
+    @Test
+    void shouldCloseOnceRefusalPastSwallowLimitIsSent() {
+        HeldWrite held = new HeldWrite();
+        EmbeddedChannel channel = new EmbeddedChannel(held,
+            new HttpRequestBodyLimitHandler(MAX_BODY_BYTES, MAX_SWALLOW_BYTES, UNREACHED_SWALLOW_TIMEOUT));
+        channel.writeInbound(declaringLength(Integer.MAX_VALUE));
+        channel.writeInbound(content("x".repeat(MAX_SWALLOW_BYTES + 1)));
+
+        held.promise.setSuccess();
+
+        assertFalse(channel.isOpen(), "past the swallow limit nothing more is read, so the sent refusal ends the connection");
     }
 
     @Test
@@ -369,6 +387,25 @@ class HttpRequestBodyLimitHandlerTest {
                 ReferenceCountUtil.release(msg);
             }
         }, new HttpRequestBodyLimitHandler(MAX_BODY_BYTES, MAX_SWALLOW_BYTES, swallowTimeout));
+    }
+
+    private static final class HeldWrite extends ChannelOutboundHandlerAdapter {
+
+        private ChannelPromise promise;
+
+        private int reads;
+
+        @Override
+        public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+            ReferenceCountUtil.release(msg);
+            this.promise = promise;
+        }
+
+        @Override
+        public void read(ChannelHandlerContext ctx) {
+            reads++;
+            ctx.read();
+        }
     }
 
     private static HttpRequest declaringLength(int contentLength) {

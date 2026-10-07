@@ -130,16 +130,32 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
             return;
         }
         heldClose = promise;
+        if (isPastSwallowLimit()) {
+            endDrain(ctx);
+            return;
+        }
         if (ctx.channel() instanceof DuplexChannel duplex) {
             duplex.shutdownOutput();
         }
+    }
+
+    /**
+     * Past the swallow limit, reads stop rather than the connection closing, because a close fails a
+     * refusal still queued; the refusal's own close then ends the drain.
+     */
+    @Override
+    public void read(ChannelHandlerContext ctx) {
+        if (closing && isPastSwallowLimit()) {
+            return;
+        }
+        ctx.read();
     }
 
     /** Asks for the drain's next read itself, since HttpRequestHandler withholds reads while an earlier body is full. */
     @Override
     public void channelReadComplete(ChannelHandlerContext ctx) {
         if (closing) {
-            ctx.read();
+            read(ctx);
         }
         ctx.fireChannelReadComplete();
     }
@@ -157,9 +173,13 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
             swallowed += content.content().readableBytes();
         }
         ReferenceCountUtil.release(msg);
-        if (swallowed > maxSwallowBytes) {
+        if (isPastSwallowLimit() && heldClose != null) {
             endDrain(ctx);
         }
+    }
+
+    private boolean isPastSwallowLimit() {
+        return swallowed > maxSwallowBytes;
     }
 
     private void endDrain(ChannelHandlerContext ctx) {
