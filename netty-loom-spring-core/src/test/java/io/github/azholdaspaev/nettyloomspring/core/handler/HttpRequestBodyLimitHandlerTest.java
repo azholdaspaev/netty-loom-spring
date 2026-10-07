@@ -68,9 +68,9 @@ class HttpRequestBodyLimitHandlerTest {
         rejection.release();
         assertNull(channel.readInbound(), "a request whose expectation cannot be met is not served");
 
-        channel.writeInbound(lastContent("body"));
+        channel.writeInbound(content("x".repeat(MAX_SWALLOW_BYTES + 1)));
 
-        assertFalse(channel.isOpen(), "the connection ends once the declared body has been drained");
+        assertFalse(channel.isOpen(), "a 417 drains and ends the connection like a 413");
     }
 
     @Test
@@ -220,7 +220,7 @@ class HttpRequestBodyLimitHandlerTest {
     }
 
     @Test
-    void shouldCloseOnceRefusedBodyEnds() {
+    void shouldHoldCloseAfterRefusedBodyEnds() {
         EmbeddedChannel channel = newChannel();
         channel.writeInbound(declaringLength(MAX_SWALLOW_BYTES));
         releaseOutbound(channel);
@@ -228,7 +228,7 @@ class HttpRequestBodyLimitHandlerTest {
 
         channel.writeInbound(last);
 
-        assertFalse(channel.isOpen(), "nothing is left to drain, so the close is orderly");
+        assertTrue(channel.isOpen(), "a request pipelined behind the refused body would turn the close into a reset");
         assertEquals(0, last.refCnt(), "a drained body belongs to nobody");
         assertNull(channel.readInbound());
     }
@@ -258,15 +258,15 @@ class HttpRequestBodyLimitHandlerTest {
     }
 
     @Test
-    void shouldCompleteEveryHeldCloseOnceBodyDrains() {
+    void shouldCompleteEveryHeldCloseOnceDrainEnds() {
         EmbeddedChannel channel = newChannel();
-        channel.writeInbound(declaringLength(MAX_SWALLOW_BYTES));
+        channel.writeInbound(declaringLength(Integer.MAX_VALUE));
         releaseOutbound(channel);
 
         ChannelFuture second = channel.close();
         assertFalse(second.isDone(), "a second close must wait for the drain like the first");
 
-        channel.writeInbound(lastContent("x"));
+        channel.writeInbound(content("x".repeat(MAX_SWALLOW_BYTES + 1)));
         assertTrue(second.isDone(), "a close left pending would leave its caller waiting on a closed channel");
     }
 
