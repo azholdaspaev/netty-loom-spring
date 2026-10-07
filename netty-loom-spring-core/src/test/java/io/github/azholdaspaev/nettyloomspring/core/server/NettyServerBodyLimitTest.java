@@ -107,6 +107,28 @@ class NettyServerBodyLimitTest {
     }
 
     @Test
+    void shouldDeliver413WhenTwoRequestsArePipelinedBehindRefusal() throws Exception {
+        nettyServer = NettyServerFixture.newHttpServer(newRegistry(), unreachedDispatcher(), dispatchExecutor,
+            Long.MAX_VALUE, Duration.ofSeconds(3));
+        nettyServer.start();
+        try (HttpWireClient client = HttpWireClient.connect(nettyServer.getPort())) {
+            client.send(head(REFUSED_BODY_BYTES));
+            for (int sent = 0; sent < REFUSED_BODY_BYTES; sent += PIECE.length()) {
+                client.send(PIECE);
+            }
+            client.send("GET /behind HTTP/1.1\r\nHost: localhost\r\n\r\n");
+            client.send(head(UNBUFFERED_BODY_BYTES));
+            for (int sent = 0; sent < UNBUFFERED_BODY_BYTES; sent += PIECE.length()) {
+                client.send(PIECE);
+            }
+
+            assertEquals(REFUSED, client.readHeaderBlock().getFirst(),
+                "a request pipelined behind the refusal must not stop the drain reading what follows it");
+            assertNull(client.readLine());
+        }
+    }
+
+    @Test
     void shouldCloseOnceSwallowTimeoutElapses() throws Exception {
         nettyServer = NettyServerFixture.newHttpServer(newRegistry(), unreachedDispatcher(), dispatchExecutor,
             Long.MAX_VALUE, SHORT_SWALLOW_TIMEOUT);

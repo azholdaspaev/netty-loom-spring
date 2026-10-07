@@ -9,6 +9,7 @@ import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.embedded.EmbeddedChannel;
+import io.netty.channel.socket.ChannelOutputShutdownEvent;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.DefaultHttpContent;
@@ -280,6 +281,40 @@ class HttpPipeliningHandlerTest {
         uriOf(channel.readInbound());
 
         assertEquals(1, reads.count, "the connection must ask for more once its queue has drained");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void shouldPassQueuedRequestOnOnceOutputIsShut() {
+        RecordingReads reads = new RecordingReads();
+        EmbeddedChannel channel = new EmbeddedChannel(reads, new HttpPipeliningHandler());
+        channel.writeInbound(request("/unanswered"), request("/queued"));
+        uriOf(channel.readInbound());
+        reads.count = 0;
+
+        channel.pipeline().fireUserEventTriggered(ChannelOutputShutdownEvent.INSTANCE);
+
+        assertEquals("/queued", uriOf(channel.readInbound()),
+            "no response can follow a shut output, so a queued request has no turn left to wait for");
+        assertEquals(1, reads.count, "the reads withheld for the queue must resume once it is passed on");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void shouldStopQueueingOnceOutputIsShut() {
+        RecordingReads reads = new RecordingReads();
+        EmbeddedChannel channel = new EmbeddedChannel(reads, new HttpPipeliningHandler());
+        channel.writeInbound(request("/unanswered"));
+        uriOf(channel.readInbound());
+        channel.pipeline().fireUserEventTriggered(ChannelOutputShutdownEvent.INSTANCE);
+
+        channel.writeInbound(request("/later"));
+        reads.count = 0;
+        channel.read();
+
+        assertEquals("/later", uriOf(channel.readInbound()),
+            "a request arriving after the output is shut must not latch the gate behind an exchange never answered");
+        assertEquals(1, reads.count, "reads must not be withheld once nothing can be queued");
         channel.finishAndReleaseAll();
     }
 

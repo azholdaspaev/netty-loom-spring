@@ -3,6 +3,7 @@ package io.github.azholdaspaev.nettyloomspring.core.handler;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
+import io.netty.channel.socket.ChannelOutputShutdownEvent;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.LastHttpContent;
@@ -37,9 +38,11 @@ public class HttpPipeliningHandler extends ChannelDuplexHandler {
 
     private boolean responseEnded;
 
+    private boolean outputShut;
+
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
-        if (!(msg instanceof HttpObject part)) {
+        if (outputShut || !(msg instanceof HttpObject part)) {
             ctx.fireChannelRead(msg);
             return;
         }
@@ -82,6 +85,23 @@ public class HttpPipeliningHandler extends ChannelDuplexHandler {
          */
         responseEnded = true;
         endExchangeIfSettled(ctx);
+    }
+
+    /**
+     * No response can follow a shut output, so there is no order left to keep. What is queued and
+     * what arrives later is passed on rather than released, so the handler that shut the output can
+     * count it against its drain.
+     */
+    @Override
+    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) {
+        if (evt instanceof ChannelOutputShutdownEvent) {
+            outputShut = true;
+            while (!pending.isEmpty()) {
+                ctx.fireChannelRead(pending.pollFirst());
+            }
+            ctx.read();
+        }
+        ctx.fireUserEventTriggered(evt);
     }
 
     /**
