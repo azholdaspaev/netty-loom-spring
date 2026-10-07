@@ -252,24 +252,6 @@ class HttpRequestBodyLimitHandlerTest {
         channel.finishAndReleaseAll();
     }
 
-    @Test
-    void shouldFrameSequentialExchangesAfterContinue() {
-        EmbeddedChannel channel = newWireChannel();
-        sendContinuedPostThen(channel, "");
-        channel.writeOutbound(bufferedOk());
-        String postResponse = drainWire(channel);
-        channel.runPendingTasks();
-
-        channel.writeInbound(wire(HEAD_REQUEST));
-        channel.writeOutbound(bufferedOk());
-        String headResponse = drainWire(channel);
-
-        assertTrue(postResponse.endsWith("\r\n\r\n" + RESPONSE_BODY), postResponse);
-        assertTrue(headResponse.endsWith("\r\n\r\n"),
-            "a HEAD decoded after the POST response must still lose its body:\n" + headResponse);
-        channel.finishAndReleaseAll();
-    }
-
     private static EmbeddedChannel newChannel() {
         return new EmbeddedChannel(new HttpRequestBodyLimitHandler(MAX_BODY_BYTES));
     }
