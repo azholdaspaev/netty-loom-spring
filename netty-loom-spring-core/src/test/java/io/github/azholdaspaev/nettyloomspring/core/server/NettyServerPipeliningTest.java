@@ -33,8 +33,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Response ordering on a pipelined connection (issue #63). Real socket on purpose: what is under
- * test is the byte order on the wire, which only exists there.
+ * Response ordering (issue #63), and response framing after an interim 100 (issue #199), on a
+ * pipelined connection. Real socket on purpose: what is under test is the bytes on the wire, which
+ * only exist there.
  */
 @Timeout(value = 30, unit = TimeUnit.SECONDS)
 class NettyServerPipeliningTest {
