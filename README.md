@@ -190,7 +190,7 @@ parent's default is the one injected.
 
 - **Java 25** (LTS) toolchain — no `--enable-preview` for consumers
 - **Spring Boot 4.0.x** (built against BOM 4.0.5)
-- **Netty 4.2.x** (built against 4.2.12.Final)
+- **Netty 4.2.17.Final or later** (built against 4.2.19.Final)
 
 ## Build and contributing
 

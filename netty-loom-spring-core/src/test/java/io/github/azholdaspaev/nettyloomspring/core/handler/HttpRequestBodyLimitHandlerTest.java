@@ -1,10 +1,13 @@
 package io.github.azholdaspaev.nettyloomspring.core.handler;
 
+import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.TooLongFrameException;
+import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.DefaultHttpContent;
 import io.netty.handler.codec.http.DefaultHttpRequest;
+import io.netty.handler.codec.http.DefaultHttpResponse;
 import io.netty.handler.codec.http.DefaultLastHttpContent;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpContent;
@@ -12,7 +15,9 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
 import org.junit.jupiter.api.Test;
@@ -29,6 +34,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class HttpRequestBodyLimitHandlerTest {
 
     private static final int MAX_BODY_BYTES = 16;
+    private static final String CONTINUED_POST =
+        "POST /upload HTTP/1.1\r\nHost: localhost\r\nExpect: 100-continue\r\nContent-Length: 4\r\n\r\n";
+    private static final String POST_BODY = "body";
+    private static final String HEAD_REQUEST = "HEAD /upload HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    private static final String CONNECT_REQUEST = "CONNECT localhost:443 HTTP/1.1\r\nHost: localhost:443\r\n\r\n";
+    private static final String RESPONSE_BODY = "hello";
+    private static final String CHUNKED_RESPONSE_BODY = "5\r\nhello\r\n0\r\n\r\n";
 
     @Test
     void shouldInviteBodyWhenClientExpectsContinue() {
@@ -195,6 +207,69 @@ class HttpRequestBodyLimitHandlerTest {
         channel.finishAndReleaseAll();
     }
 
+    @Test
+    void shouldPreservePostBodyAfterContinueBeforePipelinedHead() {
+        EmbeddedChannel channel = newWireChannel();
+        sendContinuedPostThen(channel, HEAD_REQUEST);
+
+        channel.writeOutbound(bufferedOk());
+        String postResponse = drainWire(channel);
+        channel.runPendingTasks();
+        channel.writeOutbound(bufferedOk());
+        String headResponse = drainWire(channel);
+
+        assertTrue(postResponse.endsWith("\r\n\r\n" + RESPONSE_BODY),
+            "the POST response declares Content-Length, so a missing body stalls the client:\n" + postResponse);
+        assertTrue(headResponse.endsWith("\r\n\r\n"),
+            "a HEAD response carries no body, or the client reads it as the next response:\n" + headResponse);
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void shouldPreserveChunkedBodyAfterContinueBeforePipelinedHead() {
+        EmbeddedChannel channel = newWireChannel();
+        sendContinuedPostThen(channel, HEAD_REQUEST);
+
+        writeChunkedOk(channel);
+        String postResponse = drainWire(channel);
+
+        assertTrue(postResponse.endsWith("\r\n\r\n" + CHUNKED_RESPONSE_BODY),
+            "a chunked POST response without its chunks and terminator never ends:\n" + postResponse);
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void shouldKeepChunkedHeaderAfterContinueBeforePipelinedConnect() {
+        EmbeddedChannel channel = newWireChannel();
+        sendContinuedPostThen(channel, CONNECT_REQUEST);
+
+        writeChunkedOk(channel);
+        String postResponse = drainWire(channel);
+
+        assertTrue(postResponse.contains(HttpHeaderNames.TRANSFER_ENCODING + ": " + HttpHeaderValues.CHUNKED),
+            "chunk framing without its header is read as the body itself:\n" + postResponse);
+        assertTrue(postResponse.endsWith("\r\n\r\n" + CHUNKED_RESPONSE_BODY), postResponse);
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void shouldFrameSequentialExchangesAfterContinue() {
+        EmbeddedChannel channel = newWireChannel();
+        sendContinuedPostThen(channel, "");
+        channel.writeOutbound(bufferedOk());
+        String postResponse = drainWire(channel);
+        channel.runPendingTasks();
+
+        channel.writeInbound(wire(HEAD_REQUEST));
+        channel.writeOutbound(bufferedOk());
+        String headResponse = drainWire(channel);
+
+        assertTrue(postResponse.endsWith("\r\n\r\n" + RESPONSE_BODY), postResponse);
+        assertTrue(headResponse.endsWith("\r\n\r\n"),
+            "a HEAD decoded after the POST response must still lose its body:\n" + headResponse);
+        channel.finishAndReleaseAll();
+    }
+
     private static EmbeddedChannel newChannel() {
         return new EmbeddedChannel(new HttpRequestBodyLimitHandler(MAX_BODY_BYTES));
     }
@@ -216,5 +291,44 @@ class HttpRequestBodyLimitHandlerTest {
 
     private static LastHttpContent lastContent(String text) {
         return new DefaultLastHttpContent(Unpooled.copiedBuffer(text, StandardCharsets.UTF_8));
+    }
+
+    private static EmbeddedChannel newWireChannel() {
+        return new EmbeddedChannel(
+            new HttpServerCodec(), new HttpPipeliningHandler(), new HttpRequestBodyLimitHandler(MAX_BODY_BYTES));
+    }
+
+    private static void sendContinuedPostThen(EmbeddedChannel channel, String nextRequest) {
+        channel.writeInbound(wire(CONTINUED_POST));
+        String invitation = drainWire(channel);
+        assertTrue(invitation.startsWith(HttpVersion.HTTP_1_1 + " " + HttpResponseStatus.CONTINUE + "\r\n"),
+            "the interim response must still reach the wire:\n" + invitation);
+        channel.writeInbound(wire(POST_BODY + nextRequest));
+    }
+
+    private static FullHttpResponse bufferedOk() {
+        FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK,
+            Unpooled.copiedBuffer(RESPONSE_BODY, StandardCharsets.US_ASCII));
+        response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH, RESPONSE_BODY.length());
+        return response;
+    }
+
+    private static void writeChunkedOk(EmbeddedChannel channel) {
+        HttpResponse head = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+        head.headers().set(HttpHeaderNames.TRANSFER_ENCODING, HttpHeaderValues.CHUNKED);
+        channel.writeOutbound(head, content(RESPONSE_BODY), LastHttpContent.EMPTY_LAST_CONTENT);
+    }
+
+    private static ByteBuf wire(String text) {
+        return Unpooled.copiedBuffer(text, StandardCharsets.US_ASCII);
+    }
+
+    private static String drainWire(EmbeddedChannel channel) {
+        StringBuilder written = new StringBuilder();
+        for (ByteBuf encoded = channel.readOutbound(); encoded != null; encoded = channel.readOutbound()) {
+            written.append(encoded.toString(StandardCharsets.US_ASCII));
+            encoded.release();
+        }
+        return written.toString();
     }
 }

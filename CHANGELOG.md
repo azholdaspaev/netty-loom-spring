@@ -19,6 +19,11 @@ in any minor release.
 - A request cut off by shutdown is now interrupted, and waited for up to two seconds, before the
   servlet, the filters and the session store are torn down, so its handler no longer fails its
   next session access with `IllegalStateException` while it unwinds (#89).
+- A response to a request that sent `Expect: 100-continue` no longer loses its body, or its
+  `Transfer-Encoding` header, when a pipelined `HEAD` or `CONNECT` is decoded before it is written.
+  Netty 4.2.17.Final fixed this; the starter now builds against 4.2.19.Final. A build that pins
+  versions from Boot 4.0.5's BOM, such as a Maven project with the Boot parent, still gets
+  4.2.12.Final and has to set `netty.version` (#199).
 
 ## [0.1.0] — 2026-09-20
 
