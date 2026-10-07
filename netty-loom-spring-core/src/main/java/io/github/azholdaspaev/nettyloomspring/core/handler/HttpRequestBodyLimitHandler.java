@@ -109,6 +109,15 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
         ctx.fireChannelRead(msg);
     }
 
+    /** No response may follow the refusal's {@code Connection: close} (RFC 9112 §9.6), an error status included. */
+    @Override
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+        if (closing) {
+            return;
+        }
+        ctx.fireExceptionCaught(cause);
+    }
+
     /** Holds a close that would cut off the refused body, rather than passing it on. */
     @Override
     public void close(ChannelHandlerContext ctx, ChannelPromise promise) {
