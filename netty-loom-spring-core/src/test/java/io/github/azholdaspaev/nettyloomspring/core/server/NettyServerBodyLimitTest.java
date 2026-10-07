@@ -37,6 +37,8 @@ class NettyServerBodyLimitTest {
     /** Past what loopback send and receive buffers absorb, so the server must read it for the write to finish. */
     private static final int UNBUFFERED_BODY_BYTES = 8 * 1024 * 1024;
 
+    private static final int REFUSED_BODY_BYTES = 2 * 1024 * 1024;
+
     private static final Duration SHORT_SWALLOW_TIMEOUT = Duration.ofMillis(200);
 
     private NettyServer nettyServer;
@@ -81,6 +83,25 @@ class NettyServerBodyLimitTest {
 
             assertEquals(REFUSED, client.readHeaderBlock().getFirst(),
                 "a client that writes its whole body before reading must still find the refusal");
+            assertNull(client.readLine());
+        }
+    }
+
+    @Test
+    void shouldDeliver413ToClientPipeliningBehindRefusedBody() throws Exception {
+        startServer();
+        try (HttpWireClient client = HttpWireClient.connect(nettyServer.getPort())) {
+            client.send(head(REFUSED_BODY_BYTES));
+            for (int sent = 0; sent < REFUSED_BODY_BYTES; sent += PIECE.length()) {
+                client.send(PIECE);
+            }
+            client.send(head(UNBUFFERED_BODY_BYTES));
+            for (int sent = 0; sent < UNBUFFERED_BODY_BYTES; sent += PIECE.length()) {
+                client.send(PIECE);
+            }
+
+            assertEquals(REFUSED, client.readHeaderBlock().getFirst(),
+                "the refused body's end is not the client's: closing there resets over the request behind it");
             assertNull(client.readLine());
         }
     }

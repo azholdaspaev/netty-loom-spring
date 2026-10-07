@@ -16,7 +16,6 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
-import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.PromiseNotifier;
@@ -35,9 +34,10 @@ import java.util.concurrent.TimeUnit;
  * <p>Both refusals end the connection, where {@code MessageAggregator.handleOversizedMessage} kept
  * a keep-alive one and discarded the body itself. They end it in stages, as RFC 9112 §9.6 advises,
  * because closing over unread request bytes sends a reset that destroys the refusal in the client's
- * buffer: the output is shut once the refusal is flushed, and what the client still sends is
- * discarded until its body ends, it hangs up, more than {@code maxSwallowBytes} arrives or
- * {@code swallowTimeout} passes. Tomcat bounds the same drain with {@code maxSwallowSize}.
+ * buffer: the output is shut once the refusal is flushed, and what the client still sends, the
+ * refused body and whatever it pipelined behind it, is discarded until it hangs up, more than
+ * {@code maxSwallowBytes} arrives or {@code swallowTimeout} passes. Tomcat bounds the same drain
+ * with {@code maxSwallowSize}.
  */
 public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
 
@@ -58,7 +58,7 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
      */
     private boolean closing;
 
-    /** The refused body has ended or outgrown {@link #maxSwallowBytes}. Event loop only. */
+    /** More than {@link #maxSwallowBytes} has been discarded, so closes pass through. Event loop only. */
     private boolean drained;
 
     private long swallowed;
@@ -146,9 +146,9 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
         if (msg instanceof HttpContent content) {
             swallowed += content.content().readableBytes();
         }
-        drained = drained || msg instanceof LastHttpContent || swallowed > maxSwallowBytes;
         ReferenceCountUtil.release(msg);
-        if (drained) {
+        if (swallowed > maxSwallowBytes) {
+            drained = true;
             closeHeld(ctx);
         }
     }
