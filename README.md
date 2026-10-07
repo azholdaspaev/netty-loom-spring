@@ -78,6 +78,21 @@ implementation("io.github.azholdaspaev:netty-loom-spring-boot-starter:0.1.0")
 </dependency>
 ```
 
+Spring Boot's dependency management replaces the starter's Netty with the version Boot pins:
+4.2.12.Final in Boot 4.0.5, below the 4.2.17.Final in [Requirements](#requirements). A Gradle
+project with the `io.spring.dependency-management` plugin, or a Maven one with
+`spring-boot-starter-parent`, overrides that pin:
+
+```kotlin
+extra["netty.version"] = "4.2.19.Final"
+```
+
+```xml
+<properties>
+    <netty.version>4.2.19.Final</netty.version>
+</properties>
+```
+
 The starter brings `spring-boot-starter-web` with Tomcat excluded, and the Netty
 `ServletWebServerFactory` takes over because it is the only one on the classpath. It serves only
 when it is the sole factory: with Tomcat, Jetty or Undertow also present, or a
