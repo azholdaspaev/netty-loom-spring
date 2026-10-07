@@ -32,7 +32,7 @@ in any minor release.
   [Quick start](README.md#quick-start) shows (#199).
 - A request refused before its body is read — a declared `Content-Length` past the cap, or an
   unmet `Expect` — no longer resets a client that is still uploading, which lost the `413` or `417`
-  to the reset. The server now shuts its output and drains what the client still sends before
+  to the reset. The server now shuts its output and discards what the client still sends before
   closing, up to the new `server.netty.max-swallow-size` and `server.netty.swallow-timeout`; a
   client still uploading past either bound is reset as before (#200).
 
