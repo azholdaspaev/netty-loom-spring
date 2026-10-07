@@ -153,13 +153,13 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
         }
     }
 
-    /** Closes whether or not the refusal's own close has arrived: a refusal stuck unsent must not lift the bounds. */
     private void endDrain(ChannelHandlerContext ctx) {
         if (drained) {
             return;
         }
         drained = true;
         swallowDeadline.cancel(false);
+        // Without waiting for the refusal's own close: a refusal stuck unsent must not lift the bounds.
         ChannelPromise promise = heldClose == null ? ctx.newPromise() : heldClose;
         heldClose = null;
         ctx.close(promise);
