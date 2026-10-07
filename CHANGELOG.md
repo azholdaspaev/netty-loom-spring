@@ -8,6 +8,12 @@ in any minor release.
 
 ## [Unreleased]
 
+### Changed
+
+- `HttpRequestBodyLimitHandler(long)` is replaced by
+  `HttpRequestBodyLimitHandler(long, long, Duration)`, which also takes the swallow limit and
+  timeout. A `NettyPipelineDefinition` of your own that builds the handler must pass them (#200).
+
 ### Fixed
 
 - `HttpServletResponse.getWriter()` after `getOutputStream()`, and the reverse, now throw
