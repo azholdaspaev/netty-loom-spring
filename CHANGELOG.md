@@ -22,8 +22,8 @@ in any minor release.
 - A response to a request that sent `Expect: 100-continue` no longer loses its body, or its
   `Transfer-Encoding` header, when a pipelined `HEAD` or `CONNECT` is decoded before it is written.
   Netty 4.2.17.Final fixed this; the starter now builds against 4.2.19.Final. A build that pins
-  versions from Boot 4.0.5's BOM, such as a Maven project with the Boot parent, still gets
-  4.2.12.Final and has to set `netty.version` (#199).
+  versions from Boot 4.0.5's BOM still gets 4.2.12.Final until it sets `netty.version`, as
+  [Quick start](README.md#quick-start) shows (#199).
 
 ## [0.1.0] — 2026-09-20
 
