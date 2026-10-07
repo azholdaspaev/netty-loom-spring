@@ -171,7 +171,6 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
     }
 
     private boolean refuse(ChannelHandlerContext ctx, HttpRequest request, HttpResponseStatus status) {
-        refused = true;
         closing = true;
         ReferenceCountUtil.release(request);
         FullHttpResponse rejection = emptyResponse(status);
