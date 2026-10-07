@@ -4,6 +4,7 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.TooLongFrameException;
 import io.netty.handler.codec.http.DefaultHttpContent;
@@ -18,10 +19,12 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
+import io.netty.util.ReferenceCountUtil;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -38,6 +41,8 @@ class HttpRequestBodyLimitHandlerTest {
     private static final int MAX_SWALLOW_BYTES = 32;
 
     private static final Duration UNREACHED_SWALLOW_TIMEOUT = Duration.ofSeconds(60);
+
+    private static final Duration SWALLOW_TIMEOUT = Duration.ofSeconds(5);
 
     @Test
     void shouldInviteBodyWhenClientExpectsContinue() {
@@ -305,6 +310,27 @@ class HttpRequestBodyLimitHandlerTest {
     }
 
     @Test
+    void shouldCloseOncePastSwallowLimitWhileRefusalIsUnsent() {
+        EmbeddedChannel channel = newChannelNeverSending(UNREACHED_SWALLOW_TIMEOUT);
+        channel.writeInbound(declaringLength(Integer.MAX_VALUE));
+
+        channel.writeInbound(content("x".repeat(MAX_SWALLOW_BYTES + 1)));
+
+        assertFalse(channel.isOpen(), "a client not reading its responses must not get an unbounded drain");
+    }
+
+    @Test
+    void shouldCloseOnceSwallowTimeoutElapsesWhileRefusalIsUnsent() {
+        EmbeddedChannel channel = newChannelNeverSending(SWALLOW_TIMEOUT);
+        channel.writeInbound(declaringLength(Integer.MAX_VALUE));
+
+        channel.advanceTimeBy(SWALLOW_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+        channel.runScheduledPendingTasks();
+
+        assertFalse(channel.isOpen(), "the swallow timeout runs from the refusal, not from when it is sent");
+    }
+
+    @Test
     void shouldNotHoldCloseAfterBodyOutgrowsLimit() {
         EmbeddedChannel channel = newChannel();
         channel.writeInbound(post());
@@ -320,6 +346,15 @@ class HttpRequestBodyLimitHandlerTest {
     private static EmbeddedChannel newChannel() {
         return new EmbeddedChannel(
             new HttpRequestBodyLimitHandler(MAX_BODY_BYTES, MAX_SWALLOW_BYTES, UNREACHED_SWALLOW_TIMEOUT));
+    }
+
+    private static EmbeddedChannel newChannelNeverSending(Duration swallowTimeout) {
+        return new EmbeddedChannel(new ChannelOutboundHandlerAdapter() {
+            @Override
+            public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+                ReferenceCountUtil.release(msg);
+            }
+        }, new HttpRequestBodyLimitHandler(MAX_BODY_BYTES, MAX_SWALLOW_BYTES, swallowTimeout));
     }
 
     private static HttpRequest declaringLength(int contentLength) {
