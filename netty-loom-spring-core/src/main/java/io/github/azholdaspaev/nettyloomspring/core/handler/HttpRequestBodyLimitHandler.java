@@ -58,7 +58,7 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
      */
     private boolean closing;
 
-    /** More than {@link #maxSwallowBytes} has been discarded, so closes pass through. Event loop only. */
+    /** The drain has ended, at a bound or with the client gone, so closes pass through. Event loop only. */
     private boolean drained;
 
     private long swallowed;
@@ -124,7 +124,6 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
         if (ctx.channel() instanceof DuplexChannel duplex) {
             duplex.shutdownOutput();
         }
-        swallowDeadline = ctx.executor().schedule(() -> closeHeld(ctx), swallowTimeoutNanos, TimeUnit.NANOSECONDS);
     }
 
     /** Asks for the drain's next read itself, since HttpRequestHandler withholds reads while an earlier body is full. */
@@ -138,7 +137,9 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
-        closeHeld(ctx);
+        if (closing) {
+            endDrain(ctx);
+        }
         ctx.fireChannelInactive();
     }
 
@@ -148,17 +149,18 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
         }
         ReferenceCountUtil.release(msg);
         if (swallowed > maxSwallowBytes) {
-            drained = true;
-            closeHeld(ctx);
+            endDrain(ctx);
         }
     }
 
-    private void closeHeld(ChannelHandlerContext ctx) {
-        if (heldClose == null) {
+    /** Closes whether or not the refusal's own close has arrived: a refusal stuck unsent must not lift the bounds. */
+    private void endDrain(ChannelHandlerContext ctx) {
+        if (drained) {
             return;
         }
+        drained = true;
         swallowDeadline.cancel(false);
-        ChannelPromise promise = heldClose;
+        ChannelPromise promise = heldClose == null ? ctx.newPromise() : heldClose;
         heldClose = null;
         ctx.close(promise);
     }
@@ -181,6 +183,7 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
 
     private boolean refuse(ChannelHandlerContext ctx, HttpRequest request, HttpResponseStatus status) {
         closing = true;
+        swallowDeadline = ctx.executor().schedule(() -> endDrain(ctx), swallowTimeoutNanos, TimeUnit.NANOSECONDS);
         ReferenceCountUtil.release(request);
         FullHttpResponse rejection = emptyResponse(status);
         /*
