@@ -19,6 +19,7 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
+import io.netty.handler.codec.http.TooLongHttpHeaderException;
 import io.netty.util.ReferenceCountUtil;
 import org.junit.jupiter.api.Test;
 
@@ -27,6 +28,7 @@ import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -260,6 +262,18 @@ class HttpRequestBodyLimitHandlerTest {
         channel.writeInbound(post());
 
         assertNull(channel.readInbound(), "the refusal said Connection: close, so nothing after it is served");
+    }
+
+    @Test
+    void shouldDropDecoderFailureThatFollowsRefusal() {
+        EmbeddedChannel channel = newChannel();
+        channel.writeInbound(declaringLength(MAX_SWALLOW_BYTES));
+        releaseOutbound(channel);
+
+        channel.pipeline().fireExceptionCaught(new TooLongHttpHeaderException("header block past the limit"));
+
+        assertDoesNotThrow(channel::checkException,
+            "the refusal said Connection: close, so no 431 may be answered after it");
     }
 
     @Test
