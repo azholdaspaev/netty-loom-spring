@@ -77,7 +77,7 @@ class HttpRequestBodyLimitHandlerTest {
 
         channel.writeInbound(content("x".repeat(MAX_SWALLOW_BYTES + 1)));
 
-        assertFalse(channel.isOpen(), "a 417 drains and ends the connection like a 413");
+        assertFalse(channel.isOpen(), "a 417 swallows and ends the connection like a 413");
     }
 
     @Test
@@ -236,7 +236,7 @@ class HttpRequestBodyLimitHandlerTest {
         channel.writeInbound(last);
 
         assertTrue(channel.isOpen(), "a request pipelined behind the refused body would turn the close into a reset");
-        assertEquals(0, last.refCnt(), "a drained body belongs to nobody");
+        assertEquals(0, last.refCnt(), "a swallowed body belongs to nobody");
         assertNull(channel.readInbound());
     }
 
@@ -277,13 +277,13 @@ class HttpRequestBodyLimitHandlerTest {
     }
 
     @Test
-    void shouldCompleteEveryHeldCloseOnceDrainEnds() {
+    void shouldCompleteEveryHeldCloseOnceSwallowEnds() {
         EmbeddedChannel channel = newChannel();
         channel.writeInbound(declaringLength(Integer.MAX_VALUE));
         releaseOutbound(channel);
 
         ChannelFuture second = channel.close();
-        assertFalse(second.isDone(), "a second close must wait for the drain like the first");
+        assertFalse(second.isDone(), "a second close must wait for the swallow like the first");
 
         channel.writeInbound(content("x".repeat(MAX_SWALLOW_BYTES + 1)));
         assertTrue(second.isDone(), "a close left pending would leave its caller waiting on a closed channel");
@@ -299,7 +299,7 @@ class HttpRequestBodyLimitHandlerTest {
         channel.unsafe().close(channel.voidPromise());
         channel.runPendingTasks();
 
-        assertTrue(held.isDone(), "a client that hangs up mid-drain ends the drain, not the swallow timeout");
+        assertTrue(held.isDone(), "a client that hangs up mid-swallow ends the swallow, not the swallow timeout");
     }
 
     @Test
@@ -320,7 +320,7 @@ class HttpRequestBodyLimitHandlerTest {
         channel.writeInbound(content("x"));
 
         assertTrue(reads.get() > 0,
-            "a dispatcher withholding reads for an earlier body would otherwise stall the drain until the timeout");
+            "a dispatcher withholding reads for an earlier body would otherwise stall the swallow until the timeout");
     }
 
     @Test
@@ -335,7 +335,7 @@ class HttpRequestBodyLimitHandlerTest {
         channel.read();
 
         assertTrue(channel.isOpen(), "closing now would fail the queued 413 and every response queued ahead of it");
-        assertEquals(0, held.reads, "a client not reading its responses must not get an unbounded drain");
+        assertEquals(0, held.reads, "a client not reading its responses must not get an unbounded swallow");
     }
 
     @Test
@@ -372,7 +372,7 @@ class HttpRequestBodyLimitHandlerTest {
 
         channel.close();
 
-        assertFalse(channel.isOpen(), "only a refusal this handler answered drains before closing");
+        assertFalse(channel.isOpen(), "only a refusal this handler answered swallows before closing");
     }
 
     private static EmbeddedChannel newChannel() {

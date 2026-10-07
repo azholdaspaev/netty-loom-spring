@@ -36,7 +36,7 @@ import java.util.concurrent.TimeUnit;
  * because closing over unread request bytes sends a reset that destroys the refusal in the client's
  * buffer: the output is shut once the refusal is flushed, and what the client still sends, the
  * refused body and whatever it pipelined behind it, is discarded until it hangs up, more than
- * {@code maxSwallowBytes} arrives or {@code swallowTimeout} passes. Tomcat bounds the same drain
+ * {@code maxSwallowBytes} arrives or {@code swallowTimeout} passes. Tomcat bounds the same swallow
  * with {@code maxSwallowSize}.
  */
 public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
@@ -58,8 +58,8 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
      */
     private boolean closing;
 
-    /** The drain has ended, at a bound or with the client gone, so closes pass through. Event loop only. */
-    private boolean drained;
+    /** The swallow has ended, at a bound or with the client gone, so closes pass through. Event loop only. */
+    private boolean swallowEnded;
 
     private long swallowed;
 
@@ -121,7 +121,7 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
     /** Holds a close that would cut off the refused body, rather than passing it on. */
     @Override
     public void close(ChannelHandlerContext ctx, ChannelPromise promise) {
-        if (!closing || drained) {
+        if (!closing || swallowEnded) {
             ctx.close(promise);
             return;
         }
@@ -131,7 +131,7 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
         }
         heldClose = promise;
         if (isPastSwallowLimit()) {
-            endDrain(ctx);
+            endSwallow(ctx);
             return;
         }
         if (ctx.channel() instanceof DuplexChannel duplex) {
@@ -141,7 +141,7 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
 
     /**
      * Past the swallow limit, reads stop rather than the connection closing, because a close fails a
-     * refusal still queued; the refusal's own close then ends the drain.
+     * refusal still queued; the refusal's own close then ends the swallow.
      */
     @Override
     public void read(ChannelHandlerContext ctx) {
@@ -151,7 +151,7 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
         ctx.read();
     }
 
-    /** Asks for the drain's next read itself, since HttpRequestHandler withholds reads while an earlier body is full. */
+    /** Asks for the swallow's next read itself, since HttpRequestHandler withholds reads while an earlier body is full. */
     @Override
     public void channelReadComplete(ChannelHandlerContext ctx) {
         if (closing) {
@@ -163,7 +163,7 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
         if (closing) {
-            endDrain(ctx);
+            endSwallow(ctx);
         }
         ctx.fireChannelInactive();
     }
@@ -174,7 +174,7 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
         }
         ReferenceCountUtil.release(msg);
         if (isPastSwallowLimit() && heldClose != null) {
-            endDrain(ctx);
+            endSwallow(ctx);
         }
     }
 
@@ -182,11 +182,11 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
         return swallowed > maxSwallowBytes;
     }
 
-    private void endDrain(ChannelHandlerContext ctx) {
-        if (drained) {
+    private void endSwallow(ChannelHandlerContext ctx) {
+        if (swallowEnded) {
             return;
         }
-        drained = true;
+        swallowEnded = true;
         swallowDeadline.cancel(false);
         // Without waiting for the refusal's own close: a refusal stuck unsent must not lift the bounds.
         ChannelPromise promise = heldClose == null ? ctx.newPromise() : heldClose;
@@ -212,7 +212,7 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
 
     private boolean refuse(ChannelHandlerContext ctx, HttpRequest request, HttpResponseStatus status) {
         closing = true;
-        swallowDeadline = ctx.executor().schedule(() -> endDrain(ctx), swallowTimeoutNanos, TimeUnit.NANOSECONDS);
+        swallowDeadline = ctx.executor().schedule(() -> endSwallow(ctx), swallowTimeoutNanos, TimeUnit.NANOSECONDS);
         ReferenceCountUtil.release(request);
         FullHttpResponse rejection = emptyResponse(status);
         /*

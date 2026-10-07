@@ -90,7 +90,7 @@ public class HttpPipeliningHandler extends ChannelDuplexHandler {
     /**
      * No response can follow a shut output, so there is no order left to keep. What is queued and
      * what arrives later is passed on rather than released, so the handler that shut the output can
-     * count it against its drain.
+     * count it against its swallow limit.
      */
     @Override
     public void userEventTriggered(ChannelHandlerContext ctx, Object evt) {

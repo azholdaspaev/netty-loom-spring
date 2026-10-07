@@ -123,7 +123,7 @@ class NettyServerBodyLimitTest {
             }
 
             assertEquals(REFUSED, client.readHeaderBlock().getFirst(),
-                "a request pipelined behind the refusal must not stop the drain reading what follows it");
+                "a request pipelined behind the refusal must not stop the swallow reading what follows it");
             assertNull(client.readLine());
         }
     }
