@@ -36,7 +36,7 @@ A Spring Boot integration library that replaces Tomcat/Jetty with a Netty-based 
 
 ## Build System
 
-Gradle 9.4.1 (Kotlin DSL), Spring Boot BOM 4.0.5, Netty 4.2.12.Final, JUnit 6.0.3; versions live in `gradle/libs.versions.toml`. The BOM-handling and `subprojects {}` rules load from `.claude/rules/gradle.md` whenever a build file is read.
+Gradle 9.4.1 (Kotlin DSL), Spring Boot BOM 4.0.5, Netty 4.2.19.Final, JUnit 6.0.3; versions live in `gradle/libs.versions.toml`. The BOM-handling and `subprojects {}` rules load from `.claude/rules/gradle.md` whenever a build file is read.
 
 ## IDE Tooling
 

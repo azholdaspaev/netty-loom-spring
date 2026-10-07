@@ -7,6 +7,7 @@ plugins {
 }
 
 val springBootVersion = libs.versions.spring.boot.get()
+val nettyVersion = libs.versions.netty.get()
 
 abstract class DependencySources : DefaultTask() {
     @get:InputFiles
@@ -121,7 +122,10 @@ subprojects {
     pluginManager.withPlugin("io.spring.dependency-management") {
         configure<io.spring.gradle.dependencymanagement.dsl.DependencyManagementExtension> {
             imports {
-                mavenBom("org.springframework.boot:spring-boot-dependencies:$springBootVersion")
+                // The catalog's Netty, not the one Boot's BOM pins, which can trail it past a fix we need. #199
+                mavenBom("org.springframework.boot:spring-boot-dependencies:$springBootVersion") {
+                    bomProperty("netty.version", nettyVersion)
+                }
             }
         }
     }
