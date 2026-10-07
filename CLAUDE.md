@@ -50,9 +50,7 @@ Tests use JUnit 6 (`org.junit.jupiter.api`, via `org.junit.jupiter:junit-jupiter
 
 `AGENTS.md` names the commit, pull request and issue templates, and is normative for their use. `.githooks/commit-msg` enforces the commit shape once `core.hooksPath` points at it (`CONTRIBUTING.md` § Commits); a clone without it has only the template. `.claude/hooks/check-comments.sh` enforces the part of rule 5 a script can count — the three numeric budgets at their ceilings, and the block form for multi-line comments — as the `commentBudget` task under `check` and as a `PostToolUse` hook; whether a class javadoc earned its raised ceiling, and the triggers, stay with the reviewer. `.claude/scripts/check-naming.sh` is its sibling for rule 7 — article, test prefix, the 60-character budget, a production method starting with a verb from the table's **Not** column, a case collision — and is under neither `check` nor the hook until the test renames land (#282); run it by hand over the files a change touches. The hook remaps `check-comments.sh`'s exit 1 to 2 because on `PostToolUse` only exit 2 puts the hook's stderr in front of the agent (Claude Code hooks reference, § Hook exit codes: https://code.claude.com/docs/en/hooks).
 
-`.claude/settings.json` tracks the permission rules every session starts with; the body and review threads of #230, the pull request that added them, record why each rule has the shape it does, and which tidier spelling would strand the pipeline.
-
-`scripts/agent/pipeline.sh <issue>` takes an issue from its worktree to a pull request ready for review by running the `/flow:*` commands as unattended `claude -p` stages under `.claude/agent/`; `docs/agent-pipeline.md` owns the labels, the tick, the logs and the maintainer's side.
+`.claude/settings.json` tracks the permission rules every session starts with; the body and review threads of #230, the pull request that added them, record why each rule has the shape it does.
 
 ## CI
 
@@ -148,7 +146,7 @@ Tests:
 
 8. **Documents.** Prose outside the source is bound by rule 5's triggers, budgets and **Never** list, and by one owner per fact: a file that needs a fact another file owns links to it and does not restate it. A paragraph a link could replace is a finding.
 
-- `docs/` is a closed list, and a new file adds its row here first: `configuration.md` (every property), `compatibility-matrix.md` (every servlet method), `adr/` (decisions), `agent-pipeline.md` (the runner), `publishing.md` (state held outside the repository), `benchmarks/<date>/` (one sweep each, never edited).
+- `docs/` is a closed list, and a new file adds its row here first: `configuration.md` (every property), `compatibility-matrix.md` (every servlet method), `adr/` (decisions), `publishing.md` (state held outside the repository), `benchmarks/<date>/` (one sweep each, never edited).
 - An ADR holds the rationale for a rule in this file, or an ownership boundary. It never describes behaviour: behaviour is owned by a test, `configuration.md` or the matrix. Header: Status, Date, then Rule or Issue. Sections: Context, Decision, Consequences. A count in an ADR is pinned to a commit. A correction is a dated amendment, the one place where appending is right.
 - This file holds rules and the module map. Anything an agent does not need on every edit is one sentence here and a link.
 - `README.md` is the front page, `CONTRIBUTING.md` the human's setup, `CHANGELOG.md` the release notes; each links to the owner of a fact rather than restating it.
