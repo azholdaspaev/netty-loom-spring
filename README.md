@@ -93,6 +93,25 @@ extra["netty.version"] = "4.2.19.Final"
 </properties>
 ```
 
+A Maven project that imports `spring-boot-dependencies` rather than inheriting the parent cannot
+override it with a property; it imports Netty's BOM ahead of Boot's, since the first import wins
+([Spring Boot Maven plugin](https://docs.spring.io/spring-boot/maven-plugin/using.html)):
+
+```xml
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-bom</artifactId>
+            <version>4.2.19.Final</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+        <!-- then spring-boot-dependencies, as before -->
+    </dependencies>
+</dependencyManagement>
+```
+
 The starter brings `spring-boot-starter-web` with Tomcat excluded, and the Netty
 `ServletWebServerFactory` takes over because it is the only one on the classpath. It serves only
 when it is the sole factory: with Tomcat, Jetty or Undertow also present, or a
