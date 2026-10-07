@@ -22,6 +22,8 @@ The rule for which namespace a knob belongs to — Spring Boot's `server.*` vers
 | `server.netty.read-timeout` | `Duration` | `30s` | Client-progress deadline. See [The read timeout](#the-read-timeout). `0` or negative disables it |
 | `server.netty.write-stall-timeout` | `Duration` | `60s` | How long a response may sit unsent against a client that has stopped reading. The clock starts only once the connection is unwritable — the outbound buffer past its high-water mark — not on every write, so a slow but progressing client is never cut off. On expiry the connection is closed mid-response. `0` or negative disables it, leaving a stalled dispatch waiting indefinitely |
 | `server.netty.max-http-body-size` | `DataSize` | `1MB` | Request body cap. A `Content-Length` past it is answered `413` before any of the body is read; a body without a declared length is answered `413` the moment it grows past the limit. See [Size limits](#size-limits) |
+| `server.netty.max-swallow-size` | `DataSize` | `2MB` | How much of a refused body is read and discarded before the connection closes regardless. A request refused before its body is read — a declared length past `max-http-body-size`, or an `Expect` other than `100-continue` — is answered with `Connection: close`; the server then shuts its output and drains what the client still sends, so the close cannot reset the connection and take the response with it (RFC 9112 §9.6). The drain ends with the body, when the client hangs up, past this size, or at `swallow-timeout`. Tomcat's counterpart is `maxSwallowSize` |
+| `server.netty.swallow-timeout` | `Duration` | `5s` | How long the drain under `max-swallow-size` may last; it also bounds how long a refused upload can hold graceful shutdown. Must be positive |
 | `server.netty.max-header-size` | `DataSize` | `10000B` | Cap on the request's header block, all header lines together; past it the request is answered `431` and the connection closed. The Netty-only counterpart of `server.max-http-request-header-size`, which is not read |
 | `server.netty.max-initial-line-length` | `DataSize` | `10000B` | Cap on the request line — method, target and version together; past it the request is answered `414` and the connection closed |
 | `server.netty.max-chunk-size` | `DataSize` | `10000B` | Largest piece of a request body the decoder hands on at once. A larger body is split into pieces of at most this size and reaches `getInputStream()` one piece at a time; nothing is refused for exceeding it |
@@ -95,13 +97,14 @@ the body.
 | Max initial line | `server.netty.max-initial-line-length` | 10,000 bytes | `414`, connection closed |
 | Max header block | `server.netty.max-header-size` | 10,000 bytes | `431`, connection closed |
 | Max chunk size | `server.netty.max-chunk-size` | 10,000 bytes | — |
-| Max request body | `server.netty.max-http-body-size` | 1 MiB | `413` |
+| Max request body | `server.netty.max-http-body-size` | 1 MiB | `413`, connection closed; a declared length is drained first, within the swallow limit |
+| Refused body drained before closing | `server.netty.max-swallow-size` | 2 MiB | connection closed before the body is drained |
 | Undrained request body before reads stop | not configurable | 64 KiB | — (the read loop in flight still lands) |
 
 The three codec limits default to 10,000 decimal bytes, not 10 KiB; `DataSize` reads `10KB` as
-10,240. All four
-must be positive — `0` does not disable a limit, unlike the `Duration` properties above — and the
-three codec limits must fit an `int`; a value outside that range fails at binding, and Boot's failure
+10,240. Every
+configurable limit here must be positive — `0` does not disable one, unlike `read-timeout` and
+`write-stall-timeout` — and the three codec limits must fit an `int`; a value outside that range fails at binding, and Boot's failure
 report names the property, the value and its origin.
 
 ## Graceful shutdown

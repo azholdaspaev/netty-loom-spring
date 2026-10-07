@@ -1,9 +1,11 @@
 package io.github.azholdaspaev.nettyloomspring.core.handler;
 
 import io.netty.buffer.Unpooled;
+import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
+import io.netty.channel.socket.DuplexChannel;
 import io.netty.handler.codec.TooLongFrameException;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -14,7 +16,13 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.util.ReferenceCountUtil;
+import io.netty.util.concurrent.Future;
+import io.netty.util.concurrent.PromiseNotifier;
+
+import java.time.Duration;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Bounds the request body, and answers the expectation that negotiates it — {@code 100 Continue},
@@ -24,25 +32,53 @@ import io.netty.util.ReferenceCountUtil;
  * split across {@code HttpObjectAggregator.continueResponse} for a request carrying an expectation
  * and the {@code isContentLengthInvalid} branch of {@code MessageAggregator.decode} for one without.
  *
- * <p>Both refusals close, where {@code MessageAggregator.handleOversizedMessage} closed only a full
- * message, an auto-read-off channel or one already not keep-alive and otherwise discarded the body
- * itself: with nothing aggregating, no handler below would consume what the client sends anyway.
+ * <p>Both refusals end the connection, where {@code MessageAggregator.handleOversizedMessage} kept
+ * a keep-alive one and discarded the body itself. They end it in stages, as RFC 9112 §9.6 advises,
+ * because closing over unread request bytes sends a reset that destroys the refusal in the client's
+ * buffer: the output is shut once the refusal is flushed, and what the client still sends is
+ * discarded until its body ends, it hangs up, more than {@code maxSwallowBytes} arrives or
+ * {@code swallowTimeout} passes. Tomcat bounds the same drain with {@code maxSwallowSize}.
  */
-public class HttpRequestBodyLimitHandler extends ChannelInboundHandlerAdapter {
+public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
 
     private final long maxBodyBytes;
+
+    private final long maxSwallowBytes;
+
+    private final long swallowTimeoutNanos;
 
     private long received;
 
     /** The rest of this request's body is being dropped. Event loop only. */
     private boolean refused;
 
-    public HttpRequestBodyLimitHandler(long maxBodyBytes) {
+    /**
+     * Set before the refusal is written, since HttpServerKeepAliveHandler's close arrives inside that
+     * write. Never cleared: the connection ends with it. Event loop only.
+     */
+    private boolean closing;
+
+    /** The refused body has ended or outgrown {@link #maxSwallowBytes}. Event loop only. */
+    private boolean drained;
+
+    private long swallowed;
+
+    private ChannelPromise heldClose;
+
+    private Future<?> swallowDeadline;
+
+    public HttpRequestBodyLimitHandler(long maxBodyBytes, long maxSwallowBytes, Duration swallowTimeout) {
         this.maxBodyBytes = maxBodyBytes;
+        this.maxSwallowBytes = maxSwallowBytes;
+        this.swallowTimeoutNanos = TimeUnit.NANOSECONDS.convert(swallowTimeout);
     }
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
+        if (closing) {
+            swallow(ctx, msg);
+            return;
+        }
         if (msg instanceof HttpRequest request) {
             received = 0;
             refused = false;
@@ -73,6 +109,51 @@ public class HttpRequestBodyLimitHandler extends ChannelInboundHandlerAdapter {
         ctx.fireChannelRead(msg);
     }
 
+    /** Holds a close that would cut off the refused body, rather than passing it on. */
+    @Override
+    public void close(ChannelHandlerContext ctx, ChannelPromise promise) {
+        if (!closing || drained) {
+            ctx.close(promise);
+            return;
+        }
+        if (heldClose != null) {
+            heldClose.addListener(new PromiseNotifier<>(promise));
+            return;
+        }
+        heldClose = promise;
+        if (ctx.channel() instanceof DuplexChannel duplex) {
+            duplex.shutdownOutput();
+        }
+        swallowDeadline = ctx.executor().schedule(() -> closeHeld(ctx), swallowTimeoutNanos, TimeUnit.NANOSECONDS);
+    }
+
+    @Override
+    public void channelInactive(ChannelHandlerContext ctx) {
+        closeHeld(ctx);
+        ctx.fireChannelInactive();
+    }
+
+    private void swallow(ChannelHandlerContext ctx, Object msg) {
+        if (msg instanceof HttpContent content) {
+            swallowed += content.content().readableBytes();
+        }
+        drained = drained || msg instanceof LastHttpContent || swallowed > maxSwallowBytes;
+        ReferenceCountUtil.release(msg);
+        if (drained) {
+            closeHeld(ctx);
+        }
+    }
+
+    private void closeHeld(ChannelHandlerContext ctx) {
+        if (heldClose == null) {
+            return;
+        }
+        swallowDeadline.cancel(false);
+        ChannelPromise promise = heldClose;
+        heldClose = null;
+        ctx.close(promise);
+    }
+
     /** Refuses what cannot be served and answers {@code Expect}, reporting whether that ends the exchange. */
     private boolean refuseOrNegotiate(ChannelHandlerContext ctx, HttpRequest request) {
         if (isUnsupportedExpectation(request)) {
@@ -91,11 +172,12 @@ public class HttpRequestBodyLimitHandler extends ChannelInboundHandlerAdapter {
 
     private boolean refuse(ChannelHandlerContext ctx, HttpRequest request, HttpResponseStatus status) {
         refused = true;
+        closing = true;
         ReferenceCountUtil.release(request);
         FullHttpResponse rejection = emptyResponse(status);
         /*
          * Netty's HttpServerKeepAliveHandler stamps nothing on a response of self-defined length, so
-         * without this a pooling client reuses the socket the listener below closes (RFC 9112 §9.6).
+         * without this a pooling client reuses a socket this refusal is about to close (RFC 9112 §9.6).
          */
         rejection.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
         ctx.writeAndFlush(rejection).addListener(ChannelFutureListener.CLOSE);

@@ -39,6 +39,14 @@
       "description": "Request body cap, answered 413. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
     },
     {
+      "name": "server.netty.max-swallow-size",
+      "description": "How much of a refused request body is read and discarded before the connection closes regardless. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
+    },
+    {
+      "name": "server.netty.swallow-timeout",
+      "description": "How long a refused request body is read and discarded before the connection closes regardless. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
+    },
+    {
       "name": "server.netty.max-header-size",
       "description": "Request header-block cap, answered 431. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
     },

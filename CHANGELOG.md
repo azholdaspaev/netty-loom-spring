@@ -24,6 +24,10 @@ in any minor release.
   Netty 4.2.17.Final fixed this; the starter now builds against 4.2.19.Final. A build that pins
   versions from Boot 4.0.5's BOM still gets 4.2.12.Final until it sets `netty.version`, as
   [Quick start](README.md#quick-start) shows (#199).
+- A request refused before its body is read — a declared `Content-Length` past the cap, or an
+  unmet `Expect` — no longer resets a client that is still uploading, which lost the `413` or `417`
+  to the reset. The server now shuts its output and drains the body before closing, bounded by the
+  new `server.netty.max-swallow-size` and `server.netty.swallow-timeout` (#200).
 
 ## [0.1.0] — 2026-09-20
 

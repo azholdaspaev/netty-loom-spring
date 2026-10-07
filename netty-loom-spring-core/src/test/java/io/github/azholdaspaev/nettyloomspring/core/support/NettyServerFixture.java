@@ -35,6 +35,10 @@ public final class NettyServerFixture {
 
     private static final Duration UNREACHED_WRITE_STALL_TIMEOUT = Duration.ofSeconds(60);
 
+    private static final long UNREACHED_SWALLOW_BYTES = 64L * 1024 * 1024;
+
+    private static final Duration UNREACHED_SWALLOW_TIMEOUT = Duration.ofSeconds(60);
+
     private NettyServerFixture() {
     }
 
@@ -47,6 +51,15 @@ public final class NettyServerFixture {
     public static NettyServer newHttpServer(HttpConnectionRegistry connectionRegistry,
                                             HttpRequestDispatcher dispatcher,
                                             ExecutorService dispatchExecutor) {
+        return newHttpServer(connectionRegistry, dispatcher, dispatchExecutor,
+            UNREACHED_SWALLOW_BYTES, UNREACHED_SWALLOW_TIMEOUT);
+    }
+
+    public static NettyServer newHttpServer(HttpConnectionRegistry connectionRegistry,
+                                            HttpRequestDispatcher dispatcher,
+                                            ExecutorService dispatchExecutor,
+                                            long maxSwallowBytes,
+                                            Duration swallowTimeout) {
         NettyServerConfiguration configuration = new NettyServerConfiguration(
             0, InetAddress.getLoopbackAddress(), 0, 0, false, 128);
         return newServer(configuration, connectionRegistry, List.of(
@@ -54,7 +67,8 @@ public final class NettyServerFixture {
             new NettyPipelineStep("httpKeepAlive", HttpServerKeepAliveHandler::new),
             new NettyPipelineStep("drain", () -> new HttpDrainHandler(connectionRegistry)),
             new NettyPipelineStep("pipelining", HttpPipeliningHandler::new),
-            new NettyPipelineStep("bodyLimit", () -> new HttpRequestBodyLimitHandler(MAX_HTTP_REQUEST_BODY_BYTES)),
+            new NettyPipelineStep("bodyLimit", () -> new HttpRequestBodyLimitHandler(
+                MAX_HTTP_REQUEST_BODY_BYTES, maxSwallowBytes, swallowTimeout)),
             new NettyPipelineStep("dispatcher",
                 () -> new HttpRequestHandler(dispatcher, dispatchExecutor, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT))));
     }

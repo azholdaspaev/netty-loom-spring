@@ -120,6 +120,7 @@ public class NettyLoomAutoConfiguration {
         int maxHeaderSize = (int) properties.maxHeaderSize().toBytes();
         int maxChunkSize = (int) properties.maxChunkSize().toBytes();
         long maxHttpBodyBytes = properties.maxHttpBodySize().toBytes();
+        long maxSwallowBytes = properties.maxSwallowSize().toBytes();
         return new NettyPipelineDefinition(List.of(
             new NettyPipelineStep("httpCodec", () -> new HttpServerCodec(maxInitialLineLength, maxHeaderSize, maxChunkSize)),
             new NettyPipelineStep("httpKeepAlive", HttpServerKeepAliveHandler::new),
@@ -132,7 +133,8 @@ public class NettyLoomAutoConfiguration {
              * byte after a bad message, so no request can be queued behind one.
              */
             NettyPipelineStep.shared("decoderFailure", new HttpDecoderFailureHandler()),
-            new NettyPipelineStep("bodyLimit", () -> new HttpRequestBodyLimitHandler(maxHttpBodyBytes)),
+            new NettyPipelineStep("bodyLimit", () -> new HttpRequestBodyLimitHandler(maxHttpBodyBytes, maxSwallowBytes,
+                properties.swallowTimeout())),
             new NettyPipelineStep("dispatcher", () -> new HttpRequestHandler(httpRequestDispatcher, nettyLoomDispatchExecutor,
                 httpConnectionRegistry, properties.writeStallTimeout())),
             NettyPipelineStep.shared("exceptionHandler", new HttpExceptionHandler())

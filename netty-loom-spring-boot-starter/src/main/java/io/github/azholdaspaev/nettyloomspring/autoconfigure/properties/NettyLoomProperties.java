@@ -23,6 +23,8 @@ public record NettyLoomProperties(
     @DefaultValue("30s") Duration readTimeout,
     @DefaultValue("60s") Duration writeStallTimeout,
     @DefaultValue("1MB") DataSize maxHttpBodySize,
+    @DefaultValue("2MB") DataSize maxSwallowSize,
+    @DefaultValue("5s") Duration swallowTimeout,
     @DefaultValue("10000B") DataSize maxHeaderSize,
     @DefaultValue("10000B") DataSize maxInitialLineLength,
     @DefaultValue("10000B") DataSize maxChunkSize,
@@ -40,6 +42,8 @@ public record NettyLoomProperties(
         rejectNegative("workerThreads", workerThreads, errors);
         rejectNegative("acceptCount", acceptCount, errors);
         rejectNonPositive("maxHttpBodySize", maxHttpBodySize, errors);
+        rejectNonPositive("maxSwallowSize", maxSwallowSize, errors);
+        rejectNonPositive("swallowTimeout", swallowTimeout, errors);
         rejectOutsideInt("maxHeaderSize", maxHeaderSize, errors);
         rejectOutsideInt("maxInitialLineLength", maxInitialLineLength, errors);
         rejectOutsideInt("maxChunkSize", maxChunkSize, errors);
@@ -54,6 +58,12 @@ public record NettyLoomProperties(
     private static void rejectNonPositive(String field, DataSize size, Errors errors) {
         if (size.toBytes() <= 0) {
             errors.rejectValue(field, "positive", "must be positive; 0 does not disable the limit");
+        }
+    }
+
+    private static void rejectNonPositive(String field, Duration duration, Errors errors) {
+        if (!duration.isPositive()) {
+            errors.rejectValue(field, "positive", "must be positive; 0 does not disable the bound");
         }
     }
 

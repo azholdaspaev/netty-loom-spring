@@ -123,6 +123,34 @@ class NettyLoomPropertiesTest {
     }
 
     @Test
+    void shouldApplyDefaultMaxSwallowSize() {
+        NettyLoomProperties properties = bind(Map.of());
+
+        assertEquals(DataSize.ofMegabytes(2), properties.maxSwallowSize());
+    }
+
+    @Test
+    void shouldOverrideMaxSwallowSizeFromConfiguration() {
+        NettyLoomProperties properties = bind(Map.of("server.netty.max-swallow-size", "16MB"));
+
+        assertEquals(DataSize.ofMegabytes(16), properties.maxSwallowSize());
+    }
+
+    @Test
+    void shouldApplyDefaultSwallowTimeout() {
+        NettyLoomProperties properties = bind(Map.of());
+
+        assertEquals(Duration.ofSeconds(5), properties.swallowTimeout());
+    }
+
+    @Test
+    void shouldOverrideSwallowTimeoutFromConfiguration() {
+        NettyLoomProperties properties = bind(Map.of("server.netty.swallow-timeout", "1s"));
+
+        assertEquals(Duration.ofSeconds(1), properties.swallowTimeout());
+    }
+
+    @Test
     void shouldApplyDefaultMaxHeaderSize() {
         NettyLoomProperties properties = bind(Map.of());
 
