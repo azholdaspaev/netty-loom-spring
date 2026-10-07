@@ -1,6 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.core.handler;
 
 import io.netty.buffer.Unpooled;
+import io.netty.channel.ChannelFuture;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.TooLongFrameException;
 import io.netty.handler.codec.http.DefaultHttpContent;
@@ -18,6 +19,7 @@ import io.netty.handler.codec.http.LastHttpContent;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -29,6 +31,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class HttpRequestBodyLimitHandlerTest {
 
     private static final int MAX_BODY_BYTES = 16;
+
+    private static final int MAX_SWALLOW_BYTES = 32;
+
+    private static final Duration UNREACHED_SWALLOW_TIMEOUT = Duration.ofSeconds(60);
 
     @Test
     void shouldInviteBodyWhenClientExpectsContinue() {
@@ -58,7 +64,10 @@ class HttpRequestBodyLimitHandlerTest {
         assertEquals(HttpResponseStatus.EXPECTATION_FAILED, rejection.status());
         rejection.release();
         assertNull(channel.readInbound(), "a request whose expectation cannot be met is not served");
-        assertFalse(channel.isOpen(), "the declared body would arrive with nothing left to read it");
+
+        channel.writeInbound(lastContent("body"));
+
+        assertFalse(channel.isOpen(), "the connection ends once the declared body has been drained");
     }
 
     @Test
@@ -195,8 +204,110 @@ class HttpRequestBodyLimitHandlerTest {
         channel.finishAndReleaseAll();
     }
 
+    @Test
+    void shouldHoldCloseWhileRefusedBodyArrives() {
+        EmbeddedChannel channel = newChannel();
+
+        channel.writeInbound(declaringLength(MAX_SWALLOW_BYTES));
+        releaseOutbound(channel);
+        channel.writeInbound(content("x"));
+
+        assertTrue(channel.isOpen(),
+            "closing with the body still arriving resets the connection, and the reset discards the 413");
+    }
+
+    @Test
+    void shouldCloseOnceRefusedBodyEnds() {
+        EmbeddedChannel channel = newChannel();
+        channel.writeInbound(declaringLength(MAX_SWALLOW_BYTES));
+        releaseOutbound(channel);
+        LastHttpContent last = lastContent("x".repeat(MAX_SWALLOW_BYTES));
+
+        channel.writeInbound(last);
+
+        assertFalse(channel.isOpen(), "nothing is left to drain, so the close is orderly");
+        assertEquals(0, last.refCnt(), "a drained body belongs to nobody");
+        assertNull(channel.readInbound());
+    }
+
+    @Test
+    void shouldCloseOnceRefusedBodyPassesSwallowLimit() {
+        EmbeddedChannel channel = newChannel();
+        channel.writeInbound(declaringLength(Integer.MAX_VALUE));
+        releaseOutbound(channel);
+
+        channel.writeInbound(content("x".repeat(MAX_SWALLOW_BYTES)));
+        assertTrue(channel.isOpen(), "the swallow limit is inclusive");
+
+        channel.writeInbound(content("y"));
+        assertFalse(channel.isOpen(), "a body past the swallow limit is not worth reading to its end");
+    }
+
+    @Test
+    void shouldDropRequestThatFollowsRefusal() {
+        EmbeddedChannel channel = newChannel();
+        channel.writeInbound(declaringLength(MAX_SWALLOW_BYTES));
+        releaseOutbound(channel);
+
+        channel.writeInbound(post());
+
+        assertNull(channel.readInbound(), "the refusal said Connection: close, so nothing after it is served");
+    }
+
+    @Test
+    void shouldCompleteEveryHeldCloseOnceBodyDrains() {
+        EmbeddedChannel channel = newChannel();
+        channel.writeInbound(declaringLength(MAX_SWALLOW_BYTES));
+        releaseOutbound(channel);
+
+        ChannelFuture second = channel.close();
+        assertFalse(second.isDone(), "a second close must wait for the drain like the first");
+
+        channel.writeInbound(lastContent("x"));
+        assertTrue(second.isDone(), "a close left pending would leave its caller waiting on a closed channel");
+    }
+
+    @Test
+    void shouldCompleteHeldCloseWhenClientHangsUp() {
+        EmbeddedChannel channel = newChannel();
+        channel.writeInbound(declaringLength(MAX_SWALLOW_BYTES));
+        releaseOutbound(channel);
+        ChannelFuture held = channel.close();
+
+        channel.unsafe().close(channel.voidPromise());
+        channel.runPendingTasks();
+
+        assertTrue(held.isDone(), "a client that hangs up mid-drain ends the drain, not the swallow timeout");
+    }
+
+    @Test
+    void shouldNotHoldCloseAfterBodyOutgrowsLimit() {
+        EmbeddedChannel channel = newChannel();
+        channel.writeInbound(post());
+        channel.readInbound();
+        assertThrows(TooLongFrameException.class,
+            () -> channel.writeInbound(content("x".repeat(MAX_BODY_BYTES + 1))));
+
+        channel.close();
+
+        assertFalse(channel.isOpen(), "only a refusal this handler answered drains before closing");
+    }
+
     private static EmbeddedChannel newChannel() {
-        return new EmbeddedChannel(new HttpRequestBodyLimitHandler(MAX_BODY_BYTES));
+        return new EmbeddedChannel(
+            new HttpRequestBodyLimitHandler(MAX_BODY_BYTES, MAX_SWALLOW_BYTES, UNREACHED_SWALLOW_TIMEOUT));
+    }
+
+    private static HttpRequest declaringLength(int contentLength) {
+        HttpRequest request = post();
+        request.headers().setInt(HttpHeaderNames.CONTENT_LENGTH, contentLength);
+        return request;
+    }
+
+    private static void releaseOutbound(EmbeddedChannel channel) {
+        FullHttpResponse rejection = channel.readOutbound();
+        assertEquals(HttpResponseStatus.REQUEST_ENTITY_TOO_LARGE, rejection.status());
+        rejection.release();
     }
 
     private static HttpRequest post() {

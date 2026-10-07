@@ -138,12 +138,22 @@ class NettyLoomAutoConfigurationTest {
         "server.netty.max-chunk-size, 0B",
         "server.netty.max-chunk-size, -1B",
         "server.netty.max-http-body-size, 0B",
-        "server.netty.max-http-body-size, -1B"
+        "server.netty.max-http-body-size, -1B",
+        "server.netty.max-swallow-size, 0B",
+        "server.netty.max-swallow-size, -1B"
     })
     void shouldFailStartupNamingPropertyWhenSizeLimitIsNotPositive(String property, String value) {
         runner.withPropertyValues(property + "=" + value)
             .run(context -> assertThat(context).hasFailed()
                 .getFailure().rootCause().hasMessageContaining(property));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0s", "-1s"})
+    void shouldFailStartupWhenSwallowTimeoutIsNotPositive(String value) {
+        runner.withPropertyValues("server.netty.swallow-timeout=" + value)
+            .run(context -> assertThat(context).hasFailed()
+                .getFailure().rootCause().hasMessageContaining("server.netty.swallow-timeout"));
     }
 
     @ParameterizedTest
