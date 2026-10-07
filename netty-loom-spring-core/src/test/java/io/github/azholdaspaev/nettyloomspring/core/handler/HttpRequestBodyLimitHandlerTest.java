@@ -2,6 +2,8 @@ package io.github.azholdaspaev.nettyloomspring.core.handler;
 
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.TooLongFrameException;
 import io.netty.handler.codec.http.DefaultHttpContent;
@@ -20,6 +22,7 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -278,6 +281,27 @@ class HttpRequestBodyLimitHandlerTest {
         channel.runPendingTasks();
 
         assertTrue(held.isDone(), "a client that hangs up mid-drain ends the drain, not the swallow timeout");
+    }
+
+    @Test
+    void shouldReadRefusedBodyWhenNothingAboveAsksForIt() {
+        AtomicInteger reads = new AtomicInteger();
+        EmbeddedChannel channel = new EmbeddedChannel(new ChannelOutboundHandlerAdapter() {
+            @Override
+            public void read(ChannelHandlerContext ctx) {
+                reads.incrementAndGet();
+                ctx.read();
+            }
+        }, new HttpRequestBodyLimitHandler(MAX_BODY_BYTES, MAX_SWALLOW_BYTES, UNREACHED_SWALLOW_TIMEOUT));
+        channel.config().setAutoRead(false);
+        channel.writeInbound(declaringLength(MAX_SWALLOW_BYTES));
+        releaseOutbound(channel);
+        reads.set(0);
+
+        channel.writeInbound(content("x"));
+
+        assertTrue(reads.get() > 0,
+            "a dispatcher withholding reads for an earlier body would otherwise stall the drain until the timeout");
     }
 
     @Test

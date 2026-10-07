@@ -127,6 +127,15 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
         swallowDeadline = ctx.executor().schedule(() -> closeHeld(ctx), swallowTimeoutNanos, TimeUnit.NANOSECONDS);
     }
 
+    /** Asks for the drain's next read itself, since HttpRequestHandler withholds reads while an earlier body is full. */
+    @Override
+    public void channelReadComplete(ChannelHandlerContext ctx) {
+        if (closing) {
+            ctx.read();
+        }
+        ctx.fireChannelReadComplete();
+    }
+
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
         closeHeld(ctx);
