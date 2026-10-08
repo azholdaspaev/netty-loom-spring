@@ -216,9 +216,11 @@ from, is a bean assembled in the starter, so declaring your own replaces the ent
 
 Every bean the starter declares is `@ConditionalOnMissingBean`, searched in the current context
 only, so declaring your own replaces the auto-configured one without `@Primary`. The virtual-thread
-dispatch executor is the exception, guarded by name: only a bean named `nettyLoomDispatchExecutor`
-replaces it. A replacement declared in a child context must carry the default's bean name, or the
-parent's default is the one injected.
+dispatch executor and the `NettyServletContext` are guarded by name instead: only a bean named
+`nettyLoomDispatchExecutor` replaces the executor, and only one named `nettyServletContext` replaces
+the servlet context. Declare that one `@Bean(defaultCandidate = false)` as the default is, or
+`@Autowired ServletContext` sees it beside Boot's `servletContext`. A replacement declared in a
+child context must carry the default's bean name, or the parent's default is the one injected.
 
 ## Requirements
 

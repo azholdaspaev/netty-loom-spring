@@ -13,6 +13,7 @@ import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.HttpVersion;
+import jakarta.servlet.ServletContext;
 import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletResponse;
 import org.junit.jupiter.api.Test;
@@ -27,6 +28,8 @@ import org.springframework.boot.tomcat.autoconfigure.servlet.TomcatServletWebSer
 import org.springframework.boot.tomcat.servlet.TomcatServletWebServerFactory;
 import org.springframework.boot.web.server.servlet.ServletWebServerFactory;
 import org.springframework.boot.web.server.servlet.context.AnnotationConfigServletWebServerApplicationContext;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.DispatcherServlet;
 
 import java.net.URI;
@@ -37,6 +40,7 @@ import java.time.Duration;
 import java.util.concurrent.ExecutorService;
 
 import static io.github.azholdaspaev.nettyloomspring.autoconfigure.NettyLoomAutoConfiguration.DISPATCH_EXECUTOR_BEAN;
+import static io.github.azholdaspaev.nettyloomspring.autoconfigure.NettyLoomAutoConfiguration.SERVLET_CONTEXT_BEAN;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
@@ -95,10 +99,19 @@ class NettyLoomAutoConfigurationTest {
                 .getBean(ServletWebServerFactory.class).isInstanceOf(TomcatServletWebServerFactory.class));
     }
 
+    @Test
+    void shouldResolveTomcatServletContextByTypeOnSharedClasspath() {
+        newBootedRunnerWithServlet(mock(DispatcherServlet.class))
+            .withConfiguration(AutoConfigurations.of(TomcatServletWebServerAutoConfiguration.class))
+            .run(context -> assertThat(context.getBean(ServletContext.class))
+                .as("by-type injection must reach the context Tomcat serves, not the idle Netty one")
+                .isSameAs(context.getServletContext())
+                .isNotInstanceOf(NettyServletContext.class));
+    }
+
     @ParameterizedTest
     @ValueSource(classes = {
         NettyIoHandlerFactory.class,
-        NettyServletContext.class,
         ServletContextLifecycle.class,
         HttpConnectionRegistry.class,
         NettyServerChannelInitializer.class,
@@ -222,6 +235,21 @@ class NettyLoomAutoConfigurationTest {
     }
 
     @Test
+    void shouldUseUserServletContextDeclaredAsNonDefaultCandidate() {
+        runner.withUserConfiguration(NonDefaultServletContextConfig.class)
+            .run(context -> assertThat(context).hasNotFailed()
+                .getBean(SERVLET_CONTEXT_BEAN).isSameAs(NonDefaultServletContextConfig.SERVLET_CONTEXT));
+    }
+
+    @Test
+    void shouldKeepOwnServletContextWhenUserNamesOneDifferently() {
+        runner.withBean("customServletContext", NettyServletContext.class, () -> mock(NettyServletContext.class))
+            .run(context -> assertThat(context).hasNotFailed()
+                .hasSingleBean(NettyServletWebServerFactory.class)
+                .hasBean(SERVLET_CONTEXT_BEAN));
+    }
+
+    @Test
     void shouldDispatchToChildServletInChildContext() throws Exception {
         DispatcherServlet parentServlet = newServletWriting("parent");
         DispatcherServlet childServlet = newServletWriting("child");
@@ -337,5 +365,16 @@ class NettyLoomAutoConfigurationTest {
             return null;
         }).when(servlet).service(any(ServletRequest.class), any(ServletResponse.class));
         return servlet;
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    static class NonDefaultServletContextConfig {
+
+        static final NettyServletContext SERVLET_CONTEXT = mock(NettyServletContext.class);
+
+        @Bean(name = SERVLET_CONTEXT_BEAN, defaultCandidate = false)
+        NettyServletContext nettyServletContext() {
+            return SERVLET_CONTEXT;
+        }
     }
 }

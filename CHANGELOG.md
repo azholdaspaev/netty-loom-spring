@@ -13,6 +13,10 @@ in any minor release.
 - `HttpRequestBodyLimitHandler(long)` is replaced by
   `HttpRequestBodyLimitHandler(long, long, Duration)`, which also takes the swallow limit and
   timeout. A `NettyPipelineDefinition` of your own that builds the handler must pass them (#200).
+- The auto-configured `NettyServletContext` is replaced only by a bean named
+  `nettyServletContext`; one under another name is now ignored, where before it failed the context
+  start. Where Tomcat serves beside the starter, an unqualified `@Autowired NettyServletContext` no
+  longer resolves to the idle Netty context (#330).
 
 ### Fixed
 
@@ -35,6 +39,9 @@ in any minor release.
   to the reset. The server now shuts its output and discards what the client still sends before
   closing, up to the new `server.netty.max-swallow-size` and `server.netty.swallow-timeout`; a
   client still uploading past either bound is reset as before (#200).
+- `@Autowired ServletContext` under any field or parameter name, and
+  `getBean(ServletContext.class)`, now resolve to the running container's context instead of
+  failing the context start with `NoUniqueBeanDefinitionException` (#330).
 
 ## [0.1.0] — 2026-09-20
 

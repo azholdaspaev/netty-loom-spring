@@ -65,13 +65,15 @@ public class NettyLoomAutoConfiguration {
 
     public static final String DISPATCH_EXECUTOR_BEAN = "nettyLoomDispatchExecutor";
 
+    public static final String SERVLET_CONTEXT_BEAN = "nettyServletContext";
+
     @Bean
     @ConditionalOnMissingBean(value = ServletWebServerFactory.class, search = SearchStrategy.CURRENT)
     public NettyServletWebServerFactory nettyServletWebServerFactory(
             NettyIoHandlerFactory nettyIoHandlerFactory,
             NettyServerChannelInitializer nettyServerChannelInitializer,
             HttpConnectionRegistry httpConnectionRegistry,
-            NettyServletContext nettyServletContext,
+            @Qualifier(SERVLET_CONTEXT_BEAN) NettyServletContext nettyServletContext,
             DispatcherServlet dispatcherServlet,
             NettyLoomProperties properties) {
         return new NettyServletWebServerFactory(nettyIoHandlerFactory, nettyServerChannelInitializer,
@@ -84,15 +86,20 @@ public class NettyLoomAutoConfiguration {
         return new NettyIoHandlerFactory(properties.transport());
     }
 
-    @Bean
-    @ConditionalOnMissingBean(search = SearchStrategy.CURRENT)
+    /**
+     * Not a default candidate rather than named {@code servletContext}, because that name would shadow the
+     * live context Tomcat registers when it serves. Guarded by name: Boot's {@code OnBeanCondition.isCandidate}
+     * skips non-default candidates, so a by-type guard would miss a replacement declared the same way.
+     */
+    @Bean(name = SERVLET_CONTEXT_BEAN, defaultCandidate = false)
+    @ConditionalOnMissingBean(name = SERVLET_CONTEXT_BEAN, search = SearchStrategy.CURRENT)
     public NettyServletContext nettyServletContext() {
         return new DefaultNettyServletContext();
     }
 
     @Bean
     @ConditionalOnMissingBean(search = SearchStrategy.CURRENT)
-    public ServletContextLifecycle servletContextLifecycle(NettyServletContext nettyServletContext,
+    public ServletContextLifecycle servletContextLifecycle(@Qualifier(SERVLET_CONTEXT_BEAN) NettyServletContext nettyServletContext,
                                                            HttpConnectionRegistry httpConnectionRegistry) {
         return new ServletContextLifecycle(nettyServletContext, httpConnectionRegistry);
     }
@@ -159,7 +166,7 @@ public class NettyLoomAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(search = SearchStrategy.CURRENT)
     public HttpRequestDispatcher httpRequestDispatcher(DispatcherServlet dispatcherServlet,
-                                                       NettyServletContext nettyServletContext) {
+                                                       @Qualifier(SERVLET_CONTEXT_BEAN) NettyServletContext nettyServletContext) {
         return new SpringHttpRequestDispatcher(dispatcherServlet, nettyServletContext);
     }
 }

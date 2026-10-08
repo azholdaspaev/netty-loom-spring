@@ -8,9 +8,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 
 /**
  * Boots the smoke application on a random port and reaches the container's {@link NettyServletContext}
- * from any booted application. The lookup is by name, not type: a web application context republishes
- * the live {@code ServletContext} -- this same instance -- as a bean named {@code servletContext}
- * ({@code WebApplicationContextUtils.registerEnvironmentBeans}), so a by-type lookup is ambiguous.
+ * from any booted application.
  */
 public final class NettyLoomApplications {
 
