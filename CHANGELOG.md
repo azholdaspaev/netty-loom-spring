@@ -16,8 +16,12 @@ in any minor release.
 - The auto-configured `NettyServletContext` is replaced only by a bean named
   `nettyServletContext`. One under another name no longer fails the context start, but the server
   does not use it, and while it is declared `@Autowired ServletContext` still fails with
-  `NoUniqueBeanDefinitionException`. Where Tomcat serves beside the starter, an unqualified
-  `@Autowired NettyServletContext` no longer resolves to the idle Netty context (#330).
+  `NoUniqueBeanDefinitionException`. A `ServletContext` taken by type before the server starts —
+  in a `WebServerFactoryCustomizer`, a `BeanPostProcessor`, or your own `NettyPipelineDefinition`
+  or `HttpRequestDispatcher` — now finds no bean and fails the start, as under Tomcat; take
+  `@Qualifier("nettyServletContext") NettyServletContext` there instead. Where Tomcat serves beside
+  the starter, an unqualified `@Autowired NettyServletContext` no longer resolves to the idle Netty
+  context (#330).
 
 ### Fixed
 
