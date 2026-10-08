@@ -13,8 +13,9 @@ import java.io.IOException;
  * is both ends at once, so a buffered answer is a single call.
  *
  * <p>Framing is the writer's business, not the caller's — it belongs to the connection, and getting it
- * wrong corrupts the body ({@code Transfer-Encoding: chunked} reaching an HTTP/1.0 client). Set a
- * {@code Content-Length} to declare a known size; set neither and the writer decides.
+ * wrong corrupts the body ({@code Transfer-Encoding: chunked} reaching an HTTP/1.0 client). A caller's
+ * {@code Transfer-Encoding} is discarded; set a {@code Content-Length} to declare a known size, or
+ * leave it unset and the writer decides.
  *
  * <p>The writer takes ownership of every part passed to it, on the failing path as much as the
  * succeeding one. It is not thread-safe, and it is valid only for the duration of the
