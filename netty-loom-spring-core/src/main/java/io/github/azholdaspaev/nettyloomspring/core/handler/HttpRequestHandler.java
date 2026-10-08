@@ -4,6 +4,7 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.HttpContent;
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
@@ -378,9 +379,16 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
 
         /** Settled on the connection, so no dispatcher has to know the version it turns on. */
         private void frameStreamedBody(HttpResponse response) {
-            if (response instanceof LastHttpContent
-                || HttpUtil.isContentLengthSet(response)
-                || HttpUtil.isTransferEncodingChunked(response)) {
+            // A dispatcher's own coding could reach HTTP/1.0 or sit beside Content-Length (RFC 9112 6.1, 6.2).
+            boolean dispatcherFramed = response.headers().contains(HttpHeaderNames.TRANSFER_ENCODING);
+            response.headers().remove(HttpHeaderNames.TRANSFER_ENCODING);
+            if (HttpUtil.isContentLengthSet(response)) {
+                return;
+            }
+            if (response instanceof LastHttpContent whole) {
+                if (dispatcherFramed) {
+                    HttpUtil.setContentLength(response, whole.content().readableBytes());
+                }
                 return;
             }
             /*

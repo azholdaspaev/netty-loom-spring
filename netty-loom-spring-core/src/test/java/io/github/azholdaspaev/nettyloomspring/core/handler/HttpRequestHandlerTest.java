@@ -215,6 +215,73 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    void shouldStripDispatcherChunkedEncodingForHttp10() {
+        EmbeddedChannel channel = keepAliveChannel((_, _, _, writer) -> {
+            HttpResponse head = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+            HttpUtil.setTransferEncodingChunked(head, true);
+            writer.write(head);
+            writer.write(LastHttpContent.EMPTY_LAST_CONTENT);
+        });
+        HttpRequest request = new DefaultHttpRequest(HttpVersion.HTTP_1_0, HttpMethod.GET, "/");
+        request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
+
+        receive(channel, request);
+        channel.runPendingTasks();
+
+        HttpResponse head = channel.readOutbound();
+        assertFalse(head.headers().contains(HttpHeaderNames.TRANSFER_ENCODING),
+            "a server must not send Transfer-Encoding to an HTTP/1.0 client, whoever set it (RFC 9112 6.1)");
+        assertEquals(HttpHeaderValues.CLOSE.toString(), head.headers().get(HttpHeaderNames.CONNECTION),
+            "with the dispatcher's framing gone the close delimits the body, as for any unframed HTTP/1.0 head");
+        assertFalse(channel.isOpen(), "the connection must close to mark the end of the body");
+        channel.finish();
+    }
+
+    @Test
+    void shouldDropChunkedEncodingBesideContentLength() {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
+                FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK,
+                    Unpooled.copiedBuffer("abc", StandardCharsets.UTF_8));
+                HttpUtil.setTransferEncodingChunked(response, true);
+                response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH, 3);
+                writer.write(response);
+            },
+            DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+
+        receive(channel, HttpMethod.GET, "/");
+        channel.runPendingTasks();
+
+        FullHttpResponse out = channel.readOutbound();
+        assertFalse(out.headers().contains(HttpHeaderNames.TRANSFER_ENCODING),
+            "a message must not carry both Transfer-Encoding and Content-Length (RFC 9112 6.2)");
+        assertEquals(3, HttpUtil.getContentLength(out, -1L), "the declared length of a whole body is exact, so it stays");
+        out.release();
+        channel.finish();
+    }
+
+    @Test
+    void shouldDeclareLengthOfFullResponseOnceChunkedIsDropped() {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
+                FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK,
+                    Unpooled.copiedBuffer("abc", StandardCharsets.UTF_8));
+                HttpUtil.setTransferEncodingChunked(response, true);
+                writer.write(response);
+            },
+            DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+
+        receive(channel, HttpMethod.GET, "/");
+        channel.runPendingTasks();
+
+        FullHttpResponse out = channel.readOutbound();
+        assertFalse(out.headers().contains(HttpHeaderNames.TRANSFER_ENCODING),
+            "the writer owns framing, so a dispatcher's Transfer-Encoding must not reach the wire");
+        assertEquals(3, HttpUtil.getContentLength(out, -1L),
+            "the writer holds the whole body, so it declares the length the dropped chunking would have delimited");
+        out.release();
+        channel.finish();
+    }
+
+    @Test
     void shouldReportGoneClientAsDisconnectAndReleaseChunk() throws Exception {
         ByteBuf orphan = Unpooled.copiedBuffer("gone", StandardCharsets.UTF_8);
         CountDownLatch connectionClosed = new CountDownLatch(1);

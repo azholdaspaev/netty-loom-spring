@@ -47,6 +47,9 @@ in any minor release.
 - `@Autowired ServletContext` under any field or parameter name, and
   `getBean(ServletContext.class)`, now resolve to the running container's context instead of
   failing the context start with `NoUniqueBeanDefinitionException` (#330).
+- A `Transfer-Encoding` header set by the application is now dropped and the server frames the
+  response itself, so an HTTP/1.0 client no longer receives a chunk-encoded body, and a buffered
+  response no longer carries `Transfer-Encoding` beside `Content-Length` (#438).
 
 ## [0.1.0] — 2026-09-20
 
