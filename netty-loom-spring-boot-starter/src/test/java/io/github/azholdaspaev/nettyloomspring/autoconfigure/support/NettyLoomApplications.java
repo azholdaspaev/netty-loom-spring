@@ -6,6 +6,8 @@ import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 
+import static io.github.azholdaspaev.nettyloomspring.autoconfigure.NettyLoomAutoConfiguration.SERVLET_CONTEXT_BEAN;
+
 /**
  * Boots the smoke application on a random port and reaches the container's {@link NettyServletContext}
  * from any booted application.
@@ -23,6 +25,6 @@ public final class NettyLoomApplications {
     }
 
     public static NettyServletContext servletContext(ConfigurableApplicationContext context) {
-        return context.getBean("nettyServletContext", NettyServletContext.class);
+        return context.getBean(SERVLET_CONTEXT_BEAN, NettyServletContext.class);
     }
 }

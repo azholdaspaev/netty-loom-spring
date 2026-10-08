@@ -273,7 +273,7 @@ class NettyLoomAutoConfigurationTest {
     @ValueSource(strings = {
         "nettyServletWebServerFactory",
         "nettyIoHandlerFactory",
-        "nettyServletContext",
+        SERVLET_CONTEXT_BEAN,
         "servletContextLifecycle",
         "httpConnectionRegistry",
         "nettyServerChannelInitializer",
@@ -295,7 +295,7 @@ class NettyLoomAutoConfigurationTest {
             .withBean("customServletContext", NettyServletContext.class, () -> mock(NettyServletContext.class))
             .run(parent -> newRunnerWithServlet(mock(DispatcherServlet.class)).withParent(parent).run(child ->
                 assertThat(child).hasNotFailed()
-                    .getBean("nettyServletContext").isNotSameAs(parent.getBean("customServletContext"))));
+                    .getBean(SERVLET_CONTEXT_BEAN).isNotSameAs(parent.getBean("customServletContext"))));
     }
 
     @Test
@@ -323,7 +323,7 @@ class NettyLoomAutoConfigurationTest {
 
             assertThat(parent.getBean(DISPATCH_EXECUTOR_BEAN, ExecutorService.class).isShutdown())
                 .as("closing the child must not shut down the parent's dispatch executor").isFalse();
-            assertThatCode(() -> parent.getBean("nettyServletContext", NettyServletContext.class).getSessionManager().newSession())
+            assertThatCode(() -> parent.getBean(SERVLET_CONTEXT_BEAN, NettyServletContext.class).getSessionManager().newSession())
                 .as("closing the child must not close the parent's session store").doesNotThrowAnyException();
         });
     }
