@@ -391,11 +391,14 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
                 return;
             }
             if (response instanceof LastHttpContent whole) {
-                // A HEAD response holds no body, yet its length must be the one a GET would send (RFC 9110 8.6).
-                if (dispatcherFramed && !HttpMethod.HEAD.equals(request.method())) {
-                    HttpUtil.setContentLength(response, whole.content().readableBytes());
+                if (!dispatcherFramed) {
+                    return;
                 }
-                return;
+                // A HEAD response holds no body, yet its length must be the one a GET would send (RFC 9110 8.6).
+                if (!HttpMethod.HEAD.equals(request.method())) {
+                    HttpUtil.setContentLength(response, whole.content().readableBytes());
+                    return;
+                }
             }
             /*
              * Netty repairs most of this set and not 304: sanitizeHeadersBeforeEncode skips it while
