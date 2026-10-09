@@ -14,8 +14,8 @@ import java.io.IOException;
  *
  * <p>Framing is the writer's business, not the caller's — it belongs to the connection, and getting it
  * wrong corrupts the body ({@code Transfer-Encoding: chunked} reaching an HTTP/1.0 client). A caller's
- * {@code Transfer-Encoding} is discarded; set a {@code Content-Length} to declare a known size, or
- * leave it unset and the writer decides.
+ * {@code Transfer-Encoding} is discarded, and any {@code Content-Length} beside it too; set a
+ * {@code Content-Length} alone to declare a known size, or leave it unset and the writer decides.
  *
  * <p>The writer takes ownership of every part passed to it, on the failing path as much as the
  * succeeding one. It is not thread-safe, and it is valid only for the duration of the
