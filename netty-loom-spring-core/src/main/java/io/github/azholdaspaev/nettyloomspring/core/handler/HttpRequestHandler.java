@@ -394,8 +394,11 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
                 if (!dispatcherFramed) {
                     return;
                 }
-                // A HEAD response holds no body, yet its length must be the one a GET would send (RFC 9110 8.6).
-                if (!HttpMethod.HEAD.equals(request.method())) {
+                /*
+                 * A HEAD response holds no body, yet its length must be the one a GET would send (RFC 9110 8.6),
+                 * and HttpObjectEncoder writes trailers only in a chunked body.
+                 */
+                if (!HttpMethod.HEAD.equals(request.method()) && whole.trailingHeaders().isEmpty()) {
                     HttpUtil.setContentLength(response, whole.content().readableBytes());
                     return;
                 }
