@@ -325,13 +325,12 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldLeaveHeadResponseUnsizedOnceChunkedIsDropped() {
-        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
-                FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
-                HttpUtil.setTransferEncodingChunked(response, true);
-                writer.write(response);
-            },
-            DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+    void shouldKeepConnectionOpenAfterChunkedHeadResponse() {
+        EmbeddedChannel channel = keepAliveChannel((_, _, _, writer) -> {
+            FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+            HttpUtil.setTransferEncodingChunked(response, true);
+            writer.write(response);
+        });
 
         receive(channel, HttpMethod.HEAD, "/");
         channel.runPendingTasks();
@@ -339,6 +338,8 @@ class HttpRequestHandlerTest {
         FullHttpResponse out = channel.readOutbound();
         assertFalse(out.headers().contains(HttpHeaderNames.CONTENT_LENGTH),
             "a HEAD response holds no body, so its byte count is not the length a GET would send (RFC 9110 8.6)");
+        assertTrue(channel.isOpen(),
+            "a HEAD response framed as a stream would be is self-delimiting, so the HTTP/1.1 connection stays reusable");
         out.release();
         channel.finish();
     }
