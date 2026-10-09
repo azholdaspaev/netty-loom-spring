@@ -282,6 +282,28 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    void shouldDropTransferEncodingOtherThanChunked() {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
+                FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK,
+                    Unpooled.copiedBuffer("abc", StandardCharsets.UTF_8));
+                response.headers().set(HttpHeaderNames.TRANSFER_ENCODING, HttpHeaderValues.GZIP);
+                writer.write(response);
+            },
+            DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+
+        receive(channel, HttpMethod.GET, "/");
+        channel.runPendingTasks();
+
+        FullHttpResponse out = channel.readOutbound();
+        assertFalse(out.headers().contains(HttpHeaderNames.TRANSFER_ENCODING),
+            "the writer applies no coding but chunked, so a gzip it was told about would describe bytes never encoded");
+        assertEquals(3, HttpUtil.getContentLength(out, -1L),
+            "with the coding gone the writer declares the length of the whole body it holds");
+        out.release();
+        channel.finish();
+    }
+
+    @Test
     void shouldLeaveHeadResponseUnsizedOnceChunkedIsDropped() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
                 FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
