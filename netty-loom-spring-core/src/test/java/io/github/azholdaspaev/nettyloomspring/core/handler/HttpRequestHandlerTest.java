@@ -254,7 +254,28 @@ class HttpRequestHandlerTest {
         FullHttpResponse out = channel.readOutbound();
         assertFalse(out.headers().contains(HttpHeaderNames.TRANSFER_ENCODING),
             "a message must not carry both Transfer-Encoding and Content-Length (RFC 9112 6.2)");
-        assertEquals(3, HttpUtil.getContentLength(out, -1L), "the declared length of a whole body is exact, so it stays");
+        assertEquals(3, HttpUtil.getContentLength(out, -1L), "the writer holds the whole body, so it declares its length");
+        out.release();
+        channel.finish();
+    }
+
+    @Test
+    void shouldReplaceStaleContentLengthBesideChunkedWithBodyLength() {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
+                FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK,
+                    Unpooled.copiedBuffer("abc", StandardCharsets.UTF_8));
+                HttpUtil.setTransferEncodingChunked(response, true);
+                response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH, 100);
+                writer.write(response);
+            },
+            DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+
+        receive(channel, HttpMethod.GET, "/");
+        channel.runPendingTasks();
+
+        FullHttpResponse out = channel.readOutbound();
+        assertEquals(3, HttpUtil.getContentLength(out, -1L),
+            "Transfer-Encoding overrides Content-Length (RFC 9112 6.3), so the dispatcher's length never framed the body");
         out.release();
         channel.finish();
     }
