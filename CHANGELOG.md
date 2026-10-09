@@ -8,6 +8,15 @@ in any minor release.
 
 ## [Unreleased]
 
+### Added
+
+- `server.forward-headers-strategy=native`: behind a proxy in `server.netty.internal-proxies`,
+  the request takes its scheme, server name and port, and client address from the
+  `X-Forwarded-*` headers, or from `Forwarded` with `server.netty.forwarded-headers=forwarded`,
+  and the session cookie is `Secure` when the proxy forwarded `https`. See
+  [Forwarded headers](https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#forwarded-headers)
+  (#50).
+
 ### Changed
 
 - `HttpRequestBodyLimitHandler(long)` is replaced by

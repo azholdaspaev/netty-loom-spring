@@ -50,9 +50,9 @@ property reference.
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| `getRemoteAddr/Host/Port`, `getLocalAddr/Name/Port` | `works` | `getRemoteHost` returns the IP — never a reverse-DNS name. `getLocalName` returns an IP, not a hostname. An unresolvable `SocketAddress` degrades to `""` / `0` |
-| `getScheme()`, `isSecure()` | `partial` | Derived from the presence of an `SslHandler`, so in practice always `http` / `false` — TLS is unimplemented and forwarded headers are not consulted |
-| `getServerName()`, `getServerPort()` | `works` | Parsed from the `Host` header, IPv6 bracketed; falls back to the local address when `Host` is absent |
+| `getRemoteAddr/Host/Port`, `getLocalAddr/Name/Port` | `works` | `getRemoteHost` returns the IP — never a reverse-DNS name. `getLocalName` returns an IP, not a hostname. An unresolvable `SocketAddress` degrades to `""` / `0`. Under `server.forward-headers-strategy=native`, `getRemoteAddr` and `getRemoteHost` report the client a trusted proxy forwarded ([Forwarded headers](configuration.md#forwarded-headers)) |
+| `getScheme()`, `isSecure()` | `works` | From the socket, which is always plaintext until TLS lands ([#16](https://github.com/azholdaspaev/netty-loom-spring/issues/16)), or under `server.forward-headers-strategy=native` from a trusted proxy's headers ([Forwarded headers](configuration.md#forwarded-headers)) |
+| `getServerName()`, `getServerPort()` | `works` | Parsed from the `Host` header, IPv6 bracketed; falls back to the local address when `Host` is absent. Under `server.forward-headers-strategy=native` a trusted proxy's headers take precedence ([Forwarded headers](configuration.md#forwarded-headers)) |
 | `getHeader*`, `getHeaderNames` | `works` | `getDateHeader` throws `IllegalArgumentException` on an unparseable date. From a controller that surfaces as **500**, because `FrameworkServlet` wraps it in a `ServletException` ([exception mapping](configuration.md#exception-to-status-mapping)); from a `Filter`, which is above `DispatcherServlet`, it arrives unwrapped and maps to `400` |
 | `getCookies()` | `partial` | `ServerCookieDecoder.STRICT`. Returns `null`, not an empty array, when there are none or the header is malformed |
 | `getParameter*` | `partial` | Query and form-body parameters merged, query first. **Netty's `QueryStringDecoder` limits apply: at most 1024 parameters, the rest silently dropped** ([#122](https://github.com/azholdaspaev/netty-loom-spring/issues/122)); `;` is a parameter separator; `+` decodes to a space |
@@ -120,7 +120,7 @@ Path-based `forward` only ([#182](https://github.com/azholdaspaev/netty-loom-spr
 | Creation, lookup, invalidation | `works` | In-memory; ids are 16 random bytes of `SecureRandom` as uppercase hex |
 | `server.servlet.session.timeout` | `works` | Second resolution; `0` or less means never expires. Lazy 60s sweeper thread plus exact expiry on lookup |
 | `server.servlet.session.cookie.*` | `works` | Name, domain, path, `http-only`, `secure`, `max-age`, `same-site`, `partitioned`. Frozen after startup. `setComment` is accepted and does nothing |
-| Cookie `Secure` behind a TLS proxy | `partial` | Derived from the real connection, which is plaintext behind a terminating proxy — set `server.servlet.session.cookie.secure=true` explicitly (CWE-614, [#50](https://github.com/azholdaspaev/netty-loom-spring/issues/50)) |
+| Cookie `Secure` behind a TLS proxy | `works` | Follows `isSecure()`, so under `server.forward-headers-strategy=native` a trusted proxy's `https` makes the session cookie `Secure`. `framework`'s filter does not reach it: there, set `server.servlet.session.cookie.secure=true` (CWE-614) |
 | Empty `JSESSIONID=` cookie | `works` | `getRequestedSessionId()` is `""`, not `null`, and `isRequestedSessionIdValid()` is `false` — the same as Tomcat and Jetty. With `invalidSessionUrl` configured, Spring Security treats it as an expired session and redirects once ([#94](https://github.com/azholdaspaev/netty-loom-spring/issues/94)) |
 | `changeSessionId()` | `partial` | Rotates and re-emits the cookie. After commit it still rotates but the new `Set-Cookie` is dropped, stranding the client on a dead id |
 | Session teardown on shutdown | `works` | Every session is invalidated and unbound, so `@PreDestroy` and `@SessionScope` callbacks run |
@@ -208,5 +208,5 @@ fired on an object bound into a session, and passing one to `addListener` throws
 | TLS | `fails startup` | [#16](https://github.com/azholdaspaev/netty-loom-spring/issues/16) |
 | HTTP/2 | `ignored` | `server.http2.*` has no effect ([#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23)) |
 | Response compression | `ignored` | `server.compression.*` has no effect ([#22](https://github.com/azholdaspaev/netty-loom-spring/issues/22)) |
-| Forwarded headers | `partial` | `server.forward-headers-strategy=framework` applies Boot's `ForwardedHeaderFilter`; `native` does nothing, and neither fixes the session cookie's `Secure` flag ([#50](https://github.com/azholdaspaev/netty-loom-spring/issues/50)) |
+| Forwarded headers | `works` | `server.forward-headers-strategy=native` as in [Forwarded headers](configuration.md#forwarded-headers); `framework` applies Boot's `ForwardedHeaderFilter` |
 | Access logging, metrics, tracing | `none` | [#8](https://github.com/azholdaspaev/netty-loom-spring/issues/8), [#6](https://github.com/azholdaspaev/netty-loom-spring/issues/6), [#7](https://github.com/azholdaspaev/netty-loom-spring/issues/7) |

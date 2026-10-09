@@ -27,6 +27,8 @@ The rule for which namespace a knob belongs to — Spring Boot's `server.*` vers
 | `server.netty.max-header-size` | `DataSize` | `10000B` | Cap on the request's header block, all header lines together; past it the request is answered `431` and the connection closed. The Netty-only counterpart of `server.max-http-request-header-size`, which is not read |
 | `server.netty.max-initial-line-length` | `DataSize` | `10000B` | Cap on the request line — method, target and version together; past it the request is answered `414` and the connection closed |
 | `server.netty.max-chunk-size` | `DataSize` | `10000B` | Largest piece of a request body the decoder hands on at once. A larger body is split into pieces of at most this size and reaches `getInputStream()` one piece at a time; nothing is refused for exceeding it |
+| `server.netty.internal-proxies` | `List<String>` | `192.168.0.0/16`, `172.16.0.0/12`, `169.254.0.0/16`, `fc00::/7`, `10.0.0.0/8`, `100.64.0.0/10`, `127.0.0.0/8`, `fe80::/10`, `::1/128` | The proxies whose forwarded headers `server.forward-headers-strategy=native` trusts, as IP addresses and CIDR blocks. The default is Boot's `server.tomcat.remoteip.internal-proxies`; a configured list replaces it, and an empty one trusts nobody. An entry that is neither fails at binding and Boot's failure report names the property. See [Forwarded headers](#forwarded-headers) |
+| `server.netty.forwarded-headers` | `NettyForwardedHeaders` | `x-forwarded` | The header family native forwarding reads: `x-forwarded` for `X-Forwarded-For`/`-Proto`/`-Host`/`-Port`, `forwarded` for RFC 7239 `Forwarded`. Set it to the family your proxy writes. See [Forwarded headers](#forwarded-headers) |
 
 `NettyLoomProperties` is a `@ConfigurationProperties` record, which binds with
 `ignoreUnknownFields = true`. A misspelled or obsolete key under `server.netty.*` is therefore
@@ -47,6 +49,7 @@ in favour of `server.port`.
 | `server.servlet.context-parameters.*` | Become `ServletContext` init parameters |
 | `server.servlet.application-display-name` | Returned by `ServletContext.getServletContextName()`, as under Tomcat |
 | `server.mime-mappings.*` | Added to Boot's default table and answered by `ServletContext.getMimeType()`, as under Tomcat |
+| `server.forward-headers-strategy` | `native` takes the scheme, server name and port, and client address from the headers a trusted proxy wrote; see [Forwarded headers](#forwarded-headers). `framework` registers Boot's `ForwardedHeaderFilter`, which does not reach the session cookie's `Secure` flag, so set `server.servlet.session.cookie.secure=true` behind a TLS-terminating proxy. Unset means `none`: unlike Tomcat and Jetty, nothing is deduced from the cloud platform |
 | `spring.servlet.encoding.*` | Works because Boot implements it as a `CharacterEncodingFilter` bean, not a container setting |
 
 Two extension points also work: `WebServerFactoryCustomizer<ConfigurableServletWebServerFactory>`
@@ -79,7 +82,6 @@ failure**.
 | `server.servlet.encoding.mapping.*` | Locale-to-charset mappings are never read. Note this is a different property from `spring.servlet.encoding.*`, which *is* honoured because Boot implements it as a filter | |
 | `server.servlet.session.store-dir` | Only `persistent` is checked | |
 | `spring.ssl.bundle.*` | Never read. Unlike `server.ssl.bundle`, which fails startup, this namespace does not bind to `server.ssl` and so starts cleanly | [#16](https://github.com/azholdaspaev/netty-loom-spring/issues/16) |
-| `server.forward-headers-strategy=native` | No native forwarded-header handling. `=framework` does work, via Boot's `ForwardedHeaderFilter` | [#50](https://github.com/azholdaspaev/netty-loom-spring/issues/50) |
 | `spring.mvc.servlet.path` | `DispatcherServlet` receives every in-context request regardless | |
 | `server.netty.port` | Removed; use `server.port` | |
 | `server.tomcat.*`, `server.jetty.*`, `server.undertow.*` | Those containers are not on the classpath | |
@@ -89,6 +91,37 @@ itself removed the old namespace, and nothing here rebinds it. The new one *is* 
 selects the page a failed request is dispatched to, and `include-message`, `include-stacktrace`,
 `include-binding-errors` and `whitelabel.enabled` are Boot's own and reach the client along with
 the body.
+
+## Forwarded headers
+
+With `server.forward-headers-strategy=native`, a request whose socket peer is in
+`server.netty.internal-proxies` takes its origin from the header family
+`server.netty.forwarded-headers` names. The other family is never read: a proxy passes the family
+it does not write through untouched, so a client could set it. Any other peer, and every other
+strategy, sees the socket and the `Host` header. The reference is Tomcat 11's `RemoteIpValve`.
+
+- **Client address** (`getRemoteAddr`, `getRemoteHost`): the nodes of `X-Forwarded-For`, or the
+  `for` of each `Forwarded` element, walked right to left past internal proxies. The first other
+  node is the client, reported as written less any port, `unknown` included. An empty node stops
+  the walk at the last internal proxy; when every node is one, the leftmost is the client.
+  `getRemotePort` stays the socket's.
+- **Scheme** (`getScheme`, `isSecure`, the session cookie's `Secure`): `X-Forwarded-Proto` is
+  `https` only when every value is; under `forwarded`, the `proto` of the element where the walk
+  stopped.
+- **Server name**: `X-Forwarded-Host` when it holds a single value, or the stopping element's
+  `host`; otherwise the `Host` header.
+- **Server port**: `X-Forwarded-Port`; else the forwarded host's own port; else the scheme's
+  default when a proto or a host was forwarded; else the `Host` header's.
+
+Repeated header lines read as one list. A value that does not parse is ignored, never answered
+`400`. No header is removed or rewritten, and `getServletConnection()` still describes the socket.
+A relative `sendRedirect` location is sent as written, as Tomcat does by default
+(`useRelativeRedirects`), and the client resolves it against the URL it used.
+
+Tomcat differs in that it does not read `Forwarded`, applies `X-Forwarded-Port` only beside
+`X-Forwarded-Proto`, strips the port from `X-Forwarded-Host` and keeps the server port when only
+the host is forwarded, takes the first line of a repeated `X-Forwarded-Host`, and also accepts a
+regular expression as its proxy list.
 
 ## Size limits
 
