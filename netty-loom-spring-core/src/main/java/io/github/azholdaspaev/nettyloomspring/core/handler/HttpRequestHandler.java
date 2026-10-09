@@ -342,7 +342,7 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
                 throw new ClosedChannelException();
             }
             if (part instanceof HttpResponse response) {
-                frameStreamedBody(response);
+                frameBody(response);
                 echoHttp10KeepAlive(request, response);
             }
             awaitAccepted(ctx.writeAndFlush(part));
@@ -379,7 +379,7 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
         }
 
         /** Settled on the connection, so no dispatcher has to know the version it turns on. */
-        private void frameStreamedBody(HttpResponse response) {
+        private void frameBody(HttpResponse response) {
             // A dispatcher's own coding could reach HTTP/1.0 or sit beside Content-Length (RFC 9112 6.1, 6.2).
             boolean dispatcherFramed = response.headers().contains(HttpHeaderNames.TRANSFER_ENCODING);
             response.headers().remove(HttpHeaderNames.TRANSFER_ENCODING);
