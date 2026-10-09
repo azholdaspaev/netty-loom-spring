@@ -47,7 +47,7 @@ public record HttpConnectionMetadata(String remoteAddr,
         return httpScheme().port();
     }
 
-    private HttpScheme httpScheme() {
+    public HttpScheme httpScheme() {
         return secure ? HttpScheme.HTTPS : HttpScheme.HTTP;
     }
 
