@@ -383,8 +383,8 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
             // A dispatcher's own coding could reach HTTP/1.0 or sit beside Content-Length (RFC 9112 6.1, 6.2).
             boolean dispatcherFramed = response.headers().contains(HttpHeaderNames.TRANSFER_ENCODING);
             response.headers().remove(HttpHeaderNames.TRANSFER_ENCODING);
-            if (dispatcherFramed && !(response instanceof LastHttpContent)) {
-                // Transfer-Encoding overrides Content-Length (RFC 9112 6.3), so that length never framed the stream.
+            if (dispatcherFramed) {
+                // Transfer-Encoding overrides Content-Length (RFC 9112 6.3), so that length never framed the message.
                 response.headers().remove(HttpHeaderNames.CONTENT_LENGTH);
             }
             if (HttpUtil.isContentLengthSet(response)) {
