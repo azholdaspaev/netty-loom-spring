@@ -6,6 +6,7 @@ import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpScheme;
 import io.netty.handler.codec.http.HttpVersion;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
@@ -1088,6 +1089,49 @@ class NettyHttpServletRequestTest {
 
         assertNotNull(exchange.request().getSession(true), "The session still exists, it is just not tracked");
         assertTrue(exchange.setCookies().isEmpty());
+    }
+
+    private static final NettyRequestOriginResolver EXTERNAL_HTTPS = (nettyRequest, connection) ->
+        new NettyRequestOrigin(HttpScheme.HTTPS, "external.example", 443, "203.0.113.50");
+
+    @Test
+    void shouldReadSchemeServerAndClientFromResolvedOrigin() {
+        var context = new DefaultNettyServletContext();
+        context.setRequestOriginResolver(EXTERNAL_HTTPS);
+        var request = request(INSECURE, context);
+
+        assertEquals("https", request.getScheme());
+        assertTrue(request.isSecure());
+        assertEquals("external.example", request.getServerName());
+        assertEquals(443, request.getServerPort());
+        assertEquals("https://external.example/x", request.getRequestURL().toString());
+        assertEquals("203.0.113.50", request.getRemoteAddr());
+        assertEquals("203.0.113.50", request.getRemoteHost());
+        assertFalse(request.getServletConnection().isSecure(),
+            "ServletConnection describes the socket, which the resolved origin must not rewrite");
+    }
+
+    @Test
+    void shouldMakeSessionCookieSecureWhenOriginIsSecure() {
+        var context = new DefaultNettyServletContext();
+        context.setRequestOriginResolver(EXTERNAL_HTTPS);
+        var exchange = exchange(context, INSECURE, null);
+
+        exchange.request().getSession(true);
+
+        assertTrue(exchange.setCookie().contains("Secure"), "Actual: " + exchange.setCookie());
+    }
+
+    @Test
+    void shouldKeepRotatedSessionCookieSecureWhenOriginIsSecure() {
+        var context = new DefaultNettyServletContext();
+        context.setRequestOriginResolver(EXTERNAL_HTTPS);
+        var exchange = exchange(context, INSECURE, null);
+        exchange.request().getSession(true);
+
+        exchange.request().changeSessionId();
+
+        assertTrue(exchange.setCookies().getLast().contains("Secure"), "Actual: " + exchange.setCookies());
     }
 
     // --- changeSessionId (session fixation, issue #52) ---

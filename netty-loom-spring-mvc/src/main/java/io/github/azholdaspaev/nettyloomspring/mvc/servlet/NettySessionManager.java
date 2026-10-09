@@ -338,10 +338,10 @@ public class NettySessionManager {
      * Creates a session and hands the client its id. The check precedes the creation, so a refusal leaves
      * nothing in the store.
      */
-    NettyHttpSession newTrackedSession(NettyHttpServletResponse response, boolean secureConnection) {
+    NettyHttpSession newTrackedSession(NettyHttpServletResponse response, boolean secure) {
         requireSessionCookieWritable(response);
         NettyHttpSession session = newSession();
-        writeSessionCookie(response, session, secureConnection);
+        writeSessionCookie(response, session, secure);
         return session;
     }
 
@@ -363,7 +363,7 @@ public class NettySessionManager {
      * {@code changeSessionId} declares no such throw, so a late rotation behaves the way {@code addCookie}
      * does and simply has no effect, as it does on Tomcat.
      */
-    void writeSessionCookie(NettyHttpServletResponse response, NettyHttpSession session, boolean secureConnection) {
+    void writeSessionCookie(NettyHttpServletResponse response, NettyHttpSession session, boolean secure) {
         if (!isCookieTrackingEnabled()) {
             return;
         }
@@ -375,10 +375,10 @@ public class NettySessionManager {
          */
         cookieConfig.getAttributes().forEach(cookie::setAttribute);
         /*
-         * Secure is the one attribute the request can strengthen: TLS forces it on regardless of
-         * configuration (issue #16).
+         * Secure is the one attribute the request can strengthen: a secure request -- TLS, or a trusted
+         * proxy's https (#50) -- forces it on, as Tomcat's createSessionCookie does with isSecure().
          */
-        if (secureConnection) {
+        if (secure) {
             cookie.setSecure(true);
         }
         if (cookie.getPath() == null) {

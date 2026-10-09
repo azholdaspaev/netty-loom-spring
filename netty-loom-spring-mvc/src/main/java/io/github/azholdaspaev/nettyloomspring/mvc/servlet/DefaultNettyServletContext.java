@@ -69,6 +69,7 @@ public final class DefaultNettyServletContext implements NettyServletContext {
     private volatile NettyDispatchFactory dispatchFactory;
     private volatile NettyCookieSameSiteResolver cookieSameSiteResolver = NettyCookieSameSiteResolver.NO_OPINION;
     private volatile NettyErrorPageResolver errorPageResolver = NettyErrorPageResolver.NO_PAGES;
+    private volatile NettyRequestOriginResolver requestOriginResolver = NettyRequestOriginResolver.DIRECT;
     /**
      * Atomic because the transition must happen once: close() is reachable from both
      * ServletContextLifecycle.stop() and the bean-destruction backstop, and each event is owed one delivery.
@@ -344,6 +345,16 @@ public final class DefaultNettyServletContext implements NettyServletContext {
     @Override
     public NettyErrorPageResolver getErrorPageResolver() {
         return errorPageResolver;
+    }
+
+    @Override
+    public void setRequestOriginResolver(NettyRequestOriginResolver resolver) {
+        this.requestOriginResolver = resolver;
+    }
+
+    @Override
+    public NettyRequestOriginResolver getRequestOriginResolver() {
+        return requestOriginResolver;
     }
 
     @Override

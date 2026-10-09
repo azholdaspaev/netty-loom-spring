@@ -71,6 +71,10 @@ public interface NettyServletContext extends ServletContext, AutoCloseable {
 
     NettyErrorPageResolver getErrorPageResolver();
 
+    void setRequestOriginResolver(NettyRequestOriginResolver resolver);
+
+    NettyRequestOriginResolver getRequestOriginResolver();
+
     /**
      * Binds what a dispatch runs through. Published here rather than kept by the dispatcher that builds
      * it because {@link #getRequestDispatcher(String)} is answered from this package, with no request in
