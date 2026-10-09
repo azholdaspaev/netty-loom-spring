@@ -1,13 +1,16 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.properties;
 
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyTransportPreference;
+import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyRequestMetadataResolver;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.util.unit.DataSize;
 import org.springframework.validation.Errors;
 import org.springframework.validation.Validator;
 
 import java.time.Duration;
+import java.util.List;
 
 /**
  * Validates itself at bind time: Boot applies a {@code @ConfigurationProperties} type that implements
@@ -28,8 +31,25 @@ public record NettyLoomProperties(
     @DefaultValue("10000B") DataSize maxHeaderSize,
     @DefaultValue("10000B") DataSize maxInitialLineLength,
     @DefaultValue("10000B") DataSize maxChunkSize,
-    @DefaultValue("auto") NettyTransportPreference transport
+    @DefaultValue("auto") NettyTransportPreference transport,
+    List<String> forwardedTrustedProxies
 ) implements Validator {
+
+    @ConstructorBinding
+    public NettyLoomProperties {
+        forwardedTrustedProxies = forwardedTrustedProxies == null
+            ? NettyRequestMetadataResolver.DEFAULT_TRUSTED_PROXIES : List.copyOf(forwardedTrustedProxies);
+    }
+
+    public NettyLoomProperties(int bossThreads, int workerThreads, boolean tcpKeepAlive, int acceptCount,
+                               Duration shutdownGracePeriod, Duration readTimeout, Duration writeStallTimeout,
+                               DataSize maxHttpBodySize, DataSize maxSwallowSize, Duration swallowTimeout,
+                               DataSize maxHeaderSize, DataSize maxInitialLineLength, DataSize maxChunkSize,
+                               NettyTransportPreference transport) {
+        this(bossThreads, workerThreads, tcpKeepAlive, acceptCount, shutdownGracePeriod, readTimeout,
+            writeStallTimeout, maxHttpBodySize, maxSwallowSize, swallowTimeout, maxHeaderSize,
+            maxInitialLineLength, maxChunkSize, transport, null);
+    }
 
     @Override
     public boolean supports(Class<?> clazz) {
@@ -47,6 +67,11 @@ public record NettyLoomProperties(
         rejectOutsideInt("maxHeaderSize", maxHeaderSize, errors);
         rejectOutsideInt("maxInitialLineLength", maxInitialLineLength, errors);
         rejectOutsideInt("maxChunkSize", maxChunkSize, errors);
+        try {
+            NettyRequestMetadataResolver.requireTrustedProxies(forwardedTrustedProxies);
+        } catch (IllegalArgumentException invalid) {
+            errors.rejectValue("forwardedTrustedProxies", "address", "must contain IP addresses or CIDR blocks");
+        }
     }
 
     private static void rejectNegative(String field, int value, Errors errors) {

@@ -6,6 +6,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.web.util.WebUtils;
 
 import java.io.IOException;
 
@@ -37,7 +38,18 @@ class NettyRequestDispatcher implements RequestDispatcher {
     void dispatch(HttpServletRequest request, ServletResponse response, DispatcherType dispatcherType)
         throws ServletException, IOException {
         var dispatched = new NettyDispatchRequestWrapper(factory, request, targetPath, queryString, dispatcherType);
-        factory.chainFor(dispatched).doFilter(dispatched, response);
+        var nativeResponse = WebUtils.getNativeResponse(response, NettyHttpServletResponse.class);
+        HttpServletRequest previous = nativeResponse == null ? null : nativeResponse.getRedirectRequest();
+        if (previous != null) {
+            nativeResponse.setRedirectRequest(dispatched);
+        }
+        try {
+            factory.chainFor(dispatched).doFilter(dispatched, response);
+        } finally {
+            if (previous != null) {
+                nativeResponse.setRedirectRequest(previous);
+            }
+        }
     }
 
     @Override

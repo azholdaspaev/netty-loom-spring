@@ -19,6 +19,7 @@ import io.github.azholdaspaev.nettyloomspring.core.server.NettyServerChannelInit
 import io.github.azholdaspaev.nettyloomspring.mvc.handler.SpringHttpRequestDispatcher;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.DefaultNettyServletContext;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
+import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyRequestMetadataResolver;
 import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.HttpServerKeepAliveHandler;
@@ -32,6 +33,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplicat
 import org.springframework.boot.autoconfigure.condition.SearchStrategy;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.server.autoconfigure.servlet.ServletWebServerConfiguration;
+import org.springframework.boot.web.server.autoconfigure.ServerProperties;
 import org.springframework.boot.web.server.servlet.ServletWebServerFactory;
 import org.springframework.boot.webmvc.autoconfigure.WebMvcAutoConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -166,7 +168,10 @@ public class NettyLoomAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(search = SearchStrategy.CURRENT)
     public HttpRequestDispatcher httpRequestDispatcher(DispatcherServlet dispatcherServlet,
-                                                       @Qualifier(SERVLET_CONTEXT_BEAN) NettyServletContext nettyServletContext) {
-        return new SpringHttpRequestDispatcher(dispatcherServlet, nettyServletContext);
+                                                       @Qualifier(SERVLET_CONTEXT_BEAN) NettyServletContext nettyServletContext,
+                                                       ServerProperties serverProperties, NettyLoomProperties properties) {
+        var resolver = serverProperties.getForwardHeadersStrategy() == ServerProperties.ForwardHeadersStrategy.NATIVE
+            ? new NettyRequestMetadataResolver(properties.forwardedTrustedProxies()) : NettyRequestMetadataResolver.DIRECT;
+        return new SpringHttpRequestDispatcher(dispatcherServlet, nettyServletContext, resolver);
     }
 }

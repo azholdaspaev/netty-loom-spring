@@ -61,6 +61,10 @@
     {
       "name": "server.netty.transport",
       "description": "Netty I/O transport: auto, nio, epoll or kqueue. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
+    },
+    {
+      "name": "server.netty.forwarded-trusted-proxies",
+      "description": "IP addresses or CIDR blocks trusted to supply forwarded headers in native mode. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
     }
   ],
   "hints": [

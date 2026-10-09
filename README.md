@@ -152,6 +152,7 @@ What is not there, and is not planned as a servlet-fidelity goal:
   ([#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23)), **compression**
   ([#22](https://github.com/azholdaspaev/netty-loom-spring/issues/22)) or WebSocket upgrade.
   TLS configured under `server.ssl.*` fails startup; the other two are ignored.
+  For TLS terminated at a proxy, see [Forwarded headers](docs/configuration.md#forwarded-headers).
 - **No servlet async** ([#18](https://github.com/azholdaspaev/netty-loom-spring/issues/18)), so
   `SseEmitter`, `DeferredResult`, `StreamingResponseBody` and `Callable` return values fail.
 - **No multipart** ([#14](https://github.com/azholdaspaev/netty-loom-spring/issues/14)):

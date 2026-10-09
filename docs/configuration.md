@@ -27,6 +27,7 @@ The rule for which namespace a knob belongs to — Spring Boot's `server.*` vers
 | `server.netty.max-header-size` | `DataSize` | `10000B` | Cap on the request's header block, all header lines together; past it the request is answered `431` and the connection closed. The Netty-only counterpart of `server.max-http-request-header-size`, which is not read |
 | `server.netty.max-initial-line-length` | `DataSize` | `10000B` | Cap on the request line — method, target and version together; past it the request is answered `414` and the connection closed |
 | `server.netty.max-chunk-size` | `DataSize` | `10000B` | Largest piece of a request body the decoder hands on at once. A larger body is split into pieces of at most this size and reaches `getInputStream()` one piece at a time; nothing is refused for exceeding it |
+| `server.netty.forwarded-trusted-proxies` | `List<String>` | Internal networks | Numeric IP addresses or CIDR blocks trusted by native forwarding. A configured list replaces the default; an explicitly empty list trusts nobody. Invalid entries fail binding. See [Forwarded headers](#forwarded-headers) |
 
 `NettyLoomProperties` is a `@ConfigurationProperties` record, which binds with
 `ignoreUnknownFields = true`. A misspelled or obsolete key under `server.netty.*` is therefore
@@ -48,9 +49,66 @@ in favour of `server.port`.
 | `server.servlet.application-display-name` | Returned by `ServletContext.getServletContextName()`, as under Tomcat |
 | `server.mime-mappings.*` | Added to Boot's default table and answered by `ServletContext.getMimeType()`, as under Tomcat |
 | `spring.servlet.encoding.*` | Works because Boot implements it as a `CharacterEncodingFilter` bean, not a container setting |
+| `server.forward-headers-strategy` | `native`, `framework` or `none`; see [Forwarded headers](#forwarded-headers) |
 
 Two extension points also work: `WebServerFactoryCustomizer<ConfigurableServletWebServerFactory>`
 beans and `CookieSameSiteSupplier` beans.
+
+## Forwarded headers
+
+`server.forward-headers-strategy=native` resolves the external origin and client address before
+request listeners and filters. `none`, or an unset strategy, uses the socket and `Host` header;
+there is no cloud-platform autodetection. `framework` uses Boot's `ForwardedHeaderFilter` and
+does not consult `server.netty.forwarded-trusted-proxies`.
+
+Native forwarding checks the actual socket peer against `server.netty.forwarded-trusted-proxies`.
+The default ranges are `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`,
+`100.64.0.0/10`, `127.0.0.0/8`, `::1/128`, `fe80::/10` and `fc00::/7`, matching the internal-network
+ranges of [Tomcat 11.0.20's RemoteIpValve](https://github.com/apache/tomcat/blob/11.0.20/java/org/apache/catalina/valves/RemoteIpValve.java).
+Use a list of the proxy addresses in your deployment to narrow that boundary. Hostnames and DNS
+lookups are excluded; IPv4-mapped IPv6 addresses match their IPv4 equivalents, and mapped CIDR
+prefixes must be at least `/96`. An empty YAML list or an empty property value disables trust.
+
+```properties
+server.forward-headers-strategy=native
+server.netty.forwarded-trusted-proxies=127.0.0.1,10.20.0.0/16
+```
+
+A present `Forwarded` header takes precedence over the entire `X-Forwarded-*` family, even when
+empty. Its repeated field lines, quoted values, escapes and IPv6 nodes follow
+[RFC 7239](https://www.rfc-editor.org/rfc/rfc7239). The resolver walks `for` from right to left,
+stopping at the first untrusted address, missing `for`, empty element or opaque node (`unknown`
+or an obfuscated identifier). The record at that boundary supplies `proto` and `host`; a forged
+record farther left cannot replace them. An opaque node retains the last concrete address.
+Replacing the client IP without a numeric port reports remote port `0`.
+
+Without `Forwarded`, native mode accepts `X-Forwarded-For`, `X-Forwarded-Proto`,
+`X-Forwarded-Host` and `X-Forwarded-Port`. Only `For` may be a list; the origin fields must each
+be a single value on a single field line. The proxy must replace these origin fields with its
+own values. Only `http` and `https` schemes are accepted. A scheme or host override without an
+explicit port uses the effective scheme's default (`80` or `443`); a `for`-only override retains
+the direct origin and port. `X-Forwarded-Port` takes precedence over a port in the forwarded host.
+Malformed trusted headers yield `400` and close the connection before application callbacks.
+An untrusted peer's forwarding headers are ignored without parsing. Server-wide `OPTIONS *`
+and the out-of-context `404` still run before forwarding validation.
+
+In native mode the servlet header accessors conceal `Forwarded`, `X-Forwarded-For`,
+`X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-Port`, `X-Forwarded-Prefix` and
+`X-Forwarded-Ssl`, including headers from an untrusted peer. This prevents a manually installed
+`ForwardedHeaderFilter` from applying them again. The underlying Netty headers stay intact.
+Native mode does not apply `Prefix` or `Ssl`; use `framework` for Spring's handling of those.
+Local-address getters and `ServletConnection` always describe the actual socket.
+
+Native `sendRedirect` resolves relative locations against the effective request URL, including
+the active FORWARD or ERROR target, and leaves absolute locations unchanged. Resolution also
+runs without forwarded headers, using the direct origin. `none` and `framework` retain the
+response adapter's literal `Location` behaviour; in framework mode Spring's wrapper resolves it.
+An invalid native redirect fails before clearing the buffer or committing the response.
+
+Session creation and ID rotation use the native effective security flag for the cookie's
+`Secure` attribute; `server.servlet.session.cookie.secure=true` always keeps it enabled.
+With `framework` behind a TLS-terminating proxy, set that property explicitly: the session
+store sees the underlying request, not Spring's request wrapper.
 
 ## Properties that fail startup
 
@@ -79,7 +137,6 @@ failure**.
 | `server.servlet.encoding.mapping.*` | Locale-to-charset mappings are never read. Note this is a different property from `spring.servlet.encoding.*`, which *is* honoured because Boot implements it as a filter | |
 | `server.servlet.session.store-dir` | Only `persistent` is checked | |
 | `spring.ssl.bundle.*` | Never read. Unlike `server.ssl.bundle`, which fails startup, this namespace does not bind to `server.ssl` and so starts cleanly | [#16](https://github.com/azholdaspaev/netty-loom-spring/issues/16) |
-| `server.forward-headers-strategy=native` | No native forwarded-header handling. `=framework` does work, via Boot's `ForwardedHeaderFilter` | [#50](https://github.com/azholdaspaev/netty-loom-spring/issues/50) |
 | `spring.mvc.servlet.path` | `DispatcherServlet` receives every in-context request regardless | |
 | `server.netty.port` | Removed; use `server.port` | |
 | `server.tomcat.*`, `server.jetty.*`, `server.undertow.*` | Those containers are not on the classpath | |

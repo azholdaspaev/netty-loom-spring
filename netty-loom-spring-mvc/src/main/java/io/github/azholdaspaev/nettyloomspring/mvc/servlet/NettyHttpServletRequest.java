@@ -74,9 +74,9 @@ public class NettyHttpServletRequest implements HttpServletRequest {
     private final String decodedPath;
     private final String queryString;
     private final QueryStringDecoder queryDecoder;
-    private boolean hostResolved;
-    private String serverName;
-    private int serverPort;
+    private final NettyRequestMetadataResolver metadataResolver;
+    // Confined to the request dispatch thread, like the parameter and cookie caches.
+    private NettyRequestMetadata metadata;
     private Map<String, String[]> parameterMap;
     private Map<String, String[]> parameterMapCopy;
     private List<Locale> locales;
@@ -96,6 +96,13 @@ public class NettyHttpServletRequest implements HttpServletRequest {
                                    HttpConnectionMetadata connection,
                                    NettyServletContext servletContext,
                                    NettyHttpServletResponse response) {
+        this(nettyRequest, body, connection, servletContext, response, NettyRequestMetadataResolver.DIRECT);
+    }
+
+    public NettyHttpServletRequest(HttpRequest nettyRequest, InputStream body,
+                                   HttpConnectionMetadata connection, NettyServletContext servletContext,
+                                   NettyHttpServletResponse response, NettyRequestMetadataResolver metadataResolver) {
+        this.metadataResolver = metadataResolver;
         this.nettyRequest = nettyRequest;
         this.body = body;
         this.connection = connection;
@@ -110,19 +117,15 @@ public class NettyHttpServletRequest implements HttpServletRequest {
         this.characterEncoding = HttpUtil.getCharset(nettyRequest, null);
     }
 
-    private void ensureHostResolved() {
-        if (hostResolved) {
-            return;
+    public void ensureMetadataResolved() {
+        if (metadata == null) {
+            metadata = metadataResolver.resolve(nettyRequest, connection);
         }
-        HostPort host = parseHostHeader(nettyRequest.headers().get(HttpHeaderNames.HOST));
-        if (host != null) {
-            this.serverName = host.name();
-            this.serverPort = resolvePort(host.port());
-        } else {
-            this.serverName = bracketIfIpv6(connection.localAddr());
-            this.serverPort = resolvePort(connection.localPort());
-        }
-        this.hostResolved = true;
+    }
+
+    private NettyRequestMetadata getMetadata() {
+        ensureMetadataResolved();
+        return metadata;
     }
 
     private void ensureParametersParsed() {
@@ -189,44 +192,6 @@ public class NettyHttpServletRequest implements HttpServletRequest {
         }
     }
 
-    private int defaultPort() {
-        return connection.defaultPort();
-    }
-
-    private int resolvePort(int candidatePort) {
-        return candidatePort > 0 ? candidatePort : defaultPort();
-    }
-
-    private static String bracketIfIpv6(String host) {
-        if (host.indexOf(':') >= 0 && !host.startsWith("[")) {
-            return "[" + host + "]";
-        }
-        return host;
-    }
-
-    private record HostPort(String name, int port) {
-    }
-
-    private static HostPort parseHostHeader(String host) {
-        if (host == null || host.isBlank()) {
-            return null;
-        }
-        host = host.trim();
-        int separator = host.startsWith("[") ? host.indexOf(':', host.indexOf(']')) : host.lastIndexOf(':');
-        String name = separator < 0 ? host : host.substring(0, separator);
-        if (name.isBlank()) {
-            return null;
-        }
-        int port = 0;
-        if (separator >= 0) {
-            try {
-                port = Integer.parseInt(host, separator + 1, host.length(), 10);
-            } catch (NumberFormatException notAPort) {
-            }
-        }
-        return new HostPort(name, port);
-    }
-
     static Map<String, String[]> toParameterMap(Map<String, List<String>> parameters) {
         Map<String, String[]> map = new LinkedHashMap<>(parameters.size());
         parameters.forEach((name, values) -> map.put(name, values.toArray(new String[0])));
@@ -258,7 +223,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public long getDateHeader(String name) {
-        String value = nettyRequest.headers().get(name);
+        String value = getHeader(name);
         if (value == null) {
             return -1L;
         }
@@ -271,22 +236,24 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public String getHeader(String name) {
-        return nettyRequest.headers().get(name);
+        return metadataResolver.isHeaderVisible(name) ? nettyRequest.headers().get(name) : null;
     }
 
     @Override
     public Enumeration<String> getHeaders(String name) {
-        return Collections.enumeration(nettyRequest.headers().getAll(name));
+        return Collections.enumeration(metadataResolver.isHeaderVisible(name)
+            ? nettyRequest.headers().getAll(name) : List.of());
     }
 
     @Override
     public Enumeration<String> getHeaderNames() {
-        return Collections.enumeration(nettyRequest.headers().names());
+        return Collections.enumeration(nettyRequest.headers().names().stream()
+            .filter(metadataResolver::isHeaderVisible).toList());
     }
 
     @Override
     public int getIntHeader(String name) {
-        String value = nettyRequest.headers().get(name);
+        String value = getHeader(name);
         if (value == null) {
             return -1;
         }
@@ -363,19 +330,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public StringBuffer getRequestURL() {
-        ensureHostResolved();
-        String authority = serverName;
-        if (authority == null || authority.isBlank()) {
-            authority = connection.localAddr();
-        }
-        StringBuffer url = new StringBuffer(connection.scheme()).append(':');
-        if (authority != null && !authority.isBlank()) {
-            url.append("//").append(authority);
-            if (serverPort != defaultPort()) {
-                url.append(':').append(serverPort);
-            }
-        }
-        return url.append(requestURI);
+        return NettyRequestMetadata.toRequestUrl(this);
     }
 
     /**
@@ -420,7 +375,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
             session = servletContext.getSessionManager().find(getRequestedSessionId());
         }
         if (session == null && create) {
-            session = servletContext.getSessionManager().newTrackedSession(response, connection.secure());
+            session = servletContext.getSessionManager().newTrackedSession(response, getMetadata().isSecure());
         }
         return session;
     }
@@ -449,7 +404,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
         if (requestedSessionId != null) {
             requestedSessionId = newId;
         }
-        servletContext.getSessionManager().writeSessionCookie(response, session, connection.secure());
+        servletContext.getSessionManager().writeSessionCookie(response, session, getMetadata().isSecure());
         return newId;
     }
 
@@ -607,19 +562,17 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public String getScheme() {
-        return connection.scheme();
+        return getMetadata().scheme();
     }
 
     @Override
     public String getServerName() {
-        ensureHostResolved();
-        return serverName;
+        return getMetadata().serverName();
     }
 
     @Override
     public int getServerPort() {
-        ensureHostResolved();
-        return serverPort;
+        return getMetadata().serverPort();
     }
 
     @Override
@@ -636,12 +589,12 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public String getRemoteAddr() {
-        return connection.remoteAddr();
+        return getMetadata().remoteAddr();
     }
 
     @Override
     public String getRemoteHost() {
-        return connection.remoteAddr();
+        return getMetadata().remoteAddr();
     }
 
     @Override
@@ -706,7 +659,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public boolean isSecure() {
-        return connection.secure();
+        return getMetadata().isSecure();
     }
 
     @Override
@@ -716,7 +669,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     @Override
     public int getRemotePort() {
-        return connection.remotePort();
+        return getMetadata().remotePort();
     }
 
     @Override

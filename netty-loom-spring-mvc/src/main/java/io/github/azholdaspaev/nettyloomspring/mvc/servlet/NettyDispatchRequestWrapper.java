@@ -62,6 +62,11 @@ class NettyDispatchRequestWrapper extends HttpServletRequestWrapper {
     }
 
     @Override
+    public StringBuffer getRequestURL() {
+        return NettyRequestMetadata.toRequestUrl(this);
+    }
+
+    @Override
     public String getServletPath() {
         return targetPath;
     }

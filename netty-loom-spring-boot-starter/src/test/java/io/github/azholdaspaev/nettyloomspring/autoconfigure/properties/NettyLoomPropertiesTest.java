@@ -1,11 +1,13 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.properties;
 
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyTransportPreference;
+import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyRequestMetadataResolver;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.bind.DataObjectPropertyName;
 import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
 import org.springframework.util.unit.DataSize;
+import org.springframework.validation.BeanPropertyBindingResult;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -13,6 +15,7 @@ import java.io.InputStream;
 import java.lang.reflect.RecordComponent;
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -219,6 +222,43 @@ class NettyLoomPropertiesTest {
             assertNotNull(metadata, "spring-configuration-metadata.json must be generated");
             return new ObjectMapper().readTree(metadata);
         }
+    }
+
+    @Test
+    void shouldDefaultTrustedProxiesToTomcatInternalNetworks() {
+        assertEquals(NettyRequestMetadataResolver.DEFAULT_TRUSTED_PROXIES,
+            bind(Map.of()).forwardedTrustedProxies());
+    }
+
+    @Test
+    void shouldReplaceTrustedProxyDefaultsWithConfiguredList() {
+        assertEquals(List.of("127.0.0.1", "10.20.0.0/16"),
+            bind(Map.of("server.netty.forwarded-trusted-proxies", "127.0.0.1,10.20.0.0/16"))
+                .forwardedTrustedProxies());
+    }
+
+    @Test
+    void shouldTrustNobodyWhenProxyListIsExplicitlyEmpty() {
+        assertTrue(bind(Map.of("server.netty.forwarded-trusted-proxies", ""))
+            .forwardedTrustedProxies().isEmpty());
+    }
+
+    @Test
+    void shouldRejectInvalidTrustedProxyThroughPropertyValidator() {
+        var properties = bind(Map.of("server.netty.forwarded-trusted-proxies", "example.test"));
+        var errors = new BeanPropertyBindingResult(properties, "server.netty");
+        properties.validate(properties, errors);
+        assertTrue(errors.hasFieldErrors("forwardedTrustedProxies"));
+    }
+
+    @Test
+    void shouldPreserveDefaultsThroughLegacyConstructor() {
+        var defaults = bind(Map.of());
+        var legacy = new NettyLoomProperties(defaults.bossThreads(), defaults.workerThreads(), defaults.tcpKeepAlive(),
+            defaults.acceptCount(), defaults.shutdownGracePeriod(), defaults.readTimeout(), defaults.writeStallTimeout(),
+            defaults.maxHttpBodySize(), defaults.maxSwallowSize(), defaults.swallowTimeout(), defaults.maxHeaderSize(),
+            defaults.maxInitialLineLength(), defaults.maxChunkSize(), defaults.transport());
+        assertEquals(defaults, legacy);
     }
 
     private static NettyLoomProperties bind(Map<String, Object> source) {

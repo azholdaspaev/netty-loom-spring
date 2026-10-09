@@ -50,10 +50,10 @@ property reference.
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| `getRemoteAddr/Host/Port`, `getLocalAddr/Name/Port` | `works` | `getRemoteHost` returns the IP — never a reverse-DNS name. `getLocalName` returns an IP, not a hostname. An unresolvable `SocketAddress` degrades to `""` / `0` |
-| `getScheme()`, `isSecure()` | `partial` | Derived from the presence of an `SslHandler`, so in practice always `http` / `false` — TLS is unimplemented and forwarded headers are not consulted |
-| `getServerName()`, `getServerPort()` | `works` | Parsed from the `Host` header, IPv6 bracketed; falls back to the local address when `Host` is absent |
-| `getHeader*`, `getHeaderNames` | `works` | `getDateHeader` throws `IllegalArgumentException` on an unparseable date. From a controller that surfaces as **500**, because `FrameworkServlet` wraps it in a `ServletException` ([exception mapping](configuration.md#exception-to-status-mapping)); from a `Filter`, which is above `DispatcherServlet`, it arrives unwrapped and maps to `400` |
+| `getRemoteAddr/Host/Port`, `getLocalAddr/Name/Port` | `works` | `getRemoteHost` returns the IP — never a reverse-DNS name. `getLocalName` returns an IP, not a hostname. An unresolvable `SocketAddress` degrades to `""` / `0`. Native remote metadata follows [Forwarded headers](configuration.md#forwarded-headers); local getters retain the socket values |
+| `getScheme()`, `isSecure()` | `works` | Derived from the effective request metadata; strategy and trust rules are in [Forwarded headers](configuration.md#forwarded-headers). Direct TLS remains unimplemented |
+| `getServerName()`, `getServerPort()` | `works` | Parsed from the `Host` header, IPv6 bracketed; falls back to the local address when `Host` is absent. Native overrides follow [Forwarded headers](configuration.md#forwarded-headers) |
+| `getHeader*`, `getHeaderNames` | `works` | Native mode conceals the [forwarding headers](configuration.md#forwarded-headers). `getDateHeader` throws `IllegalArgumentException` on an unparseable date. From a controller that surfaces as **500**, because `FrameworkServlet` wraps it in a `ServletException` ([exception mapping](configuration.md#exception-to-status-mapping)); from a `Filter`, which is above `DispatcherServlet`, it arrives unwrapped and maps to `400` |
 | `getCookies()` | `partial` | `ServerCookieDecoder.STRICT`. Returns `null`, not an empty array, when there are none or the header is malformed |
 | `getParameter*` | `partial` | Query and form-body parameters merged, query first. **Netty's `QueryStringDecoder` limits apply: at most 1024 parameters, the rest silently dropped** ([#122](https://github.com/azholdaspaev/netty-loom-spring/issues/122)); `;` is a parameter separator; `+` decodes to a space |
 | `getParameterMap()` | `works` | Unmodifiable map over copied `String[]` values, built once per request as Tomcat's locked `ParameterMap` is, so writing into a returned array never reaches `getParameter` |
@@ -64,7 +64,7 @@ property reference.
 | Request body size | `partial` | Streamed, never held whole: the connection stops asking for more once 64 KiB is undrained — a threshold checked per read loop, not a ceiling on resident bytes — and the total is capped at `server.netty.max-http-body-size` (1 MiB by default), answered `413` |
 | `getLocale*` | `works` | Full `Accept-Language` q-value parsing |
 | `getRequestDispatcher(path)` | `partial` | Path-based `forward` only. A `/`-prefixed path is context-relative, anything else resolves against the current request's directory; the result is canonicalised with `StringUtils.cleanPath`, which also turns `\` into `/`. `null` comes back for a `null` path, one that canonicalises out of the context, or one that cannot be percent-decoded. The escape decision strips `;` parameters and percent-decodes first, so `/..;/x` and `/%2e%2e/x` are rejected too; the path actually dispatched stays undecoded, as `getRequestURI()` requires |
-| `getRequestURI()`, `getRequestURL()` | `works` | Reported as sent, undecoded (Servlet 6.0 §3.5). Spring's `RequestPath` splits the URI on `/` and percent-decodes each segment itself, so a `@PathVariable` is decoded exactly once |
+| `getRequestURI()`, `getRequestURL()` | `works` | The URI is reported as sent, undecoded (Servlet 6.0 §3.5); the URL uses the effective origin and active dispatch path. Spring's `RequestPath` splits the URI on `/` and percent-decodes each segment itself, so a `@PathVariable` is decoded exactly once |
 | Encoded `/` in a path segment (`%2F`) | `partial` | Accepted and routed as the one segment it is, so `/files/a%2Fb` reaches `@GetMapping("/files/{name}")` as `a/b`. **Tomcat answers 400** instead unless its `encodedSolidusHandling` is changed (`Connector`, `UDecoder.convert`) — that default guards decoding into a separator *before* normalising one shared path, which cannot arise here since nothing on this side collapses `/../` |
 | `getPathInfo()`, `getPathTranslated()` | `none` | Always `null`; `getServletPath()` returns the whole context-relative path, percent-decoded — so it and `getRequestURI()` deliberately report different strings |
 | `getParts()`, `getPart(name)` | `none` | Always empty / `null` ([#14](https://github.com/azholdaspaev/netty-loom-spring/issues/14)) |
@@ -75,7 +75,7 @@ property reference.
 | `authenticate`, `login`, `logout` | `none` | Silent no-ops — `login` reports no failure, so a caller believes it succeeded |
 | `getRequestId()` | `works` | A hex counter over the JVM's lifetime, as Tomcat's `coyote.Request` does — unique within the container, not unguessable; a `forward` or error-page dispatch keeps the original request's id |
 | `getProtocolRequestId()` | `works` | `""`, which is what the spec prescribes for HTTP/1.x |
-| `getServletConnection()` | `works` | Connection id is the Netty channel id (`ChannelId.asLongText()`), protocol is the ALPN name `http/1.1`, protocol connection id is `""` and `isSecure()` mirrors the request's |
+| `getServletConnection()` | `works` | Connection id is the Netty channel id (`ChannelId.asLongText()`), protocol is the ALPN name `http/1.1`, protocol connection id is `""` and `isSecure()` describes the actual socket, independently of the effective request scheme |
 | `getDispatcherType()` | `partial` | `REQUEST` for the initial dispatch, `FORWARD` during a forward and `ERROR` during an error-page dispatch. `INCLUDE` and `ASYNC` are unreachable |
 
 ## Response
@@ -91,7 +91,7 @@ property reference.
 | Headers, `setStatus` | `works` | Silently no-op after commit, as the spec requires. A `Transfer-Encoding` the application sets never reaches the wire: the server frames the body itself ([#438](https://github.com/azholdaspaev/netty-loom-spring/issues/438)) |
 | `addCookie` | `partial` | Maps name, value, path, domain, max-age, `Secure`, `HttpOnly`, `SameSite`, `Partitioned`. **`Expires`, `Comment` and `Version` are silently dropped** |
 | `CookieSameSiteSupplier` beans | `partial` | An explicit cookie attribute wins over any supplier. Deviates from Tomcat at `server.servlet.session.cookie.same-site=omitted`: Tomcat treats `omitted` as an opinion that suppresses the supplier for the session cookie, where here no attribute is written and a matching supplier then applies to `JSESSIONID` |
-| `sendRedirect` | `partial` | Sets `Location` verbatim — no relative-to-absolute resolution. Honours `clearBuffer`: the one-argument form discards the buffered body, as `sendError` does, and the three-argument form with `false` keeps it |
+| `sendRedirect` | `partial` | Native mode resolves relative locations against the effective URL of the active dispatch; other strategy behaviour is in [Forwarded headers](configuration.md#forwarded-headers). Honours `clearBuffer`: the one-argument form discards the buffered body, as `sendError` does, and the three-argument form with `false` keeps it |
 | `encodeURL`, `encodeRedirectURL` | `none` | Identity functions — no URL session rewriting |
 | `setLocale` | `ignored` | No-op; `getLocale()` returns the JVM default, so `Content-Language` is never emitted |
 | `Date` and `Server` response headers | `none` | Neither is ever emitted. Tomcat always sends `Date` |
@@ -120,7 +120,7 @@ Path-based `forward` only ([#182](https://github.com/azholdaspaev/netty-loom-spr
 | Creation, lookup, invalidation | `works` | In-memory; ids are 16 random bytes of `SecureRandom` as uppercase hex |
 | `server.servlet.session.timeout` | `works` | Second resolution; `0` or less means never expires. Lazy 60s sweeper thread plus exact expiry on lookup |
 | `server.servlet.session.cookie.*` | `works` | Name, domain, path, `http-only`, `secure`, `max-age`, `same-site`, `partitioned`. Frozen after startup. `setComment` is accepted and does nothing |
-| Cookie `Secure` behind a TLS proxy | `partial` | Derived from the real connection, which is plaintext behind a terminating proxy — set `server.servlet.session.cookie.secure=true` explicitly (CWE-614, [#50](https://github.com/azholdaspaev/netty-loom-spring/issues/50)) |
+| Cookie `Secure` behind a TLS proxy | `partial` | Effective security for creation and ID rotation in native mode; framework mode still needs explicit cookie configuration. See [Forwarded headers](configuration.md#forwarded-headers) |
 | Empty `JSESSIONID=` cookie | `works` | `getRequestedSessionId()` is `""`, not `null`, and `isRequestedSessionIdValid()` is `false` — the same as Tomcat and Jetty. With `invalidSessionUrl` configured, Spring Security treats it as an expired session and redirects once ([#94](https://github.com/azholdaspaev/netty-loom-spring/issues/94)) |
 | `changeSessionId()` | `partial` | Rotates and re-emits the cookie. After commit it still rotates but the new `Set-Cookie` is dropped, stranding the client on a dead id |
 | Session teardown on shutdown | `works` | Every session is invalidated and unbound, so `@PreDestroy` and `@SessionScope` callbacks run |
@@ -208,5 +208,5 @@ fired on an object bound into a session, and passing one to `addListener` throws
 | TLS | `fails startup` | [#16](https://github.com/azholdaspaev/netty-loom-spring/issues/16) |
 | HTTP/2 | `ignored` | `server.http2.*` has no effect ([#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23)) |
 | Response compression | `ignored` | `server.compression.*` has no effect ([#22](https://github.com/azholdaspaev/netty-loom-spring/issues/22)) |
-| Forwarded headers | `partial` | `server.forward-headers-strategy=framework` applies Boot's `ForwardedHeaderFilter`; `native` does nothing, and neither fixes the session cookie's `Secure` flag ([#50](https://github.com/azholdaspaev/netty-loom-spring/issues/50)) |
+| Forwarded headers | `partial` | Native resolution and Boot's framework filter are supported; header families, trust boundaries and limits are in [Forwarded headers](configuration.md#forwarded-headers) |
 | Access logging, metrics, tracing | `none` | [#8](https://github.com/azholdaspaev/netty-loom-spring/issues/8), [#6](https://github.com/azholdaspaev/netty-loom-spring/issues/6), [#7](https://github.com/azholdaspaev/netty-loom-spring/issues/7) |

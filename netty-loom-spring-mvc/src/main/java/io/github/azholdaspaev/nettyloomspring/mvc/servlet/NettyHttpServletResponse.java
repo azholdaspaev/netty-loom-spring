@@ -19,6 +19,7 @@ import io.netty.handler.codec.http.cookie.ServerCookieEncoder;
 import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.WriteListener;
 import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.InvalidMediaTypeException;
@@ -74,6 +75,7 @@ public class NettyHttpServletResponse implements HttpServletResponse {
 
     private final NettyCookieSameSiteResolver sameSiteResolver;
     private final HttpResponseWriter responseWriter;
+    private HttpServletRequest redirectRequest;
 
     /**
      * Package-private: the container always builds a response with its policy, so a caller outside this
@@ -211,13 +213,22 @@ public class NettyHttpServletResponse implements HttpServletResponse {
     @Override
     public void sendRedirect(String location, int sc, boolean clearBuffer) throws IOException {
         requireHeadNotWritten();
+        String target = redirectRequest == null ? location : NettyRequestMetadata.resolveRedirect(redirectRequest, location);
         if (clearBuffer) {
             resetBuffer();
         }
         this.status = sc;
         // Location must land before the commit closes the guard on setHeader.
-        setHeader(HttpHeaders.LOCATION, location);
+        setHeader(HttpHeaders.LOCATION, target);
         this.committed = true;
+    }
+
+    public HttpServletRequest getRedirectRequest() {
+        return redirectRequest;
+    }
+
+    public void setRedirectRequest(HttpServletRequest request) {
+        redirectRequest = request;
     }
 
     @Override

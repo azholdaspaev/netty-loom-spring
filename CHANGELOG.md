@@ -25,6 +25,9 @@ in any minor release.
 
 ### Fixed
 
+- `server.forward-headers-strategy=native` now resolves proxy origin and client metadata,
+  session-cookie security and relative redirects through an IP/CIDR trust boundary (#50).
+  Configuration and header rules are in [Forwarded headers](docs/configuration.md#forwarded-headers).
 - `HttpServletResponse.getWriter()` after `getOutputStream()`, and the reverse, now throw
   `IllegalStateException` as the Servlet spec requires, instead of handing out two sinks whose
   bytes reached the body in flush order (#118).

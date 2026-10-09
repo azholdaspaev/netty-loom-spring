@@ -8,6 +8,7 @@ import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyErrorPageDispatch
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyHttpServletRequest;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyHttpServletResponse;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
+import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyRequestMetadataResolver;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
@@ -22,9 +23,16 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
 
     private final NettyServletContext servletContext;
     private final NettyErrorPageDispatcher errorPages;
+    private final NettyRequestMetadataResolver metadataResolver;
 
     public SpringHttpRequestDispatcher(DispatcherServlet dispatcherServlet, NettyServletContext servletContext) {
+        this(dispatcherServlet, servletContext, NettyRequestMetadataResolver.DIRECT);
+    }
+
+    public SpringHttpRequestDispatcher(DispatcherServlet dispatcherServlet, NettyServletContext servletContext,
+                                       NettyRequestMetadataResolver metadataResolver) {
         this.servletContext = servletContext;
+        this.metadataResolver = metadataResolver;
         this.errorPages = new NettyErrorPageDispatcher(servletContext);
         servletContext.setDispatchFactory(new NettyDispatchFactory(servletContext, dispatcherServlet::service));
     }
@@ -40,7 +48,7 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
         NettyHttpServletResponse servletResponse =
             new NettyHttpServletResponse(servletContext.getCookieSameSiteResolver(), writer);
         NettyHttpServletRequest servletRequest =
-            new NettyHttpServletRequest(request, body, connection, servletContext, servletResponse);
+            new NettyHttpServletRequest(request, body, connection, servletContext, servletResponse, metadataResolver);
 
         /*
          * Server-wide OPTIONS (RFC 9110 section 7.1, asterisk-form): "*" is not a path, so neither the
@@ -62,6 +70,11 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
             servletResponse.setStatus(HttpServletResponse.SC_NOT_FOUND);
             servletResponse.complete();
             return;
+        }
+
+        if (metadataResolver.isNative()) {
+            servletRequest.ensureMetadataResolved();
+            servletResponse.setRedirectRequest(servletRequest);
         }
 
         /*
