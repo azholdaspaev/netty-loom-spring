@@ -395,10 +395,12 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
                     return;
                 }
                 /*
-                 * A HEAD response holds no body, yet its length must be the one a GET would send (RFC 9110 8.6),
-                 * and HttpObjectEncoder writes trailers only in a chunked body.
+                 * A HEAD response's length must be the one a GET would send (RFC 9110 8.6): an empty one may
+                 * not hold that body, while Servlet 6.1 HttpServlet.doHead runs doGet and buffers it.
+                 * HttpObjectEncoder writes trailers only in a chunked body.
                  */
-                if (!HttpMethod.HEAD.equals(request.method()) && whole.trailingHeaders().isEmpty()) {
+                boolean emptyHead = HttpMethod.HEAD.equals(request.method()) && !whole.content().isReadable();
+                if (!emptyHead && whole.trailingHeaders().isEmpty()) {
                     HttpUtil.setContentLength(response, whole.content().readableBytes());
                     return;
                 }
