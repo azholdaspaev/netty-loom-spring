@@ -110,7 +110,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
 
     private void ensureOriginResolved() {
         if (origin == null) {
-            origin = NettyRequestOrigin.from(nettyRequest, connection);
+            origin = servletContext.getRequestOriginResolver().resolve(nettyRequest, connection);
         }
     }
 
@@ -371,7 +371,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
             session = servletContext.getSessionManager().find(getRequestedSessionId());
         }
         if (session == null && create) {
-            session = servletContext.getSessionManager().newTrackedSession(response, connection.secure());
+            session = servletContext.getSessionManager().newTrackedSession(response, isSecure());
         }
         return session;
     }
@@ -400,7 +400,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
         if (requestedSessionId != null) {
             requestedSessionId = newId;
         }
-        servletContext.getSessionManager().writeSessionCookie(response, session, connection.secure());
+        servletContext.getSessionManager().writeSessionCookie(response, session, isSecure());
         return newId;
     }
 
