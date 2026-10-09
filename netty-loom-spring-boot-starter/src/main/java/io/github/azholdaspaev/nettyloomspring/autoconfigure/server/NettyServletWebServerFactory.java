@@ -6,6 +6,8 @@ import io.github.azholdaspaev.nettyloomspring.core.server.NettyIoHandlerFactory;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyServer;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyServerChannelInitializer;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyServerConfiguration;
+import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyForwardedHeaderResolver;
+import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyRequestOriginResolver;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
 import io.netty.handler.codec.http.cookie.CookieHeaderNames;
 import jakarta.servlet.ServletException;
@@ -39,6 +41,7 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
     private final NettyServletContext servletContext;
     private final DispatcherServlet dispatcherServlet;
     private final NettyLoomProperties properties;
+    private boolean useForwardHeaders;
 
     public NettyServletWebServerFactory(NettyIoHandlerFactory ioHandlerFactory,
                                         NettyServerChannelInitializer channelInitializer,
@@ -59,6 +62,10 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
         return settings;
     }
 
+    public void setUseForwardHeaders(boolean useForwardHeaders) {
+        this.useForwardHeaders = useForwardHeaders;
+    }
+
     @Override
     public WebServer getWebServer(ServletContextInitializer... initializers) {
         requireSslNotConfigured();
@@ -73,6 +80,7 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
         configureSessions();
         configureCookieSameSite();
         configureErrorPages();
+        configureRequestOrigin();
         initializeServletContext(initializers);
         // Before filters and servlets; see fireContextInitialized's javadoc for why that order is fixed.
         servletContext.fireContextInitialized();
@@ -144,6 +152,12 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
 
     private void configureErrorPages() {
         servletContext.setErrorPageResolver(new RegisteredErrorPageResolver(getErrorPages()));
+    }
+
+    private void configureRequestOrigin() {
+        servletContext.setRequestOriginResolver(useForwardHeaders
+            ? new NettyForwardedHeaderResolver(properties.forwardedHeaders(), properties.internalProxies())
+            : NettyRequestOriginResolver.DIRECT);
     }
 
     private void requireSessionPersistenceNotConfigured(Session session) {
