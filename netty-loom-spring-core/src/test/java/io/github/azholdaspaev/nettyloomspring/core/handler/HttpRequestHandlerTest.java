@@ -301,6 +301,30 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    void shouldDropContentLengthBesideChunkedOnStreamedHead() {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
+                HttpResponse head = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+                HttpUtil.setTransferEncodingChunked(head, true);
+                head.headers().setInt(HttpHeaderNames.CONTENT_LENGTH, 100);
+                writer.write(head);
+                writer.write(new DefaultHttpContent(Unpooled.copiedBuffer("abc", StandardCharsets.UTF_8)));
+                writer.write(LastHttpContent.EMPTY_LAST_CONTENT);
+            },
+            DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+
+        receive(channel, HttpMethod.GET, "/");
+        channel.runPendingTasks();
+
+        HttpResponse head = channel.readOutbound();
+        assertFalse(HttpUtil.isContentLengthSet(head),
+            "Transfer-Encoding overrides Content-Length (RFC 9112 6.3), so the dispatcher's length never delimited the stream");
+        assertTrue(HttpUtil.isTransferEncodingChunked(head),
+            "with no length the writer frames an HTTP/1.1 stream as chunked");
+        readChunk(channel);
+        channel.finish();
+    }
+
+    @Test
     void shouldReportGoneClientAsDisconnectAndReleaseChunk() throws Exception {
         ByteBuf orphan = Unpooled.copiedBuffer("gone", StandardCharsets.UTF_8);
         CountDownLatch connectionClosed = new CountDownLatch(1);
