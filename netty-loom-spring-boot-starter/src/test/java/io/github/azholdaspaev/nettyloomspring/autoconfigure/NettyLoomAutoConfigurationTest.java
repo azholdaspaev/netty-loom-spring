@@ -170,6 +170,14 @@ class NettyLoomAutoConfigurationTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"not-an-ip", "10.0.0.0/33", "app.example"})
+    void shouldFailStartupWhenInternalProxyIsNotIpOrCidr(String value) {
+        runner.withPropertyValues("server.netty.internal-proxies=10.0.0.0/8," + value)
+            .run(context -> assertThat(context).hasFailed()
+                .getFailure().rootCause().hasMessageContaining("server.netty.internal-proxies"));
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {
         "server.netty.boss-threads",
         "server.netty.worker-threads",
