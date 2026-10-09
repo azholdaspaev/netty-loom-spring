@@ -5,6 +5,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
@@ -386,7 +387,8 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
                 return;
             }
             if (response instanceof LastHttpContent whole) {
-                if (dispatcherFramed) {
+                // A HEAD response holds no body, yet its length must be the one a GET would send (RFC 9110 8.6).
+                if (dispatcherFramed && !HttpMethod.HEAD.equals(request.method())) {
                     HttpUtil.setContentLength(response, whole.content().readableBytes());
                 }
                 return;
