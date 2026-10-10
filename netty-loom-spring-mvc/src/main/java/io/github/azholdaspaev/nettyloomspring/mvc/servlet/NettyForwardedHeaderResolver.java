@@ -250,10 +250,12 @@ public final class NettyForwardedHeaderResolver implements NettyRequestOriginRes
         static AddressRange parse(String range) {
             int slash = range.indexOf('/');
             String address = slash < 0 ? range : range.substring(0, slash);
-            byte[] network = NetUtil.createByteArrayFromIpAddressString(address);
-            if (network == null) {
+            byte[] parsed = NetUtil.createByteArrayFromIpAddressString(address);
+            if (parsed == null) {
                 throw new IllegalArgumentException("Not an IP address or CIDR block: '" + range + "'");
             }
+            // Tomcat's NetMask folds the entry with InetAddress too, so ::ffff:10.0.0.0/8 is 10.0.0.0/8.
+            byte[] network = foldIpv4Mapped(parsed);
             int bits = network.length * Byte.SIZE;
             int prefixLength;
             try {
