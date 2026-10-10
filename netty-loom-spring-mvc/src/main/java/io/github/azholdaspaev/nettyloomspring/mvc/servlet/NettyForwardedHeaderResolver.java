@@ -40,6 +40,10 @@ public final class NettyForwardedHeaderResolver implements NettyRequestOriginRes
         this.internalProxies = internalProxies.stream().map(AddressRange::parse).toList();
     }
 
+    public static void requireValidRange(String range) {
+        AddressRange.parse(range);
+    }
+
     @Override
     public NettyRequestOrigin resolve(HttpRequest request, HttpConnectionMetadata connection) {
         NettyRequestOrigin direct = NettyRequestOrigin.from(request, connection);
