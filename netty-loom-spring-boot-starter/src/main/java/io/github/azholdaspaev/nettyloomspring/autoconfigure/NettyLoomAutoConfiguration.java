@@ -33,6 +33,7 @@ import org.springframework.boot.autoconfigure.condition.SearchStrategy;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.server.WebServerFactoryCustomizer;
 import org.springframework.boot.web.server.autoconfigure.ServerProperties;
+import org.springframework.boot.web.server.autoconfigure.ServerProperties.ForwardHeadersStrategy;
 import org.springframework.boot.web.server.autoconfigure.servlet.ServletWebServerConfiguration;
 import org.springframework.boot.web.server.servlet.ServletWebServerFactory;
 import org.springframework.boot.webmvc.autoconfigure.WebMvcAutoConfiguration;
@@ -87,10 +88,8 @@ public class NettyLoomAutoConfiguration {
      * application declares itself honours the strategy too, as Boot's Jetty and Tomcat customizers do.
      */
     @Bean
-    public WebServerFactoryCustomizer<NettyServletWebServerFactory> nettyForwardHeadersCustomizer(
-            ServerProperties serverProperties) {
-        return factory -> factory.setUseForwardHeaders(
-            serverProperties.getForwardHeadersStrategy() == ServerProperties.ForwardHeadersStrategy.NATIVE);
+    public WebServerFactoryCustomizer<NettyServletWebServerFactory> nettyForwardHeadersCustomizer(ServerProperties serverProperties) {
+        return factory -> factory.setUseForwardHeaders(serverProperties.getForwardHeadersStrategy() == ForwardHeadersStrategy.NATIVE);
     }
 
     @Bean
