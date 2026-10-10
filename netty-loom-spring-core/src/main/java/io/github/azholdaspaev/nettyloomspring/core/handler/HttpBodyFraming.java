@@ -27,6 +27,11 @@ final class HttpBodyFraming {
         if (HttpUtil.isContentLengthSet(response)) {
             return;
         }
+        // HttpObjectEncoder writes trailers only in a chunked body.
+        if (carriesTrailers(response)) {
+            HttpUtil.setTransferEncodingChunked(response, true);
+            return;
+        }
         if (response instanceof LastHttpContent whole) {
             if (!dispatcherFramed) {
                 return;
@@ -60,6 +65,10 @@ final class HttpBodyFraming {
             return;
         }
         HttpUtil.setTransferEncodingChunked(response, true);
+    }
+
+    private static boolean carriesTrailers(HttpResponse response) {
+        return response instanceof LastHttpContent whole && !whole.trailingHeaders().isEmpty();
     }
 
     /** Tomcat suppresses framing for this same set in {@code Http11Processor.prepareResponse}. */
