@@ -1,12 +1,16 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.forwardheaders;
 
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.forwardheaders.app.ForwardHeadersTestApplication;
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.NettyServletWebServerFactory;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.support.RawHttpClient;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.support.RawHttpResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.web.server.WebServerFactoryCustomizer;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 
 import java.io.IOException;
 import java.net.Socket;
@@ -99,6 +103,24 @@ class ForwardHeadersIntegrationTest {
                 get(context, "/origin", "Forwarded: for=198.51.100.1;proto=https;host=app.example").body());
             assertEquals("http|false|127.0.0.1|80|127.0.0.1", get(context, "/origin", PROXIED).body(),
                 "under forwarded-headers=forwarded the X-Forwarded-* family is not read");
+        }
+    }
+
+    @Test
+    void shouldLetApplicationCustomizerEnableForwardHeaders() throws Exception {
+        try (var context = new SpringApplicationBuilder(ForwardHeadersTestApplication.class,
+            ApplicationForwardHeadersConfiguration.class).properties("server.port=0").run()) {
+            assertEquals("https|true|app.example|443|198.51.100.1", get(context, "/origin", PROXIED).body(),
+                "an application customizer runs after the starter's, so its setUseForwardHeaders(true) wins");
+        }
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    static class ApplicationForwardHeadersConfiguration {
+
+        @Bean
+        WebServerFactoryCustomizer<NettyServletWebServerFactory> applicationForwardHeadersCustomizer() {
+            return factory -> factory.setUseForwardHeaders(true);
         }
     }
 

@@ -1,6 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure;
 
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.properties.NettyLoomProperties;
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.NettyForwardHeadersCustomizer;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.NettyServletWebServerFactory;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.ServletContextLifecycle;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
@@ -31,9 +32,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplicat
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type;
 import org.springframework.boot.autoconfigure.condition.SearchStrategy;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.web.server.WebServerFactoryCustomizer;
 import org.springframework.boot.web.server.autoconfigure.ServerProperties;
-import org.springframework.boot.web.server.autoconfigure.ServerProperties.ForwardHeadersStrategy;
 import org.springframework.boot.web.server.autoconfigure.servlet.ServletWebServerConfiguration;
 import org.springframework.boot.web.server.servlet.ServletWebServerFactory;
 import org.springframework.boot.webmvc.autoconfigure.WebMvcAutoConfiguration;
@@ -83,13 +82,9 @@ public class NettyLoomAutoConfiguration {
             httpConnectionRegistry, nettyServletContext, dispatcherServlet, properties);
     }
 
-    /**
-     * A customizer rather than a setting read in the factory bean method, so that a factory the
-     * application declares itself honours the strategy too, as Boot's Jetty and Tomcat customizers do.
-     */
     @Bean
-    public WebServerFactoryCustomizer<NettyServletWebServerFactory> nettyForwardHeadersCustomizer(ServerProperties serverProperties) {
-        return factory -> factory.setUseForwardHeaders(serverProperties.getForwardHeadersStrategy() == ForwardHeadersStrategy.NATIVE);
+    public NettyForwardHeadersCustomizer nettyForwardHeadersCustomizer(ServerProperties serverProperties) {
+        return new NettyForwardHeadersCustomizer(serverProperties);
     }
 
     @Bean
