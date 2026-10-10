@@ -78,6 +78,8 @@ class NettyForwardedHeaderResolverTest {
     void shouldRejectInvalidInternalProxy(String proxy) {
         assertThrows(IllegalArgumentException.class, () -> new NettyForwardedHeaderResolver(X_FORWARDED, List.of(proxy)),
             "an internal proxy must be an IP literal or a CIDR block: " + proxy);
+        assertThrows(IllegalArgumentException.class, () -> NettyForwardedHeaderResolver.requireValidRange(proxy),
+            "requireValidRange applies the constructor's rule: " + proxy);
     }
 
     @Test

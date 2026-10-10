@@ -64,11 +64,13 @@ public record NettyLoomProperties(
         rejectInvalidAddress("internalProxies", internalProxies, errors);
     }
 
-    private void rejectInvalidAddress(String field, List<String> proxies, Errors errors) {
-        try {
-            new NettyForwardedHeaderResolver(forwardedHeaders, proxies);
-        } catch (IllegalArgumentException invalid) {
-            errors.rejectValue(field, "address", invalid.getMessage());
+    private static void rejectInvalidAddress(String field, List<String> proxies, Errors errors) {
+        for (String proxy : proxies) {
+            try {
+                NettyForwardedHeaderResolver.requireValidRange(proxy);
+            } catch (IllegalArgumentException invalid) {
+                errors.rejectValue(field, "address", invalid.getMessage());
+            }
         }
     }
 
