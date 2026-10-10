@@ -196,13 +196,16 @@ public final class NettyForwardedHeaderResolver implements NettyRequestOriginRes
         if (!value.startsWith("\"")) {
             return value;
         }
-        if (value.length() < 2 || !value.endsWith("\"") || value.endsWith("\\\"")) {
+        if (value.length() < 2 || !value.endsWith("\"")) {
             return "";
         }
         StringBuilder unquoted = new StringBuilder(value.length());
         for (int i = 1; i < value.length() - 1; i++) {
             char c = value.charAt(i);
-            if (c == '\\' && i + 1 < value.length() - 1) {
+            if (c == '\\') {
+                if (i + 1 == value.length() - 1) {
+                    return "";
+                }
                 c = value.charAt(++i);
             }
             unquoted.append(c);

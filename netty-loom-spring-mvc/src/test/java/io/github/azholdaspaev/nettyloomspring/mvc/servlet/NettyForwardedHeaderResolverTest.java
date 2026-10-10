@@ -223,6 +223,13 @@ class NettyForwardedHeaderResolverTest {
     }
 
     @Test
+    void shouldUnescapeBackslashBeforeClosingQuote() {
+        var origin = resolve(FORWARDED, PROXY, "Forwarded", "for=\"a\\\\\";proto=https");
+
+        assertEquals(new NettyRequestOrigin(HttpScheme.HTTPS, "internal", 443, "a\\"), origin);
+    }
+
+    @Test
     void shouldStopForwardedWalkAtObfuscatedNode() {
         var origin = resolve(FORWARDED, PROXY, "Forwarded", "for=" + CLIENT + ", for=unknown;proto=https");
 
@@ -238,7 +245,7 @@ class NettyForwardedHeaderResolverTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"garbage", "for=\"unterminated", ";;,,", "=", "for", "for=" + "\"\\"})
+    @ValueSource(strings = {"garbage", "for=\"unterminated", ";;,,", "=", "for", "for=" + "\"\\", "for=\"a\\\""})
     void shouldIgnoreMalformedForwardedHeader(String forwarded) {
         var origin = assertDoesNotThrow(() -> resolve(FORWARDED, PROXY, "Forwarded", forwarded));
 
