@@ -368,6 +368,31 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    void shouldDeclareLengthOfHttp10FullResponseCarryingTrailers() {
+        EmbeddedChannel channel = keepAliveChannel((_, _, _, writer) -> {
+            FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK,
+                Unpooled.copiedBuffer("abc", StandardCharsets.UTF_8));
+            HttpUtil.setTransferEncodingChunked(response, true);
+            response.trailingHeaders().set("checksum", "900150983cd24fb0");
+            writer.write(response);
+        });
+        HttpRequest request = new DefaultHttpRequest(HttpVersion.HTTP_1_0, HttpMethod.GET, "/");
+        request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
+
+        receive(channel, request);
+        channel.runPendingTasks();
+
+        FullHttpResponse out = channel.readOutbound();
+        assertFalse(out.headers().contains(HttpHeaderNames.TRANSFER_ENCODING),
+            "an HTTP/1.0 client cannot decode chunked framing, so trailers cannot reach it (RFC 9112 6.1)");
+        assertEquals(3, HttpUtil.getContentLength(out, -1L),
+            "with no way to carry the trailers the writer declares the length of the whole body it holds");
+        assertTrue(channel.isOpen(), "a sized body is self-delimiting, so the keep-alive connection stays open");
+        out.release();
+        channel.finish();
+    }
+
+    @Test
     void shouldDropTransferEncodingOtherThanChunked() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
                 FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK,

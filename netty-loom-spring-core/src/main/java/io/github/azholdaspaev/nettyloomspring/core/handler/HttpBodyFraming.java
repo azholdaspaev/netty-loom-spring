@@ -25,7 +25,7 @@ final class HttpBodyFraming {
             response.headers().remove(HttpHeaderNames.CONTENT_LENGTH);
         }
         // HttpObjectEncoder writes trailers only in a chunked body.
-        if (carriesTrailers(response)) {
+        if (carriesTrailers(request, response)) {
             HttpUtil.setTransferEncodingChunked(response, true);
             return;
         }
@@ -39,10 +39,9 @@ final class HttpBodyFraming {
             /*
              * A HEAD response's length must be the one a GET would send (RFC 9110 8.6): an empty one may
              * not hold that body, while Servlet 6.1 HttpServlet.doHead runs doGet and buffers it.
-             * HttpObjectEncoder writes trailers only in a chunked body.
              */
             boolean emptyHead = HttpMethod.HEAD.equals(request.method()) && !whole.content().isReadable();
-            if (!emptyHead && whole.trailingHeaders().isEmpty()) {
+            if (!emptyHead) {
                 HttpUtil.setContentLength(response, whole.content().readableBytes());
                 return;
             }
@@ -67,8 +66,10 @@ final class HttpBodyFraming {
         HttpUtil.setTransferEncodingChunked(response, true);
     }
 
-    private static boolean carriesTrailers(HttpResponse response) {
-        return response instanceof LastHttpContent whole && !whole.trailingHeaders().isEmpty();
+    private static boolean carriesTrailers(HttpRequest request, HttpResponse response) {
+        return response instanceof LastHttpContent whole
+            && !whole.trailingHeaders().isEmpty()
+            && !HttpVersion.HTTP_1_0.equals(request.protocolVersion());
     }
 
     /** Tomcat suppresses framing for this same set in {@code Http11Processor.prepareResponse}. */
