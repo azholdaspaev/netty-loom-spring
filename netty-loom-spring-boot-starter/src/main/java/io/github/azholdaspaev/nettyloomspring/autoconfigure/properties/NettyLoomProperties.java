@@ -61,10 +61,14 @@ public record NettyLoomProperties(
         rejectOutsideInt("maxHeaderSize", maxHeaderSize, errors);
         rejectOutsideInt("maxInitialLineLength", maxInitialLineLength, errors);
         rejectOutsideInt("maxChunkSize", maxChunkSize, errors);
+        rejectInvalidAddress("internalProxies", internalProxies, errors);
+    }
+
+    private void rejectInvalidAddress(String field, List<String> proxies, Errors errors) {
         try {
-            new NettyForwardedHeaderResolver(forwardedHeaders, internalProxies);
+            new NettyForwardedHeaderResolver(forwardedHeaders, proxies);
         } catch (IllegalArgumentException invalid) {
-            errors.rejectValue("internalProxies", "address", invalid.getMessage());
+            errors.rejectValue(field, "address", invalid.getMessage());
         }
     }
 
