@@ -24,12 +24,12 @@ final class HttpBodyFraming {
             // Transfer-Encoding overrides Content-Length (RFC 9112 6.3), so that length never framed the message.
             response.headers().remove(HttpHeaderNames.CONTENT_LENGTH);
         }
-        if (HttpUtil.isContentLengthSet(response)) {
-            return;
-        }
         // HttpObjectEncoder writes trailers only in a chunked body.
         if (carriesTrailers(response)) {
             HttpUtil.setTransferEncodingChunked(response, true);
+            return;
+        }
+        if (HttpUtil.isContentLengthSet(response)) {
             return;
         }
         if (response instanceof LastHttpContent whole) {
