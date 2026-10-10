@@ -65,10 +65,6 @@ public final class NettyForwardedHeaderResolver implements NettyRequestOriginRes
         return new Forwarding(hop.remoteAddr(), parseProto(element.get("proto")), element.get("host"), 0);
     }
 
-    /**
-     * Right to left from the socket peer, the way each proxy appended: stops at the first node that is
-     * not an internal proxy, and at an empty node, which keeps the last trusted hop.
-     */
     private Hop walkToClient(List<String> nodes, String peer) {
         String remoteAddr = peer;
         for (int i = nodes.size() - 1; i >= 0; i--) {
