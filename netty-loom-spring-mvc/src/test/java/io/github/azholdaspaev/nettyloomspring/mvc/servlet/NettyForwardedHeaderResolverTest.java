@@ -38,8 +38,8 @@ class NettyForwardedHeaderResolverTest {
         return new HttpConnectionMetadata(peer, 40000, "10.0.0.9", 8080, false, "");
     }
 
-    private static NettyRequestOrigin resolve(NettyForwardedHeaders family, String peer, String... headers) {
-        return new NettyForwardedHeaderResolver(family, List.of("10.0.0.0/8", "fc00::/7"))
+    private static NettyRequestOrigin resolve(NettyForwardedHeaders forwardedHeaders, String peer, String... headers) {
+        return new NettyForwardedHeaderResolver(forwardedHeaders, List.of("10.0.0.0/8", "fc00::/7"))
             .resolve(request(headers), connectionFrom(peer));
     }
 
