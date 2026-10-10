@@ -89,11 +89,11 @@ public final class NettyForwardedHeaderResolver implements NettyRequestOriginRes
         if (bytes == null) {
             return false;
         }
+        // InetAddress folds ::ffff:a.b.c.d to IPv4, which is how Tomcat's NetMaskSet matches it against 10.0.0.0/8.
         byte[] folded = foldIpv4Mapped(bytes);
         return internalProxies.stream().anyMatch(range -> range.matches(folded));
     }
 
-    // InetAddress folds ::ffff:a.b.c.d to IPv4, which is how Tomcat's NetMaskSet matches it against 10.0.0.0/8.
     private static byte[] foldIpv4Mapped(byte[] address) {
         try {
             return InetAddress.getByAddress(address).getAddress();
