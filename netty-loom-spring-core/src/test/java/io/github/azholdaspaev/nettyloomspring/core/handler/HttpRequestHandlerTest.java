@@ -393,6 +393,26 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    void shouldKeepConnectionOpenAfterHeadResponseCarryingTrailers() {
+        EmbeddedChannel channel = keepAliveChannel((_, _, _, writer) -> {
+            FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+            response.trailingHeaders().set("checksum", "900150983cd24fb0");
+            writer.write(response);
+        });
+
+        receive(channel, HttpMethod.HEAD, "/");
+        channel.runPendingTasks();
+
+        FullHttpResponse out = channel.readOutbound();
+        assertTrue(HttpUtil.isTransferEncodingChunked(out),
+            "a HEAD response carries the framing a GET would send (RFC 9110 9.3.2), and HttpServerCodec writes no body for it");
+        assertFalse(HttpUtil.isContentLengthSet(out), "a chunked message must not carry Content-Length (RFC 9112 6.2)");
+        assertTrue(channel.isOpen(), "a chunked head is self-delimiting, so the HTTP/1.1 connection stays reusable");
+        out.release();
+        channel.finish();
+    }
+
+    @Test
     void shouldDropTransferEncodingOtherThanChunked() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
                 FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK,
