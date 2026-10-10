@@ -49,7 +49,7 @@ in favour of `server.port`.
 | `server.servlet.context-parameters.*` | Become `ServletContext` init parameters |
 | `server.servlet.application-display-name` | Returned by `ServletContext.getServletContextName()`, as under Tomcat |
 | `server.mime-mappings.*` | Added to Boot's default table and answered by `ServletContext.getMimeType()`, as under Tomcat |
-| `server.forward-headers-strategy` | `native` takes the scheme, server name and port, and client address from the headers a trusted proxy wrote; see [Forwarded headers](#forwarded-headers). `framework` registers Boot's `ForwardedHeaderFilter`, which does not reach the session cookie's `Secure` flag, so set `server.servlet.session.cookie.secure=true` behind a TLS-terminating proxy. Unset means `none`: unlike Tomcat and Jetty, nothing is deduced from the cloud platform |
+| `server.forward-headers-strategy` | `native` takes the scheme, server name and port, and client address from the headers a trusted proxy wrote; see [Forwarded headers](#forwarded-headers). `framework` registers Boot's `ForwardedHeaderFilter`; for the session cookie under it, see [Sessions](compatibility-matrix.md#sessions). Unset means `none`: unlike Tomcat and Jetty, nothing is deduced from the cloud platform |
 | `spring.servlet.encoding.*` | Works because Boot implements it as a `CharacterEncodingFilter` bean, not a container setting |
 
 Two extension points also work: `WebServerFactoryCustomizer<ConfigurableServletWebServerFactory>`
