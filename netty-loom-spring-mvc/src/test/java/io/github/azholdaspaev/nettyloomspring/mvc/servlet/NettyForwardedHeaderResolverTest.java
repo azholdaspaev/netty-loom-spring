@@ -252,6 +252,15 @@ class NettyForwardedHeaderResolverTest {
         assertEquals(direct(PROXY), origin, forwarded);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"for=\"", "for=x\"", "for=a\\\""})
+    void shouldReadProxyElementAfterUnclosedClientQuote(String client) {
+        var origin = resolve(FORWARDED, PROXY, "Forwarded", client + ", for=" + CLIENT + ";proto=https;host=app.example");
+
+        assertEquals(new NettyRequestOrigin(HttpScheme.HTTPS, "app.example", 443, CLIENT), origin,
+            "a quote the client left open must not swallow the element the trusted proxy appended: " + client);
+    }
+
     @Test
     void shouldIgnoreXForwardedHeadersUnderForwardedFamily() {
         String[] headers = {"X-Forwarded-For", CLIENT, "X-Forwarded-Proto", "https", "X-Forwarded-Port", "8443"};
