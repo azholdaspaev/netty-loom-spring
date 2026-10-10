@@ -41,6 +41,7 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
     private final NettyServletContext servletContext;
     private final DispatcherServlet dispatcherServlet;
     private final NettyLoomProperties properties;
+
     private boolean useForwardHeaders;
 
     public NettyServletWebServerFactory(NettyIoHandlerFactory ioHandlerFactory,
