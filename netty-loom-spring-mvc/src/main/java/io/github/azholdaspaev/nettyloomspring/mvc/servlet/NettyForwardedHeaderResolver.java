@@ -30,11 +30,11 @@ public final class NettyForwardedHeaderResolver implements NettyRequestOriginRes
     private static final AsciiString X_FORWARDED_PORT = AsciiString.cached("x-forwarded-port");
     private static final int MAX_PORT = 65535;
 
-    private final NettyForwardedHeaders family;
+    private final NettyForwardedHeaders forwardedHeaders;
     private final List<AddressRange> internalProxies;
 
-    public NettyForwardedHeaderResolver(NettyForwardedHeaders family, List<String> internalProxies) {
-        this.family = family;
+    public NettyForwardedHeaderResolver(NettyForwardedHeaders forwardedHeaders, List<String> internalProxies) {
+        this.forwardedHeaders = forwardedHeaders;
         this.internalProxies = internalProxies.stream().map(AddressRange::parse).toList();
     }
 
@@ -44,7 +44,7 @@ public final class NettyForwardedHeaderResolver implements NettyRequestOriginRes
         if (!isInternalProxy(connection.remoteAddr())) {
             return direct;
         }
-        Forwarding forwarding = family == NettyForwardedHeaders.FORWARDED
+        Forwarding forwarding = forwardedHeaders == NettyForwardedHeaders.FORWARDED
             ? readForwarded(request.headers(), connection.remoteAddr())
             : readXForwarded(request.headers(), connection.remoteAddr());
         return forwarding.applyTo(direct);
