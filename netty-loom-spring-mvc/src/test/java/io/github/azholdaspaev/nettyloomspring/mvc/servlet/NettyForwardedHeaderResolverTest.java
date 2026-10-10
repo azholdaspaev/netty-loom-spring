@@ -74,7 +74,8 @@ class NettyForwardedHeaderResolverTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"", "not-an-ip", "10.0.0.0/", "10.0.0.0/33", "10.0.0.0/-1", "::1/129", "10.0.0.0/8/8", "app.example"})
+    @ValueSource(strings = {"", "not-an-ip", "10.0.0.0/", "10.0.0.0/33", "10.0.0.0/-1", "::1/129", "10.0.0.0/8/8", "app.example",
+        "::ffff:10.0.0.0/104"})
     void shouldRejectInvalidInternalProxy(String proxy) {
         assertThrows(IllegalArgumentException.class, () -> new NettyForwardedHeaderResolver(X_FORWARDED, List.of(proxy)),
             "an internal proxy must be an IP literal or a CIDR block: " + proxy);
@@ -109,6 +110,16 @@ class NettyForwardedHeaderResolverTest {
     @Test
     void shouldTrustIpv4MappedNodeInsideIpv4Range() {
         assertEquals(CLIENT, resolve(X_FORWARDED, PROXY, "X-Forwarded-For", CLIENT + ", ::ffff:10.0.0.2").remoteAddr());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"10.0.0.1, true", "::ffff:10.0.0.1, true", "::1, false"})
+    void shouldMatchIpv4MappedRangeAsIpv4Range(String peer, boolean trusted) {
+        var resolver = new NettyForwardedHeaderResolver(X_FORWARDED, List.of("::ffff:10.0.0.0/8"));
+
+        var origin = resolver.resolve(request("X-Forwarded-For", CLIENT), connectionFrom(peer));
+
+        assertEquals(trusted ? CLIENT : peer, origin.remoteAddr(), "::ffff:10.0.0.0/8 is 10.0.0.0/8, peer " + peer);
     }
 
     @Test
