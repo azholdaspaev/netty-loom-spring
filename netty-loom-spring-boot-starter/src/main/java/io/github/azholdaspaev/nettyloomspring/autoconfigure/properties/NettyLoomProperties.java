@@ -32,10 +32,18 @@ public record NettyLoomProperties(
     @DefaultValue("10000B") DataSize maxInitialLineLength,
     @DefaultValue("10000B") DataSize maxChunkSize,
     @DefaultValue("auto") NettyTransportPreference transport,
-    @DefaultValue({"192.168.0.0/16", "172.16.0.0/12", "169.254.0.0/16", "fc00::/7", "10.0.0.0/8",
-        "100.64.0.0/10", "127.0.0.0/8", "fe80::/10", "::1/128"}) List<String> internalProxies,
+    List<String> internalProxies,
     @DefaultValue("x-forwarded") NettyForwardedHeaders forwardedHeaders
 ) implements Validator {
+
+    public static final List<String> DEFAULT_INTERNAL_PROXIES = List.of("192.168.0.0/16", "172.16.0.0/12",
+        "169.254.0.0/16", "fc00::/7", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "fe80::/10", "::1/128");
+
+    public NettyLoomProperties {
+        if (internalProxies == null) {
+            internalProxies = DEFAULT_INTERNAL_PROXIES;
+        }
+    }
 
     @Override
     public boolean supports(Class<?> clazz) {
