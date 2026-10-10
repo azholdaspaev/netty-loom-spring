@@ -7,6 +7,8 @@ import io.netty.handler.codec.http.HttpScheme;
 import io.netty.util.AsciiString;
 import io.netty.util.NetUtil;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -87,21 +89,17 @@ public final class NettyForwardedHeaderResolver implements NettyRequestOriginRes
         if (bytes == null) {
             return false;
         }
-        byte[] collapsed = collapseIpv4Mapped(bytes);
-        return internalProxies.stream().anyMatch(range -> range.matches(collapsed));
+        byte[] folded = foldIpv4Mapped(bytes);
+        return internalProxies.stream().anyMatch(range -> range.matches(folded));
     }
 
-    // As Tomcat's NetMaskSet does through InetAddress, so ::ffff:10.0.0.1 falls inside 10.0.0.0/8.
-    private static byte[] collapseIpv4Mapped(byte[] address) {
-        if (address.length != 16) {
-            return address;
+    // InetAddress folds ::ffff:a.b.c.d to IPv4, which is how Tomcat's NetMaskSet matches it against 10.0.0.0/8.
+    private static byte[] foldIpv4Mapped(byte[] address) {
+        try {
+            return InetAddress.getByAddress(address).getAddress();
+        } catch (UnknownHostException unreachable) {
+            throw new IllegalStateException(unreachable);
         }
-        for (int i = 0; i < 10; i++) {
-            if (address[i] != 0) {
-                return address;
-            }
-        }
-        return address[10] == (byte) 0xff && address[11] == (byte) 0xff ? Arrays.copyOfRange(address, 12, 16) : address;
     }
 
     private static String stripPort(String node) {

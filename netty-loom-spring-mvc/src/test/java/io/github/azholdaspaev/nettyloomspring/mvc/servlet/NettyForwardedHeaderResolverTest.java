@@ -109,6 +109,15 @@ class NettyForwardedHeaderResolverTest {
         assertEquals(CLIENT, resolve(X_FORWARDED, PROXY, "X-Forwarded-For", CLIENT + ", ::ffff:10.0.0.2").remoteAddr());
     }
 
+    @Test
+    void shouldTrustScopedLinkLocalPeer() {
+        var resolver = new NettyForwardedHeaderResolver(X_FORWARDED, List.of("fe80::/10"));
+
+        var origin = resolver.resolve(request("X-Forwarded-For", CLIENT), connectionFrom("fe80:0:0:0:0:0:0:1%en0"));
+
+        assertEquals(CLIENT, origin.remoteAddr(), "a scope id on the socket peer must not hide it from fe80::/10");
+    }
+
     @ParameterizedTest
     @CsvSource(delimiter = '|', value = {
         "198.51.100.1:5555 | 198.51.100.1",
