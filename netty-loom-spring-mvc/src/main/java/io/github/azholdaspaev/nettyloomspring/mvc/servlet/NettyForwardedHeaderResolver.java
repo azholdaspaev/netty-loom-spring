@@ -147,11 +147,14 @@ public final class NettyForwardedHeaderResolver implements NettyRequestOriginRes
             return 0;
         }
         try {
-            int port = Integer.parseInt(value);
-            return port > 0 && port <= MAX_PORT ? port : 0;
+            return dropOutOfRange(Integer.parseInt(value));
         } catch (NumberFormatException notAPort) {
             return 0;
         }
+    }
+
+    private static int dropOutOfRange(int port) {
+        return port > 0 && port <= MAX_PORT ? port : 0;
     }
 
     private static List<Map<String, String>> parseForwarded(String value) {
@@ -220,7 +223,7 @@ public final class NettyForwardedHeaderResolver implements NettyRequestOriginRes
             if (port > 0) {
                 serverPort = port;
             } else if (forwardedHost != null) {
-                serverPort = NettyRequestOrigin.resolvePort(forwardedHost.port(), effective);
+                serverPort = NettyRequestOrigin.resolvePort(dropOutOfRange(forwardedHost.port()), effective);
             } else if (scheme != null) {
                 serverPort = effective.port();
             } else {

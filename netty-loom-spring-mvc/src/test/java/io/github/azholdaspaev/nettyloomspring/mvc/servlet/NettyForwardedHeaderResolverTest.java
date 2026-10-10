@@ -180,6 +180,13 @@ class NettyForwardedHeaderResolverTest {
     }
 
     @Test
+    void shouldIgnoreOutOfRangePortInForwardedHost() {
+        var origin = resolve(X_FORWARDED, PROXY, "X-Forwarded-Host", "app.example:65536", "X-Forwarded-Proto", "https");
+
+        assertEquals(new NettyRequestOrigin(HttpScheme.HTTPS, "app.example", 443, PROXY), origin);
+    }
+
+    @Test
     void shouldUseSchemeDefaultPortForForwardedHostWithoutPort() {
         var origin = resolve(X_FORWARDED, PROXY, "X-Forwarded-Host", "app.example");
 
