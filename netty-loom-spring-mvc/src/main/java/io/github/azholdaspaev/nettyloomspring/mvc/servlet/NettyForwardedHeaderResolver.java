@@ -157,6 +157,7 @@ public final class NettyForwardedHeaderResolver implements NettyRequestOriginRes
 
     private static List<Map<String, String>> parseForwarded(String value) {
         List<Map<String, String>> elements = new ArrayList<>();
+        // From the right rather than the left, so a quote the client leaves open cannot swallow the proxy's element.
         for (String element : splitUnquoted(value, ',')) {
             Map<String, String> parameters = new HashMap<>();
             for (String pair : splitUnquoted(element, ';')) {
@@ -174,20 +175,26 @@ public final class NettyForwardedHeaderResolver implements NettyRequestOriginRes
     private static List<String> splitUnquoted(String value, char separator) {
         List<String> parts = new ArrayList<>();
         boolean quoted = false;
-        int start = 0;
-        for (int i = 0; i < value.length(); i++) {
+        int end = value.length();
+        for (int i = value.length() - 1; i >= 0; i--) {
             char c = value.charAt(i);
-            if (quoted && c == '\\') {
-                i++;
-            } else if (c == '"') {
+            if (c == '"' && !isEscaped(value, i)) {
                 quoted = !quoted;
             } else if (c == separator && !quoted) {
-                parts.add(value.substring(start, i));
-                start = i + 1;
+                parts.add(value.substring(i + 1, end));
+                end = i;
             }
         }
-        parts.add(value.substring(start));
-        return parts;
+        parts.add(value.substring(0, end));
+        return parts.reversed();
+    }
+
+    private static boolean isEscaped(String value, int index) {
+        int backslashes = 0;
+        while (index > backslashes && value.charAt(index - backslashes - 1) == '\\') {
+            backslashes++;
+        }
+        return backslashes % 2 == 1;
     }
 
     private static String unquote(String value) {
