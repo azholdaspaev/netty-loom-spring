@@ -13,6 +13,7 @@ import java.io.InputStream;
 import java.lang.reflect.RecordComponent;
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -211,6 +212,22 @@ class NettyLoomPropertiesTest {
         NettyLoomProperties properties = bind(Map.of("server.netty.transport", ""));
 
         assertEquals(NettyTransportPreference.AUTO, properties.transport());
+    }
+
+    @Test
+    void shouldDefaultInternalProxiesToTomcatsList() {
+        NettyLoomProperties properties = bind(Map.of());
+
+        assertEquals(List.of("192.168.0.0/16", "172.16.0.0/12", "169.254.0.0/16", "fc00::/7", "10.0.0.0/8",
+            "100.64.0.0/10", "127.0.0.0/8", "fe80::/10", "::1/128"), properties.internalProxies(),
+            "the default is Boot's server.tomcat.remoteip.internal-proxies, entry for entry");
+    }
+
+    @Test
+    void shouldTrustNoProxyWhenInternalProxiesIsEmpty() {
+        NettyLoomProperties properties = bind(Map.of("server.netty.internal-proxies", ""));
+
+        assertEquals(List.of(), properties.internalProxies(), "an empty list replaces the default and trusts nobody");
     }
 
     private static JsonNode readMetadata() throws Exception {
