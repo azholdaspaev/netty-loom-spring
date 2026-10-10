@@ -17,11 +17,9 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * The origin a trusted proxy forwarded: Tomcat 11's {@code RemoteIpValve} for the {@code X-Forwarded-*}
- * family, RFC 7239 for {@code Forwarded}. Only the family the operator names is read, rather than either
- * one that is present, because a proxy passes the family it does not write through untouched, and a
- * client could then choose its own origin. The walk, the port precedence and the deviations from Tomcat
- * are in {@code docs/configuration.md} § Forwarded headers.
+ * The origin a trusted proxy forwarded in the header family {@link NettyForwardedHeaders} names. Why only
+ * that family is read, the walk, the port precedence and the deviations from Tomcat are in
+ * {@code docs/configuration.md} § Forwarded headers.
  */
 public final class NettyForwardedHeaderResolver implements NettyRequestOriginResolver {
 
