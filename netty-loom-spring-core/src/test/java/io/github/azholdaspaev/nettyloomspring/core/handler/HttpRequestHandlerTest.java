@@ -325,6 +325,27 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    void shouldFrameFullResponseWithTrailersAsChunked() {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
+                FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK,
+                    Unpooled.copiedBuffer("abc", StandardCharsets.UTF_8));
+                response.trailingHeaders().set("checksum", "900150983cd24fb0");
+                writer.write(response);
+            },
+            DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+
+        receive(channel, HttpMethod.GET, "/");
+        channel.runPendingTasks();
+
+        FullHttpResponse out = channel.readOutbound();
+        assertTrue(HttpUtil.isTransferEncodingChunked(out),
+            "the writer decides framing, and HttpObjectEncoder writes trailers only in a chunked body");
+        assertFalse(HttpUtil.isContentLengthSet(out), "a chunked message must not carry Content-Length (RFC 9112 6.2)");
+        out.release();
+        channel.finish();
+    }
+
+    @Test
     void shouldDropTransferEncodingOtherThanChunked() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
                 FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK,
