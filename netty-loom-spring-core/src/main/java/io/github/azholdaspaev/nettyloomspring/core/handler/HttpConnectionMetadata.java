@@ -39,14 +39,6 @@ public record HttpConnectionMetadata(String remoteAddr,
         );
     }
 
-    public String scheme() {
-        return httpScheme().toString();
-    }
-
-    public int defaultPort() {
-        return httpScheme().port();
-    }
-
     public HttpScheme httpScheme() {
         return secure ? HttpScheme.HTTPS : HttpScheme.HTTP;
     }

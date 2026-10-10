@@ -5,6 +5,7 @@ import io.netty.channel.ChannelId;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.DefaultChannelId;
 import io.netty.channel.embedded.EmbeddedChannel;
+import io.netty.handler.codec.http.HttpScheme;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -21,17 +22,11 @@ class HttpConnectionMetadataTest {
         assertEquals(8080, insecure.localPort());
         assertEquals(false, insecure.secure());
         assertEquals("c1", insecure.connectionId());
-        assertEquals("http", insecure.scheme());
+        assertEquals(HttpScheme.HTTP, insecure.httpScheme());
 
         HttpConnectionMetadata secure = new HttpConnectionMetadata("10.0.0.2", 443, "10.0.0.1", 8443, true, "c2");
         assertEquals(true, secure.secure());
-        assertEquals("https", secure.scheme());
-    }
-
-    @Test
-    void shouldMatchDefaultPortToScheme() {
-        assertEquals(80, new HttpConnectionMetadata("", 0, "", 0, false, "").defaultPort());
-        assertEquals(443, new HttpConnectionMetadata("", 0, "", 0, true, "").defaultPort());
+        assertEquals(HttpScheme.HTTPS, secure.httpScheme());
     }
 
     @Test
