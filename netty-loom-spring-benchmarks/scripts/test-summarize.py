@@ -118,7 +118,8 @@ class SummarizeTest(unittest.TestCase):
         shape of a tagged sub-metric no threshold asked k6 to emit. `env` writes an environment
         capture and names it to summarize.py; `env_path` names one without writing it. `retained`
         overrides a target's sample-live-heap.sh captures: `vthreads` and `live` replace the plateau
-        columns, `no_other` blanks the NMT column, `no_plateau` writes no plateau capture."""
+        columns, `no_other` blanks the NMT column in "preload", "plateau" or
+        "both", `no_plateau` writes no plateau capture."""
         proc = self._summarize(runs, env, env_path, retained)
         self.assertEqual(0, proc.returncode, proc.stderr)
         return proc.stdout
@@ -174,10 +175,11 @@ class SummarizeTest(unittest.TestCase):
         1 KiB of pool growth, and an in-flight request 6.5 KiB."""
         vthreads = spec.get("vthreads", PLATEAU_VTHREADS)
         live = spec.get("live", [AFTER_CLOSE_LIVE + 3072 * VUS + 6656 * v for v in vthreads])
-        other = "" if spec.get("no_other") else PRELOAD_OTHER_KB
-        plateau_other = "" if spec.get("no_other") else PRELOAD_OTHER_KB + VUS
+        other = "" if spec.get("no_other") in ("preload", "both") else PRELOAD_OTHER_KB
+        plateau_other = "" if spec.get("no_other") in ("plateau", "both") else PRELOAD_OTHER_KB + VUS
         captures = {
-            "preload": [(AFTER_CLOSE_LIVE, 0, other)],
+            # Below after close: the run leaves state behind that no connection holds.
+            "preload": [(AFTER_CLOSE_LIVE - 1048576, 0, other)],
             "after": [(AFTER_CLOSE_LIVE, 0, plateau_other)],
             "plateau": list(zip(live, vthreads, [plateau_other] * len(vthreads))),
         }
@@ -535,9 +537,11 @@ class SummarizeTest(unittest.TestCase):
 
     def test_memory_without_native_memory_tracking_is_not_totalled(self):
         """NMT off leaves the pool growth unknown, and a heap-only total would read as the whole."""
-        md = self.render(retained={"netty-loom": {"no_other": True}})
-        self.assertEqual(cells(table_row(md, self.MEMORY, "netty-loom"))[2:],
-                         ["3.00", "n/a", "n/a", "6.50"])
+        for blank in ("preload", "plateau", "both"):
+            with self.subTest(blank=blank):
+                md = self.render(retained={"netty-loom": {"no_other": blank}})
+                self.assertEqual(cells(table_row(md, self.MEMORY, "netty-loom"))[2:],
+                                 ["3.00", "n/a", "n/a", "6.50"])
 
     def test_memory_without_plateau_capture_is_not_available(self):
         """run-all.sh deletes a plateau capture that overlapped the ramp-down."""
