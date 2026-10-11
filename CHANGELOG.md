@@ -64,6 +64,11 @@ in any minor release.
 - Trailers on a buffered response from an `HttpRequestDispatcher` now reach an HTTP/1.1 client:
   the response goes out chunked even when the dispatcher set a `Content-Length` or no framing at
   all (#447).
+- A response part an `HttpRequestDispatcher` writes that then fails to encode now closes the
+  connection with a WARN, instead of leaving a truncated response on a keep-alive connection; a
+  write the dispatch was waiting on throws `IOException` instead of returning. A dispatcher that
+  writes only a `1xx` and returns now has its connection closed instead of left waiting. A failed
+  `NettyServer.start()` no longer leaks the boss event loops (#440).
 
 ## [0.1.0] — 2026-09-20
 
