@@ -1,5 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.core.handler;
 
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
@@ -353,14 +354,14 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
             ChannelFuture write = ctx.writeAndFlush(part);
             if (write.cause() instanceof RejectedExecutionException rejected) {
                 // A listener added to a terminated loop's future is refused with a Netty ERROR (#109).
-                throw toWriteFailure(rejected);
+                throw toWriteFailure(ctx.channel(), rejected);
             }
             awaitAccepted(write.addListener((ChannelFutureListener) this::closeOnFailure));
         }
 
         private void closeOnFailure(ChannelFuture write) {
             if (!write.isSuccess()) {
-                closeMidResponse(ctx, request, toWriteFailure(write.cause()));
+                closeMidResponse(ctx, request, toWriteFailure(ctx.channel(), write.cause()));
             }
         }
 
@@ -391,16 +392,17 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
                 throw new IOException("Connection stopped accepting the response");
             }
             if (!write.isSuccess()) {
-                throw toWriteFailure(write.cause());
+                throw toWriteFailure(ctx.channel(), write.cause());
             }
         }
     }
 
-    private static IOException toWriteFailure(Throwable cause) {
-        if (cause instanceof IOException || cause instanceof RejectedExecutionException) {
+    private static IOException toWriteFailure(Channel channel, Throwable cause) {
+        if (cause instanceof RejectedExecutionException || (cause instanceof IOException && !channel.isOpen())) {
             /*
-             * The channel is already closed: by Netty before failing the write
-             * (AbstractChannel.AbstractUnsafe#handleWriteError), or by its event loop as it terminated.
+             * By the channel's state, not the type alone: Netty closes a channel before failing the socket
+             * write that broke it (AbstractChannel.AbstractUnsafe#handleWriteError), and a terminating loop
+             * closes it too, while an outbound handler's IOException, an SslHandler's say, leaves it open.
              */
             ClosedChannelException departed = new ClosedChannelException();
             departed.initCause(cause);
