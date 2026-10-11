@@ -42,7 +42,8 @@ in any minor release.
   stops the event loops. The failure is logged at WARN (#399).
 - A request cut off by shutdown is now interrupted, and waited for up to two seconds, before the
   servlet, the filters and the session store are torn down, so its handler no longer fails its
-  next session access with `IllegalStateException` while it unwinds (#89).
+  next session access with `IllegalStateException` while it unwinds. A request whose handler had
+  not started by then is no longer run against the torn-down servlet (#89, #439).
 - A response to a request that sent `Expect: 100-continue` no longer loses its body, or its
   `Transfer-Encoding` header, when a pipelined `HEAD` or `CONNECT` is decoded before it is written.
   Netty 4.2.17.Final fixed this; the starter now builds against 4.2.19.Final. A build that pins
