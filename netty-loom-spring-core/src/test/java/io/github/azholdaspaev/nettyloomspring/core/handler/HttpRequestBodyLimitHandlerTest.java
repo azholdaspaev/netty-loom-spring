@@ -416,17 +416,16 @@ class HttpRequestBodyLimitHandlerTest {
     }
 
     @Test
-    void shouldForwardBodyPastLimitOnceResponseHasEnded() {
+    void shouldRefuseBodyPastLimitOnceResponseHasEnded() {
         EmbeddedChannel channel = newChannel();
         channel.writeInbound(post());
         channel.readInbound();
         endResponse(channel);
 
-        channel.writeInbound(content("x".repeat(MAX_BODY_BYTES + 1)));
-
-        HttpContent forwarded = channel.readInbound();
-        assertNotNull(forwarded, "a status for the cap would be a second response, so the cap no longer applies");
-        forwarded.release();
+        assertThrows(HttpRequestBodyTooLargeException.class,
+            () -> channel.writeInbound(content("x".repeat(MAX_BODY_BYTES + 1))),
+            "a dispatch still reading once it has answered is held to the body limit like any other");
+        assertNull(channel.readInbound(), "content past the body limit belongs to nobody");
         assertTrue(channel.isOpen(), "a keep-alive response must not be followed by a close the client was not told of");
     }
 
@@ -447,10 +446,10 @@ class HttpRequestBodyLimitHandlerTest {
 
     @Test
     void shouldCountSwallowOnlyFromResponseEnd() {
-        EmbeddedChannel channel = newChannel();
+        EmbeddedChannel channel = newChannelWithBodyLimitPastSwallowLimit();
         channel.writeInbound(post());
         channel.readInbound();
-        channel.writeInbound(content("x".repeat(MAX_BODY_BYTES)));
+        channel.writeInbound(content("x".repeat(MAX_SWALLOW_BYTES)));
         ReferenceCountUtil.release(channel.readInbound());
         endResponse(channel);
 
@@ -462,7 +461,7 @@ class HttpRequestBodyLimitHandlerTest {
 
     @Test
     void shouldCountUnreadBodyOfEachExchangeOnItsOwn() {
-        EmbeddedChannel channel = newChannel();
+        EmbeddedChannel channel = newChannelWithBodyLimitPastSwallowLimit();
 
         for (int request = 0; request < 2; request++) {
             channel.writeInbound(post());
@@ -476,20 +475,20 @@ class HttpRequestBodyLimitHandlerTest {
     }
 
     @Test
-    void shouldCountNextRequestAgainstBodyLimitAgain() {
-        EmbeddedChannel channel = newChannel();
+    void shouldCountNextRequestOnlyAgainstBodyLimit() {
+        EmbeddedChannel channel = newChannelWithBodyLimitPastSwallowLimit();
         channel.writeInbound(post());
         channel.readInbound();
         endResponse(channel);
-        channel.writeInbound(lastContent("x".repeat(MAX_BODY_BYTES + 1)));
-        ReferenceCountUtil.release(channel.readInbound());
+        channel.writeInbound(LastHttpContent.EMPTY_LAST_CONTENT);
+        channel.readInbound();
 
         channel.writeInbound(post());
         channel.readInbound();
+        channel.writeInbound(content("x".repeat(MAX_SWALLOW_BYTES + 1)));
 
-        assertThrows(TooLongFrameException.class,
-            () -> channel.writeInbound(content("x".repeat(MAX_BODY_BYTES + 1))),
-            "the next request has no response yet, so its body is bounded by the body limit");
+        ReferenceCountUtil.release(channel.readInbound());
+        assertTrue(channel.isOpen(), "the next request has no response yet, so the swallow limit does not apply to it");
     }
 
     private static void endResponse(EmbeddedChannel channel) {
@@ -500,6 +499,11 @@ class HttpRequestBodyLimitHandlerTest {
     private static EmbeddedChannel newChannel() {
         return new EmbeddedChannel(
             new HttpRequestBodyLimitHandler(MAX_BODY_BYTES, MAX_SWALLOW_BYTES, UNREACHED_SWALLOW_TIMEOUT));
+    }
+
+    private static EmbeddedChannel newChannelWithBodyLimitPastSwallowLimit() {
+        return new EmbeddedChannel(
+            new HttpRequestBodyLimitHandler(2 * MAX_SWALLOW_BYTES, MAX_SWALLOW_BYTES, UNREACHED_SWALLOW_TIMEOUT));
     }
 
     private static EmbeddedChannel newChannelNeverSending(Duration swallowTimeout) {

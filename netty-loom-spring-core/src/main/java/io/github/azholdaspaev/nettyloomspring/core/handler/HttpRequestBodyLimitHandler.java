@@ -38,9 +38,10 @@ import java.util.concurrent.TimeUnit;
  * buffer: the output is shut once the refusal is flushed, and what the client still sends, the
  * refused body and whatever it pipelined behind it, is discarded until it hangs up, more than
  * {@code maxSwallowBytes} arrives or {@code swallowTimeout} passes. A body still arriving once its
- * response has ended is held to {@code maxSwallowBytes} rather than {@code maxBodyBytes}, on a
- * connection kept open, because no status can follow that response. Tomcat bounds both swallows
- * with {@code maxSwallowSize}.
+ * response has ended is held to {@code maxSwallowBytes} as well, counted from that end, on a
+ * connection kept open; since no status can follow that response, passing {@code maxBodyBytes}
+ * then fails only a dispatch still reading it. Tomcat bounds both swallows with
+ * {@code maxSwallowSize}.
  */
 public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
 
@@ -110,10 +111,6 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
                     if (receivedAfterResponse - bytes <= maxSwallowBytes) {
                         closeAfterResponse(ctx);
                     }
-                    return;
-                }
-                if (!refused) {
-                    ctx.fireChannelRead(content);
                     return;
                 }
             }
