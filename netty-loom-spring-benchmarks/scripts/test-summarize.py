@@ -178,8 +178,8 @@ class SummarizeTest(unittest.TestCase):
         other = "" if spec.get("no_other") in ("preload", "both") else PRELOAD_OTHER_KB
         plateau_other = "" if spec.get("no_other") in ("plateau", "both") else PRELOAD_OTHER_KB + VUS
         captures = {
-            # Below after close: the run leaves state behind that no connection holds.
-            "preload": [(AFTER_CLOSE_LIVE - 1048576, 0, other)],
+            # NMT only: a heap reading would need the forced collection kept out of scenario 2.
+            "preload": [("", "", other)],
             "after": [(AFTER_CLOSE_LIVE, 0, plateau_other)],
             "plateau": list(zip(live, vthreads, [plateau_other] * len(vthreads))),
         }

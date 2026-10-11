@@ -138,7 +138,7 @@ def pick(d, *keys):
 
 def retained_samples(name, capture):
     """sample-live-heap.sh's rows for one capture as (live bytes, virtual threads, NMT `Other` KB),
-    the last None when NMT was off."""
+    each None when not sampled: the first two under --nmt-only, the last when NMT was off."""
     path = os.path.join(RESULTS_DIR, f"{name}_retained_{capture}.csv")
     samples = []
     if not os.path.exists(path):
@@ -147,17 +147,16 @@ def retained_samples(name, capture):
         next(f, None)
         for line in f:
             parts = line.strip().split(",")
-            if len(parts) >= 4 and parts[1].isdigit() and parts[2].isdigit():
-                samples.append((int(parts[1]), int(parts[2]),
-                                int(parts[3]) if parts[3].isdigit() else None))
+            if len(parts) >= 4:
+                samples.append(tuple(int(p) if p.isdigit() else None for p in parts[1:4]))
     return samples
 
 
 def retained(name):
     """Memory per connection, in KB, from the memory pass's captures; each figure None when an
     input is missing."""
-    plateau = retained_samples(name, "plateau")
-    after = retained_samples(name, "after")
+    plateau = [s for s in retained_samples(name, "plateau") if None not in s[:2]]
+    after = [s for s in retained_samples(name, "after") if s[0] is not None]
     preload = retained_samples(name, "preload")
     result = dict.fromkeys(("vts", "heap", "pool", "total", "per_request"))
     if not plateau:

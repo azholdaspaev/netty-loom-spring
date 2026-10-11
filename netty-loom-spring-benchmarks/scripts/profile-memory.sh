@@ -54,7 +54,7 @@ SERVER_PID=$!
 echo "$NAME: started pid=$SERVER_PID with flags: $JAVA_FLAGS"
 "$SCRIPT_DIR/wait-for-health.sh" "$BASE/ping" 90
 
-"$SCRIPT_DIR/sample-live-heap.sh" "$SERVER_PID" 1 > "$RUN/${NAME}_retained_preload.csv"
+"$SCRIPT_DIR/sample-live-heap.sh" "$SERVER_PID" 1 1 --nmt-only > "$RUN/${NAME}_retained_preload.csv"
 jcmd "$SERVER_PID" VM.native_memory baseline > /dev/null
 jcmd "$SERVER_PID" VM.native_memory summary > "$RUN/nmt-idle.txt"
 if [ "$PROFILE" = 1 ]; then
