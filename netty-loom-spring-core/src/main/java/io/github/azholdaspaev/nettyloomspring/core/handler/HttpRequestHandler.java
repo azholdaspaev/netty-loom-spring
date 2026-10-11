@@ -264,19 +264,7 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
             return;
         }
         if (writer.state.get() != ResponseState.NOT_STARTED) {
-            /*
-             * A client that hung up mid-download ends the stream the ordinary way, so only a fault the
-             * server owns is worth a warning. Both are still closes -- there is no response left to
-             * send either way -- so the log is the whole of the difference.
-             */
-            if (cause instanceof ClosedChannelException) {
-                log.debug("Client left during {} {}", request.method(), request.uri());
-            } else {
-                log.warn("Closing {} {} after a failure mid-response: {}",
-                    request.method(), request.uri(), cause.toString());
-                log.debug("Failure mid-response", cause);
-            }
-            ctx.close();
+            closeMidResponse(ctx, request, cause);
             return;
         }
         try {
@@ -286,6 +274,22 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
             log.warn("Abandoned {} after the event loop terminated: {}", dispatch, cause.toString());
             log.debug("Abandoned {}", dispatch, cause);
         }
+    }
+
+    private static void closeMidResponse(ChannelHandlerContext ctx, HttpRequest request, Throwable cause) {
+        /*
+         * A client that hung up mid-download ends the stream the ordinary way, so only a fault the
+         * server owns is worth a warning. Both are still closes -- there is no response left to
+         * send either way -- so the log is the whole of the difference.
+         */
+        if (cause instanceof ClosedChannelException) {
+            log.debug("Client left during {} {}", request.method(), request.uri());
+        } else {
+            log.warn("Closing {} {} after a failure mid-response: {}",
+                request.method(), request.uri(), cause.toString());
+            log.debug("Failure mid-response", cause);
+        }
+        ctx.close();
     }
 
     /**
@@ -355,15 +359,9 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
         }
 
         private void closeOnFailure(ChannelFuture write) {
-            if (write.isSuccess()) {
-                return;
+            if (!write.isSuccess()) {
+                closeMidResponse(ctx, request, toWriteFailure(write.cause()));
             }
-            Throwable cause = write.cause();
-            if (!(cause instanceof IOException)) {
-                log.warn("Closing {} {} after a failed write: {}", request.method(), request.uri(), cause.toString());
-                log.debug("Failed write", cause);
-            }
-            ctx.close();
         }
 
         /** Reports whether the exchange was still unanswered, having taken it either way. */
@@ -408,6 +406,6 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
             departed.initCause(cause);
             return departed;
         }
-        return new IOException("Response write failed", cause);
+        return new IOException(cause);
     }
 }
