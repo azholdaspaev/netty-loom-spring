@@ -76,8 +76,8 @@ in any minor release.
   busy as it stopped, or when the shutdown was interrupted (#456).
 - A buffered response from an `HttpRequestDispatcher` with no `Content-Length` and no
   `Transfer-Encoding` now declares the length of its body, so its keep-alive connection stays open
-  instead of closing after the response. An empty response to `HEAD` is framed as its `GET`
-  response would be (#452).
+  instead of closing after the response. An empty response to `HEAD` declares no length, since it
+  cannot know the one its `GET` would send (#452).
 
 ## [0.1.0] — 2026-09-20
 
