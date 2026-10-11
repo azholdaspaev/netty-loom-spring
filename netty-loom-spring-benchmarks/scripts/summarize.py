@@ -585,7 +585,7 @@ out.append("Read from a memory pass: scenario 2 run again after scenario 3, its 
            "`jcmd GC.class_histogram` at the plateau gives the live heap and the number of "
            "`java.lang.VirtualThread` instances, the requests in flight at that instant; a "
            "least-squares fit of one against the other separates the two. "
-           "`Heap / connection = (intercept − live heap 5 s after the last connection closed) / "
+           "`Heap / connection = (intercept − live heap after the last connection closed) / "
            "connections`, and the slope is `Retained / in-flight request`. "
            "`Direct-buffer pool growth / connection` is NMT's committed `Other` at the plateau less "
            "its value before scenario 2, over connections: Netty's pooled arenas grow under load "
