@@ -57,12 +57,12 @@ in any minor release.
   `getBean(ServletContext.class)`, now resolve to the running container's context instead of
   failing the context start with `NoUniqueBeanDefinitionException` (#330).
 - A `Transfer-Encoding` header set by the application is now dropped and the server frames the
-  response itself, so an HTTP/1.0 client no longer receives a chunk-encoded body, and a buffered
-  response no longer carries `Transfer-Encoding` beside `Content-Length` (#438).
+  response itself, so an HTTP/1.0 client no longer receives a chunk-encoded body: a buffered body
+  declares its length instead. A buffered response no longer carries `Transfer-Encoding` beside
+  `Content-Length` either (#438).
 - Trailers on a buffered response from an `HttpRequestDispatcher` now reach an HTTP/1.1 client:
   the response goes out chunked even when the dispatcher set a `Content-Length` or no framing at
-  all. On HTTP/1.0, which cannot carry trailers, a buffered response the dispatcher chunked now
-  declares its length instead of closing the connection to end the body (#447).
+  all (#447).
 
 ## [0.1.0] — 2026-09-20
 
