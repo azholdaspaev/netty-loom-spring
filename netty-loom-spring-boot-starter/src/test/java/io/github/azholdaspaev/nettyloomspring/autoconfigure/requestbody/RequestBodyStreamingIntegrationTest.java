@@ -30,7 +30,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SpringBootTest(
     classes = RequestBodyTestApplication.class,
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = "logging.level.io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestBodyLimitHandler=DEBUG"
+    properties = {
+        "logging.level.io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestBodyLimitHandler=DEBUG",
+        "server.netty.max-http-body-size=" + RequestBodyStreamingIntegrationTest.MAX_HTTP_BODY_BYTES + "B",
+        "server.netty.max-swallow-size=" + RequestBodyStreamingIntegrationTest.MAX_SWALLOW_BYTES + "B"
+    }
 )
 class RequestBodyStreamingIntegrationTest {
 
@@ -40,7 +44,11 @@ class RequestBodyStreamingIntegrationTest {
     /** Past any limit the server could be configured with, so nothing here restates that limit. */
     private static final long UNACCEPTABLE_CONTENT_LENGTH = 100L * 1024 * 1024;
 
-    private static final int PAST_DEFAULT_CAP_WITHIN_DEFAULT_SWALLOW_BYTES = 1536 * 1024;
+    static final int MAX_HTTP_BODY_BYTES = 1024 * 1024;
+
+    static final int MAX_SWALLOW_BYTES = 2 * MAX_HTTP_BODY_BYTES;
+
+    private static final int PAST_CAP_WITHIN_SWALLOW_BYTES = (MAX_HTTP_BODY_BYTES + MAX_SWALLOW_BYTES) / 2;
 
     @LocalServerPort
     int port;
@@ -214,7 +222,7 @@ class RequestBodyStreamingIntegrationTest {
             first.readBody();
 
             String block = "z".repeat(16 * 1024);
-            for (int sent = 0; sent < PAST_DEFAULT_CAP_WITHIN_DEFAULT_SWALLOW_BYTES; sent += block.length()) {
+            for (int sent = 0; sent < PAST_CAP_WITHIN_SWALLOW_BYTES; sent += block.length()) {
                 RawHttpClient.sendChunk(socket, block);
             }
             RawHttpClient.endChunks(socket);
