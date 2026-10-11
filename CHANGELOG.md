@@ -69,6 +69,11 @@ in any minor release.
   write the dispatch was waiting on throws `IOException` instead of returning. A dispatcher that
   writes only a `1xx` and returns now has its connection closed instead of left waiting. A failed
   `NettyServer.start()` no longer leaks the boss event loops (#440).
+- A connection whose close a pipeline handler held or failed is now force-closed before shutdown
+  stops the event loops, as
+  [Graceful shutdown](https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#graceful-shutdown)
+  promises. Its socket no longer stays open past `NettyServer.shutdown` when the worker loop was
+  busy as it stopped, or when the shutdown was interrupted (#456).
 
 ## [0.1.0] — 2026-09-20
 
