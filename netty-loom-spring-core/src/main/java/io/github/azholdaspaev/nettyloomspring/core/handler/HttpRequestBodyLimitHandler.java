@@ -6,7 +6,6 @@ import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import io.netty.channel.socket.DuplexChannel;
-import io.netty.handler.codec.TooLongFrameException;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpContent;
@@ -102,15 +101,27 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
             return;
         }
         if (msg instanceof HttpContent content) {
+            int bytes = content.content().readableBytes();
+            if (responseEnded) {
+                receivedAfterResponse += bytes;
+                if (receivedAfterResponse > maxSwallowBytes) {
+                    content.release();
+                    // Once: the parts the same read still carries past the limit are only dropped.
+                    if (receivedAfterResponse - bytes <= maxSwallowBytes) {
+                        closeAfterResponse(ctx);
+                    }
+                    return;
+                }
+                if (!refused) {
+                    ctx.fireChannelRead(content);
+                    return;
+                }
+            }
             if (refused) {
                 content.release();
                 return;
             }
-            if (responseEnded) {
-                swallowAfterResponse(ctx, content);
-                return;
-            }
-            received += content.content().readableBytes();
+            received += bytes;
             if (received > maxBodyBytes) {
                 refused = true;
                 content.release();
@@ -118,8 +129,7 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
                  * The status is left to HttpExceptionHandler's mapping rather than written here, so a
                  * body refused mid-dispatch cannot overtake a response already going out (issue #78).
                  */
-                ctx.fireExceptionCaught(new TooLongFrameException(
-                    "Request body exceeded " + maxBodyBytes + " bytes"));
+                ctx.fireExceptionCaught(new HttpRequestBodyTooLargeException(maxBodyBytes));
                 return;
             }
         }
@@ -193,14 +203,7 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
         ctx.fireChannelInactive();
     }
 
-    private void swallowAfterResponse(ChannelHandlerContext ctx, HttpContent content) {
-        receivedAfterResponse += content.content().readableBytes();
-        if (receivedAfterResponse <= maxSwallowBytes) {
-            ctx.fireChannelRead(content);
-            return;
-        }
-        refused = true;
-        content.release();
+    private void closeAfterResponse(ChannelHandlerContext ctx) {
         log.debug("Closing {}: more than {} bytes of a request body arrived after its response",
             ctx.channel(), maxSwallowBytes);
         ctx.close();

@@ -377,6 +377,45 @@ class HttpRequestBodyLimitHandlerTest {
     }
 
     @Test
+    void shouldCountRefusedBodyAgainstSwallowLimitOnceResponseEnds() {
+        EmbeddedChannel channel = newChannel();
+        channel.writeInbound(post());
+        channel.readInbound();
+        assertThrows(HttpRequestBodyTooLargeException.class,
+            () -> channel.writeInbound(content("x".repeat(MAX_BODY_BYTES + 1))));
+        endResponse(channel);
+
+        channel.writeInbound(content("x".repeat(MAX_SWALLOW_BYTES + 1)));
+
+        assertFalse(channel.isOpen(),
+            "a response claimed before the body outgrew the limit still ends the exchange, and what "
+                + "follows it is the swallow limit's to bound");
+    }
+
+    @Test
+    void shouldCloseOnlyOnceWhenReadCarriesPartsPastSwallowLimit() {
+        AtomicInteger closes = new AtomicInteger();
+        EmbeddedChannel channel = new EmbeddedChannel(new ChannelOutboundHandlerAdapter() {
+            @Override
+            public void close(ChannelHandlerContext ctx, ChannelPromise promise) {
+                closes.incrementAndGet();
+            }
+        }, new HttpRequestBodyLimitHandler(MAX_BODY_BYTES, MAX_SWALLOW_BYTES, UNREACHED_SWALLOW_TIMEOUT));
+        channel.writeInbound(post());
+        channel.readInbound();
+        endResponse(channel);
+
+        /*
+         * The close is counted and not passed on: EmbeddedChannel deregisters inside close(), where a
+         * socket channel defers that to a task, so only an open pipeline lets the read's next part arrive.
+         */
+        channel.writeInbound(content("x".repeat(MAX_SWALLOW_BYTES + 1)));
+        channel.writeInbound(content("x"));
+
+        assertEquals(1, closes.get(), "the parts one read decodes past the swallow limit end the connection once");
+    }
+
+    @Test
     void shouldForwardBodyPastLimitOnceResponseHasEnded() {
         EmbeddedChannel channel = newChannel();
         channel.writeInbound(post());
