@@ -54,6 +54,7 @@ import io.netty.util.concurrent.ThreadAwareExecutor;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
@@ -313,13 +314,22 @@ class HttpRequestHandlerTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"", "abc"})
-    void shouldDeclareLengthOfUnframedFullResponse(String body) {
+    @CsvSource({
+        "HTTP/1.1, 200, ''",
+        "HTTP/1.1, 200, abc",
+        "HTTP/1.0, 200, ''",
+        "HTTP/1.0, 200, abc",
+        "HTTP/1.1, 304, ''",
+        "HTTP/1.1, 205, ''",
+    })
+    void shouldDeclareLengthOfUnframedFullResponse(HttpVersion version, int status, String body) {
         EmbeddedChannel channel = keepAliveChannel((_, _, _, writer) -> writer.write(
-            new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK,
+            new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(status),
                 Unpooled.copiedBuffer(body, StandardCharsets.UTF_8))));
+        HttpRequest request = new DefaultHttpRequest(version, HttpMethod.GET, "/");
+        request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
 
-        receive(channel, HttpMethod.GET, "/");
+        receive(channel, request);
         channel.runPendingTasks();
 
         FullHttpResponse out = channel.readOutbound();
@@ -328,7 +338,7 @@ class HttpRequestHandlerTest {
         assertFalse(out.headers().contains(HttpHeaderNames.TRANSFER_ENCODING),
             "a GET response whose whole body is held needs no chunking, even when that body is empty");
         assertTrue(channel.isOpen(),
-            "a response with a declared length is self-delimiting, so the HTTP/1.1 connection stays reusable");
+            "a response with a declared length is self-delimiting, so the keep-alive connection stays reusable");
         out.release();
         channel.finish();
     }
@@ -398,12 +408,13 @@ class HttpRequestHandlerTest {
         channel.finish();
     }
 
-    @Test
-    void shouldDeclareLengthOfHttp10FullResponseCarryingTrailers() {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void shouldDeclareLengthOfHttp10FullResponseCarryingTrailers(boolean dispatcherChunked) {
         EmbeddedChannel channel = keepAliveChannel((_, _, _, writer) -> {
             FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK,
                 Unpooled.copiedBuffer("abc", StandardCharsets.UTF_8));
-            HttpUtil.setTransferEncodingChunked(response, true);
+            HttpUtil.setTransferEncodingChunked(response, dispatcherChunked);
             response.trailingHeaders().set("checksum", "900150983cd24fb0");
             writer.write(response);
         });
