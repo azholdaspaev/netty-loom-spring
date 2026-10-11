@@ -33,8 +33,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Response ordering (issue #63), and response framing after an interim 100 (issue #199), on a
- * pipelined connection. Real socket on purpose: what is under test is the bytes on the wire, which
+ * Response ordering (issue #63), and response framing after an interim 100 (issue #199) or beside
+ * trailers (issue #447), on a pipelined connection. Real socket on purpose: what is under test is the bytes on the wire, which
  * only exist there.
  */
 @Timeout(value = 30, unit = TimeUnit.SECONDS)
@@ -47,6 +47,7 @@ class NettyServerPipeliningTest {
     private static final String HEAD_REQUEST = "HEAD /next HTTP/1.1\r\nHost: localhost\r\n\r\n";
     private static final String CONNECT_REQUEST = "CONNECT localhost:443 HTTP/1.1\r\nHost: localhost:443\r\n\r\n";
     private static final List<String> CHUNKED_BODY = List.of("8", "/chunked", "0", "");
+    private static final String CHECKSUM = "900150983cd24fb0";
 
     private final CountDownLatch secondResponded = new CountDownLatch(1);
 
@@ -134,6 +135,25 @@ class NettyServerPipeliningTest {
         }
     }
 
+    @Test
+    void shouldWriteTrailersOnGetAndNoBodyOnHeadOfSameResponse() throws Exception {
+        try (HttpWireClient client = HttpWireClient.connect(nettyServer.getPort())) {
+            client.send("GET /trailers HTTP/1.1\r\nHost: localhost\r\n\r\n"
+                + "HEAD /trailers HTTP/1.1\r\nHost: localhost\r\n\r\n"
+                + "GET /second HTTP/1.1\r\nHost: localhost\r\n\r\n");
+
+            client.readHeaderBlock();
+            for (String line : List.of("3", "abc", "0", "checksum: " + CHECKSUM, "")) {
+                assertEquals(line, client.readLine(), "HttpObjectEncoder writes trailers after the last chunk only");
+            }
+            List<String> headHeaderBlock = client.readHeaderBlock();
+            assertTrue(headHeaderBlock.contains(HttpHeaderNames.TRANSFER_ENCODING + ": " + HttpHeaderValues.CHUNKED),
+                "a HEAD response carries the framing a GET would send (RFC 9110 9.3.2): " + headHeaderBlock);
+            assertEquals("/second", client.readResponseBody(),
+                "a HEAD response writes no body, terminator or trailers, so the next response follows its head");
+        }
+    }
+
     /**
      * The first request yields to the second, so with nothing sequencing the writes the second
      * response wins deterministically rather than by a sleep race.
@@ -151,6 +171,11 @@ class NettyServerPipeliningTest {
                 writer.write(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
                 writer.write(new DefaultHttpContent(Unpooled.copiedBuffer(request.uri(), StandardCharsets.US_ASCII)));
                 writer.write(LastHttpContent.EMPTY_LAST_CONTENT);
+            } else if ("/trailers".equals(request.uri())) {
+                FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK,
+                    Unpooled.copiedBuffer("abc", StandardCharsets.US_ASCII));
+                response.trailingHeaders().set("checksum", CHECKSUM);
+                writer.write(response);
             } else {
                 writer.write(textResponse(request.uri()));
             }
