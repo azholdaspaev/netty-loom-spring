@@ -31,13 +31,7 @@ SETTLE="${SETTLE:-25}"
 JAVA_FLAGS="${JAVA_FLAGS:--XX:+UseG1GC -Xmx2g -XX:NativeMemoryTracking=summary}"
 PROFILE="${PROFILE:-0}"
 CAPTURE_AT="${CAPTURE_AT:-45}"
-for d in "$RAMP" "$DURATION"; do
-  [[ "$d" =~ ^[0-9]+s$ ]] || { echo "RAMP and DURATION must be whole seconds, e.g. 60s; got '$d'" >&2; exit 1; }
-done
-HOLD_END=$(( ${RAMP%s} + ${DURATION%s} ))
-if [ "$CAPTURE_AT" -le "${RAMP%s}" ] || [ "$CAPTURE_AT" -ge "$HOLD_END" ]; then
-  echo "CAPTURE_AT must fall inside the hold, ${RAMP%s}-${HOLD_END}s; got $CAPTURE_AT" >&2; exit 1
-fi
+. "$SCRIPT_DIR/capture-window.sh"
 REPO_ROOT="${REPO_ROOT:-$(cd "$BENCH_DIR/.." && pwd)}"
 BASE="http://localhost:${PORT}"
 
@@ -85,10 +79,7 @@ if [ "$PROFILE" = 1 ]; then
   jcmd "$SERVER_PID" Thread.dump_to_file -format=text -overwrite "$RUN/vthreads-plateau.txt" > /dev/null
 fi
 "$SCRIPT_DIR/sample-live-heap.sh" "$SERVER_PID" 5 1 > "$RUN/${NAME}_retained_plateau.csv"
-if [ $(( SECONDS - START )) -ge "$HOLD_END" ]; then
-  echo "$NAME: the plateau capture ran past the hold -- discarded; lower CAPTURE_AT"
-  rm -f "$RUN/${NAME}_retained_plateau.csv"
-fi
+discard_past_hold "$RUN/${NAME}_retained_plateau.csv" "$START"
 established > "$RUN/netstat-plateau.txt"
 # Post-collection from here on: sample-live-heap.sh has just forced full GCs.
 jcmd "$SERVER_PID" VM.native_memory summary.diff > "$RUN/nmt-plateau.diff.txt"
