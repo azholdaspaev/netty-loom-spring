@@ -3,9 +3,8 @@
 // Mirrors high-concurrency.js exactly except for the endpoint: /work-secured does the same
 // Thread.sleep(50), but sits behind http.formLogin(). Each VU authenticates once and then loops the
 // protected endpoint on the session id it holds in module scope (see below — the cookie jar cannot
-// be used for this), so VU count still equals concurrent connections equals concurrent blocked
-// requests — and the scenario-2 vs scenario-3 delta on the same target and run is what the chain
-// costs.
+// be used for this), so 1 VU still holds 1 connection — and the scenario-2 vs scenario-3 delta on
+// the same target and run is what the chain costs.
 //
 // /ping and /work stay outside the chain (BenchmarkSecurityConfig scopes securityMatcher to the
 // secured paths), so scenarios 1 and 2 remain comparable to the pre-Security snapshot.

@@ -1,8 +1,8 @@
 // Idle connections: the per-connection half of scenario 2's memory figure.
 //
 // VUS clients each open one keep-alive connection and then leave it idle, so the server holds
-// VUS connections with roughly no request in flight. Against scenario 2, where every connection
-// also carries one blocked request, the difference is the per-in-flight-request cost.
+// VUS connections with roughly no request in flight. Against scenario 2, whose connections carry
+// requests some of the time, the difference is what the in-flight requests cost.
 //
 // A GET /ping every KEEPALIVE_S seconds keeps the connection open through every target's idle
 // timeout (Netty-Loom's server.netty.read-timeout is 30s, Tomcat's keep-alive timeout 20s) and
