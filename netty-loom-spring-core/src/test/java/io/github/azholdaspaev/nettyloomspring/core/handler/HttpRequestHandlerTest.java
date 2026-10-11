@@ -819,6 +819,30 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    void shouldNotAnswerFailureBetweenInformationalAndFinalResponse() {
+        ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
+        AtomicReference<Runnable> meanwhile = new AtomicReference<>();
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
+                writer.write(new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.EARLY_HINTS));
+                meanwhile.get().run();
+                writer.write(emptyOkResponse());
+            },
+            DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT), capture);
+        meanwhile.set(() -> {
+            channel.pipeline().fireChannelRead(LastHttpContent.EMPTY_LAST_CONTENT);
+            channel.pipeline().fireExceptionCaught(new TooLongFrameException("trailer block past the limit"));
+        });
+
+        channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/upload"));
+
+        assertNull(capture.captured,
+            "an interim answer does not end the exchange, so once the request's terminator has arrived a status "
+                + "mapped for the failure would still be a second response to one request");
+        assertFalse(channel.isOpen(), "with no way left to report it, the connection goes instead");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
     void shouldCloseConnectionWhenResponseWriteFails() {
         EmbeddedChannel channel = new EmbeddedChannel(new EncoderFailingWrites(),
             new HttpRequestHandler((_, _, _, writer) -> writer.write(
