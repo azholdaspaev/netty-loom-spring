@@ -527,13 +527,13 @@ class SummarizeTest(unittest.TestCase):
         """tomcat-platform parks no virtual thread, so there is nothing to regress on.
 
         Refusing would drop the control target from every sweep; its in-flight state stays in
-        the heap figure instead, and the slope it cannot have is `n/a`.
+        the heap figure instead, and the in-flight count and slope it cannot read are `n/a`.
         """
         base = AFTER_CLOSE_LIVE + 3072 * VUS
         md = self.render(retained={"tomcat-platform": {
             "vthreads": [0] * 5, "live": [base - 4096, base, base + 4096, base, base + 8192]}})
         self.assertEqual(cells(table_row(md, self.MEMORY, "tomcat-platform")),
-                         [LABELS["tomcat-platform"], "0–0", "3.00", "1.00", "4.00", "n/a"])
+                         [LABELS["tomcat-platform"], "n/a", "3.00", "1.00", "4.00", "n/a"])
 
     def test_memory_without_native_memory_tracking_is_not_totalled(self):
         """NMT off leaves the pool growth unknown, and a heap-only total would read as the whole."""
