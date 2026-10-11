@@ -11,9 +11,11 @@ import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
 import io.netty.channel.EventLoop;
+import io.netty.channel.IoHandlerFactory;
 import io.netty.channel.ServerChannel;
 import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +37,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -324,6 +327,51 @@ class NettyServerTest {
                 assertTimeoutPreemptively(Duration.ofSeconds(10), () -> nettyServer.shutdown(Duration.ZERO)),
                 "a close that never completes must not hold the shutdown past its grace period");
         }
+    }
+
+    @Test
+    void shouldReleaseBossGroupWhenWorkerGroupFailsToBuild() throws Exception {
+        List<EventExecutor> bossLoops = new CopyOnWriteArrayList<>();
+        NettyIoHandlerFactory exhausted = new NettyIoHandlerFactory(NettyTransportPreference.NIO) {
+            private boolean bossBuilt;
+
+            @Override
+            public IoHandlerFactory getIoHandlerFactory() {
+                if (bossBuilt) {
+                    return _ -> {
+                        throw new IllegalStateException("too many open files");
+                    };
+                }
+                bossBuilt = true;
+                IoHandlerFactory real = super.getIoHandlerFactory();
+                return executor -> {
+                    bossLoops.add((EventExecutor) executor);
+                    return real.newHandler(executor);
+                };
+            }
+        };
+        nettyServer = NettyServerFixture.newServer(
+            new NettyServerConfiguration(0, InetAddress.getLoopbackAddress(), 1, 1, false, 128),
+            new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)),
+            List.of(), exhausted);
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class, nettyServer::start);
+
+        assertEquals("too many open files", rootCause(failure).getMessage(),
+            "the worker group's own failure must be what start() reports");
+        assertFalse(bossLoops.isEmpty(), "the boss group must have been built before the worker group failed");
+        for (EventExecutor loop : bossLoops) {
+            assertTrue(loop.awaitTermination(5, TimeUnit.SECONDS),
+                "the boss group's selector must be released when the worker group cannot be built");
+        }
+    }
+
+    private static Throwable rootCause(Throwable failure) {
+        Throwable cause = failure;
+        while (cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        return cause;
     }
 
     @Test
