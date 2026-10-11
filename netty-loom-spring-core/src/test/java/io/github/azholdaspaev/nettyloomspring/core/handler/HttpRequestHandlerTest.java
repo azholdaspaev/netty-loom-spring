@@ -67,6 +67,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import javax.net.ssl.SSLException;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -837,7 +839,7 @@ class HttpRequestHandlerTest {
 
     @Test
     void shouldCloseConnectionWhenResponseWriteFails() {
-        EmbeddedChannel channel = new EmbeddedChannel(new EncoderFailingWrites(),
+        EmbeddedChannel channel = new EmbeddedChannel(new FailingWrites(new EncoderException(new IllegalStateException("unexpected message type"))),
             new HttpRequestHandler((_, _, _, writer) -> writer.write(
                     new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK)),
                 DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
@@ -850,7 +852,7 @@ class HttpRequestHandlerTest {
 
     @Test
     void shouldLogEncoderFailureOfResponseWriteAsWarning() throws Exception {
-        EmbeddedChannel channel = new EmbeddedChannel(new EncoderFailingWrites(),
+        EmbeddedChannel channel = new EmbeddedChannel(new FailingWrites(new EncoderException(new IllegalStateException("unexpected message type"))),
             new HttpRequestHandler((_, _, _, writer) -> {
                     try {
                         writer.write(new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
@@ -874,12 +876,36 @@ class HttpRequestHandlerTest {
                 + logged);
     }
 
-    private static final class EncoderFailingWrites extends ChannelOutboundHandlerAdapter {
+    @Test
+    void shouldLogIOExceptionAsWarningWhenWriteLeavesChannelOpen() throws Exception {
+        EmbeddedChannel channel = new EmbeddedChannel(new FailingWrites(new SSLException("record overflow")),
+            new HttpRequestHandler((_, _, _, writer) -> writer.write(
+                    new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK)),
+                DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+
+        String logged = StandardError.captureDuring(() -> receive(channel, HttpMethod.GET, "/"));
+
+        assertEquals(1L, logged.lines()
+                .filter(line -> line.contains("WARN"))
+                .filter(line -> line.contains("Closing GET / after a failure mid-response: "
+                    + "java.io.IOException: javax.net.ssl.SSLException: record overflow"))
+                .count(),
+            "an IOException from a handler that left the channel open is the server's fault, not a departed "
+                + "client, so the close must say why, once; log was: " + logged);
+    }
+
+    private static final class FailingWrites extends ChannelOutboundHandlerAdapter {
+
+        private final Throwable cause;
+
+        FailingWrites(Throwable cause) {
+            this.cause = cause;
+        }
 
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
             ReferenceCountUtil.release(msg);
-            promise.setFailure(new EncoderException(new IllegalStateException("unexpected message type")));
+            promise.setFailure(cause);
         }
     }
 
@@ -938,6 +964,10 @@ class HttpRequestHandlerTest {
 
         void failWrites(Throwable cause) throws Exception {
             channel.eventLoop().submit(() -> {
+                // A socket write's IOException closes the channel first (AbstractChannel.AbstractUnsafe#handleWriteError).
+                if (cause instanceof IOException) {
+                    channel.close();
+                }
                 unsettled.forEach(promise -> promise.tryFailure(cause));
                 unsettled.clear();
             }).sync();
