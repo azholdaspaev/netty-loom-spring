@@ -121,6 +121,7 @@ class HttpConnectionRegistryTest {
         registry.register(connection);
 
         registry.forceCloseAll();
+        connection.runPendingTasks();
         registry.forceCloseAll();
         connection.runPendingTasks();
         connection.checkException();
