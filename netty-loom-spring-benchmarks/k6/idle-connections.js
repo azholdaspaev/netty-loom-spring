@@ -1,4 +1,4 @@
-// Idle connections: the per-connection half of scenario 2's memory figure.
+// Idle connections: scenario 2's connections without their requests.
 //
 // VUS clients each open one keep-alive connection and then leave it idle, so the server holds
 // VUS connections with roughly no request in flight. Against scenario 2, whose connections carry
