@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Orchestrate the three-way benchmark: for each target, start it with identical JVM flags,
-# wait for health, sample idle memory, run the low-, high- and secured high-concurrency k6
-# scenarios while sampling memory under load, then tear it down before starting the next. Finally
-# render a committed Markdown snapshot.
+# wait for health, run the low-, high- and secured high-concurrency k6 scenarios, then a memory
+# pass that samples retained state, then tear it down before starting the next. Finally render a
+# committed Markdown snapshot.
 #
 # Targets:
 #   netty-loom        :18080  (this library's starter)
@@ -11,12 +11,14 @@
 #
 # Knobs (env vars):
 #   VUS         concurrent connections for the high-concurrency runs  (default 10000)
-#   DURATION    steady-state plateau                                   (default 60s)
-#   RAMP        warmup ramp to VUS                                     (default 15s)
-#   SETTLE      drain seconds between targets AND between scenarios 2 and 3 (default 10)
+#   DURATION    steady-state plateau, whole seconds                    (default 60s)
+#   RAMP        warmup ramp to VUS, whole seconds                      (default 15s)
+#   SETTLE      drain seconds between targets AND before scenario 3 and the memory pass (default 10)
 #   JAVA_FLAGS  JVM flags applied IDENTICALLY to all three targets
 #   RESULTS_DIR where raw artifacts and SNAPSHOT.md are written       (default ./results)
 #   ORDER       forward | reversed — the sequence targets are run in    (default forward)
+#   CAPTURE_AT  seconds into the memory pass when retained state is sampled; inside the hold
+#                                                                       (default 45)
 #   REMOTE_HOST ssh destination running the server JVMs; unset = this box (default unset)
 #   REMOTE_REPO the repo checkout on REMOTE_HOST, holding the bootJars  (default netty-loom-spring)
 #
@@ -38,8 +40,8 @@ RAMP="${RAMP:-15s}"
 # (~30s on macOS); on a single loopback box this must drain before the next target claims its
 # ephemeral ports, or connections fail spuriously. Bump for high VUS.
 SETTLE="${SETTLE:-10}"
-# Identical flags for every target so the memory comparison is apples-to-apples. No -Xms, so
-# committed heap (and thus RSS) grows with real usage rather than being pre-committed away.
+# Identical flags for every target so the comparison is apples-to-apples. The memory pass reads the
+# direct-buffer pool from NMT's `Other`, so the default enables it.
 JAVA_FLAGS="${JAVA_FLAGS:--XX:+UseG1GC -Xmx2g -XX:NativeMemoryTracking=summary}"
 # Tomcat's connector defaults to maxConnections=8192 — an established-connection cap that
 # spring.threads.virtual.enabled does NOT raise. At VUS connections, the overflow is reset/
@@ -51,9 +53,20 @@ TOMCAT_MAXCONN=$(( VUS * 2 ))
 # crossover control that had agreed, which is worse than no crossover at all.
 ORDER="${ORDER:-forward}"
 case "$ORDER" in forward|reversed) ;; *) echo "ORDER must be forward or reversed, got '$ORDER'" >&2; exit 1 ;; esac
+# Whole seconds only, because the memory pass's capture has to land inside the hold: a sample taken
+# in the ramp or the ramp-down divides by connections that were not open.
+for d in "$RAMP" "$DURATION"; do
+  [[ "$d" =~ ^[0-9]+s$ ]] || { echo "RAMP and DURATION must be whole seconds, e.g. 60s; got '$d'" >&2; exit 1; }
+done
+HOLD_START=${RAMP%s}
+HOLD_END=$(( ${RAMP%s} + ${DURATION%s} ))
+CAPTURE_AT="${CAPTURE_AT:-45}"
+if [ "$CAPTURE_AT" -le "$HOLD_START" ] || [ "$CAPTURE_AT" -ge "$HOLD_END" ]; then
+  echo "CAPTURE_AT must fall inside the hold, ${HOLD_START}-${HOLD_END}s; got $CAPTURE_AT" >&2; exit 1
+fi
 
 # When REMOTE_HOST is set the server JVMs run there and only k6 runs here. Everything touching the
-# server process -- launch, RSS/CPU sampling, teardown -- then crosses the link, so the connection
+# server process -- launch, sampling, teardown -- then crosses the link, so the connection
 # is multiplexed: sample-memory.sh samples every 2s for the whole plateau, and paying an SSH
 # handshake per sample would perturb the measurement it is taking.
 REMOTE_HOST="${REMOTE_HOST:-}"
@@ -85,6 +98,7 @@ fi
 
 SERVER_PID=""
 SAMPLER_PID=""
+CAPTURE_PID=""
 
 # SERVER_PID lives in REMOTE_HOST's PID namespace when one is set, so it must never be passed to a
 # local kill -- that number belongs to an unrelated process here.
@@ -100,18 +114,18 @@ stop_server() {
 }
 
 # One ssh invocation streams the whole CSV back, rather than one per sample.
-sample_memory() {
-  local pid="$1" out="$2" interval="$3" max="$4"
+run_sampler() {
+  local script="$1"; shift
   if [ -n "$REMOTE_HOST" ]; then
-    "${SSH[@]}" "$REMOTE_HOST" "bash -s -- $pid /dev/stdout $interval $max" \
-      < "$SCRIPT_DIR/sample-memory.sh" > "$out"
+    "${SSH[@]}" "$REMOTE_HOST" "bash -s -- $*" < "$SCRIPT_DIR/$script"
   else
-    "$SCRIPT_DIR/sample-memory.sh" "$pid" "$out" "$interval" "$max"
+    "$SCRIPT_DIR/$script" "$@"
   fi
 }
 
 cleanup() {
   [ -n "$SAMPLER_PID" ] && kill "$SAMPLER_PID" 2>/dev/null || true
+  [ -n "$CAPTURE_PID" ] && kill "$CAPTURE_PID" 2>/dev/null || true
   stop_server
 }
 trap cleanup EXIT
@@ -140,12 +154,12 @@ benchmark_target() {
   # when the step that owns it reaches it: the exit code after k6 returns, a CSV when the sampler
   # starts. Interrupt a sweep -- the normal response to a 10k-VU run going visibly wrong, cf. #111
   # -- and a hand render would otherwise mix sweeps, either across rows (this target refused, the
-  # untouched ones publishing) or inside one (a fresh idle CSV against last sweep's loaded CSV,
-  # yielding a memory-per-connection figure neither sweep measured). Clearing per target rather
-  # than per scenario covers the window before the first k6 call: the JVM launch and up to 90s of
-  # health-waiting. Absence fails closed everywhere; a stale record does not.
-  rm -f "$RESULTS/${name}"_{low,high,secured}.{summary.json,exit} \
-        "$RESULTS/${name}_idle.csv" "$RESULTS/${name}_high_load.csv"
+  # untouched ones publishing) or inside one (a fresh preload capture against last sweep's
+  # plateau capture, yielding a memory-per-connection figure neither sweep measured). Clearing per
+  # target rather than per scenario covers the window before the first k6 call: the JVM launch and
+  # up to 90s of health-waiting. Absence fails closed everywhere; a stale record does not.
+  rm -f "$RESULTS/${name}"_{low,high,secured,memory}.{summary.json,exit} \
+        "$RESULTS/${name}_high_load.csv" "$RESULTS/${name}"_retained_{preload,plateau,after}.csv
 
   if [ -n "$REMOTE_HOST" ]; then
     SERVER_PID=$("${SSH[@]}" "$REMOTE_HOST" \
@@ -159,14 +173,16 @@ benchmark_target() {
 
   "$SCRIPT_DIR/wait-for-health.sh" "$base/ping" 90
 
-  echo "  sampling idle memory..."
-  sample_memory "$SERVER_PID" "$RESULTS/${name}_idle.csv" 1 6
-
   echo "  scenario 1: low-concurrency..."
   run_scenario "$name" "$base" low low-concurrency.js
 
+  # Before scenario 2, not before the memory pass: the direct-buffer pool grows under the first
+  # high-concurrency load and is never given back, so a later baseline would hide that growth.
+  echo "  sampling retained state before load..."
+  run_sampler sample-live-heap.sh "$SERVER_PID" 1 > "$RESULTS/${name}_retained_preload.csv" || true
+
   echo "  scenario 2: high-concurrency (VUS=$VUS, $DURATION)..."
-  sample_memory "$SERVER_PID" "$RESULTS/${name}_high_load.csv" 2 100000 &
+  run_sampler sample-memory.sh "$SERVER_PID" /dev/stdout 2 100000 > "$RESULTS/${name}_high_load.csv" &
   SAMPLER_PID=$!
   run_scenario "$name" "$base" high high-concurrency.js "${load_env[@]}"
   kill "$SAMPLER_PID" 2>/dev/null || true
@@ -178,12 +194,34 @@ benchmark_target() {
   echo "  settling ${SETTLE}s before the secured scenario..."
   sleep "$SETTLE"
 
-  # No memory sampler here, unlike scenario 2: the secured run holds one authenticated session per
-  # VU, so RSS growth would be measuring sessions rather than connections and the snapshot declines
-  # to publish it. Sampling anyway would mean a jcmd JVM launch every 2s against the process being
-  # measured, for a CSV nothing reads.
+  # No sampler here, unlike scenario 2: the snapshot publishes no CPU or memory figure for the
+  # secured run, which holds one authenticated session per VU. Sampling anyway would mean a jcmd JVM
+  # launch every 2s against the process being measured, for a CSV nothing reads.
   echo "  scenario 3: high-concurrency secured (VUS=$VUS, $DURATION)..."
   run_scenario "$name" "$base" secured high-concurrency-secured.js "${load_env[@]}"
+
+  # Scenario 2 again, last, so the forced collections the capture takes stall only a run whose
+  # latency is never published.
+  echo "  settling ${SETTLE}s before the memory pass..."
+  sleep "$SETTLE"
+  echo "  memory pass: high-concurrency (VUS=$VUS, $DURATION), retained state at ${CAPTURE_AT}s..."
+  local plateau="$RESULTS/${name}_retained_plateau.csv" start=$SECONDS
+  # Timed from k6's launch, so its VU initialisation counts against the hold's end: a capture near
+  # that end is discarded rather than kept.
+  (
+    sleep "$CAPTURE_AT"
+    run_sampler sample-live-heap.sh "$SERVER_PID" 5 1 > "$plateau" || true
+    if [ $(( SECONDS - start )) -ge "$HOLD_END" ]; then
+      rm -f "$plateau"
+      echo "  (plateau capture ran past the hold -- discarded; lower CAPTURE_AT)"
+    fi
+  ) &
+  CAPTURE_PID=$!
+  run_scenario "$name" "$base" memory high-concurrency.js "${load_env[@]}"
+  wait "$CAPTURE_PID" || true
+  CAPTURE_PID=""
+  sleep 5
+  run_sampler sample-live-heap.sh "$SERVER_PID" 1 > "$RESULTS/${name}_retained_after.csv" || true
 
   echo "  tearing down pid=$SERVER_PID..."
   stop_server

@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Run one target under one k6 scenario and capture what run-all.sh's memory-per-connection figure
-# is made of: an NMT diff, a heap summary and a thread census at the plateau and again after the
-# connections close; with PROFILE=1, also a JFR recording, a virtual-thread dump and a class
-# histogram. Artifact names follow run-all.sh, so summarize.py renders the run directory as-is.
+# Run one target under one k6 scenario as run-all.sh's memory pass: sample-live-heap.sh's retained
+# state before load, at the plateau and after the connections close, plus an NMT diff, a heap
+# summary and a thread census at the plateau and after close; with PROFILE=1, also a virtual-thread
+# dump, a JFR recording and class histograms. Artifact names follow run-all.sh's memory pass, so
+# summarize.py renders the run directory's memory row as-is.
 #
 # Knobs (env vars):
 #   VUS, DURATION, RAMP, JAVA_FLAGS, SETTLE   as run-all.sh
 #   PROFILE      1 adds JFR, the virtual-thread dump and the histograms  (default 0)
-#   CAPTURE_AT   seconds after k6 starts at which the plateau is captured (default 60)
+#   CAPTURE_AT   seconds after k6 starts at which the plateau is captured (default 45)
 #   REPO_ROOT    checkout the jar was built from, for env-server.txt     (default this repo)
 #
 # Usage:  ./profile-memory.sh <name> <port> <run_dir> <k6_script> [java args...]
@@ -29,7 +30,14 @@ RAMP="${RAMP:-15s}"
 SETTLE="${SETTLE:-25}"
 JAVA_FLAGS="${JAVA_FLAGS:--XX:+UseG1GC -Xmx2g -XX:NativeMemoryTracking=summary}"
 PROFILE="${PROFILE:-0}"
-CAPTURE_AT="${CAPTURE_AT:-60}"
+CAPTURE_AT="${CAPTURE_AT:-45}"
+for d in "$RAMP" "$DURATION"; do
+  [[ "$d" =~ ^[0-9]+s$ ]] || { echo "RAMP and DURATION must be whole seconds, e.g. 60s; got '$d'" >&2; exit 1; }
+done
+HOLD_END=$(( ${RAMP%s} + ${DURATION%s} ))
+if [ "$CAPTURE_AT" -le "${RAMP%s}" ] || [ "$CAPTURE_AT" -ge "$HOLD_END" ]; then
+  echo "CAPTURE_AT must fall inside the hold, ${RAMP%s}-${HOLD_END}s; got $CAPTURE_AT" >&2; exit 1
+fi
 REPO_ROOT="${REPO_ROOT:-$(cd "$BENCH_DIR/.." && pwd)}"
 BASE="http://localhost:${PORT}"
 
@@ -37,9 +45,7 @@ mkdir -p "$RUN"
 "$SCRIPT_DIR/collect-env.sh" "$RUN" "$REPO_ROOT" > /dev/null
 
 SERVER_PID=""
-SAMPLER_PID=""
 cleanup() {
-  [ -n "$SAMPLER_PID" ] && kill "$SAMPLER_PID" 2>/dev/null || true
   [ -n "$SERVER_PID" ] && kill "$SERVER_PID" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -54,7 +60,7 @@ SERVER_PID=$!
 echo "$NAME: started pid=$SERVER_PID with flags: $JAVA_FLAGS"
 "$SCRIPT_DIR/wait-for-health.sh" "$BASE/ping" 90
 
-"$SCRIPT_DIR/sample-memory.sh" "$SERVER_PID" "$RUN/${NAME}_idle.csv" 1 6
+"$SCRIPT_DIR/sample-live-heap.sh" "$SERVER_PID" 1 > "$RUN/${NAME}_retained_preload.csv"
 jcmd "$SERVER_PID" VM.native_memory baseline > /dev/null
 jcmd "$SERVER_PID" VM.native_memory summary > "$RUN/nmt-idle.txt"
 if [ "$PROFILE" = 1 ]; then
@@ -63,34 +69,43 @@ if [ "$PROFILE" = 1 ]; then
     jdk.VirtualThreadStart#enabled=false jdk.VirtualThreadEnd#enabled=false > /dev/null
 fi
 
-"$SCRIPT_DIR/sample-memory.sh" "$SERVER_PID" "$RUN/${NAME}_high_load.csv" 2 100000 &
-SAMPLER_PID=$!
+START=$SECONDS
 k6 run --quiet --env BASE_URL="$BASE" --env VUS="$VUS" --env DURATION="$DURATION" --env RAMP="$RAMP" \
-  --summary-export "$RUN/${NAME}_high.summary.json" \
-  "$BENCH_DIR/k6/$K6_SCRIPT" > "$RUN/${NAME}_high.k6.log" 2>&1 &
+  --summary-export "$RUN/${NAME}_memory.summary.json" \
+  "$BENCH_DIR/k6/$K6_SCRIPT" > "$RUN/${NAME}_memory.k6.log" 2>&1 &
 K6_PID=$!
 
 sleep "$CAPTURE_AT"
 echo "$NAME: capturing plateau at ${CAPTURE_AT}s"
+if [ "$PROFILE" = 1 ]; then
+  # First, so no other capture's pause has just released a wave of expired sleeps into it. Still
+  # not an in-flight count: the dump visits each virtual thread in turn, ~0.5 s at 10,000 VUs, and
+  # a 50 ms sleep ends first. The retained capture's virtual_threads column is the instantaneous one.
+  date +%s > "$RUN/vthreads-plateau.epoch"
+  jcmd "$SERVER_PID" Thread.dump_to_file -format=text -overwrite "$RUN/vthreads-plateau.txt" > /dev/null
+fi
+"$SCRIPT_DIR/sample-live-heap.sh" "$SERVER_PID" 5 1 > "$RUN/${NAME}_retained_plateau.csv"
+if [ $(( SECONDS - START )) -ge "$HOLD_END" ]; then
+  echo "$NAME: the plateau capture ran past the hold -- discarded; lower CAPTURE_AT"
+  rm -f "$RUN/${NAME}_retained_plateau.csv"
+fi
 established > "$RUN/netstat-plateau.txt"
+# Post-collection from here on: sample-live-heap.sh has just forced full GCs.
 jcmd "$SERVER_PID" VM.native_memory summary.diff > "$RUN/nmt-plateau.diff.txt"
 jcmd "$SERVER_PID" GC.heap_info > "$RUN/heap-plateau.txt"
 jcmd "$SERVER_PID" Thread.print > "$RUN/threads-plateau.txt"
 if [ "$PROFILE" = 1 ]; then
-  jcmd "$SERVER_PID" Thread.dump_to_file -format=text -overwrite "$RUN/vthreads-plateau.txt" > /dev/null
   jcmd "$SERVER_PID" JFR.dump name=plateau filename="$RUN/plateau.jfr" path-to-gc-roots=true > /dev/null
-  # Last, and only here: the histogram forces a full GC, which moves the RSS a plain run reports.
   jcmd "$SERVER_PID" GC.class_histogram > "$RUN/histogram-plateau.txt"
 fi
 
 rc=0
 wait "$K6_PID" || rc=$?
-printf '%s\n' "$rc" > "$RUN/${NAME}_high.exit"
-kill "$SAMPLER_PID" 2>/dev/null || true
-SAMPLER_PID=""
+printf '%s\n' "$rc" > "$RUN/${NAME}_memory.exit"
 echo "$NAME: k6 exited $rc"
 
 sleep 5
+"$SCRIPT_DIR/sample-live-heap.sh" "$SERVER_PID" 1 > "$RUN/${NAME}_retained_after.csv"
 established > "$RUN/netstat-after.txt"
 jcmd "$SERVER_PID" VM.native_memory summary.diff > "$RUN/nmt-after-close.diff.txt"
 jcmd "$SERVER_PID" GC.heap_info > "$RUN/heap-after-close.txt"
