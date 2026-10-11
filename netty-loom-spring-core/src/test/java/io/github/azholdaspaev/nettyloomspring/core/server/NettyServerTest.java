@@ -6,6 +6,7 @@ import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineStep;
 import io.github.azholdaspaev.nettyloomspring.core.support.NettyServerFixture;
 import io.github.azholdaspaev.nettyloomspring.core.support.StandardError;
 import io.netty.buffer.ByteBuf;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelOption;
@@ -327,6 +328,80 @@ class NettyServerTest {
                 assertTimeoutPreemptively(Duration.ofSeconds(10), () -> nettyServer.shutdown(Duration.ZERO)),
                 "a close that never completes must not hold the shutdown past its grace period");
         }
+    }
+
+    @Test
+    void shouldCloseStuckConnectionWhenWorkerLoopIsBusyAtShutdown() throws Exception {
+        CompletableFuture<Channel> accepted = new CompletableFuture<>();
+        nettyServer = newServerHoldingClose(accepted);
+        nettyServer.start();
+
+        try (Socket client = new Socket()) {
+            client.connect(new InetSocketAddress("127.0.0.1", nettyServer.getPort()), 1_000);
+            occupyUntilShutdown(accepted.get(5, TimeUnit.SECONDS).eventLoop());
+
+            nettyServer.shutdown(Duration.ZERO);
+
+            client.setSoTimeout(5_000);
+            assertEquals(-1, client.getInputStream().read(),
+                "a connection whose close is held must still be closed by a shutdown racing a busy worker loop");
+        }
+    }
+
+    @Test
+    void shouldCloseStuckConnectionWhenShutdownIsInterrupted() throws Exception {
+        CompletableFuture<Channel> accepted = new CompletableFuture<>();
+        nettyServer = newServerHoldingClose(accepted);
+        nettyServer.start();
+
+        try (Socket client = new Socket()) {
+            client.connect(new InetSocketAddress("127.0.0.1", nettyServer.getPort()), 1_000);
+            occupyUntilShutdown(accepted.get(5, TimeUnit.SECONDS).eventLoop());
+
+            /*
+             * A non-zero grace: under Duration.ZERO, Netty's await(0) returns before it reads the interrupt, so
+             * the shutdown is interrupted only in stopEventLoops, after drainThenClose has force-closed already.
+             */
+            Thread.currentThread().interrupt();
+            try {
+                assertThrows(NettyServerException.class, () -> nettyServer.shutdown(Duration.ofSeconds(5)));
+            } finally {
+                Thread.interrupted();
+            }
+
+            client.setSoTimeout(5_000);
+            assertEquals(-1, client.getInputStream().read(),
+                "a connection whose close is held must still be closed by an interrupted shutdown");
+        }
+    }
+
+    private static NettyServer newServerHoldingClose(CompletableFuture<Channel> accepted) {
+        return newServer(null, null, 0,
+            new NettyPipelineStep("closeNeverCompletes", () -> new ChannelOutboundHandlerAdapter() {
+                @Override
+                public void handlerAdded(ChannelHandlerContext ctx) {
+                    accepted.complete(ctx.channel());
+                }
+
+                @Override
+                public void close(ChannelHandlerContext ctx, ChannelPromise promise) {
+                }
+            }));
+    }
+
+    private static void occupyUntilShutdown(EventLoop loop) throws InterruptedException {
+        CountDownLatch spinning = new CountDownLatch(1);
+        loop.execute(() -> {
+            spinning.countDown();
+            while (!loop.isShuttingDown()) {
+                Thread.onSpinWait();
+            }
+        });
+        /*
+         * Without the wait, the shutdown flag can land before the spin starts: the loop's next iteration
+         * then runs prepareToDestroy, which closes the connection and passes the test against broken code.
+         */
+        assertTrue(spinning.await(5, TimeUnit.SECONDS), "the worker loop must be running the task as shutdown starts");
     }
 
     @Test

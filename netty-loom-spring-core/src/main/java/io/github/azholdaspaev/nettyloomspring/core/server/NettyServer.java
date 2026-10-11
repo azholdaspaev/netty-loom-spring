@@ -169,6 +169,7 @@ public class NettyServer {
             owned.result = drained ? NettyShutdownResult.IDLE : NettyShutdownResult.REQUESTS_ACTIVE;
             return owned.result;
         } catch (InterruptedException e) {
+            connectionRegistry.forceCloseAll();
             stopEventLoopsQuietly(current.bossGroup(), current.workerGroup());
             Thread.currentThread().interrupt();
             throw new NettyServerException("Server shutdown interrupted", e);
@@ -217,8 +218,10 @@ public class NettyServer {
      */
     private boolean drainThenClose(Deadline deadline) throws InterruptedException {
         boolean drained = connectionRegistry.awaitDrained(deadline.remainingMillis());
-        // Bounded await, not sync: a failed or stuck close must not skip stopping the event loops, which close it anyway.
+        // Bounded await, not sync: a failed or stuck close must not skip stopping the event loops.
         connectionRegistry.closeAll().await(deadline.remainingMillis());
+        // SingleThreadIoEventLoop.run() can exit without prepareToDestroy under shutdownGracefully(0, …) (#456).
+        connectionRegistry.forceCloseAll();
         return drained;
     }
 
