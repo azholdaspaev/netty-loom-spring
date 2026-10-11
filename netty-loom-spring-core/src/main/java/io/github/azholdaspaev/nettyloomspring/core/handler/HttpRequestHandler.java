@@ -352,11 +352,17 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
                 echoHttp10KeepAlive(request, response);
             }
             ChannelFuture write = ctx.writeAndFlush(part);
-            if (write.cause() instanceof RejectedExecutionException rejected) {
-                // A listener added to a terminated loop's future is refused with a Netty ERROR (#109).
-                throw toWriteFailure(ctx.channel(), rejected);
+            try {
+                /*
+                 * On the loop, where a write it settled notifies the listener inline. Added from here, one
+                 * the loop settled as it terminated would notify through a task the loop refuses, which
+                 * Netty logs as an ERROR (#109).
+                 */
+                ctx.executor().execute(() -> write.addListener((ChannelFutureListener) this::closeOnFailure));
+            } catch (RejectedExecutionException terminated) {
+                throw toWriteFailure(ctx.channel(), terminated);
             }
-            awaitAccepted(write.addListener((ChannelFutureListener) this::closeOnFailure));
+            awaitAccepted(write);
         }
 
         private void closeOnFailure(ChannelFuture write) {
