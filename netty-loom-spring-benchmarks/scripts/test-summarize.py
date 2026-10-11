@@ -38,7 +38,14 @@ HEALTHY = {
     ("tomcat-virtual", "low"): 11500.0,
     ("tomcat-virtual", "high"): 30128.0,
     ("tomcat-virtual", "secured"): 22208.0,
+    ("netty-loom", "memory"): 30001.0,
+    ("tomcat-platform", "memory"): 3601.0,
+    ("tomcat-virtual", "memory"): 30101.0,
 }
+SCENARIOS = ("low", "high", "secured", "memory")
+AFTER_CLOSE_LIVE = 17825792
+PRELOAD_OTHER_KB = 5000
+PLATEAU_VTHREADS = [655, 1500, 2241, 3000, 4112]
 LABELS = {
     "netty-loom": "Netty-Loom (this library)",
     "tomcat-platform": "Tomcat, platform threads",
@@ -85,6 +92,11 @@ def table_row(markdown, heading_prefix, target):
     return rows[0]
 
 
+def cells(row):
+    """A Markdown table row's cells, label first."""
+    return [c.strip() for c in row.strip().strip("|").split("|")]
+
+
 class SummarizeTest(unittest.TestCase):
     """Each test renders a whole sweep, healthy except for the runs it names."""
 
@@ -96,7 +108,7 @@ class SummarizeTest(unittest.TestCase):
     CPU = "CPU efficiency"
     MEMORY = "Memory per connection"
 
-    def render(self, runs=None, env=None, env_path=None):
+    def render(self, runs=None, env=None, env_path=None, retained=None):
         """Render a snapshot, asserting summarize.py accepted the sweep.
 
         `runs` overrides individual (target, scenario) pairs with a dict of
@@ -104,8 +116,10 @@ class SummarizeTest(unittest.TestCase):
         `no_export=True` writes no summary export -- the shape of a run that died before k6 could
         write one -- `empty_export=True` writes `{}`, and `drop_metrics` omits named metrics, the
         shape of a tagged sub-metric no threshold asked k6 to emit. `env` writes an environment
-        capture and names it to summarize.py; `env_path` names one without writing it."""
-        proc = self._summarize(runs, env, env_path)
+        capture and names it to summarize.py; `env_path` names one without writing it. `retained`
+        overrides a target's sample-live-heap.sh captures: `vthreads` and `live` replace the plateau
+        columns, `no_other` blanks the NMT column, `no_plateau` writes no plateau capture."""
+        proc = self._summarize(runs, env, env_path, retained)
         self.assertEqual(0, proc.returncode, proc.stderr)
         return proc.stdout
 
@@ -115,11 +129,12 @@ class SummarizeTest(unittest.TestCase):
         self.assertNotEqual(0, proc.returncode, "expected a refusal, got a snapshot")
         return proc.stderr
 
-    def _summarize(self, runs=None, env=None, env_path=None):
+    def _summarize(self, runs=None, env=None, env_path=None, retained=None):
         runs = runs or {}
+        retained = retained or {}
         with tempfile.TemporaryDirectory() as results:
             for target in LABELS:
-                for scenario in ("low", "high", "secured"):
+                for scenario in SCENARIOS:
                     spec = runs.get((target, scenario), {})
                     rate = spec.get("rate", HEALTHY[(target, scenario)])
                     count = spec.get("count", 100000)
@@ -137,6 +152,7 @@ class SummarizeTest(unittest.TestCase):
                         with open(os.path.join(results, f"{target}_{scenario}.exit"), "w") as f:
                             f.write(f"{code}\n")
                 self._write_samples(results, target)
+                self._write_retained(results, target, retained.get(target, {}))
             argv = [sys.executable, SUMMARIZE, results, str(VUS), "-Xmx2g", "test-box", "4000"]
             if env is not None:
                 env_path = os.path.join(results, "env-server.txt")
@@ -147,13 +163,31 @@ class SummarizeTest(unittest.TestCase):
             return subprocess.run(argv, capture_output=True, text=True)
 
     def _write_samples(self, results, target):
-        """Idle and under-load memory/CPU samples, in sample-memory.sh's CSV shape."""
-        for name, rss, cpu in ((f"{target}_idle.csv", 400000, 10),
-                               (f"{target}_high_load.csv", 900000, 60)):
-            with open(os.path.join(results, name), "w") as f:
-                f.write("ts_epoch,rss_kb,heap_used_kb,cpu_cumulative\n")
-                f.write(f"1000,{rss},200000,0:{cpu:02d}.00\n")
-                f.write(f"1060,{rss + 1000},201000,0:{cpu + 30:02d}.00\n")
+        """Under-load CPU samples, in sample-memory.sh's CSV shape."""
+        with open(os.path.join(results, f"{target}_high_load.csv"), "w") as f:
+            f.write("ts_epoch,rss_kb,heap_used_kb,cpu_cumulative\n")
+            f.write("1000,900000,200000,0:60.00\n")
+            f.write("1060,901000,201000,0:90.00\n")
+
+    def _write_retained(self, results, target, spec):
+        """sample-live-heap.sh's three captures, sized so a connection retains 3 KiB of heap and
+        1 KiB of pool growth, and an in-flight request 6.5 KiB."""
+        vthreads = spec.get("vthreads", PLATEAU_VTHREADS)
+        live = spec.get("live", [AFTER_CLOSE_LIVE + 3072 * VUS + 6656 * v for v in vthreads])
+        other = "" if spec.get("no_other") else PRELOAD_OTHER_KB
+        plateau_other = "" if spec.get("no_other") else PRELOAD_OTHER_KB + VUS
+        captures = {
+            "preload": [(AFTER_CLOSE_LIVE, 0, other)],
+            "after": [(AFTER_CLOSE_LIVE, 0, plateau_other)],
+            "plateau": list(zip(live, vthreads, [plateau_other] * len(vthreads))),
+        }
+        if spec.get("no_plateau"):
+            del captures["plateau"]
+        for capture, samples in captures.items():
+            with open(os.path.join(results, f"{target}_retained_{capture}.csv"), "w") as f:
+                f.write("ts_epoch,live_bytes,virtual_threads,other_committed_kb\n")
+                for i, (live_bytes, vts, other_kb) in enumerate(samples):
+                    f.write(f"{1000 + i},{live_bytes},{vts},{other_kb}\n")
 
     # ---- the defect in #110 ----
 
@@ -170,14 +204,13 @@ class SummarizeTest(unittest.TestCase):
         self.assertNotIn("55", row)
         self.assertNotIn("18468", md)
 
-    def test_aborted_high_run_is_refused_along_with_its_derived_tables(self):
-        """Scenario 2 had no gate at all before this branch, and two tables read its numbers."""
+    def test_aborted_high_run_is_refused_along_with_its_cpu_row(self):
+        """Scenario 2 had no gate at all before this branch, and the CPU table reads its numbers."""
         md = self.render({("netty-loom", "high"):
                           {"exit": K6_SCRIPT_ABORTED, "count": 96, "rate": 3.0}})
         self.assertEqual(table_row(md, self.SCENARIO_2, "netty-loom").count("invalid"), 5)
-        # CPU and memory are per-plateau figures; without a plateau they are arithmetic, not data.
+        # CPU is a per-plateau figure; without a plateau it is arithmetic, not data.
         self.assertIn("invalid", table_row(md, self.CPU, "netty-loom"))
-        self.assertIn("invalid", table_row(md, self.MEMORY, "netty-loom"))
 
     def test_aborted_low_run_is_refused(self):
         """Scenario 1 too — "every scenario" is the title's claim, so each one is exercised.
@@ -205,7 +238,7 @@ class SummarizeTest(unittest.TestCase):
         number in the table was the one published.
         """
         md = self.render({(t, s): {"exit": K6_OK, "no_export": True}
-                          for t in LABELS for s in ("low", "high", "secured")})
+                          for t in LABELS for s in SCENARIOS})
         for heading in (self.SCENARIO_1, self.SCENARIO_2, self.SCENARIO_3):
             row = table_row(md, heading, "netty-loom")
             self.assertEqual(row.count("invalid"), 5, row)
@@ -213,9 +246,10 @@ class SummarizeTest(unittest.TestCase):
         self.assertIn("invalid", table_row(md, self.MEMORY, "netty-loom"))
 
     def test_a_missing_export_does_not_reach_the_derived_tables(self):
-        """One target's scenario-2 export gone, its .exit clean — the memory row published
+        """One target's export gone, its .exit clean — the memory row once published
         250.00 KB/connection for a run with no k6 data at all."""
-        md = self.render({("netty-loom", "high"): {"exit": K6_OK, "no_export": True}})
+        md = self.render({("netty-loom", "high"): {"exit": K6_OK, "no_export": True},
+                          ("netty-loom", "memory"): {"exit": K6_OK, "no_export": True}})
         self.assertEqual(table_row(md, self.SCENARIO_2, "netty-loom").count("invalid"), 5)
         self.assertIn("invalid", table_row(md, self.MEMORY, "netty-loom"))
         self.assertIn("invalid", table_row(md, self.CPU, "netty-loom"))
@@ -467,6 +501,54 @@ class SummarizeTest(unittest.TestCase):
         md = self.render({(t, "secured"): {"exit": None, "empty_export": True} for t in LABELS})
         self.assertIn("## Security overhead", md)
         self.assertEqual("\n".join(section(md, self.SECURITY)).count("Not answerable"), 2)
+
+
+    # ---- memory per connection: retained state, read from the memory pass ----
+
+    def test_memory_row_splits_retained_heap_by_in_flight_count(self):
+        """The intercept of live heap against in-flight requests is what the connections retain.
+
+        Every fixture plateau sample holds a different number of in-flight requests, as a real one
+        does; reading any single sample would charge that sample's requests to the connections.
+        """
+        row = table_row(self.render(), self.MEMORY, "netty-loom")
+        self.assertEqual(cells(row), [LABELS["netty-loom"], "655–4,112", "3.00", "1.00", "4.00",
+                                      "6.50"])
+
+    def test_memory_section_names_its_formula(self):
+        text = "\n".join(section(self.render(), self.MEMORY))
+        for term in ("GC.class_histogram", "java.lang.VirtualThread", "intercept", "Other"):
+            self.assertIn(term, text)
+        self.assertNotIn("RSS", text)
+
+    def test_a_target_without_virtual_threads_publishes_its_median_live_heap(self):
+        """tomcat-platform parks no virtual thread, so there is nothing to regress on.
+
+        Refusing would drop the control target from every sweep; its in-flight state stays in
+        the heap figure instead, and the slope it cannot have is `n/a`.
+        """
+        base = AFTER_CLOSE_LIVE + 3072 * VUS
+        md = self.render(retained={"tomcat-platform": {
+            "vthreads": [0] * 5, "live": [base - 4096, base, base + 4096, base, base + 8192]}})
+        self.assertEqual(cells(table_row(md, self.MEMORY, "tomcat-platform")),
+                         [LABELS["tomcat-platform"], "0–0", "3.00", "1.00", "4.00", "n/a"])
+
+    def test_memory_without_native_memory_tracking_is_not_totalled(self):
+        """NMT off leaves the pool growth unknown, and a heap-only total would read as the whole."""
+        md = self.render(retained={"netty-loom": {"no_other": True}})
+        self.assertEqual(cells(table_row(md, self.MEMORY, "netty-loom"))[2:],
+                         ["3.00", "n/a", "n/a", "6.50"])
+
+    def test_memory_without_plateau_capture_is_not_available(self):
+        """run-all.sh deletes a plateau capture that overlapped the ramp-down."""
+        md = self.render(retained={"netty-loom": {"no_plateau": True}})
+        self.assertEqual(cells(table_row(md, self.MEMORY, "netty-loom"))[1:], ["n/a"] * 5)
+
+    def test_aborted_memory_pass_is_refused_while_scenario_2_publishes(self):
+        md = self.render({("netty-loom", "memory"):
+                          {"exit": K6_SCRIPT_ABORTED, "count": 96, "rate": 3.0}})
+        self.assertEqual(table_row(md, self.MEMORY, "netty-loom").count("invalid"), 5)
+        self.assertNotIn("invalid", table_row(md, self.SCENARIO_2, "netty-loom"))
 
 
     # ---- the environment capture ----
