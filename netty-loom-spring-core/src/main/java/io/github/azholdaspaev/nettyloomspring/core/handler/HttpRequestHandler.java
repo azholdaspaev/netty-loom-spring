@@ -1,6 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.core.handler;
 
 import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.HttpContent;
@@ -346,7 +347,19 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
                 HttpBodyFraming.applyTo(request, response);
                 echoHttp10KeepAlive(request, response);
             }
-            awaitAccepted(ctx.writeAndFlush(part));
+            awaitAccepted(ctx.writeAndFlush(part).addListener((ChannelFutureListener) this::closeOnFailure));
+        }
+
+        private void closeOnFailure(ChannelFuture write) {
+            if (write.isSuccess()) {
+                return;
+            }
+            Throwable cause = write.cause();
+            if (!(cause instanceof IOException)) {
+                log.warn("Closing {} {} after a failed write: {}", request.method(), request.uri(), cause.toString());
+                log.debug("Failed write", cause);
+            }
+            ctx.close();
         }
 
         /** Reports whether the exchange was still unanswered, having taken it either way. */
