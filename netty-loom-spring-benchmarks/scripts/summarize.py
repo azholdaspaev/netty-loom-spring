@@ -163,7 +163,8 @@ def retained(name):
         return result
     live = [s[0] for s in plateau]
     vts = [s[1] for s in plateau]
-    result["vts"] = (min(vts), max(vts))
+    if any(vts):
+        result["vts"] = (min(vts), max(vts))
     if len(set(vts)) > 1:
         fit = statistics.linear_regression(vts, live)
         intercept = fit.intercept
