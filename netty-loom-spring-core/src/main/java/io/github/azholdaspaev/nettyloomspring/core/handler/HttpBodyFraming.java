@@ -33,9 +33,6 @@ final class HttpBodyFraming {
             return;
         }
         if (response instanceof LastHttpContent whole) {
-            if (!dispatcherFramed) {
-                return;
-            }
             /*
              * A HEAD response's length must be the one a GET would send (RFC 9110 8.6): an empty one may
              * not hold that body, while Servlet 6.1 HttpServlet.doHead runs doGet and buffers it.
