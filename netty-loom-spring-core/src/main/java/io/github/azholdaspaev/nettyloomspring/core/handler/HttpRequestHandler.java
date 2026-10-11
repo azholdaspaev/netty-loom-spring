@@ -163,11 +163,11 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
 
     private void dispatch(ChannelHandlerContext ctx, HttpRequest request, HttpConnectionMetadata connection,
                           HttpRequestBodyStream requestBody, HttpChannelResponseWriter writer) {
-        connectionRegistry.dispatchStarted();
+        long generation = connectionRegistry.dispatchStarted();
         try {
             dispatchExecutor.execute(() -> {
                 // Released before the catch and finally run, so a shutdown interrupt never reaches them.
-                try (HttpConnectionRegistry.DispatchThread dispatch = connectionRegistry.registerDispatchThread()) {
+                try (HttpConnectionRegistry.DispatchThread dispatch = connectionRegistry.registerDispatchThread(generation)) {
                     if (dispatch.isCutOff()) {
                         // Closed, not reported: the shutdown is tearing down what handle runs against.
                         ctx.close();

@@ -1339,6 +1339,27 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    void shouldSkipHandleForDispatchQueuedAcrossRestart() throws InterruptedException {
+        CompletableFuture<Runnable> submitted = new CompletableFuture<>();
+        AtomicBoolean handled = new AtomicBoolean();
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            (_, _, _, writer) -> {
+                handled.set(true);
+                writer.write(emptyOkResponse());
+            },
+            submitted::complete, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+
+        receive(channel, HttpMethod.GET, "/");
+        connectionRegistry.interruptAndAwaitDispatches(0);
+        connectionRegistry.reset();
+        submitted.join().run();
+
+        assertFalse(handled.get(), "a dispatch queued before the sweep must not run against the restarted server");
+        assertFalse(Thread.interrupted(), "the interrupt handed to a skipped dispatch must not outlive it");
+        channel.finish();
+    }
+
+    @Test
     void shouldRunHandleDespiteStrayInterruptOnDispatchThread() {
         CompletableFuture<Runnable> submitted = new CompletableFuture<>();
         AtomicBoolean handled = new AtomicBoolean();
