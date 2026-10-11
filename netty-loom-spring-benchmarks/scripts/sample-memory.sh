@@ -2,11 +2,10 @@
 # Sample a JVM's resident memory (and, best-effort, its used heap) at a fixed interval.
 #
 # This is the server-side half of the benchmark: k6 only sees client-side latency/throughput,
-# so memory-per-connection and CPU cost have to be measured here. RSS is the honest "total
-# footprint" figure (committed heap + thread stacks + Netty direct buffers + JVM overhead).
-# jcmd GC.heap_info adds the live-heap breakdown, which is where virtual-thread continuations
-# live — so comparing RSS growth against heap growth shows whether a target pays per connection
-# in native stacks (platform threads) or cheap on-heap continuations (virtual threads).
+# so CPU cost has to be measured here. RSS is the process's resident pages: mostly committed heap,
+# which G1 sizes for the allocation rate and keeps after the connections close, and on macOS
+# without compressed pages -- not what a connection retains
+# (docs/benchmarks/2026-09-19/COMPARISON.md section 8). sample-live-heap.sh measures that.
 #
 # cpu_cumulative is the process's total CPU time (all threads) so far, as reported by
 # `ps -o cputime` (e.g. "1:23.45" = MM:SS.ss, or "1:02:03" = HH:MM:SS). summarize.py differences

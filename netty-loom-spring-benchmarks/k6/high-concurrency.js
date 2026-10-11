@@ -2,15 +2,14 @@
 //
 // VUS concurrent clients each loop GET /work, where the controller does Thread.sleep(50)
 // to simulate a blocking 50ms database call. With keep-alive ON, 1 VU holds 1 persistent
-// TCP connection and has exactly 1 request in flight at a time, so:
+// TCP connection, but only throughput x 50ms of them have a request parked in the server at
+// any instant (Little's law); the rest are in k6 or on the wire. Measured in
+// docs/benchmarks/2026-09-19/COMPARISON.md section 4.
 //
-//     VU count  ==  concurrent open connections  ==  concurrent blocked requests
-//
-// That mapping is what makes the server-side memory-per-connection measurement meaningful
-// (see scripts/sample-memory.sh). It also exposes the thread-per-request ceiling: Tomcat's
-// default platform-thread pool tops out at ~200 workers, so at thousands of VUs requests
-// queue (p99 climbs) and excess connections are refused (error rate climbs). Virtual-thread
-// targets (Netty-Loom, Tomcat+VT) park cheaply instead.
+// It exposes the thread-per-request ceiling: Tomcat's default platform-thread pool tops out at
+// ~200 workers, so at thousands of VUs requests queue (p99 climbs) and excess connections are
+// refused (error rate climbs). Virtual-thread targets (Netty-Loom, Tomcat+VT) park cheaply
+// instead.
 //
 // Run:  k6 run --env BASE_URL=http://localhost:18080 --env VUS=10000 high-concurrency.js
 import http from 'k6/http';

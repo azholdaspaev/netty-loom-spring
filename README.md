@@ -58,8 +58,8 @@ slower per request than Tomcat + virtual threads. There is no per-request speed 
 
 Read these as relative, not absolute: it is a single-box loopback test where client and server share
 the 8 threads, so throughput per core is the one figure likely to transfer off-box. Memory per
-connection is deliberately withheld: the harness's figure measures the committed young generation,
-not connection state ([2026-09-19](docs/benchmarks/2026-09-19/COMPARISON.md) §8).
+connection is deliberately withheld: every published sweep reports the RSS delta, which measures the
+committed young generation, not connection state ([2026-09-19](docs/benchmarks/2026-09-19/COMPARISON.md) §8).
 
 Methodology, every sweep, and the reproduce recipe:
 [`docs/benchmarks/`](docs/benchmarks) and [`netty-loom-spring-benchmarks/`](netty-loom-spring-benchmarks).

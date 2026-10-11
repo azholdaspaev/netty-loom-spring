@@ -109,12 +109,12 @@ threshold; latency is measured, not gated (measuring it is the point).
 
 The user-facing verdict rests on three numbers under load:
 
-- **Memory per connection** — measured *server-side* by [`scripts/sample-memory.sh`](scripts/sample-memory.sh),
-  which samples the target JVM's RSS (and best-effort `jcmd GC.heap_info` heap) at idle and under
-  sustained load. k6 only sees the client. Reported as
-  `(loaded RSS median − idle RSS median) / connections`, which
-  [2026-09-19](../docs/benchmarks/2026-09-19/COMPARISON.md) §8 shows is committed young generation
-  rather than what a connection costs the server.
+- **Memory per connection** — measured *server-side* by
+  [`scripts/sample-live-heap.sh`](scripts/sample-live-heap.sh) during a memory pass that repeats
+  scenario 2 after the published ones: live heap after forced collections, with the in-flight
+  requests' share fitted out, plus Netty's direct-buffer pool growth from NMT. k6 only sees the
+  client. The snapshot's memory section states the formula;
+  [2026-09-19](../docs/benchmarks/2026-09-19/COMPARISON.md) §8 is why it is not the RSS delta.
 - **Tail latency (p99)** — where thread-per-request pools fall apart: once concurrent requests exceed
   the ~200-thread pool, requests queue and p99 climbs steeply.
 - **Error rate** — at thousands of connections, Tomcat's platform pool refuses/queues past its
@@ -123,7 +123,8 @@ The user-facing verdict rests on three numbers under load:
 ## Prerequisites
 
 - **Java 25** (the repo toolchain) and **[k6](https://k6.io/docs/get-started/installation/)** on `PATH`.
-- `jcmd`, `ps`, `curl`, `python3` (all standard with the JDK / OS).
+- `jcmd`, `ps`, `curl` (all standard with the JDK / OS), and `python3` 3.10 or later
+  (`statistics.linear_regression`).
 - **Build the app jars first:**
   ```bash
   ./gradlew :netty-loom-spring-example-netty:bootJar :netty-loom-spring-example-tomcat:bootJar
@@ -162,14 +163,15 @@ ulimit -n 200000
 VUS=10000 DURATION=60s SETTLE=35 bash scripts/run-all.sh
 ```
 
-This starts each target with identical JVM flags, waits for health, samples idle memory, runs all
-three scenarios while sampling memory under load, tears the target down, drains, and repeats. It then
-writes [`results/SNAPSHOT.md`](results/SNAPSHOT.md). Raw k6 exports and memory CSVs land in
+This starts each target with identical JVM flags, waits for health, runs all three scenarios while
+sampling CPU under scenario 2, runs the memory pass, tears the target down, drains, and repeats. It
+then writes [`results/SNAPSHOT.md`](results/SNAPSHOT.md). Raw k6 exports and memory CSVs land in
 `results/` and are git-ignored; only the curated snapshot is committed.
 
 Knobs (env vars): `VUS` (connections for scenarios 2 and 3), `DURATION` (steady-state plateau),
-`RAMP` (warmup ramp, trimmed when interpreting steady state), `SETTLE` (drain seconds, applied both
-between targets and between scenarios 2 and 3), `JAVA_FLAGS` (applied **identically** to all three
+`RAMP` (warmup ramp, trimmed when interpreting steady state; both in whole seconds, such as `60s`), `SETTLE` (drain seconds, applied
+between targets and before scenario 3 and the memory pass), `CAPTURE_AT` (seconds into the memory
+pass at which retained state is sampled; it must fall inside the hold), `JAVA_FLAGS` (applied **identically** to all three
 for a fair memory comparison), `RESULTS_DIR` (where artifacts and the snapshot are written — point
 it at a versioned subdirectory to keep a release's numbers), `ORDER` (`forward` or `reversed` — the
 sequence the three targets run in, so a crossover pass needs no edit to the script), and
@@ -196,8 +198,9 @@ Mind what this does to scenario 1: it measures a per-request difference of tens 
 any link whose RTT is large compared to that turns it into a measurement of the network. Scenarios 2
 and 3 carry a 50 ms server-side sleep and tolerate far more latency.
 
-`SETTLE` matters more now that each target runs two high-VU scenarios back to back: scenario 2 leaves
-roughly `VUS` client sockets in TIME_WAIT just as scenario 3 asks for `VUS` more. Under-settling shows
+`SETTLE` matters more now that each target runs three high-VU runs back to back: scenario 2 leaves
+roughly `VUS` client sockets in TIME_WAIT just as scenario 3 asks for `VUS` more, and so on into the
+memory pass. Under-settling shows
 up as connection failures in the secured run and reads like a Security problem.
 
 ### Run one target by hand
@@ -216,11 +219,11 @@ overridable with `--env USERNAME=... --env PASSWORD=...`).
 
 ### Profile one target's memory
 
-[`scripts/profile-memory.sh`](scripts/profile-memory.sh) runs one target under one scenario with the
-sweep's flags and file names, and captures what the memory-per-connection figure is made of: an NMT
-diff, a heap summary and a thread census at the plateau and after the connections close, plus a JFR
-recording, a virtual-thread dump and class histograms with `PROFILE=1`. `summarize.py` renders the
-run directory as it would a sweep's.
+[`scripts/profile-memory.sh`](scripts/profile-memory.sh) runs one target under one scenario as the
+sweep's memory pass, with its flags and file names, and adds an NMT diff, a heap summary and a
+thread census at the plateau and after the connections close, all taken after the forced
+collections; with `PROFILE=1`, a virtual-thread dump taken before any other capture, a JFR recording
+and class histograms. `summarize.py` renders the run directory's memory row as it would a sweep's.
 
 ```bash
 PROFILE=1 bash scripts/profile-memory.sh netty-loom 18080 "$HOME/bench-results/head" high-concurrency.js \
@@ -250,11 +253,10 @@ cost of a blocked request rather than of a connection.
   ([2026-08-23](../docs/benchmarks/2026-08-23/COMPARISON.md) §8). Whatever gap survives this is
   architecture; the earlier default-config snapshot is in git history (commit `c4f4270`) for a
   before/after comparison.
-- **Memory per connection is G1's heap sizing, at every VU count.** With `-Xmx2g` and no `-Xms`, the
-  committed young generation follows the allocation rate and the JVM's history, and it is 93–95% of
-  the RSS delta at 10,000 connections
-  ([2026-09-19](../docs/benchmarks/2026-09-19/COMPARISON.md) §6). The snapshot's steady-state
-  **median** suppresses the sample-to-sample jitter, not this.
+- **Memory per connection is retained state, not footprint.** It leaves out committed heap — which
+  G1 sizes for the allocation rate and the JVM's history, 93–95% of the RSS delta at 10,000
+  connections ([2026-09-19](../docs/benchmarks/2026-09-19/COMPARISON.md) §6) — so it says what a
+  connection holds, not how much RAM a target needs to serve the load.
 - **The platform-thread target's footprint does not scale with offered load.** It caps at ~200 worker
   threads and refuses/queues the rest — so it can look memory-frugal while its p99 and error rate
   collapse. Read all three metrics together, not memory alone.
