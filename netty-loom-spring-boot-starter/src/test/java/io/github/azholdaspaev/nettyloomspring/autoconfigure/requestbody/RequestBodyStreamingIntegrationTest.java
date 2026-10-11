@@ -221,10 +221,7 @@ class RequestBodyStreamingIntegrationTest {
             assertEquals(200, first.status());
             first.readBody();
 
-            String block = "z".repeat(16 * 1024);
-            for (int sent = 0; sent < PAST_CAP_WITHIN_SWALLOW_BYTES; sent += block.length()) {
-                RawHttpClient.sendChunk(socket, block);
-            }
+            sendChunks(socket, PAST_CAP_WITHIN_SWALLOW_BYTES);
             RawHttpClient.endChunks(socket);
             RawHttpClient.send(socket, "POST /upload/count HTTP/1.1", "Host: localhost", "Content-Length: 2");
             RawHttpClient.sendBody(socket, "ok");
@@ -272,12 +269,16 @@ class RequestBodyStreamingIntegrationTest {
      */
     private static void sendUntilRefused(Socket socket) {
         try {
-            String block = "y".repeat(16 * 1024);
-            for (int sent = 0; sent < 4 * 1024 * 1024; sent += block.length()) {
-                RawHttpClient.sendChunk(socket, block);
-            }
+            sendChunks(socket, 4 * 1024 * 1024);
         } catch (IOException refused) {
             assertTrue(true);
+        }
+    }
+
+    private static void sendChunks(Socket socket, int bytes) throws IOException {
+        String block = "y".repeat(16 * 1024);
+        for (int sent = 0; sent < bytes; sent += block.length()) {
+            RawHttpClient.sendChunk(socket, block);
         }
     }
 
