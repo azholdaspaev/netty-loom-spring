@@ -1051,7 +1051,8 @@ class HttpRequestHandlerTest {
         }
 
         void dispatch() {
-            fire(channel, HttpMethod.GET, "/");
+            // One loop task, not two reads from here: the dispatch starts on the head and may terminate the loop (#458).
+            channel.eventLoop().execute(() -> fire(channel, HttpMethod.GET, "/"));
         }
 
         void drain() throws Exception {
