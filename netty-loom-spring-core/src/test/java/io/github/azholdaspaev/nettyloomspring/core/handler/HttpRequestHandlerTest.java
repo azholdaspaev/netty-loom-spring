@@ -312,6 +312,27 @@ class HttpRequestHandlerTest {
         channel.finish();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"", "abc"})
+    void shouldDeclareLengthOfUnframedFullResponse(String body) {
+        EmbeddedChannel channel = keepAliveChannel((_, _, _, writer) -> writer.write(
+            new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK,
+                Unpooled.copiedBuffer(body, StandardCharsets.UTF_8))));
+
+        receive(channel, HttpMethod.GET, "/");
+        channel.runPendingTasks();
+
+        FullHttpResponse out = channel.readOutbound();
+        assertEquals(body.length(), HttpUtil.getContentLength(out, -1L),
+            "the writer holds the whole body, so it declares its length rather than leave the close to delimit it");
+        assertFalse(out.headers().contains(HttpHeaderNames.TRANSFER_ENCODING),
+            "a GET response whose whole body is held needs no chunking, even when that body is empty");
+        assertTrue(channel.isOpen(),
+            "a response with a declared length is self-delimiting, so the HTTP/1.1 connection stays reusable");
+        out.release();
+        channel.finish();
+    }
+
     @Test
     void shouldKeepChunkedOnFullResponseCarryingTrailers() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
