@@ -226,9 +226,7 @@ PROFILE=1 bash scripts/profile-memory.sh netty-loom 18080 "$HOME/bench-results/h
   -jar ../netty-loom-spring-example-netty/build/libs/*.jar
 ```
 
-[`k6/idle-connections.js`](k6/idle-connections.js) is scenario 2 with the request taken out: `VUS`
-keep-alive connections held open with nothing in flight, so the difference against scenario 2 is the
-cost of a blocked request rather than of a connection.
+The idle-connection scenario is [`k6/idle-connections.js`](k6/idle-connections.js).
 
 ## Interpreting results — and how to keep yourself honest
 
