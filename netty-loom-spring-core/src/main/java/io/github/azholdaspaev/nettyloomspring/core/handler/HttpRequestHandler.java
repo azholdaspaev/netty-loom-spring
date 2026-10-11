@@ -347,7 +347,12 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
                 HttpBodyFraming.applyTo(request, response);
                 echoHttp10KeepAlive(request, response);
             }
-            awaitAccepted(ctx.writeAndFlush(part).addListener((ChannelFutureListener) this::closeOnFailure));
+            ChannelFuture write = ctx.writeAndFlush(part);
+            if (write.cause() instanceof RejectedExecutionException rejected) {
+                // A listener added to a terminated loop's future is refused with a Netty ERROR (#109).
+                throw toWriteFailure(rejected);
+            }
+            awaitAccepted(write.addListener((ChannelFutureListener) this::closeOnFailure));
         }
 
         private void closeOnFailure(ChannelFuture write) {
@@ -395,8 +400,11 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
     }
 
     private static IOException toWriteFailure(Throwable cause) {
-        if (cause instanceof IOException) {
-            // Netty closed the channel before failing the write: AbstractChannel.AbstractUnsafe#handleWriteError.
+        if (cause instanceof IOException || cause instanceof RejectedExecutionException) {
+            /*
+             * The channel is already closed: by Netty before failing the write
+             * (AbstractChannel.AbstractUnsafe#handleWriteError), or by its event loop as it terminated.
+             */
             ClosedChannelException departed = new ClosedChannelException();
             departed.initCause(cause);
             return departed;
