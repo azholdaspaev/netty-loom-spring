@@ -674,6 +674,50 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    void shouldThrowIOExceptionWhenParkedWriteFailsInEncoder() throws Exception {
+        Throwable failure = failParkedWrite(new EncoderException(new IllegalStateException("unexpected message type")));
+
+        assertInstanceOf(IOException.class, failure,
+            "a write the encoder failed must be reported to the handler, not returned from as though it succeeded");
+        assertFalse(failure instanceof ClosedChannelException,
+            "an encoder fault is the server's, so it must not read as a departed client");
+    }
+
+    @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    void shouldThrowClosedChannelWhenParkedWriteFailsOnSocket() throws Exception {
+        IOException reset = new IOException("Connection reset by peer");
+
+        Throwable failure = failParkedWrite(reset);
+
+        assertInstanceOf(ClosedChannelException.class, failure,
+            "a socket failure means the client has gone, which is the type a departed client is classified by");
+        assertSame(reset, failure.getCause(), "the socket's own failure must be kept as the cause");
+    }
+
+    private Throwable failParkedWrite(Throwable cause) throws Exception {
+        AtomicReference<Thread> worker = new AtomicReference<>();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        try (StalledConnection connection = new StalledConnection(new HttpRequestHandler((_, _, _, writer) -> {
+                try {
+                    writer.write(new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
+                } catch (Throwable caught) {
+                    failure.set(caught);
+                }
+            },
+            task -> worker.set(startQuietly(task)), connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT))) {
+
+            connection.dispatch();
+            SpinWait.untilParked(worker::get, PARK_LIMIT, "the dispatch thread must wait on the unwritable connection");
+
+            connection.failWrites(cause);
+            worker.get().join();
+        }
+        return failure.get();
+    }
+
+    @Test
     void shouldCloseNotFireExceptionCaughtWhenDispatchFailsPostCommit() {
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         EmbeddedChannel channel = new EmbeddedChannel(
@@ -813,6 +857,13 @@ class HttpRequestHandlerTest {
             channel.eventLoop().submit(() -> {
                 channel.unsafe().outboundBuffer().setUserDefinedWritability(1, true);
                 unsettled.forEach(ChannelPromise::trySuccess);
+                unsettled.clear();
+            }).sync();
+        }
+
+        void failWrites(Throwable cause) throws Exception {
+            channel.eventLoop().submit(() -> {
+                unsettled.forEach(promise -> promise.tryFailure(cause));
                 unsettled.clear();
             }).sync();
         }
