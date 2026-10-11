@@ -45,6 +45,8 @@ public class HttpConnectionRegistry {
 
     private volatile boolean aborted;
 
+    private volatile boolean dispatchesInterrupted;
+
     public HttpConnectionRegistry(ChannelGroup connections) {
         this.connections = connections;
     }
@@ -160,6 +162,7 @@ public class HttpConnectionRegistry {
     public boolean interruptAndAwaitDispatches(long timeoutMillis) throws InterruptedException {
         dispatchWaiters.incrementAndGet();
         try {
+            dispatchesInterrupted = true;
             for (DispatchThread dispatch : dispatchThreads) {
                 dispatch.interrupt();
             }
@@ -171,10 +174,15 @@ public class HttpConnectionRegistry {
 
     /**
      * Called on the dispatch thread as the dispatch begins; closing the result releases the thread.
+     * The flag is read after the add, as {@link #interruptAndAwaitDispatches} sets it before its
+     * sweep, so a registration racing the sweep is interrupted by one side or the other.
      */
     DispatchThread registerDispatchThread() {
         DispatchThread dispatch = new DispatchThread(Thread.currentThread());
         dispatchThreads.add(dispatch);
+        if (dispatchesInterrupted) {
+            dispatch.interrupt();
+        }
         return dispatch;
     }
 

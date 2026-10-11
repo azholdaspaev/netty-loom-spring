@@ -368,6 +368,20 @@ class HttpConnectionRegistryTest {
     }
 
     @Test
+    void shouldInterruptDispatchRegisteringAfterSweep() throws Exception {
+        HttpConnectionRegistry registry = newRegistry();
+        registry.interruptAndAwaitDispatches(0);
+
+        boolean interrupted;
+        try (HttpConnectionRegistry.DispatchThread _ = registry.registerDispatchThread()) {
+            interrupted = Thread.currentThread().isInterrupted();
+        }
+
+        assertTrue(interrupted, "a dispatch whose thread registers after the sweep must still be interrupted");
+        assertFalse(Thread.interrupted(), "releasing the thread must clear the interrupt it was handed");
+    }
+
+    @Test
     void shouldAwaitDispatchesAfterDrainIsAborted() throws Exception {
         HttpConnectionRegistry registry = newRegistry();
         registry.dispatchStarted();
