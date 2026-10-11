@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Run one target under one k6 scenario as run-all.sh's memory pass: sample-live-heap.sh's retained
-# state before load, at the plateau and after the connections close, plus an NMT diff, a heap
-# summary and a thread census at the plateau and after close; with PROFILE=1, also a virtual-thread
-# dump, a JFR recording and class histograms. Artifact names follow run-all.sh's memory pass, so
-# summarize.py renders the run directory's memory row as-is.
+# Run one target under one k6 scenario as run-all.sh's memory pass, after its scenario 1:
+# sample-live-heap.sh's retained state before load, at the plateau and after the connections close,
+# plus an NMT diff, a heap summary and a thread census at the plateau and after close; with
+# PROFILE=1, also a virtual-thread dump, a JFR recording and class histograms. Artifact names follow
+# run-all.sh's memory pass, so summarize.py renders the run directory's memory row as-is.
 #
 # Knobs (env vars):
 #   VUS, DURATION, RAMP, JAVA_FLAGS, SETTLE   as run-all.sh
@@ -53,6 +53,8 @@ java $JAVA_FLAGS "$@" > "$RUN/server.log" 2>&1 &
 SERVER_PID=$!
 echo "$NAME: started pid=$SERVER_PID with flags: $JAVA_FLAGS"
 "$SCRIPT_DIR/wait-for-health.sh" "$BASE/ping" 90
+# As in run-all.sh, so the pool baseline already holds what the first requests allocated.
+k6 run --quiet --env BASE_URL="$BASE" "$BENCH_DIR/k6/low-concurrency.js" > "$RUN/${NAME}_low.k6.log" 2>&1 || true
 
 "$SCRIPT_DIR/sample-live-heap.sh" "$SERVER_PID" 1 1 --nmt-only > "$RUN/${NAME}_retained_preload.csv"
 jcmd "$SERVER_PID" VM.native_memory baseline > /dev/null
