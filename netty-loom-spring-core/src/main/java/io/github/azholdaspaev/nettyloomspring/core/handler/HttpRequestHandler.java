@@ -131,8 +131,9 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
      * unwinding on that failure cannot race a second response onto one request (#78); waking it at all
      * is what stops a refused upload leaving the dispatch blocked on a body that will never arrive.
      * Once the response has started, a status written for the failure would encode as more of that
-     * body, so the connection is closed instead; but not for a body past its cap once the response is
-     * whole, since the end may still be queued behind this event and the close would overtake it.
+     * body, so the connection is closed instead. A body past its cap once the response is whole fails
+     * only the dispatch reading it: the swallow limit bounds the connection from there (#201), and a
+     * close would overtake an end still queued behind this event.
      */
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
