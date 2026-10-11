@@ -53,17 +53,8 @@ TOMCAT_MAXCONN=$(( VUS * 2 ))
 # crossover control that had agreed, which is worse than no crossover at all.
 ORDER="${ORDER:-forward}"
 case "$ORDER" in forward|reversed) ;; *) echo "ORDER must be forward or reversed, got '$ORDER'" >&2; exit 1 ;; esac
-# Whole seconds only, because the memory pass's capture has to land inside the hold: a sample taken
-# in the ramp or the ramp-down divides by connections that were not open.
-for d in "$RAMP" "$DURATION"; do
-  [[ "$d" =~ ^[0-9]+s$ ]] || { echo "RAMP and DURATION must be whole seconds, e.g. 60s; got '$d'" >&2; exit 1; }
-done
-HOLD_START=${RAMP%s}
-HOLD_END=$(( ${RAMP%s} + ${DURATION%s} ))
 CAPTURE_AT="${CAPTURE_AT:-45}"
-if [ "$CAPTURE_AT" -le "$HOLD_START" ] || [ "$CAPTURE_AT" -ge "$HOLD_END" ]; then
-  echo "CAPTURE_AT must fall inside the hold, ${HOLD_START}-${HOLD_END}s; got $CAPTURE_AT" >&2; exit 1
-fi
+. "$SCRIPT_DIR/capture-window.sh"
 
 # When REMOTE_HOST is set the server JVMs run there and only k6 runs here. Everything touching the
 # server process -- launch, sampling, teardown -- then crosses the link, so the connection
@@ -211,10 +202,7 @@ benchmark_target() {
   (
     sleep "$CAPTURE_AT"
     run_sampler sample-live-heap.sh "$SERVER_PID" 5 1 > "$plateau" || true
-    if [ $(( SECONDS - start )) -ge "$HOLD_END" ]; then
-      rm -f "$plateau"
-      echo "  (plateau capture ran past the hold -- discarded; lower CAPTURE_AT)"
-    fi
+    discard_past_hold "$plateau" "$start"
   ) &
   CAPTURE_PID=$!
   run_scenario "$name" "$base" memory high-concurrency.js "${load_env[@]}"
