@@ -150,7 +150,7 @@ benchmark_target() {
   # target rather than per scenario covers the window before the first k6 call: the JVM launch and
   # up to 90s of health-waiting. Absence fails closed everywhere; a stale record does not.
   rm -f "$RESULTS/${name}"_{low,high,secured,memory}.{summary.json,exit} \
-        "$RESULTS/${name}_high_load.csv" "$RESULTS/${name}"_retained_{preload,plateau,after}.csv
+        "$RESULTS/${name}_high_load.csv" "$RESULTS/${name}"_retained_{preload,pool,plateau,after}.csv
 
   if [ -n "$REMOTE_HOST" ]; then
     SERVER_PID=$("${SSH[@]}" "$REMOTE_HOST" \
@@ -167,8 +167,9 @@ benchmark_target() {
   echo "  scenario 1: low-concurrency..."
   run_scenario "$name" "$base" low low-concurrency.js
 
-  # Before scenario 2, not before the memory pass: the direct-buffer pool grows under the first
-  # high-concurrency load and is never given back, so a later baseline would hide that growth.
+  # Around scenario 2, not the memory pass: the direct-buffer pool grows under the first
+  # high-concurrency load and is never given back, so a later baseline would hide that growth, and
+  # the secured run grows it again with what a scenario 2 connection does not cost.
   echo "  sampling the direct-buffer pool before load..."
   run_sampler sample-live-heap.sh "$SERVER_PID" 1 1 --nmt-only > "$RESULTS/${name}_retained_preload.csv" || true
 
@@ -178,6 +179,7 @@ benchmark_target() {
   run_scenario "$name" "$base" high high-concurrency.js "${load_env[@]}"
   kill "$SAMPLER_PID" 2>/dev/null || true
   SAMPLER_PID=""
+  run_sampler sample-live-heap.sh "$SERVER_PID" 1 1 --nmt-only > "$RESULTS/${name}_retained_pool.csv" || true
 
   # Settle before scenario 3 as well as between targets: scenario 2 leaves ~VUS client sockets in
   # TIME_WAIT, and scenario 3 wants VUS more immediately. Without this the secured run fails on
