@@ -45,7 +45,10 @@ public class HttpConnectionRegistry {
 
     private volatile boolean aborted;
 
-    private volatile boolean dispatchesInterrupted;
+    // Advanced by reset() and published by the sweep, both on the lifecycle thread and never concurrently.
+    private volatile long generation;
+
+    private volatile long sweptGeneration = -1;
 
     public HttpConnectionRegistry(ChannelGroup connections) {
         this.connections = connections;
@@ -107,8 +110,9 @@ public class HttpConnectionRegistry {
     /**
      * Counted before the dispatch is submitted, so a queued task is never invisible to a drain.
      */
-    public void dispatchStarted() {
+    public long dispatchStarted() {
         dispatchesInFlight.incrementAndGet();
+        return generation;
     }
 
     public void dispatchFinished() {
@@ -162,7 +166,7 @@ public class HttpConnectionRegistry {
     public boolean interruptAndAwaitDispatches(long timeoutMillis) throws InterruptedException {
         dispatchWaiters.incrementAndGet();
         try {
-            dispatchesInterrupted = true;
+            sweptGeneration = generation;
             for (DispatchThread dispatch : dispatchThreads) {
                 dispatch.interrupt();
             }
@@ -174,13 +178,15 @@ public class HttpConnectionRegistry {
 
     /**
      * Called on the dispatch thread as the dispatch begins; closing the result releases the thread.
-     * The flag is read after the add, as {@link #interruptAndAwaitDispatches} sets it before its
-     * sweep, so a registration racing the sweep is interrupted by one side or the other.
+     * The swept generation is read after the add, as {@link #interruptAndAwaitDispatches} writes it
+     * before its sweep, so a registration racing the sweep is interrupted by one side or the other.
+     * A generation rather than a flag {@link #reset()} clears, because a task queued across a
+     * stop/start would otherwise run against the restarted context.
      */
-    DispatchThread registerDispatchThread() {
+    DispatchThread registerDispatchThread(long dispatchGeneration) {
         DispatchThread dispatch = new DispatchThread(Thread.currentThread());
         dispatchThreads.add(dispatch);
-        if (dispatchesInterrupted) {
+        if (dispatchGeneration <= sweptGeneration) {
             dispatch.interrupt();
         }
         return dispatch;
@@ -236,15 +242,16 @@ public class HttpConnectionRegistry {
     }
 
     /**
-     * Clears the drain, abort and interrupt flags so a restarted server serves keep-alive connections
-     * again, waits for its own dispatches and runs them uninterrupted. A dispatch abandoned by a
-     * shutdown that ran out of grace is still running, so the count is not cleared — the restarted
-     * server starts non-zero and settles when that thread's {@code finally} runs.
+     * Clears the drain and abort flags, and starts a new generation, so a restarted server serves
+     * keep-alive connections again, waits for its own dispatches and runs them uninterrupted. A
+     * dispatch abandoned by a shutdown that ran out of grace is still running, so the count is not
+     * cleared — the restarted server starts non-zero and settles when that thread's {@code finally}
+     * runs.
      */
     public void reset() {
         draining = false;
         aborted = false;
-        dispatchesInterrupted = false;
+        generation++;
     }
 
     /**

@@ -283,9 +283,9 @@ class HttpConnectionRegistryTest {
         HttpConnectionRegistry registry = newRegistry();
         CountDownLatch registered = new CountDownLatch(1);
         AtomicBoolean interrupted = new AtomicBoolean();
-        registry.dispatchStarted();
+        long generation = registry.dispatchStarted();
         Thread.ofPlatform().start(() -> {
-            try (HttpConnectionRegistry.DispatchThread _ = registry.registerDispatchThread()) {
+            try (HttpConnectionRegistry.DispatchThread _ = registry.registerDispatchThread(generation)) {
                 registered.countDown();
                 new CountDownLatch(1).await();
             } catch (InterruptedException e) {
@@ -333,7 +333,7 @@ class HttpConnectionRegistryTest {
     @Test
     void shouldNotInterruptThreadAfterItsDispatchReleasedIt() throws Exception {
         HttpConnectionRegistry registry = newRegistry();
-        registry.registerDispatchThread().close();
+        registry.registerDispatchThread(registry.dispatchStarted()).close();
 
         registry.interruptAndAwaitDispatches(0);
 
@@ -343,7 +343,7 @@ class HttpConnectionRegistryTest {
     @Test
     void shouldClearShutdownInterruptWhenDispatchReleasesThread() throws Exception {
         HttpConnectionRegistry registry = newRegistry();
-        HttpConnectionRegistry.DispatchThread dispatch = registry.registerDispatchThread();
+        HttpConnectionRegistry.DispatchThread dispatch = registry.registerDispatchThread(registry.dispatchStarted());
         Thread dispatchThread = Thread.currentThread();
         Thread.ofPlatform().start(() -> {
             try {
@@ -370,14 +370,31 @@ class HttpConnectionRegistryTest {
     @Test
     void shouldInterruptDispatchRegisteringAfterSweep() throws Exception {
         HttpConnectionRegistry registry = newRegistry();
+        long generation = registry.dispatchStarted();
         registry.interruptAndAwaitDispatches(0);
 
         boolean interrupted;
-        try (HttpConnectionRegistry.DispatchThread _ = registry.registerDispatchThread()) {
+        try (HttpConnectionRegistry.DispatchThread _ = registry.registerDispatchThread(generation)) {
             interrupted = Thread.currentThread().isInterrupted();
         }
 
         assertTrue(interrupted, "a dispatch whose thread registers after the sweep must still be interrupted");
+        assertFalse(Thread.interrupted(), "releasing the thread must clear the interrupt it was handed");
+    }
+
+    @Test
+    void shouldInterruptDispatchQueuedAcrossReset() throws Exception {
+        HttpConnectionRegistry registry = newRegistry();
+        long generation = registry.dispatchStarted();
+        registry.interruptAndAwaitDispatches(0);
+        registry.reset();
+
+        boolean interrupted;
+        try (HttpConnectionRegistry.DispatchThread _ = registry.registerDispatchThread(generation)) {
+            interrupted = Thread.currentThread().isInterrupted();
+        }
+
+        assertTrue(interrupted, "a dispatch counted before the sweep must stay interrupted across a restart");
         assertFalse(Thread.interrupted(), "releasing the thread must clear the interrupt it was handed");
     }
 
@@ -388,7 +405,7 @@ class HttpConnectionRegistryTest {
         registry.reset();
 
         boolean interrupted;
-        try (HttpConnectionRegistry.DispatchThread _ = registry.registerDispatchThread()) {
+        try (HttpConnectionRegistry.DispatchThread _ = registry.registerDispatchThread(registry.dispatchStarted())) {
             interrupted = Thread.currentThread().isInterrupted();
         }
 
