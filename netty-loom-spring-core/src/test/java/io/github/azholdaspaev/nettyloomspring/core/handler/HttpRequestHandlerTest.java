@@ -858,8 +858,16 @@ class HttpRequestHandlerTest {
     @Test
     void shouldLogEncoderFailureOfResponseWriteAsWarning() {
         EmbeddedChannel channel = new EmbeddedChannel(new EncoderFailingWrites(),
-            new HttpRequestHandler((_, _, _, writer) -> writer.write(
-                    new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK)),
+            new HttpRequestHandler((_, _, _, writer) -> {
+                    try {
+                        writer.write(new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
+                    } catch (IOException swallowed) {
+                        /*
+                         * Swallowed, so the line can come only from the write's own listener: this write
+                         * fails synchronously, so a dispatch that let it out would report the same fault.
+                         */
+                    }
+                },
                 DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
         ByteArrayOutputStream captured = new ByteArrayOutputStream();
@@ -872,8 +880,13 @@ class HttpRequestHandlerTest {
         }
 
         String logged = captured.toString(StandardCharsets.UTF_8);
-        assertTrue(logged.contains("WARN"),
-            "an encoder fault is the server's, not a departed client, so the close must say why; log was: " + logged);
+        assertEquals(1L, logged.lines()
+                .filter(line -> line.contains("WARN"))
+                .filter(line -> line.contains("Closing GET / after a failure mid-response: "
+                    + "java.io.IOException: io.netty.handler.codec.EncoderException"))
+                .count(),
+            "an encoder fault is the server's, not a departed client, so the close must say why, once; log was: "
+                + logged);
     }
 
     private static final class EncoderFailingWrites extends ChannelOutboundHandlerAdapter {
