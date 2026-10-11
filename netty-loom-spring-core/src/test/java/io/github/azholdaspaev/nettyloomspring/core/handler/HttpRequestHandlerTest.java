@@ -718,6 +718,41 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    void shouldReportWriteRejectedByTerminatedLoopAsDepartedClient() throws Exception {
+        AtomicReference<Runnable> termination = new AtomicReference<>();
+        AtomicReference<Thread> worker = new AtomicReference<>();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        try (StalledConnection connection = new StalledConnection(new HttpRequestHandler((_, _, _, writer) -> {
+                try {
+                    writer.write(new PreemptingResponse(termination));
+                } catch (Throwable caught) {
+                    failure.set(caught);
+                }
+            },
+            task -> worker.set(startQuietly(task)), connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT))) {
+            termination.set(() -> connection.group.shutdownGracefully(0, 0, TimeUnit.NANOSECONDS).syncUninterruptibly());
+
+            ByteArrayOutputStream captured = new ByteArrayOutputStream();
+            PrintStream standardError = System.err;
+            System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
+            try {
+                connection.dispatch();
+                SpinWait.until(() -> worker.get() != null, PARK_LIMIT, "the dispatch must have been submitted");
+                worker.get().join();
+            } finally {
+                System.setErr(standardError);
+            }
+            String logged = captured.toString(StandardCharsets.UTF_8);
+
+            assertInstanceOf(ClosedChannelException.class, failure.get(),
+                "a terminated loop has closed the connection, which is the type a departed client is classified by");
+            assertFalse(logged.contains("Failed to submit a listener notification task"),
+                "a write the terminated loop refused must not be left to Netty to report; log was: " + logged);
+        }
+    }
+
+    @Test
     void shouldCloseNotFireExceptionCaughtWhenDispatchFailsPostCommit() {
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         EmbeddedChannel channel = new EmbeddedChannel(
@@ -1787,8 +1822,8 @@ class HttpRequestHandlerTest {
     }
 
     /**
-     * Answers the exchange from the pipeline while the dispatch is inside {@code write}, which is the
-     * interleaving two threads produce and a single one otherwise cannot reach.
+     * Runs a task while the dispatch is inside {@code write}, between its guard and the wire, which is
+     * the interleaving two threads produce and a single one otherwise cannot reach.
      */
     private static final class PreemptingResponse extends DefaultHttpResponse {
 
