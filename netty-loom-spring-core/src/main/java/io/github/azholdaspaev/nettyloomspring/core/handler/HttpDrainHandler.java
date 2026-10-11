@@ -6,7 +6,6 @@ import io.netty.channel.ChannelPromise;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpUtil;
-import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.util.ReferenceCountUtil;
 
 /**
@@ -64,7 +63,7 @@ public class HttpDrainHandler extends ChannelDuplexHandler {
          * unvoided promise or the listener would never be notified.
          */
         ChannelPromise writePromise = promise;
-        if (msg instanceof LastHttpContent) {
+        if (HttpResponses.endsExchange(msg)) {
             writePromise = promise.unvoid();
             writePromise.addListener(_ -> connectionRegistry.exchangeFinished(ctx.channel()));
         }
