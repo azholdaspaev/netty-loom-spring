@@ -7,6 +7,7 @@
 for d in "$RAMP" "$DURATION"; do
   [[ "$d" =~ ^[0-9]+s$ ]] || { echo "RAMP and DURATION must be whole seconds, e.g. 60s; got '$d'" >&2; exit 1; }
 done
+[[ "$CAPTURE_AT" =~ ^[0-9]+$ ]] || { echo "CAPTURE_AT must be whole seconds with no unit, e.g. 45; got '$CAPTURE_AT'" >&2; exit 1; }
 HOLD_START=${RAMP%s}
 HOLD_END=$(( HOLD_START + ${DURATION%s} ))
 if [ "$CAPTURE_AT" -le "$HOLD_START" ] || [ "$CAPTURE_AT" -ge "$HOLD_END" ]; then
