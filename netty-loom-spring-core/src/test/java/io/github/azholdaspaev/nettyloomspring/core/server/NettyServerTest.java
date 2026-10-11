@@ -45,6 +45,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -332,15 +333,39 @@ class NettyServerTest {
     @Test
     void shouldReleaseBossGroupWhenWorkerGroupFailsToBuild() throws Exception {
         List<EventExecutor> bossLoops = new CopyOnWriteArrayList<>();
-        NettyIoHandlerFactory exhausted = new NettyIoHandlerFactory(NettyTransportPreference.NIO) {
+        nettyServer = newServerFailingWorkerGroup(bossLoops, _ -> {
+            throw new IllegalStateException("too many open files");
+        });
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class, nettyServer::start);
+
+        assertEquals("too many open files", rootCause(failure).getMessage(),
+            "the worker group's own failure must be what start() reports");
+        assertReleased(bossLoops);
+    }
+
+    @Test
+    void shouldReleaseBossGroupWhenWorkerGroupFailsWithError() throws Exception {
+        List<EventExecutor> bossLoops = new CopyOnWriteArrayList<>();
+        OutOfMemoryError exhausted = new OutOfMemoryError("Java heap space");
+        nettyServer = newServerFailingWorkerGroup(bossLoops, _ -> {
+            throw exhausted;
+        });
+
+        OutOfMemoryError failure = assertThrows(OutOfMemoryError.class, nettyServer::start);
+
+        assertSame(exhausted, failure, "the worker group's own failure must be what start() reports");
+        assertReleased(bossLoops);
+    }
+
+    private static NettyServer newServerFailingWorkerGroup(List<EventExecutor> bossLoops, IoHandlerFactory worker) {
+        NettyIoHandlerFactory failing = new NettyIoHandlerFactory(NettyTransportPreference.NIO) {
             private boolean bossBuilt;
 
             @Override
             public IoHandlerFactory getIoHandlerFactory() {
                 if (bossBuilt) {
-                    return _ -> {
-                        throw new IllegalStateException("too many open files");
-                    };
+                    return worker;
                 }
                 bossBuilt = true;
                 IoHandlerFactory real = super.getIoHandlerFactory();
@@ -350,15 +375,13 @@ class NettyServerTest {
                 };
             }
         };
-        nettyServer = NettyServerFixture.newServer(
+        return NettyServerFixture.newServer(
             new NettyServerConfiguration(0, InetAddress.getLoopbackAddress(), 1, 1, false, 128),
             new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)),
-            List.of(), exhausted);
+            List.of(), failing);
+    }
 
-        IllegalStateException failure = assertThrows(IllegalStateException.class, nettyServer::start);
-
-        assertEquals("too many open files", rootCause(failure).getMessage(),
-            "the worker group's own failure must be what start() reports");
+    private static void assertReleased(List<EventExecutor> bossLoops) throws InterruptedException {
         assertFalse(bossLoops.isEmpty(), "the boss group must have been built before the worker group failed");
         for (EventExecutor loop : bossLoops) {
             assertTrue(loop.awaitTermination(5, TimeUnit.SECONDS),

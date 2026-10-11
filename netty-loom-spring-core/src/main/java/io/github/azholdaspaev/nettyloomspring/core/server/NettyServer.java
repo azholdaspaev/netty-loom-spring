@@ -61,7 +61,7 @@ public class NettyServer {
             EventLoopGroup worker;
             try {
                 worker = newEventLoopGroup(configuration.workerThreads());
-            } catch (RuntimeException e) {
+            } catch (Throwable e) {
                 stopEventLoopsQuietly(boss);
                 throw e;
             }
