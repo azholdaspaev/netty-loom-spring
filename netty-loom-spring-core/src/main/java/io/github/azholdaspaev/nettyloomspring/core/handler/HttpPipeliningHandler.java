@@ -73,7 +73,7 @@ public class HttpPipeliningHandler extends ChannelDuplexHandler {
          * LastHttpContent rather than the dispatcher's return value, so a response written in parts
          * still ends its exchange at the end.
          */
-        if (!(msg instanceof LastHttpContent) || HttpResponses.isInformational(msg)) {
+        if (!HttpResponses.endsExchange(msg)) {
             ctx.write(msg, promise);
             return;
         }

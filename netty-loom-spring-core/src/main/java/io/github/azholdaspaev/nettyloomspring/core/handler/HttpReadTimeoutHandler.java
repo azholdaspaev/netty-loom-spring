@@ -138,7 +138,7 @@ public class HttpReadTimeoutHandler extends ChannelDuplexHandler {
          * LastHttpContent rather than the dispatcher's return value keeps a response written in parts
          * restarting the clock at its end.
          */
-        if (msg instanceof LastHttpContent && !HttpResponses.isInformational(msg)) {
+        if (HttpResponses.endsExchange(msg)) {
             requestAnswered();
         }
         ctx.write(msg, promise);
