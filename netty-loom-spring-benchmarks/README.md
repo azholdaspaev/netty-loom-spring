@@ -218,11 +218,8 @@ overridable with `--env USERNAME=... --env PASSWORD=...`).
 
 ### Profile one target's memory
 
-[`scripts/profile-memory.sh`](scripts/profile-memory.sh) runs one target under one scenario as the
-sweep's memory pass, with its flags and file names, and adds an NMT diff, a heap summary and a
-thread census at the plateau and after the connections close, all taken after the forced
-collections; with `PROFILE=1`, a virtual-thread dump taken before any other capture, a JFR recording
-and class histograms. `summarize.py` renders the run directory's memory row as it would a sweep's.
+[`scripts/profile-memory.sh`](scripts/profile-memory.sh) runs one target as the sweep's memory pass;
+`summarize.py` renders its memory row.
 
 ```bash
 PROFILE=1 bash scripts/profile-memory.sh netty-loom 18080 "$HOME/bench-results/head" high-concurrency.js \
