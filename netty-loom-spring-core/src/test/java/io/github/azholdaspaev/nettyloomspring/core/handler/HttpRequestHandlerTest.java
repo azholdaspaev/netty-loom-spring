@@ -1319,7 +1319,7 @@ class HttpRequestHandlerTest {
         channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/"));
         submitted.join().run();
 
-        channel.pipeline().fireExceptionCaught(new TooLongFrameException("body past the limit"));
+        channel.pipeline().fireExceptionCaught(new TooLongFrameException("trailer block past the limit"));
 
         assertNull(capture.captured,
             "a status written for the failure would encode as more of the body already sent");
@@ -1444,7 +1444,7 @@ class HttpRequestHandlerTest {
          * threads interleave and where reading preempted and state separately cannot see the other.
          */
         preemption.set(() -> channel.pipeline()
-            .fireExceptionCaught(new TooLongFrameException("body past the limit")));
+            .fireExceptionCaught(new HttpRequestBodyTooLargeException(16)));
 
         channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/upload"));
 
@@ -1470,12 +1470,33 @@ class HttpRequestHandlerTest {
          */
         channel.runPendingTasks();
 
-        channel.pipeline().fireExceptionCaught(new TooLongFrameException("body past the limit"));
+        channel.pipeline().fireExceptionCaught(new TooLongFrameException("trailer block past the limit"));
 
         assertNull(capture.captured,
             "the body is still arriving, so a status mapped for its refusal would be a second response "
                 + "to one request");
         assertFalse(channel.isOpen(), "there is no way left to report it, so the connection goes");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void shouldKeepConnectionWhenBodyOutgrowsLimitAfterResponseEnds() {
+        ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
+        CompletableFuture<Runnable> submitted = new CompletableFuture<>();
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            (_, _, _, writer) -> writer.write(emptyOkResponse()), submitted::complete, connectionRegistry,
+            UNREACHED_WRITE_STALL_TIMEOUT), capture);
+        channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/upload"));
+        submitted.join().run();
+
+        channel.pipeline().fireExceptionCaught(new HttpRequestBodyTooLargeException(16));
+
+        assertNull(capture.captured,
+            "the body is still arriving, so a status mapped for its refusal would be a second response "
+                + "to one request");
+        assertTrue(channel.isOpen(),
+            "the response is whole, so the rest of the body is the swallow limit's to bound, and a close "
+                + "here can overtake that response while it is still queued for the event loop");
         channel.finishAndReleaseAll();
     }
 

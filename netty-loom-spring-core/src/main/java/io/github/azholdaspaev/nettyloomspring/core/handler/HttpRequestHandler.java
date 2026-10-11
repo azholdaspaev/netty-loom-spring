@@ -131,13 +131,18 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
      * unwinding on that failure cannot race a second response onto one request (#78); waking it at all
      * is what stops a refused upload leaving the dispatch blocked on a body that will never arrive.
      * Once the response has started, a status written for the failure would encode as more of that
-     * body, so the connection is closed instead.
+     * body, so the connection is closed instead; but not for a body past its cap once the response is
+     * whole, since the end may still be queued behind this event and the close would overtake it.
      */
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
         HttpChannelResponseWriter answering = writer;
         boolean midResponse = answering != null && !answering.preempt();
         failBody(cause);
+        if (midResponse && cause instanceof HttpRequestBodyTooLargeException
+            && answering.state.get() == ResponseState.ENDED) {
+            return;
+        }
         if (midResponse) {
             ctx.close();
             return;
