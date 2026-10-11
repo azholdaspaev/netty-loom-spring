@@ -17,6 +17,7 @@ import io.netty.channel.local.LocalAddress;
 import io.netty.channel.local.LocalChannel;
 import io.netty.channel.local.LocalIoHandler;
 import io.netty.channel.local.LocalServerChannel;
+import io.netty.handler.codec.EncoderException;
 import io.netty.handler.codec.TooLongFrameException;
 import io.github.azholdaspaev.nettyloomspring.core.support.RecordingReads;
 import io.github.azholdaspaev.nettyloomspring.core.support.ReleaseFailingContent;
@@ -718,6 +719,49 @@ class HttpRequestHandlerTest {
 
         assertFalse(channel.isOpen(),
             "a body the client is still waiting for must be ended by the close, not left open");
+    }
+
+    @Test
+    void shouldCloseConnectionWhenResponseWriteFails() {
+        EmbeddedChannel channel = new EmbeddedChannel(new EncoderFailingWrites(),
+            new HttpRequestHandler((_, _, _, writer) -> writer.write(
+                    new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK)),
+                DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+
+        receive(channel, HttpMethod.GET, "/");
+
+        assertFalse(channel.isOpen(),
+            "a response the encoder failed is truncated, so the keep-alive connection must not outlive it");
+    }
+
+    @Test
+    void shouldLogEncoderFailureOfResponseWriteAsWarning() {
+        EmbeddedChannel channel = new EmbeddedChannel(new EncoderFailingWrites(),
+            new HttpRequestHandler((_, _, _, writer) -> writer.write(
+                    new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK)),
+                DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+
+        ByteArrayOutputStream captured = new ByteArrayOutputStream();
+        PrintStream standardError = System.err;
+        System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
+        try {
+            receive(channel, HttpMethod.GET, "/");
+        } finally {
+            System.setErr(standardError);
+        }
+
+        String logged = captured.toString(StandardCharsets.UTF_8);
+        assertTrue(logged.contains("WARN"),
+            "an encoder fault is the server's, not a departed client, so the close must say why; log was: " + logged);
+    }
+
+    private static final class EncoderFailingWrites extends ChannelOutboundHandlerAdapter {
+
+        @Override
+        public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+            ReferenceCountUtil.release(msg);
+            promise.setFailure(new EncoderException(new IllegalStateException("unexpected message type")));
+        }
     }
 
     /**
