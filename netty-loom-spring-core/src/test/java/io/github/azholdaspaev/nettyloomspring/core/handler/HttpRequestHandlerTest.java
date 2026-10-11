@@ -21,6 +21,7 @@ import io.netty.handler.codec.EncoderException;
 import io.netty.handler.codec.TooLongFrameException;
 import io.github.azholdaspaev.nettyloomspring.core.support.RecordingReads;
 import io.github.azholdaspaev.nettyloomspring.core.support.ReleaseFailingContent;
+import io.github.azholdaspaev.nettyloomspring.core.support.StandardError;
 import io.netty.handler.codec.http.DefaultHttpRequest;
 import io.netty.handler.codec.http.DefaultLastHttpContent;
 import io.netty.handler.codec.http.HttpContent;
@@ -48,10 +49,8 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.PrintStream;
 import java.nio.channels.ClosedChannelException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -733,17 +732,11 @@ class HttpRequestHandlerTest {
             task -> worker.set(startQuietly(task)), connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT))) {
             termination.set(() -> connection.group.shutdownGracefully(0, 0, TimeUnit.NANOSECONDS).syncUninterruptibly());
 
-            ByteArrayOutputStream captured = new ByteArrayOutputStream();
-            PrintStream standardError = System.err;
-            System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
-            try {
+            String logged = StandardError.captureDuring(() -> {
                 connection.dispatch();
                 SpinWait.until(() -> worker.get() != null, PARK_LIMIT, "the dispatch must have been submitted");
                 worker.get().join();
-            } finally {
-                System.setErr(standardError);
-            }
-            String logged = captured.toString(StandardCharsets.UTF_8);
+            });
 
             assertInstanceOf(ClosedChannelException.class, failure.get(),
                 "a terminated loop has closed the connection, which is the type a departed client is classified by");
@@ -856,7 +849,7 @@ class HttpRequestHandlerTest {
     }
 
     @Test
-    void shouldLogEncoderFailureOfResponseWriteAsWarning() {
+    void shouldLogEncoderFailureOfResponseWriteAsWarning() throws Exception {
         EmbeddedChannel channel = new EmbeddedChannel(new EncoderFailingWrites(),
             new HttpRequestHandler((_, _, _, writer) -> {
                     try {
@@ -870,16 +863,8 @@ class HttpRequestHandlerTest {
                 },
                 DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
 
-        ByteArrayOutputStream captured = new ByteArrayOutputStream();
-        PrintStream standardError = System.err;
-        System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
-        try {
-            receive(channel, HttpMethod.GET, "/");
-        } finally {
-            System.setErr(standardError);
-        }
+        String logged = StandardError.captureDuring(() -> receive(channel, HttpMethod.GET, "/"));
 
-        String logged = captured.toString(StandardCharsets.UTF_8);
         assertEquals(1L, logged.lines()
                 .filter(line -> line.contains("WARN"))
                 .filter(line -> line.contains("Closing GET / after a failure mid-response: "
@@ -983,17 +968,11 @@ class HttpRequestHandlerTest {
             "the head must reach the wire before the client leaves");
         channel.close();
 
-        ByteArrayOutputStream captured = new ByteArrayOutputStream();
-        PrintStream standardError = System.err;
-        System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
-        try {
+        String logged = StandardError.captureDuring(() -> {
             connectionClosed.countDown();
             worker.get().join();
-        } finally {
-            System.setErr(standardError);
-        }
+        });
 
-        String logged = captured.toString(StandardCharsets.UTF_8);
         assertFalse(logged.contains("WARN"),
             "a client that hung up mid-stream is not a failure; log was: " + logged);
     }
@@ -1641,16 +1620,10 @@ class HttpRequestHandlerTest {
             Thread worker = dispatch.join();
             group.shutdownGracefully(0, 0, TimeUnit.NANOSECONDS).sync();
 
-            ByteArrayOutputStream captured = new ByteArrayOutputStream();
-            PrintStream standardError = System.err;
-            System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
-            try {
+            String logged = StandardError.captureDuring(() -> {
                 eventLoopTerminated.countDown();
                 worker.join();
-            } finally {
-                System.setErr(standardError);
-            }
-            String logged = captured.toString(StandardCharsets.UTF_8);
+            });
 
             assertEquals(1L, logged.lines()
                     .filter(line -> line.contains("Abandoned GET /work after the event loop terminated"))
