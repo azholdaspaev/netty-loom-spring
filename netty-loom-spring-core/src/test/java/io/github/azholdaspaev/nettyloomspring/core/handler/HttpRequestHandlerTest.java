@@ -1501,6 +1501,38 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    void shouldFailBodyReadAfterResponseWhenBodyOutgrowsLimit() throws Exception {
+        CompletableFuture<Runnable> submitted = new CompletableFuture<>();
+        CountDownLatch answered = new CountDownLatch(1);
+        CompletableFuture<IOException> readFailure = new CompletableFuture<>();
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            (_, body, _, writer) -> {
+                writer.write(emptyOkResponse());
+                answered.countDown();
+                try {
+                    body.readAllBytes();
+                    readFailure.complete(null);
+                } catch (IOException refused) {
+                    readFailure.complete(refused);
+                }
+            }, submitted::complete, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+        channel.pipeline().fireChannelRead(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/upload"));
+        Thread dispatch = startQuietly(submitted.join());
+        answered.await();
+
+        channel.pipeline().fireExceptionCaught(new HttpRequestBodyTooLargeException(16));
+        IOException failure = readFailure.completeOnTimeout(null, PARK_LIMIT.toMillis(), TimeUnit.MILLISECONDS).join();
+
+        assertNotNull(failure,
+            "the limit drops every part after the one past it, so a dispatch still reading once it has "
+                + "answered would block until the read timeout unless its body is failed");
+        assertInstanceOf(HttpRequestBodyTooLargeException.class, failure.getCause(),
+            "the dispatch should see that its body outgrew the limit, not that the connection went");
+        channel.finishAndReleaseAll();
+        dispatch.join();
+    }
+
+    @Test
     void shouldTakeOverEveryReadOfConnectionItJoins() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
             new CapturingDispatcher(), NEVER_RUN, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
