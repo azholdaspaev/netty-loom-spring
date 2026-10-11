@@ -2,6 +2,9 @@ package io.github.azholdaspaev.nettyloomspring.core.handler;
 
 import io.github.azholdaspaev.nettyloomspring.core.support.SpinWait;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.util.concurrent.GlobalEventExecutor;
@@ -105,6 +108,25 @@ class HttpConnectionRegistryTest {
 
         assertFalse(latecomer.isOpen(),
             "a connection accepted after the abort closed the group must not hold the owner's drain open");
+    }
+
+    @Test
+    void shouldForceCloseConnectionWhosePipelineSwallowsClose() {
+        HttpConnectionRegistry registry = newRegistry();
+        EmbeddedChannel connection = new EmbeddedChannel(new ChannelOutboundHandlerAdapter() {
+            @Override
+            public void close(ChannelHandlerContext ctx, ChannelPromise promise) {
+            }
+        });
+        registry.register(connection);
+
+        registry.forceCloseAll();
+        registry.forceCloseAll();
+        connection.runPendingTasks();
+        connection.checkException();
+
+        assertFalse(connection.isOpen(),
+            "a force-close must bypass a pipeline that swallows close(), and running it twice must be harmless");
     }
 
     @Test

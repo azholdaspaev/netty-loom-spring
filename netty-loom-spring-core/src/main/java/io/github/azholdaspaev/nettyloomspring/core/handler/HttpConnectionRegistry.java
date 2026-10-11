@@ -241,6 +241,13 @@ public class HttpConnectionRegistry {
         return connections.close();
     }
 
+    /** Through {@code Unsafe} rather than the pipeline, so a handler holding or failing {@code close()} cannot keep the socket open. */
+    public void forceCloseAll() {
+        for (Channel connection : connections) {
+            connection.eventLoop().execute(() -> connection.unsafe().close(connection.voidPromise()));
+        }
+    }
+
     /**
      * Clears the drain and abort flags, and starts a new generation, so a restarted server serves
      * keep-alive connections again, waits for its own dispatches and runs them uninterrupted. A
