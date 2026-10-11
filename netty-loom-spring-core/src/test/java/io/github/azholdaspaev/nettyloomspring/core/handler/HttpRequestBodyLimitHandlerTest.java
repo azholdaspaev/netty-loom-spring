@@ -430,6 +430,19 @@ class HttpRequestBodyLimitHandlerTest {
     }
 
     @Test
+    void shouldCountBodyLimitAcrossResponseEnd() {
+        EmbeddedChannel channel = newChannel();
+        channel.writeInbound(post());
+        channel.readInbound();
+        channel.writeInbound(content("x".repeat(MAX_BODY_BYTES)));
+        ReferenceCountUtil.release(channel.readInbound());
+        endResponse(channel);
+
+        assertThrows(HttpRequestBodyTooLargeException.class, () -> channel.writeInbound(content("x")),
+            "the body limit bounds the whole body a dispatch can read, not each side of its response");
+    }
+
+    @Test
     void shouldCloseOnceUnreadBodyPassesSwallowLimit() {
         EmbeddedChannel channel = newChannel();
         channel.writeInbound(post());
