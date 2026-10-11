@@ -6,8 +6,11 @@ import io.github.azholdaspaev.nettyloomspring.autoconfigure.support.RawHttpClien
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.support.RawHttpResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.test.web.server.LocalServerPort;
 
 import java.io.IOException;
@@ -16,6 +19,7 @@ import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -25,7 +29,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @SpringBootTest(
     classes = RequestBodyTestApplication.class,
-    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = "logging.level.io.github.azholdaspaev.nettyloomspring.core.handler.HttpRequestBodyLimitHandler=DEBUG"
 )
 class RequestBodyStreamingIntegrationTest {
 
@@ -34,6 +39,8 @@ class RequestBodyStreamingIntegrationTest {
 
     /** Past any limit the server could be configured with, so nothing here restates that limit. */
     private static final long UNACCEPTABLE_CONTENT_LENGTH = 100L * 1024 * 1024;
+
+    private static final int PAST_DEFAULT_CAP_WITHIN_DEFAULT_SWALLOW_BYTES = 1536 * 1024;
 
     @LocalServerPort
     int port;
@@ -193,6 +200,53 @@ class RequestBodyStreamingIntegrationTest {
                 "an abandoned body past the queue bound leaves the valve shut, and everything later on "
                     + "the connection waits behind it");
             assertEquals("read 2", second.readBody());
+        }
+    }
+
+    @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    void shouldServeNextRequestAfterIgnoringBodyPastCap() throws Exception {
+        try (Socket socket = connect()) {
+            RawHttpClient.send(socket, "POST /upload/ignored HTTP/1.1",
+                "Host: localhost", "Transfer-Encoding: chunked");
+            RawHttpResponse first = RawHttpResponse.read(socket.getInputStream());
+            assertEquals(200, first.status());
+            first.readBody();
+
+            String block = "z".repeat(16 * 1024);
+            for (int sent = 0; sent < PAST_DEFAULT_CAP_WITHIN_DEFAULT_SWALLOW_BYTES; sent += block.length()) {
+                RawHttpClient.sendChunk(socket, block);
+            }
+            RawHttpClient.endChunks(socket);
+            RawHttpClient.send(socket, "POST /upload/count HTTP/1.1", "Host: localhost", "Content-Length: 2");
+            RawHttpClient.sendBody(socket, "ok");
+
+            RawHttpResponse second = RawHttpResponse.read(socket.getInputStream());
+            assertEquals(200, second.status(),
+                "the 200 promised a keep-alive connection, so a body past the cap that nobody read must "
+                    + "be swallowed rather than end it");
+            assertEquals("read 2", second.readBody());
+        }
+    }
+
+    @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    @ExtendWith(OutputCaptureExtension.class)
+    void shouldCloseOnceIgnoredBodyPassesSwallowLimit(CapturedOutput output) throws Exception {
+        try (Socket socket = connect()) {
+            RawHttpClient.send(socket, "POST /upload/ignored HTTP/1.1",
+                "Host: localhost", "Transfer-Encoding: chunked");
+            RawHttpResponse first = RawHttpResponse.read(socket.getInputStream());
+            assertEquals(200, first.status());
+            first.readBody();
+
+            sendUntilRefused(socket);
+
+            assertThrows(IOException.class, () -> RawHttpResponse.read(socket.getInputStream()),
+                "an unread body past the swallow limit ends the connection");
+            assertTrue(output.getAll().contains("arrived after its response"),
+                "a close the client cannot tell from a network fault must be named in the log; log was: "
+                    + output.getAll());
         }
     }
 

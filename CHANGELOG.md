@@ -54,6 +54,10 @@ in any minor release.
   to the reset. The server now shuts its output and discards what the client still sends before
   closing, up to the new `server.netty.max-swallow-size` and `server.netty.swallow-timeout`; a
   client still uploading past either bound is reset as before (#200).
+- A keep-alive connection whose handler answered without reading the request body is no longer
+  closed once that body passes `server.netty.max-http-body-size`, which failed the next request on
+  a pooled connection with a reset. What arrives after the response counts against
+  `server.netty.max-swallow-size` instead; past it the connection closes, logged at DEBUG (#201).
 - `@Autowired ServletContext` under any field or parameter name, and
   `getBean(ServletContext.class)`, now resolve to the running container's context instead of
   failing the context start with `NoUniqueBeanDefinitionException` (#330).

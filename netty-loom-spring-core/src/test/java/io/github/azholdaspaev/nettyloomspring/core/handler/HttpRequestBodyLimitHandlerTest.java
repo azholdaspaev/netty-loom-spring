@@ -7,6 +7,7 @@ import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.TooLongFrameException;
+import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.DefaultHttpContent;
 import io.netty.handler.codec.http.DefaultHttpRequest;
 import io.netty.handler.codec.http.DefaultLastHttpContent;
@@ -373,6 +374,88 @@ class HttpRequestBodyLimitHandlerTest {
         channel.close();
 
         assertFalse(channel.isOpen(), "only a refusal this handler answered swallows before closing");
+    }
+
+    @Test
+    void shouldForwardBodyPastLimitOnceResponseHasEnded() {
+        EmbeddedChannel channel = newChannel();
+        channel.writeInbound(post());
+        channel.readInbound();
+        endResponse(channel);
+
+        channel.writeInbound(content("x".repeat(MAX_BODY_BYTES + 1)));
+
+        HttpContent forwarded = channel.readInbound();
+        assertNotNull(forwarded, "a status for the cap would be a second response, so the cap no longer applies");
+        forwarded.release();
+        assertTrue(channel.isOpen(), "a keep-alive response must not be followed by a close the client was not told of");
+    }
+
+    @Test
+    void shouldCloseOnceUnreadBodyPassesSwallowLimit() {
+        EmbeddedChannel channel = newChannel();
+        channel.writeInbound(post());
+        channel.readInbound();
+        endResponse(channel);
+        HttpContent overflowing = content("x".repeat(MAX_SWALLOW_BYTES + 1));
+
+        channel.writeInbound(overflowing);
+
+        assertNull(channel.readInbound(), "content past the swallow limit belongs to nobody");
+        assertEquals(0, overflowing.refCnt(), "content past the swallow limit must not be leaked");
+        assertFalse(channel.isOpen(), "an unread body is swallowed only up to the swallow limit");
+    }
+
+    @Test
+    void shouldCountSwallowOnlyFromResponseEnd() {
+        EmbeddedChannel channel = newChannel();
+        channel.writeInbound(post());
+        channel.readInbound();
+        channel.writeInbound(content("x".repeat(MAX_BODY_BYTES)));
+        ReferenceCountUtil.release(channel.readInbound());
+        endResponse(channel);
+
+        channel.writeInbound(content("x".repeat(MAX_SWALLOW_BYTES)));
+
+        ReferenceCountUtil.release(channel.readInbound());
+        assertTrue(channel.isOpen(), "what arrived before the response counts against the body limit, not the swallow");
+    }
+
+    @Test
+    void shouldCountUnreadBodyOfEachExchangeOnItsOwn() {
+        EmbeddedChannel channel = newChannel();
+
+        for (int request = 0; request < 2; request++) {
+            channel.writeInbound(post());
+            channel.readInbound();
+            endResponse(channel);
+            channel.writeInbound(lastContent("x".repeat(MAX_SWALLOW_BYTES)));
+            ReferenceCountUtil.release(channel.readInbound());
+        }
+
+        assertTrue(channel.isOpen(), "each exchange's unread body is within the swallow limit on its own");
+    }
+
+    @Test
+    void shouldCountNextRequestAgainstBodyLimitAgain() {
+        EmbeddedChannel channel = newChannel();
+        channel.writeInbound(post());
+        channel.readInbound();
+        endResponse(channel);
+        channel.writeInbound(lastContent("x".repeat(MAX_BODY_BYTES + 1)));
+        ReferenceCountUtil.release(channel.readInbound());
+
+        channel.writeInbound(post());
+        channel.readInbound();
+
+        assertThrows(TooLongFrameException.class,
+            () -> channel.writeInbound(content("x".repeat(MAX_BODY_BYTES + 1))),
+            "the next request has no response yet, so its body is bounded by the body limit");
+    }
+
+    private static void endResponse(EmbeddedChannel channel) {
+        channel.writeOutbound(new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
+        ReferenceCountUtil.release(channel.readOutbound());
     }
 
     private static EmbeddedChannel newChannel() {

@@ -19,6 +19,8 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.PromiseNotifier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
@@ -36,10 +38,14 @@ import java.util.concurrent.TimeUnit;
  * because closing over unread request bytes sends a reset that destroys the refusal in the client's
  * buffer: the output is shut once the refusal is flushed, and what the client still sends, the
  * refused body and whatever it pipelined behind it, is discarded until it hangs up, more than
- * {@code maxSwallowBytes} arrives or {@code swallowTimeout} passes. Tomcat bounds the same swallow
+ * {@code maxSwallowBytes} arrives or {@code swallowTimeout} passes. A body still arriving once its
+ * response has ended is held to {@code maxSwallowBytes} rather than {@code maxBodyBytes}, on a
+ * connection kept open, because no status can follow that response. Tomcat bounds both swallows
  * with {@code maxSwallowSize}.
  */
 public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(HttpRequestBodyLimitHandler.class);
 
     private final long maxBodyBytes;
 
@@ -48,6 +54,11 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
     private final long swallowTimeoutNanos;
 
     private long received;
+
+    /** Event loop only. */
+    private boolean responseEnded;
+
+    private long receivedAfterResponse;
 
     /** The rest of this request's body is being dropped. Event loop only. */
     private boolean refused;
@@ -82,6 +93,8 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
         if (msg instanceof HttpRequest request) {
             received = 0;
             refused = false;
+            responseEnded = false;
+            receivedAfterResponse = 0;
             if (refuseOrNegotiate(ctx, request)) {
                 return;
             }
@@ -91,6 +104,10 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
         if (msg instanceof HttpContent content) {
             if (refused) {
                 content.release();
+                return;
+            }
+            if (responseEnded) {
+                swallowAfterResponse(ctx, content);
                 return;
             }
             received += content.content().readableBytes();
@@ -107,6 +124,14 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
             }
         }
         ctx.fireChannelRead(msg);
+    }
+
+    @Override
+    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+        if (HttpResponses.endsExchange(msg)) {
+            responseEnded = true;
+        }
+        ctx.write(msg, promise);
     }
 
     /** No response may follow the refusal's {@code Connection: close} (RFC 9112 §9.6), an error status included. */
@@ -166,6 +191,19 @@ public class HttpRequestBodyLimitHandler extends ChannelDuplexHandler {
             endSwallow(ctx);
         }
         ctx.fireChannelInactive();
+    }
+
+    private void swallowAfterResponse(ChannelHandlerContext ctx, HttpContent content) {
+        receivedAfterResponse += content.content().readableBytes();
+        if (receivedAfterResponse <= maxSwallowBytes) {
+            ctx.fireChannelRead(content);
+            return;
+        }
+        refused = true;
+        content.release();
+        log.debug("Closing {}: more than {} bytes of a request body arrived after its response",
+            ctx.channel(), maxSwallowBytes);
+        ctx.close();
     }
 
     private void swallow(ChannelHandlerContext ctx, Object msg) {
