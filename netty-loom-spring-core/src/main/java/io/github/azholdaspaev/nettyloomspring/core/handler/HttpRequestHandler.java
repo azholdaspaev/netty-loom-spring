@@ -167,7 +167,12 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
         try {
             dispatchExecutor.execute(() -> {
                 // Released before the catch and finally run, so a shutdown interrupt never reaches them.
-                try (HttpConnectionRegistry.DispatchThread _ = connectionRegistry.registerDispatchThread()) {
+                try (HttpConnectionRegistry.DispatchThread dispatch = connectionRegistry.registerDispatchThread()) {
+                    if (dispatch.isCutOff()) {
+                        // Closed, not reported: the shutdown is tearing down what handle runs against.
+                        ctx.close();
+                        return;
+                    }
                     requestDispatcher.handle(request, requestBody, connection, writer);
                     if (writer.state.get() != ResponseState.ENDED && ctx.channel().isActive()) {
                         /*

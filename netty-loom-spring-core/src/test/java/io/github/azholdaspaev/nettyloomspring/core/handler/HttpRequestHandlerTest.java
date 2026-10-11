@@ -63,6 +63,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -1309,6 +1310,54 @@ class HttpRequestHandlerTest {
 
         assertTrue(connectionRegistry.awaitDispatchesFinished(0),
             "the drain must be released once the queued dispatch has run");
+        FullHttpResponse out = channel.readOutbound();
+        out.release();
+        channel.finish();
+    }
+
+    @Test
+    void shouldSkipHandleForDispatchStartingAfterSweep() throws InterruptedException {
+        CompletableFuture<Runnable> submitted = new CompletableFuture<>();
+        AtomicBoolean handled = new AtomicBoolean();
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            (_, _, _, writer) -> {
+                handled.set(true);
+                writer.write(emptyOkResponse());
+            },
+            submitted::complete, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+
+        receive(channel, HttpMethod.GET, "/");
+        connectionRegistry.interruptAndAwaitDispatches(0);
+        submitted.join().run();
+
+        assertFalse(handled.get(), "a dispatch starting after the shutdown's sweep must not reach the dispatcher");
+        assertFalse(channel.isOpen(), "the connection of a skipped dispatch must be closed, not left owing a response");
+        assertNull(channel.readOutbound(), "a skipped dispatch must write nothing, not a failure status");
+        assertTrue(connectionRegistry.awaitDispatchesFinished(0), "a skipped dispatch must still be counted out");
+        assertFalse(Thread.interrupted(), "the interrupt handed to a skipped dispatch must not outlive it");
+        channel.finish();
+    }
+
+    @Test
+    void shouldRunHandleDespiteStrayInterruptOnDispatchThread() {
+        CompletableFuture<Runnable> submitted = new CompletableFuture<>();
+        AtomicBoolean handled = new AtomicBoolean();
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler(
+            (_, _, _, writer) -> {
+                handled.set(true);
+                writer.write(emptyOkResponse());
+            },
+            submitted::complete, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+        receive(channel, HttpMethod.GET, "/");
+
+        Thread.currentThread().interrupt();
+        try {
+            submitted.join().run();
+        } finally {
+            Thread.interrupted();
+        }
+
+        assertTrue(handled.get(), "only the shutdown's sweep may skip a dispatch, not an interrupt it did not send");
         FullHttpResponse out = channel.readOutbound();
         out.release();
         channel.finish();
