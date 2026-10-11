@@ -384,12 +384,23 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
             }
             if (writeStallTimeoutNanos <= 0) {
                 write.awaitUninterruptibly();
-                return;
-            }
-            if (!write.awaitUninterruptibly(writeStallTimeoutNanos, TimeUnit.NANOSECONDS)) {
+            } else if (!write.awaitUninterruptibly(writeStallTimeoutNanos, TimeUnit.NANOSECONDS)) {
                 ctx.close();
                 throw new IOException("Connection stopped accepting the response");
             }
+            if (!write.isSuccess()) {
+                throw toWriteFailure(write.cause());
+            }
         }
+    }
+
+    private static IOException toWriteFailure(Throwable cause) {
+        if (cause instanceof IOException) {
+            // Netty closed the channel before failing the write: AbstractChannel.AbstractUnsafe#handleWriteError.
+            ClosedChannelException departed = new ClosedChannelException();
+            departed.initCause(cause);
+            return departed;
+        }
+        return new IOException("Response write failed", cause);
     }
 }
