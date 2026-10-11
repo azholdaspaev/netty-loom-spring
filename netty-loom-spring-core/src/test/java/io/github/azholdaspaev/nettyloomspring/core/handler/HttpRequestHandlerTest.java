@@ -9,7 +9,13 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
+import io.netty.channel.ChannelPipeline;
 import io.netty.channel.ChannelPromise;
+import io.netty.channel.IoHandle;
+import io.netty.channel.IoHandler;
+import io.netty.channel.IoHandlerContext;
+import io.netty.channel.IoHandlerFactory;
+import io.netty.channel.IoRegistration;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.channel.group.DefaultChannelGroup;
@@ -44,6 +50,7 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.concurrent.GlobalEventExecutor;
+import io.netty.util.concurrent.ThreadAwareExecutor;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -748,6 +755,99 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    void shouldReportWriteSettledByTerminatingLoopAsDepartedClient() throws Exception {
+        AtomicReference<Runnable> termination = new AtomicReference<>();
+        AtomicReference<Runnable> afterWakeup = new AtomicReference<>();
+        AtomicReference<Thread> worker = new AtomicReference<>();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        HttpRequestHandler handler = new HttpRequestHandler((_, _, _, writer) -> {
+                try {
+                    afterWakeup.set(termination.get());
+                    writer.write(new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
+                } catch (Throwable caught) {
+                    failure.set(caught);
+                }
+            },
+            task -> worker.set(startQuietly(task)), connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT);
+        try (StalledConnection connection = new StalledConnection(handler,
+                executor -> new WakeupHook(LocalIoHandler.newFactory().newHandler(executor), executor, afterWakeup))) {
+            termination.set(() -> connection.group.shutdownGracefully(0, 0, TimeUnit.NANOSECONDS).syncUninterruptibly());
+            ChannelPipeline pipeline = connection.channel.pipeline();
+            pipeline.addBefore(pipeline.context(handler).name(), "failing", new FailingWrites(new ClosedChannelException()));
+
+            String logged = StandardError.captureDuring(() -> {
+                connection.dispatch();
+                SpinWait.until(() -> worker.get() != null, PARK_LIMIT, "the dispatch must have been submitted");
+                worker.get().join();
+            });
+
+            assertInstanceOf(ClosedChannelException.class, failure.get(),
+                "a terminated loop has closed the connection, which is the type a departed client is classified by");
+            assertFalse(logged.contains("Failed to submit a listener notification task"),
+                "a write the loop settled as it terminated must not be left to Netty to report; log was: " + logged);
+        }
+    }
+
+    /**
+     * Runs a task on the thread that woke the loop, once the task it submitted is queued: between
+     * {@code writeAndFlush} handing the write over and the dispatch using the future it returned.
+     */
+    private static final class WakeupHook implements IoHandler {
+
+        private final IoHandler delegate;
+        private final ThreadAwareExecutor executor;
+        private final AtomicReference<Runnable> afterWakeup;
+
+        WakeupHook(IoHandler delegate, ThreadAwareExecutor executor, AtomicReference<Runnable> afterWakeup) {
+            this.delegate = delegate;
+            this.executor = executor;
+            this.afterWakeup = afterWakeup;
+        }
+
+        @Override
+        public void wakeup() {
+            delegate.wakeup();
+            if (!executor.isExecutorThread(Thread.currentThread())) {
+                Runnable pending = afterWakeup.getAndSet(null);
+                if (pending != null) {
+                    pending.run();
+                }
+            }
+        }
+
+        @Override
+        public void initialize() {
+            delegate.initialize();
+        }
+
+        @Override
+        public int run(IoHandlerContext context) {
+            return delegate.run(context);
+        }
+
+        @Override
+        public void prepareToDestroy() {
+            delegate.prepareToDestroy();
+        }
+
+        @Override
+        public void destroy() {
+            delegate.destroy();
+        }
+
+        @Override
+        public IoRegistration register(IoHandle handle) throws Exception {
+            return delegate.register(handle);
+        }
+
+        @Override
+        public boolean isCompatible(Class<? extends IoHandle> handleType) {
+            return delegate.isCompatible(handleType);
+        }
+    }
+
+    @Test
     void shouldCloseNotFireExceptionCaughtWhenDispatchFailsPostCommit() {
         ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
         EmbeddedChannel channel = new EmbeddedChannel(
@@ -918,12 +1018,16 @@ class HttpRequestHandlerTest {
         private static final AtomicInteger ADDRESSES = new AtomicInteger();
 
         private final List<ChannelPromise> unsettled = new CopyOnWriteArrayList<>();
-        private final MultiThreadIoEventLoopGroup group =
-            new MultiThreadIoEventLoopGroup(1, LocalIoHandler.newFactory());
+        private final MultiThreadIoEventLoopGroup group;
         private final Channel listener;
         private final Channel channel;
 
         StalledConnection(HttpRequestHandler handler) throws Exception {
+            this(handler, LocalIoHandler.newFactory());
+        }
+
+        StalledConnection(HttpRequestHandler handler, IoHandlerFactory ioHandlerFactory) throws Exception {
+            group = new MultiThreadIoEventLoopGroup(1, ioHandlerFactory);
             LocalAddress address = new LocalAddress(getClass().getName() + "-" + ADDRESSES.incrementAndGet());
             listener = new ServerBootstrap().group(group).channel(LocalServerChannel.class)
                 .childHandler(new ChannelInboundHandlerAdapter())
