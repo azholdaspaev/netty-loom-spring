@@ -766,6 +766,24 @@ class HttpRequestHandlerTest {
     }
 
     @Test
+    void shouldCloseExchangeAnsweredOnlyWithInformationalResponse() {
+        ExceptionCapturingHandler capture = new ExceptionCapturingHandler();
+        EmbeddedChannel channel = new EmbeddedChannel(
+            new HttpRequestHandler((_, _, _, writer) -> writer.write(
+                    new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.EARLY_HINTS)),
+                DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT),
+            capture);
+
+        receive(channel, HttpMethod.GET, "/");
+
+        ReferenceCountUtil.release(channel.readOutbound());
+        assertFalse(channel.isOpen(),
+            "a client sent only an interim answer is still waiting for the final one, so the close must end the wait");
+        assertNull(capture.captured,
+            "a status for the failure after the interim answer is not attempted once the response has started");
+    }
+
+    @Test
     void shouldCloseConnectionWhenResponseWriteFails() {
         EmbeddedChannel channel = new EmbeddedChannel(new EncoderFailingWrites(),
             new HttpRequestHandler((_, _, _, writer) -> writer.write(

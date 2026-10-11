@@ -337,7 +337,7 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
              * owns it. ClosedChannelException, not a plain IOException: the type is what
              * HttpExceptionHandler classifies a departed client by.
              */
-            ResponseState settled = part instanceof LastHttpContent
+            ResponseState settled = part instanceof LastHttpContent && !HttpResponses.isInformational(part)
                 ? ResponseState.ENDED : ResponseState.STARTED;
             if (preempted || !ctx.channel().isActive() || !claim(settled)) {
                 ReferenceCountUtil.release(part);
