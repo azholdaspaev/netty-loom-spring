@@ -118,8 +118,9 @@ class SummarizeTest(unittest.TestCase):
         shape of a tagged sub-metric no threshold asked k6 to emit. `env` writes an environment
         capture and names it to summarize.py; `env_path` names one without writing it. `retained`
         overrides a target's sample-live-heap.sh captures: `vthreads` and `live` replace the plateau
-        columns, `no_other` blanks the NMT column in "preload", "plateau" or
-        "both", `no_plateau` writes no plateau capture."""
+        columns, `no_other` blanks the NMT column in "preload", "pool" or "both", `no_pool` and
+        `no_plateau` write no such capture, and `secured_growth_kb` raises NMT `Other` after the
+        pool capture."""
         proc = self._summarize(runs, env, env_path, retained)
         self.assertEqual(0, proc.returncode, proc.stderr)
         return proc.stdout
@@ -171,20 +172,23 @@ class SummarizeTest(unittest.TestCase):
             f.write("1060,901000,201000,0:90.00\n")
 
     def _write_retained(self, results, target, spec):
-        """sample-live-heap.sh's three captures, sized so a connection retains 3 KiB of heap and
+        """sample-live-heap.sh's four captures, sized so a connection retains 3 KiB of heap and
         1 KiB of pool growth, and an in-flight request 6.5 KiB."""
         vthreads = spec.get("vthreads", PLATEAU_VTHREADS)
         live = spec.get("live", [AFTER_CLOSE_LIVE + 3072 * VUS + 6656 * v for v in vthreads])
         other = "" if spec.get("no_other") in ("preload", "both") else PRELOAD_OTHER_KB
-        plateau_other = "" if spec.get("no_other") in ("plateau", "both") else PRELOAD_OTHER_KB + VUS
+        pool_other = "" if spec.get("no_other") in ("pool", "both") else PRELOAD_OTHER_KB + VUS
+        plateau_other = PRELOAD_OTHER_KB + VUS + spec.get("secured_growth_kb", 0)
         captures = {
             # NMT only: a heap reading would need the forced collection kept out of scenario 2.
             "preload": [("", "", other)],
+            "pool": [("", "", pool_other)],
             "after": [(AFTER_CLOSE_LIVE, 0, plateau_other)],
             "plateau": list(zip(live, vthreads, [plateau_other] * len(vthreads))),
         }
-        if spec.get("no_plateau"):
-            del captures["plateau"]
+        for capture in ("pool", "plateau"):
+            if spec.get(f"no_{capture}"):
+                del captures[capture]
         for capture, samples in captures.items():
             with open(os.path.join(results, f"{target}_retained_{capture}.csv"), "w") as f:
                 f.write("ts_epoch,live_bytes,virtual_threads,other_committed_kb\n")
@@ -535,9 +539,22 @@ class SummarizeTest(unittest.TestCase):
         self.assertEqual(cells(table_row(md, self.MEMORY, "tomcat-platform")),
                          [LABELS["tomcat-platform"], "n/a", "3.00", "1.00", "4.00", "n/a"])
 
+    def test_pool_growth_leaves_out_what_the_secured_run_added(self):
+        """The secured run grows the pool again, and the memory pass's plateau carries that.
+
+        It is not what a scenario 2 connection costs, so the pool is read after scenario 2.
+        """
+        md = self.render(retained={"netty-loom": {"secured_growth_kb": VUS}})
+        self.assertEqual(cells(table_row(md, self.MEMORY, "netty-loom"))[3:5], ["1.00", "4.00"])
+
+    def test_memory_without_pool_capture_is_not_totalled(self):
+        md = self.render(retained={"netty-loom": {"no_pool": True}})
+        self.assertEqual(cells(table_row(md, self.MEMORY, "netty-loom"))[2:],
+                         ["3.00", "n/a", "n/a", "6.50"])
+
     def test_memory_without_native_memory_tracking_is_not_totalled(self):
         """NMT off leaves the pool growth unknown, and a heap-only total would read as the whole."""
-        for blank in ("preload", "plateau", "both"):
+        for blank in ("preload", "pool", "both"):
             with self.subTest(blank=blank):
                 md = self.render(retained={"netty-loom": {"no_other": blank}})
                 self.assertEqual(cells(table_row(md, self.MEMORY, "netty-loom"))[2:],

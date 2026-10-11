@@ -8,7 +8,7 @@ Reads, per target:
   <name>_memory.summary.json   k6 --summary-export of the memory pass
   <name>_<scenario>.exit       k6's exit code for that run, recorded by run-all.sh
   <name>_high_load.csv         CPU samples taken during the high-concurrency run
-  <name>_retained_<capture>.csv  sample-live-heap.sh's captures: preload, plateau, after
+  <name>_retained_<capture>.csv  sample-live-heap.sh's captures: preload, pool, plateau, after
 
 Usage: summarize.py <results_dir> <vus> <java_flags> <uname> <tomcat_max_connections>
                     [env_capture]
@@ -158,6 +158,7 @@ def retained(name):
     plateau = [s for s in retained_samples(name, "plateau") if None not in s[:2]]
     after = [s for s in retained_samples(name, "after") if s[0] is not None]
     preload = retained_samples(name, "preload")
+    pool = retained_samples(name, "pool")
     result = dict.fromkeys(("vts", "heap", "pool", "total", "per_request"))
     if not plateau:
         return result
@@ -173,9 +174,9 @@ def retained(name):
         intercept = statistics.median(live)
     if after:
         result["heap"] = (intercept - statistics.median(s[0] for s in after)) / 1024 / VUS
-    others = [s[2] for s in plateau] + [s[2] for s in preload]
-    if preload and None not in others:
-        result["pool"] = (statistics.median(s[2] for s in plateau)
+    others = [s[2] for s in pool] + [s[2] for s in preload]
+    if pool and preload and None not in others:
+        result["pool"] = (statistics.median(s[2] for s in pool)
                           - statistics.median(s[2] for s in preload)) / VUS
     if result["heap"] is not None and result["pool"] is not None:
         result["total"] = result["heap"] + result["pool"]
@@ -587,8 +588,8 @@ out.append("Read from a memory pass: scenario 2 run again after scenario 3, its 
            "least-squares fit of one against the other separates the two. "
            "`Heap / connection = (intercept − live heap after the last connection closed) / "
            "connections`, and the slope is `Retained / in-flight request`. "
-           "`Direct-buffer pool growth / connection` is NMT's committed `Other` at the plateau less "
-           "its value before scenario 2, over connections: Netty's pooled arenas grow under load "
+           "`Direct-buffer pool growth / connection` is NMT's committed `Other` after scenario 2 less "
+           "its value before it, over connections: Netty's pooled arenas grow under load "
            "and are not given back, so it is what the run cost the process rather than state a "
            "connection holds. `Memory / connection` is the sum. Scenario 3's sessions are live in "
            "both heap readings and cancel. A target with no virtual threads has nothing to fit: "
