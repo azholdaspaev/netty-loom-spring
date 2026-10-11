@@ -58,13 +58,7 @@ public class NettyServer {
             }
             connectionRegistry.reset();
             EventLoopGroup boss = newEventLoopGroup(configuration.bossThreads());
-            EventLoopGroup worker;
-            try {
-                worker = newEventLoopGroup(configuration.workerThreads());
-            } catch (Throwable e) {
-                stopEventLoopsQuietly(boss);
-                throw e;
-            }
+            EventLoopGroup worker = newWorkerGroupOrStop(boss);
             boolean bound = false;
             try {
                 Channel channel = bind(boss, worker);
@@ -241,6 +235,15 @@ public class NettyServer {
     private void stopEventLoopsQuietly(EventLoopGroup... groups) {
         for (EventLoopGroup group : groups) {
             group.shutdownGracefully(0, 0, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private EventLoopGroup newWorkerGroupOrStop(EventLoopGroup boss) {
+        try {
+            return newEventLoopGroup(configuration.workerThreads());
+        } catch (Throwable e) {
+            stopEventLoopsQuietly(boss);
+            throw e;
         }
     }
 
