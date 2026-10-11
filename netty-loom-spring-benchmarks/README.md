@@ -198,10 +198,9 @@ Mind what this does to scenario 1: it measures a per-request difference of tens 
 any link whose RTT is large compared to that turns it into a measurement of the network. Scenarios 2
 and 3 carry a 50 ms server-side sleep and tolerate far more latency.
 
-`SETTLE` matters more now that each target runs three high-VU runs back to back: scenario 2 leaves
-roughly `VUS` client sockets in TIME_WAIT just as scenario 3 asks for `VUS` more, and so on into the
-memory pass. Under-settling shows
-up as connection failures in the secured run and reads like a Security problem.
+`SETTLE` matters because each target runs its high-VU runs back to back: each leaves roughly `VUS`
+client sockets in TIME_WAIT just as the next asks for `VUS` more. Under-settling shows up as
+connection failures in the secured run and reads like a Security problem.
 
 ### Run one target by hand
 
