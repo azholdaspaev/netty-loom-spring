@@ -169,8 +169,8 @@ benchmark_target() {
 
   # Before scenario 2, not before the memory pass: the direct-buffer pool grows under the first
   # high-concurrency load and is never given back, so a later baseline would hide that growth.
-  echo "  sampling retained state before load..."
-  run_sampler sample-live-heap.sh "$SERVER_PID" 1 > "$RESULTS/${name}_retained_preload.csv" || true
+  echo "  sampling the direct-buffer pool before load..."
+  run_sampler sample-live-heap.sh "$SERVER_PID" 1 1 --nmt-only > "$RESULTS/${name}_retained_preload.csv" || true
 
   echo "  scenario 2: high-concurrency (VUS=$VUS, $DURATION)..."
   run_sampler sample-memory.sh "$SERVER_PID" /dev/stdout 2 100000 > "$RESULTS/${name}_high_load.csv" &
