@@ -382,6 +382,20 @@ class HttpConnectionRegistryTest {
     }
 
     @Test
+    void shouldNotInterruptDispatchRegisteringAfterReset() throws Exception {
+        HttpConnectionRegistry registry = newRegistry();
+        registry.interruptAndAwaitDispatches(0);
+        registry.reset();
+
+        boolean interrupted;
+        try (HttpConnectionRegistry.DispatchThread _ = registry.registerDispatchThread()) {
+            interrupted = Thread.currentThread().isInterrupted();
+        }
+
+        assertFalse(interrupted, "a restarted server must dispatch without the previous shutdown's interrupt");
+    }
+
+    @Test
     void shouldAwaitDispatchesAfterDrainIsAborted() throws Exception {
         HttpConnectionRegistry registry = newRegistry();
         registry.dispatchStarted();
