@@ -299,6 +299,12 @@ public class HttpConnectionRegistry {
             this.thread = thread;
         }
 
+        boolean isCutOff() {
+            synchronized (monitor) {
+                return interrupted;
+            }
+        }
+
         private void interrupt() {
             synchronized (monitor) {
                 if (!released) {
