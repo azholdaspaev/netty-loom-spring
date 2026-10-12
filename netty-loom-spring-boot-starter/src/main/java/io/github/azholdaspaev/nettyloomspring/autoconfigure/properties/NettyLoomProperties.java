@@ -22,6 +22,7 @@ public record NettyLoomProperties(
     @DefaultValue("0") int workerThreads,
     @DefaultValue("true") boolean tcpKeepAlive,
     @DefaultValue("128") int acceptCount,
+    @DefaultValue("32768") int maxConnections,
     @DefaultValue("30s") Duration shutdownGracePeriod,
     @DefaultValue("30s") Duration readTimeout,
     @DefaultValue("60s") Duration writeStallTimeout,
@@ -55,6 +56,7 @@ public record NettyLoomProperties(
         rejectNegative("bossThreads", bossThreads, errors);
         rejectNegative("workerThreads", workerThreads, errors);
         rejectNegative("acceptCount", acceptCount, errors);
+        rejectNonPositiveUnlessUnlimited("maxConnections", maxConnections, errors);
         rejectNonPositive("maxHttpBodySize", maxHttpBodySize, errors);
         rejectNonPositive("maxSwallowSize", maxSwallowSize, errors);
         rejectNonPositive("swallowTimeout", swallowTimeout, errors);
@@ -77,6 +79,12 @@ public record NettyLoomProperties(
     private static void rejectNegative(String field, int value, Errors errors) {
         if (value < 0) {
             errors.rejectValue(field, "negative", "must not be negative");
+        }
+    }
+
+    private static void rejectNonPositiveUnlessUnlimited(String field, int value, Errors errors) {
+        if (value <= 0 && value != -1) {
+            errors.rejectValue(field, "positive", "must be positive, or -1 for no limit");
         }
     }
 
