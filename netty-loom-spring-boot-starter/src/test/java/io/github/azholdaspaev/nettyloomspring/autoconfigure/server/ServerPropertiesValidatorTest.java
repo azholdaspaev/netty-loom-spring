@@ -151,6 +151,42 @@ class ServerPropertiesValidatorTest {
             "the warning must name the removed property and its replacement, was: " + warning);
     }
 
+    @Test
+    void shouldMapTomcatKeysToNettyEquivalentsInOneWarning() {
+        String warning = describeSingle(
+            "server.tomcat.accept-count", "200",
+            "server.tomcat.threads.max", "50");
+
+        assertTrue(warning.contains("server.tomcat.accept-count") && warning.contains("server.netty.accept-count"),
+            "accept-count must point at server.netty.accept-count, was: " + warning);
+        assertTrue(warning.contains("server.tomcat.threads.max") && warning.contains("virtual threads"),
+            "threads.* must say requests run on virtual threads, was: " + warning);
+    }
+
+    @Test
+    void shouldPointTomcatMaxConnectionsAtItsIssue() {
+        String warning = describeSingle("server.tomcat.max-connections", "1000");
+
+        assertTrue(warning.contains("server.tomcat.max-connections") && warning.contains("#45"),
+            "max-connections must name its tracking issue, was: " + warning);
+    }
+
+    @Test
+    void shouldNameJettyKeyWhenConfigured() {
+        String warning = describeSingle("server.jetty.threads.max", "50");
+
+        assertTrue(warning.contains("server.jetty.threads.max") && warning.contains("Jetty"),
+            "the warning must name the key and the container, was: " + warning);
+    }
+
+    @Test
+    void shouldSayBootHasNoUndertowWhenUndertowKeyIsConfigured() {
+        String warning = describeSingle("server.undertow.threads.io", "4");
+
+        assertTrue(warning.contains("server.undertow.threads.io") && warning.contains("no Undertow support"),
+            "the warning must name the key and that Boot 4 dropped Undertow, was: " + warning);
+    }
+
     private static String describeSingle(String... properties) {
         List<String> warnings = describeUnsupported(properties);
         assertEquals(1, warnings.size(), "expected exactly one warning, was: " + warnings);
