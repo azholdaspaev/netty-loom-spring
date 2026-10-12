@@ -108,6 +108,12 @@ class ServerPropertiesValidatorTest {
     }
 
     @Test
+    void shouldStayQuietWhenJspIsUnregisteredInUpperCase() {
+        assertEquals(List.of(), describeUnsupported("server.servlet.jsp.registered", "FALSE"),
+            "Boot binds registered as a Boolean, so FALSE disables JSP just as false does");
+    }
+
+    @Test
     void shouldStayQuietWhenOnlyDevToolsDefaultsAreSet() {
         MockEnvironment environment = withDevToolsDefaults(new MockEnvironment());
 

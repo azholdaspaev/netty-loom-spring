@@ -60,7 +60,9 @@ final class ServerPropertiesValidator {
             warnings.add(describe("server.servlet.register-default-servlet=true", "no default servlet is registered"));
         }
         Map<String, String> jsp = bindKeys(binder, "server.servlet.jsp");
-        jsp.remove("registered", "false");
+        if (!binder.bind("server.servlet.jsp.registered", Boolean.class).orElse(true)) {
+            jsp.remove("registered");
+        }
         if (!jsp.isEmpty()) {
             warnings.add(describe(joinNames("server.servlet.jsp", jsp), "no JSP servlet is registered"));
         }
