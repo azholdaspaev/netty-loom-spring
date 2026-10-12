@@ -16,6 +16,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
@@ -83,7 +84,8 @@ final class ServerPropertiesValidator {
         Map<String, String> tomcat = bindKeys(binder, "server.tomcat");
         if (!tomcat.isEmpty()) {
             String names = tomcat.keySet().stream()
-                .map(key -> "server.tomcat." + key + " (" + describeNettyEquivalent(key) + ")")
+                .map(ServerPropertiesValidator::describeTomcatKey)
+                .distinct()
                 .collect(Collectors.joining(", "));
             warnings.add(describe(names, "netty-loom-spring is serving, not Tomcat"));
         }
@@ -109,17 +111,18 @@ final class ServerPropertiesValidator {
         return new Binder(ConfigurationPropertySources.from(sources), new PropertySourcesPlaceholdersResolver(sources));
     }
 
-    private static String describeNettyEquivalent(String tomcatKey) {
-        if (tomcatKey.equals("accept-count")) {
-            return "use server.netty.accept-count";
-        }
-        if (tomcatKey.equals("max-connections")) {
-            return "see issue #45";
-        }
-        if (tomcatKey.startsWith("threads.")) {
-            return "no equivalent; requests run on unbounded virtual threads";
-        }
-        return "no equivalent";
+    private static String describeTomcatKey(String key) {
+        /*
+         * Bindable.mapOf keeps each key as written, while Boot binds accept-count from acceptCount,
+         * acceptcount (SERVER_TOMCAT_ACCEPTCOUNT) and accept.count (SERVER_TOMCAT_ACCEPT_COUNT) alike.
+         */
+        return switch (key.replace("-", "").replace(".", "").toLowerCase(Locale.ROOT)) {
+            case "acceptcount" -> "server.tomcat.accept-count (use server.netty.accept-count)";
+            case "maxconnections" -> "server.tomcat.max-connections (see issue #45)";
+            default -> "server.tomcat." + key + (key.startsWith("threads.")
+                ? " (no equivalent; requests run on unbounded virtual threads)"
+                : " (no equivalent)");
+        };
     }
 
     private static Map<String, String> bindKeys(Binder binder, String prefix) {
