@@ -1,9 +1,13 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.server;
 
+import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.web.server.Ssl;
 import org.springframework.boot.web.server.WebServerException;
 import org.springframework.boot.web.server.servlet.Session;
 import org.springframework.core.env.Environment;
+
+import java.util.ArrayList;
+import java.util.List;
 
 final class ServerPropertiesValidator {
 
@@ -16,6 +20,19 @@ final class ServerPropertiesValidator {
     void requireSupported(Ssl ssl, Session session) {
         requireSslNotConfigured(ssl);
         requireSessionPersistenceNotConfigured(session);
+    }
+
+    List<String> describeUnsupported() {
+        Binder binder = Binder.get(environment);
+        List<String> warnings = new ArrayList<>();
+        if (binder.bind("server.compression.enabled", Boolean.class).orElse(false)) {
+            warnings.add(describe("server.compression.enabled=true", "responses are never compressed (see issue #22)"));
+        }
+        return warnings;
+    }
+
+    private static String describe(String property, String absentBehaviour) {
+        return property + " is configured but has no effect: " + absentBehaviour + ".";
     }
 
     private void requireSslNotConfigured(Ssl ssl) {
