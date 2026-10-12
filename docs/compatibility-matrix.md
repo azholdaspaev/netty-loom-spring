@@ -204,7 +204,8 @@ fired on an object bound into a session, and passing one to `addListener` throws
 | Frame-size limits | `works` | `server.netty.max-initial-line-length`, `max-header-size`, `max-chunk-size` and `max-http-body-size`; see [Size limits](configuration.md#size-limits) for the defaults and the status each over-limit request gets |
 | Bounded outbound queue | `none` | A pipelining client that never reads accumulates unbounded buffer — 5.7 MB queued out for 888 bytes in, measured ([#88](https://github.com/azholdaspaev/netty-loom-spring/issues/88)). The write-stall timeout above bounds this in time, not in space |
 | Handler execution deadline | `none` | A handler that never returns holds its connection until shutdown ([#43](https://github.com/azholdaspaev/netty-loom-spring/issues/43)) |
-| Connection cap / admission control | `none` | [#45](https://github.com/azholdaspaev/netty-loom-spring/issues/45), [#47](https://github.com/azholdaspaev/netty-loom-spring/issues/47) |
+| Connection cap | `works` | `server.netty.max-connections` pauses accept at the cap; see [`server.netty.*`](configuration.md#servernetty) |
+| Admission control | `none` | [#47](https://github.com/azholdaspaev/netty-loom-spring/issues/47) |
 | TLS | `fails startup` | [#16](https://github.com/azholdaspaev/netty-loom-spring/issues/16) |
 | HTTP/2 | `warns` | `server.http2.*` has no effect ([#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23)) |
 | Response compression | `warns` | `server.compression.*` has no effect ([#22](https://github.com/azholdaspaev/netty-loom-spring/issues/22)) |

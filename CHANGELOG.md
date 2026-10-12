@@ -10,6 +10,12 @@ in any minor release.
 
 ### Added
 
+- `server.netty.max-connections`, default `32768`: at the cap the server stops accepting, so
+  further clients wait in the listen backlog until a connection closes, and
+  `HttpConnectionRegistry.getAcceptPauseCount()` counts each time the cap is reached. `-1` lifts
+  the cap. See
+  [`server.netty.*`](https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty)
+  (#45).
 - `server.forward-headers-strategy=native`: behind a proxy in `server.netty.internal-proxies`,
   the request takes its scheme, server name and port, and client address from the
   `X-Forwarded-*` headers, or from `Forwarded` with `server.netty.forwarded-headers=forwarded`,
