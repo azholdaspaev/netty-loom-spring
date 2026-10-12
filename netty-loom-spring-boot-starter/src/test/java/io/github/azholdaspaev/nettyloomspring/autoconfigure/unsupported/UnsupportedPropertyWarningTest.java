@@ -32,7 +32,7 @@ class UnsupportedPropertyWarningTest {
     void shouldStayQuietWhenPropertiesAreBootDefaults(CapturedOutput output) {
         NettyLoomApplications.run().close();
 
-        List<String> warnings = output.getAll().lines().filter(line -> line.contains("Ignoring server.")).toList();
+        List<String> warnings = output.getAll().lines().filter(line -> line.contains("Ignoring ")).toList();
         assertEquals(List.of(), warnings, "Boot defaults must not log an unsupported-property warning");
     }
 }
