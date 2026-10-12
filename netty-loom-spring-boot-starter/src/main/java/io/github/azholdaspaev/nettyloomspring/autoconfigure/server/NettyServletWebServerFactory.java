@@ -105,7 +105,7 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
         servletContext.markInitialized();
         NettyServerConfiguration configuration = new NettyServerConfiguration(
             getPort(), getAddress(), properties.bossThreads(), properties.workerThreads(),
-            properties.tcpKeepAlive(), properties.acceptCount());
+            properties.tcpKeepAlive(), properties.acceptCount(), -1);
         NettyServer nettyServer = new NettyServer(configuration, channelInitializer, ioHandlerFactory, connectionRegistry);
         return new NettyServletWebServer(nettyServer, getShutdown(), properties.shutdownGracePeriod());
     }

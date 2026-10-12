@@ -8,5 +8,6 @@ public record NettyServerConfiguration(
     int bossThreads,
     int workerThreads,
     boolean tcpKeepAlive,
-    int acceptCount
+    int acceptCount,
+    int maxConnections
 ) {}

@@ -10,6 +10,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
@@ -40,6 +41,8 @@ public class HttpConnectionRegistry {
     private final AtomicInteger dispatchWaiters = new AtomicInteger();
 
     private final Set<DispatchThread> dispatchThreads = ConcurrentHashMap.newKeySet();
+
+    private final LongAdder acceptPauses = new LongAdder();
 
     private volatile boolean draining;
 
@@ -259,6 +262,14 @@ public class HttpConnectionRegistry {
         draining = false;
         aborted = false;
         generation++;
+    }
+
+    public void markAcceptPaused() {
+        acceptPauses.increment();
+    }
+
+    public long getAcceptPauseCount() {
+        return acceptPauses.sum();
     }
 
     /**

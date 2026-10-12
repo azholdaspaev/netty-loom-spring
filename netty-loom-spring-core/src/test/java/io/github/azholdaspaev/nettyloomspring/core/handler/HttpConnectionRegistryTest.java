@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -449,6 +450,18 @@ class HttpConnectionRegistryTest {
 
         assertTrue(registry.interruptAndAwaitDispatches(10_000),
             "an aborted drain must not stop a later wait for the dispatches it cut off");
+    }
+
+    @Test
+    void shouldCountAcceptPausesAcrossReset() {
+        HttpConnectionRegistry registry = newRegistry();
+
+        registry.markAcceptPaused();
+        registry.reset();
+        registry.markAcceptPaused();
+
+        assertEquals(2, registry.getAcceptPauseCount(),
+            "the pause count must keep counting across a restart, not start over");
     }
 
     private static HttpConnectionRegistry newRegistry() {
