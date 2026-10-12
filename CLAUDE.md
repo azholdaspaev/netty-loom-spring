@@ -60,6 +60,8 @@ Tests use JUnit 6 (`org.junit.jupiter.api`, via `org.junit.jupiter:junit-jupiter
 
 Review runs in two passes. The bug pass (`/code-review`) is tuned for correctness recall: it requires a concrete failure scenario per finding and discards style and quality findings. The maintainability pass is the `maintainability-pass` skill, which owns the remaining lenses. State-dependent correctness — concurrency, lifecycle, time arithmetic — is rule 6 below, so that either pass can quote it. `/flow:review` runs both and posts what survives as inline comments, whether a maintainer invokes it or the agent pipeline does.
 
+An agent runs `/flow:review` and then `/flow:fix` at most three times on one pull request; whatever is still open after the third round goes to the maintainer. An agent never approves or merges a pull request: the final review and the merge are the maintainer's.
+
 ## Guidelines
 
 Tradeoff: these rules bias toward caution over speed. For trivial tasks, use judgment.
