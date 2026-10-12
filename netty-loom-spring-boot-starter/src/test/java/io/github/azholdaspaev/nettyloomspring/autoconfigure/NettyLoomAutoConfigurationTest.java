@@ -202,7 +202,7 @@ class NettyLoomAutoConfigurationTest {
 
     @ParameterizedTest
     @ValueSource(ints = {0, -2})
-    void shouldFailStartupNamingMaxConnectionsWhenNotPositive(int maxConnections) {
+    void shouldFailStartupOnMaxConnectionsNeitherPositiveNorUnlimited(int maxConnections) {
         runner.withPropertyValues("server.netty.max-connections=" + maxConnections)
             .run(context -> assertThat(context).hasFailed()
                 .getFailure().rootCause().hasMessageContaining("server.netty.max-connections"));
