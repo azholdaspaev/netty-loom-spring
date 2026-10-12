@@ -64,7 +64,35 @@ final class ServerPropertiesValidator {
         if (binder.bind("server.netty.port", String.class).isBound()) {
             warnings.add(describe("server.netty.port", "it was removed; use server.port"));
         }
+        Map<String, String> tomcat = bindKeys(binder, "server.tomcat");
+        if (!tomcat.isEmpty()) {
+            String names = tomcat.keySet().stream()
+                .map(key -> "server.tomcat." + key + " (" + describeNettyEquivalent(key) + ")")
+                .collect(Collectors.joining(", "));
+            warnings.add(describe(names, "netty-loom-spring is serving, not Tomcat"));
+        }
+        Map<String, String> jetty = bindKeys(binder, "server.jetty");
+        if (!jetty.isEmpty()) {
+            warnings.add(describe(joinNames("server.jetty", jetty), "netty-loom-spring is serving, not Jetty"));
+        }
+        Map<String, String> undertow = bindKeys(binder, "server.undertow");
+        if (!undertow.isEmpty()) {
+            warnings.add(describe(joinNames("server.undertow", undertow), "Spring Boot 4 has no Undertow support"));
+        }
         return warnings;
+    }
+
+    private static String describeNettyEquivalent(String tomcatKey) {
+        if (tomcatKey.equals("accept-count")) {
+            return "use server.netty.accept-count";
+        }
+        if (tomcatKey.equals("max-connections")) {
+            return "see issue #45";
+        }
+        if (tomcatKey.startsWith("threads.")) {
+            return "no equivalent; requests run on unbounded virtual threads";
+        }
+        return "no equivalent";
     }
 
     private static Map<String, String> bindKeys(Binder binder, String prefix) {
