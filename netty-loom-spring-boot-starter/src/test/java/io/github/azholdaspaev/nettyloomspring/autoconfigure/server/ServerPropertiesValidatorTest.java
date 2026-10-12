@@ -47,14 +47,10 @@ class ServerPropertiesValidatorTest {
 
     @Test
     void shouldNameHttp2WhenEnabledThroughEnvironmentVariable() {
-        MockEnvironment environment = new MockEnvironment();
-        environment.getPropertySources().addLast(new SystemEnvironmentPropertySource(
-            StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME, Map.of("SERVER_HTTP2_ENABLED", "true")));
+        String warning = describeSingleEnvironmentVariable("SERVER_HTTP2_ENABLED", "true");
 
-        List<String> warnings = new ServerPropertiesValidator(environment).describeUnsupported();
-
-        assertTrue(warnings.size() == 1 && warnings.getFirst().contains("server.http2.enabled"),
-            "SERVER_HTTP2_ENABLED must be read as server.http2.enabled, was: " + warnings);
+        assertTrue(warning.contains("server.http2.enabled"),
+            "SERVER_HTTP2_ENABLED must be read as server.http2.enabled, was: " + warning);
     }
 
     @Test
