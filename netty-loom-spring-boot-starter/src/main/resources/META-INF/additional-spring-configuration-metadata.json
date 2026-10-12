@@ -23,6 +23,10 @@
       "description": "Listen backlog (SO_BACKLOG). See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
     },
     {
+      "name": "server.netty.max-connections",
+      "description": "Open connections at which the server stops accepting. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
+    },
+    {
       "name": "server.netty.shutdown-grace-period",
       "description": "How long graceful shutdown drains before force-closing. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
     },
@@ -87,6 +91,15 @@
         {
           "value": 0,
           "description": "Not a default; the backlog it yields depends on the transport."
+        }
+      ]
+    },
+    {
+      "name": "server.netty.max-connections",
+      "values": [
+        {
+          "value": -1,
+          "description": "No limit."
         }
       ]
     },

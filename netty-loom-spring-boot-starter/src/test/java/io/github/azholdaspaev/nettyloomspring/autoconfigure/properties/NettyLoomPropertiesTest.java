@@ -110,6 +110,20 @@ class NettyLoomPropertiesTest {
     }
 
     @Test
+    void shouldApplyDefaultMaxConnections() {
+        NettyLoomProperties properties = bind(Map.of());
+
+        assertEquals(32768, properties.maxConnections());
+    }
+
+    @Test
+    void shouldOverrideMaxConnectionsFromConfiguration() {
+        NettyLoomProperties properties = bind(Map.of("server.netty.max-connections", "100"));
+
+        assertEquals(100, properties.maxConnections());
+    }
+
+    @Test
     void shouldApplyDefaultMaxHttpBodySize() {
         NettyLoomProperties properties = bind(Map.of());
 

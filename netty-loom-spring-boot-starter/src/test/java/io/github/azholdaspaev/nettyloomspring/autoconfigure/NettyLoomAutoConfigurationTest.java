@@ -200,6 +200,20 @@ class NettyLoomAutoConfigurationTest {
             .run(context -> assertThat(context).hasNotFailed());
     }
 
+    @ParameterizedTest
+    @ValueSource(ints = {0, -2})
+    void shouldFailStartupNamingMaxConnectionsWhenNotPositive(int maxConnections) {
+        runner.withPropertyValues("server.netty.max-connections=" + maxConnections)
+            .run(context -> assertThat(context).hasFailed()
+                .getFailure().rootCause().hasMessageContaining("server.netty.max-connections"));
+    }
+
+    @Test
+    void shouldNotFailStartupWhenMaxConnectionsIsUnlimited() {
+        runner.withPropertyValues("server.netty.max-connections=-1")
+            .run(context -> assertThat(context).hasNotFailed());
+    }
+
     @Test
     void shouldFailStartupOnNonPositiveLimitWhenUserDeclaresPipeline() {
         runner.withBean("userBean", NettyPipelineDefinition.class, () -> mock(NettyPipelineDefinition.class))
