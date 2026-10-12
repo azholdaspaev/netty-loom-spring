@@ -69,10 +69,10 @@ beans and `CookieSameSiteSupplier` beans.
 `NettyServletWebServerFactory` extends Boot's `AbstractConfigurableWebServerFactory`, so Boot binds
 and pushes the entire `server.*` surface onto it, and the factory reads only the properties listed
 above. At startup, each group below that is set in the `Environment` logs one WARN naming the
-configured keys. A group left unset, or set to what this server already does, logs nothing. The
-check reads the `Environment`, not the factory, so a value a `WebServerFactoryCustomizer` sets in
-code is not seen. A capability that becomes supported leaves this table in the same change, with
-a test proving its warning is gone.
+configured keys. A group left unset, set only by a DevTools default, or set to what this server
+already does, logs nothing. The check reads the `Environment`, not the factory, so a value a
+`WebServerFactoryCustomizer` sets in code is not seen. A capability that becomes supported leaves
+this table in the same change, with a test proving its warning is gone.
 
 | Property | Warns when | What is absent | Issue |
 | --- | --- | --- | --- |

@@ -4,10 +4,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.boot.context.properties.bind.PropertySourcesPlaceholdersResolver;
+import org.springframework.boot.context.properties.source.ConfigurationPropertySources;
 import org.springframework.boot.web.server.Ssl;
 import org.springframework.boot.web.server.WebServerException;
 import org.springframework.boot.web.server.servlet.Session;
+import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.Environment;
+import org.springframework.core.env.MutablePropertySources;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
@@ -40,7 +44,7 @@ final class ServerPropertiesValidator {
      * and {@code Jsp} onto the factory whether or not they were set; only here is an explicit value visible.
      */
     List<String> describeUnsupported() {
-        Binder binder = Binder.get(environment);
+        Binder binder = newBinderWithoutDevToolsDefaults();
         List<String> warnings = new ArrayList<>();
         if (binder.bind("server.compression.enabled", Boolean.class).orElse(false)) {
             warnings.add(describe("server.compression.enabled=true", "responses are never compressed (see issue #22)"));
@@ -92,6 +96,17 @@ final class ServerPropertiesValidator {
             warnings.add(describe(joinNames("server.undertow", undertow), "Spring Boot 4 has no Undertow support"));
         }
         return warnings;
+    }
+
+    private Binder newBinderWithoutDevToolsDefaults() {
+        /*
+         * spring-boot-devtools' DevToolsPropertyDefaultsPostProcessor adds its defaults as the "devtools"
+         * source, server.servlet.jsp.init-parameters.development=true among them: not the application's.
+         */
+        MutablePropertySources sources = new MutablePropertySources(
+            ((ConfigurableEnvironment) environment).getPropertySources());
+        sources.remove("devtools");
+        return new Binder(ConfigurationPropertySources.from(sources), new PropertySourcesPlaceholdersResolver(sources));
     }
 
     private static String describeNettyEquivalent(String tomcatKey) {
