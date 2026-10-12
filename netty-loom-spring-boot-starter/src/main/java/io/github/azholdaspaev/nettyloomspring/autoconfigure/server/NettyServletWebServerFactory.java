@@ -14,7 +14,6 @@ import jakarta.servlet.ServletException;
 import org.springframework.boot.web.server.AbstractConfigurableWebServerFactory;
 import org.springframework.boot.web.server.Cookie;
 import org.springframework.boot.web.server.MimeMappings;
-import org.springframework.boot.web.server.Ssl;
 import org.springframework.boot.web.server.WebServer;
 import org.springframework.boot.web.server.WebServerException;
 import org.springframework.boot.web.server.servlet.ConfigurableServletWebServerFactory;
@@ -24,6 +23,8 @@ import org.springframework.boot.web.server.servlet.ServletWebServerSettings;
 import org.springframework.boot.web.server.servlet.Session;
 import org.springframework.boot.web.servlet.ServletContextInitializer;
 import org.springframework.boot.webmvc.autoconfigure.DispatcherServletAutoConfiguration;
+import org.springframework.context.EnvironmentAware;
+import org.springframework.core.env.Environment;
 import org.springframework.web.servlet.DispatcherServlet;
 
 import java.util.HashMap;
@@ -31,7 +32,7 @@ import java.util.List;
 import java.util.Map;
 
 public class NettyServletWebServerFactory extends AbstractConfigurableWebServerFactory
-    implements ConfigurableServletWebServerFactory {
+    implements ConfigurableServletWebServerFactory, EnvironmentAware {
 
     private final ServletWebServerSettings settings = new ServletWebServerSettings();
 
@@ -43,6 +44,7 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
     private final NettyLoomProperties properties;
 
     private boolean useForwardHeaders;
+    private ServerPropertiesValidator validator;
 
     public NettyServletWebServerFactory(NettyIoHandlerFactory ioHandlerFactory,
                                         NettyServerChannelInitializer channelInitializer,
@@ -59,6 +61,11 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
     }
 
     @Override
+    public void setEnvironment(Environment environment) {
+        this.validator = new ServerPropertiesValidator(environment);
+    }
+
+    @Override
     public ServletWebServerSettings getSettings() {
         return settings;
     }
@@ -69,7 +76,7 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
 
     @Override
     public WebServer getWebServer(ServletContextInitializer... initializers) {
-        requireSslNotConfigured();
+        validator.requireSupported(getSsl(), getSettings().getSession());
         /*
          * Set the context path before the initializer/filter/servlet startup phases so any component
          * that reads ServletContext.getContextPath() during onStartup/init sees the configured value,
@@ -100,18 +107,6 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
         return new NettyServletWebServer(nettyServer, getShutdown(), properties.shutdownGracePeriod());
     }
 
-    private void requireSslNotConfigured() {
-        /*
-         * Because this factory is a ConfigurableServletWebServerFactory, Boot binds server.ssl.* onto it,
-         * but the Netty pipeline has no SslHandler (issue #16). Fail fast rather than silently serving
-         * plaintext while the application looks TLS-configured.
-         */
-        if (Ssl.isEnabled(getSsl())) {
-            throw new WebServerException("server.ssl.* is configured but netty-loom-spring does not support "
-                + "TLS yet (see issue #16). Remove server.ssl.* or set server.ssl.enabled=false.", null);
-        }
-    }
-
     private void configureMimeMappings() {
         Map<String, String> mimeMappings = new HashMap<>();
         for (MimeMappings.Mapping mapping : getSettings().getMimeMappings()) {
@@ -126,7 +121,6 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
      */
     private void configureSessions() {
         Session session = getSettings().getSession();
-        requireSessionPersistenceNotConfigured(session);
         /*
          * The conversion itself belongs to the manager, which owns the field and the "zero means never
          * expires" rule; the factory only decides which setting feeds it.
@@ -159,19 +153,6 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
         servletContext.setRequestOriginResolver(useForwardHeaders
             ? new NettyForwardedHeaderResolver(properties.forwardedHeaders(), properties.internalProxies())
             : NettyRequestOriginResolver.DIRECT);
-    }
-
-    private void requireSessionPersistenceNotConfigured(Session session) {
-        /*
-         * Under Tomcat this writes SESSIONS.ser and survives a restart. This container has an in-memory
-         * store only (issue #13 non-goal), so honouring the property is impossible and ignoring it would
-         * silently lose every session on deploy -- the same fail-fast contract as server.ssl.*.
-         */
-        if (session.isPersistent()) {
-            throw new WebServerException("server.servlet.session.persistent=true is configured but "
-                + "netty-loom-spring stores sessions in memory only and cannot persist them across "
-                + "restarts. Remove the property, or use Spring Session for a durable store.", null);
-        }
     }
 
     private void initializeServletContext(ServletContextInitializer... initializers) {
