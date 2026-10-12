@@ -46,11 +46,12 @@ is gone; `server.port` follows Boot's standard default of `8080`.
 
 ## Consequences
 
-- Removing `server.netty.port` is silent for anyone still setting it: the record binds with
-  `ignoreUnknownFields = true` ([docs/configuration.md](../configuration.md#servernetty)).
+- The record binds with `ignoreUnknownFields = true`, so removing `server.netty.port` does not
+  fail startup for anyone still setting it; it warns
+  ([docs/configuration.md](../configuration.md#servernetty)).
 - The factory inherits every `server.*` setter Boot models, honoured or not. Which are honoured,
-  which fail startup and which are silent no-ops is owned by
-  [docs/configuration.md](../configuration.md#properties-that-are-silently-ignored). One consequence
+  which fail startup and which warn is owned by
+  [docs/configuration.md](../configuration.md#properties-that-warn-when-configured). One consequence
   is a rule of this record: `server.ssl.*` with SSL enabled fails startup rather than serving
   plaintext, because an application that looks TLS-configured and is not is a security footgun.
 - An out-of-context URI is answered with a bare 404 by the dispatcher, before the filter chain, so
@@ -70,3 +71,8 @@ the only knob that fails fast. **Consequences** was corrected in place.
 **Consequences** had grown into a per-property census that #159 had already caught drifting once.
 It is cut to the rule's own consequences; the property lists live in `docs/configuration.md`, and
 the **Scope** section, which listed #49's deliverables, is gone with them.
+
+### 2026-10-12 — unsupported properties warn (#181)
+
+An inherited setter with no effect is no longer silent: one explicitly set at startup logs a
+WARN, and so does `server.netty.port`. **Consequences** was corrected in place.

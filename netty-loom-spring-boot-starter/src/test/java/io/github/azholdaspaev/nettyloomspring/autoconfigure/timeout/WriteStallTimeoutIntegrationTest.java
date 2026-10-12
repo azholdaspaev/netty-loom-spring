@@ -24,8 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * That the bound is configurable is only worth anything if the configured value reaches the wire, and
- * a property bound but never read is the failure this container has most of (ADR 0001, "Properties
- * that are silently ignored"). Mirrors {@code ReadTimeoutSlowLorisTest} on the write side.
+ * a property bound but never read is the failure this container has most of (ADR 0001). Mirrors {@code ReadTimeoutSlowLorisTest} on the write side.
  */
 @SpringBootTest(
     classes = {StreamingTestApplication.class, WriteStallTimeoutIntegrationTest.SmallSendBufferConfig.class},

@@ -119,8 +119,7 @@ when it is the sole factory: with Tomcat, Jetty or Undertow also present, or a
 instead.
 
 Standard `server.*` settings apply; Netty-only tuning lives under `server.netty.*`. Every property,
-its default, and every key that is accepted and ignored is in
-[docs/configuration.md](docs/configuration.md).
+its default, and every key that has no effect is in [docs/configuration.md](docs/configuration.md).
 
 To see it run without writing an app:
 
@@ -151,15 +150,15 @@ What is not there, and is not planned as a servlet-fidelity goal:
 - **No TLS** ([#16](https://github.com/azholdaspaev/netty-loom-spring/issues/16)), **HTTP/2**
   ([#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23)), **compression**
   ([#22](https://github.com/azholdaspaev/netty-loom-spring/issues/22)) or WebSocket upgrade.
-  TLS configured under `server.ssl.*` fails startup; the other two are ignored.
+  TLS configured under `server.ssl.*` fails startup; the other two warn.
 - **No servlet async** ([#18](https://github.com/azholdaspaev/netty-loom-spring/issues/18)), so
   `SseEmitter`, `DeferredResult`, `StreamingResponseBody` and `Callable` return values fail.
 - **No multipart** ([#14](https://github.com/azholdaspaev/netty-loom-spring/issues/14)):
   `@RequestParam MultipartFile` fails with a 400.
-- **Some standard `server.*` settings are accepted and silently ignored** — no warning, no startup
-  failure. The list is in
-  [docs/configuration.md](docs/configuration.md#properties-that-are-silently-ignored); the settings
-  that fail loudly instead are beside it.
+- **Some standard `server.*` settings have no effect**; set explicitly, each logs a WARN at
+  startup. The list is in
+  [docs/configuration.md](docs/configuration.md#properties-that-warn-when-configured); the settings
+  that fail startup instead are beside it.
 
 Everything else — request, response, dispatch, sessions, listeners, `ServletContext` — is recorded
 method by method in the [compatibility matrix](docs/compatibility-matrix.md).
