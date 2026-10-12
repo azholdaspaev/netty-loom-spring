@@ -39,6 +39,7 @@ import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -63,7 +64,7 @@ class NettyServerTest {
     void shouldDeliverInboundBytesToPipelineThatAsksForNoReadsItself() throws Exception {
         CompletableFuture<String> received = new CompletableFuture<>();
         nettyServer = NettyServerFixture.newServer(
-            new NettyServerConfiguration(0, null, 1, 1, true, 128),
+            new NettyServerConfiguration(0, null, 1, 1, true, 128, -1),
             new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)),
             List.of(new NettyPipelineStep("capture", () -> new ChannelInboundHandlerAdapter() {
                 @Override
@@ -90,7 +91,7 @@ class NettyServerTest {
     void shouldApplyAcceptCountToListenSocket() throws Exception {
         CompletableFuture<Integer> backlog = new CompletableFuture<>();
         nettyServer = NettyServerFixture.newServer(
-            new NettyServerConfiguration(0, null, 1, 1, false, 7),
+            new NettyServerConfiguration(0, null, 1, 1, false, 7, -1),
             new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)),
             List.of(new NettyPipelineStep("backlog", () -> new ChannelInboundHandlerAdapter() {
                 @Override
@@ -109,6 +110,125 @@ class NettyServerTest {
         }
     }
 
+    @Test
+    void shouldQueueConnectionOverCapUntilAnotherCloses() throws Exception {
+        Semaphore accepted = new Semaphore(0);
+        nettyServer = newServerCappedAt(2, new NettyIoHandlerFactory(NettyTransportPreference.AUTO), accepted);
+        nettyServer.start();
+        List<Socket> clients = new ArrayList<>();
+        try {
+            for (int i = 0; i < 2; i++) {
+                clients.add(connect());
+                assertTrue(accepted.tryAcquire(5, TimeUnit.SECONDS), "a connection under the cap must be accepted");
+            }
+
+            clients.add(connect());
+
+            assertFalse(accepted.tryAcquire(300, TimeUnit.MILLISECONDS),
+                "a connection over the cap must wait in the backlog, not be accepted");
+            clients.getFirst().close();
+            assertTrue(accepted.tryAcquire(5, TimeUnit.SECONDS),
+                "the queued connection must be accepted once another one closes");
+        } finally {
+            closeAll(clients);
+        }
+    }
+
+    @Test
+    void shouldAdmitOnlyCapWhenBacklogFloodsNioAccept() throws Exception {
+        Semaphore accepted = new Semaphore(0);
+        CompletableFuture<EventLoop> serverLoop = new CompletableFuture<>();
+        nettyServer = newServerCappedAt(4, new NettyIoHandlerFactory(NettyTransportPreference.NIO), accepted,
+            new NettyPipelineStep("serverLoop", () -> new ChannelInboundHandlerAdapter() {
+                @Override
+                public void channelActive(ChannelHandlerContext ctx) {
+                    serverLoop.complete(ctx.channel().parent().eventLoop());
+                    ctx.fireChannelActive();
+                }
+            }));
+        nettyServer.start();
+        List<Socket> clients = new ArrayList<>();
+        CompletableFuture<Void> resume = new CompletableFuture<>();
+        try {
+            clients.add(connect());
+            assertTrue(accepted.tryAcquire(5, TimeUnit.SECONDS), "the warm-up connection must be accepted");
+            parkUntil(serverLoop.get(5, TimeUnit.SECONDS), resume);
+            for (int i = 0; i < 15; i++) {
+                clients.add(connect());
+            }
+
+            resume.complete(null);
+
+            assertTrue(accepted.tryAcquire(3, 5, TimeUnit.SECONDS), "the server must fill the cap from the backlog");
+            assertFalse(accepted.tryAcquire(300, TimeUnit.MILLISECONDS),
+                "a backlog drained in one NIO read must not carry the server past the cap");
+            Socket queued = clients.getLast();
+            queued.setSoTimeout(300);
+            assertThrows(SocketTimeoutException.class, () -> queued.getInputStream().read(),
+                "a connection over the cap must stay queued, not be reset");
+        } finally {
+            resume.complete(null);
+            closeAll(clients);
+        }
+    }
+
+    @Test
+    void shouldEnforceCapAgainAfterRestart() throws Exception {
+        Semaphore accepted = new Semaphore(0);
+        nettyServer = newServerCappedAt(1, new NettyIoHandlerFactory(NettyTransportPreference.AUTO), accepted);
+        nettyServer.start();
+        try (Socket _ = connect()) {
+            assertTrue(accepted.tryAcquire(5, TimeUnit.SECONDS), "the first run must accept a connection");
+        }
+        nettyServer.shutdown(Duration.ofSeconds(1));
+
+        nettyServer.start();
+
+        try (Socket _ = connect(); Socket _ = connect()) {
+            assertTrue(accepted.tryAcquire(5, TimeUnit.SECONDS), "the restarted server must accept up to the cap");
+            assertFalse(accepted.tryAcquire(300, TimeUnit.MILLISECONDS),
+                "the restarted server must still hold connections over the cap in the backlog");
+        }
+    }
+
+    private Socket connect() throws IOException {
+        Socket client = new Socket();
+        client.connect(new InetSocketAddress(InetAddress.getLoopbackAddress(), nettyServer.getPort()), 1_000);
+        return client;
+    }
+
+    private static void closeAll(List<Socket> clients) throws IOException {
+        for (Socket client : clients) {
+            client.close();
+        }
+    }
+
+    private static void parkUntil(EventLoop loop, CompletableFuture<Void> resume) throws InterruptedException {
+        CountDownLatch parked = new CountDownLatch(1);
+        loop.execute(() -> {
+            parked.countDown();
+            resume.join();
+        });
+        assertTrue(parked.await(5, TimeUnit.SECONDS), "the server loop must be parked before the backlog fills");
+    }
+
+    private static NettyServer newServerCappedAt(int maxConnections, NettyIoHandlerFactory ioHandlerFactory,
+                                                 Semaphore accepted, NettyPipelineStep... extra) {
+        List<NettyPipelineStep> handlers = new ArrayList<>();
+        handlers.add(new NettyPipelineStep("accepted", () -> new ChannelInboundHandlerAdapter() {
+            @Override
+            public void channelActive(ChannelHandlerContext ctx) {
+                accepted.release();
+                ctx.fireChannelActive();
+            }
+        }));
+        handlers.addAll(List.of(extra));
+        return NettyServerFixture.newServer(
+            new NettyServerConfiguration(0, InetAddress.getLoopbackAddress(), 1, 1, false, 128, maxConnections),
+            new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)),
+            handlers, ioHandlerFactory);
+    }
+
     private static NettyServer newServer(InetAddress address) {
         return newServer(address, null, 0);
     }
@@ -124,7 +244,7 @@ class NettyServerTest {
 
     private static NettyServer newServer(InetAddress address, CountDownLatch accepted, int port,
                                          NettyIoHandlerFactory ioHandlerFactory, NettyPipelineStep... extra) {
-        NettyServerConfiguration configuration = new NettyServerConfiguration(port, address, 0, 0, false, 128);
+        NettyServerConfiguration configuration = new NettyServerConfiguration(port, address, 0, 0, false, 128, -1);
         List<NettyPipelineStep> handlers = new ArrayList<>();
         if (accepted != null) {
             handlers.add(new NettyPipelineStep("accepted", () -> new ChannelInboundHandlerAdapter() {
@@ -450,7 +570,7 @@ class NettyServerTest {
             }
         };
         return NettyServerFixture.newServer(
-            new NettyServerConfiguration(0, InetAddress.getLoopbackAddress(), 1, 1, false, 128),
+            new NettyServerConfiguration(0, InetAddress.getLoopbackAddress(), 1, 1, false, 128, -1),
             new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)),
             List.of(), failing);
     }

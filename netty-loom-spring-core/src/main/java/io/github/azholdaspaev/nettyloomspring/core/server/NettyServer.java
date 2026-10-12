@@ -8,6 +8,7 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
+import io.netty.channel.ServerChannelRecvByteBufAllocator;
 import io.netty.util.concurrent.Future;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -140,6 +141,14 @@ public class NettyServer {
             .childHandler(channelInitializer)
             .option(ChannelOption.SO_BACKLOG, configuration.acceptCount())
             .childOption(ChannelOption.SO_KEEPALIVE, configuration.tcpKeepAlive());
+        if (configuration.maxConnections() > 0) {
+            /*
+             * One accept per read, so the cap pauses before the next one: NIO otherwise accepts a batch of 16
+             * before firing any, a size DefaultChannelConfig's constructor imposes and its public setter keeps.
+             */
+            bootstrap.option(ChannelOption.RECVBUF_ALLOCATOR, new ServerChannelRecvByteBufAllocator())
+                .handler(new NettyMaxConnectionsHandler(configuration.maxConnections(), connectionRegistry));
+        }
         InetSocketAddress address = new InetSocketAddress(configuration.address(), configuration.port());
         ChannelFuture future = bootstrap.bind(address).await();
         if (!future.isSuccess()) {
