@@ -9,6 +9,7 @@ import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
 import io.netty.channel.ServerChannelRecvByteBufAllocator;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.util.concurrent.Future;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -142,12 +143,15 @@ public class NettyServer {
             .option(ChannelOption.SO_BACKLOG, configuration.acceptCount())
             .childOption(ChannelOption.SO_KEEPALIVE, configuration.tcpKeepAlive());
         if (configuration.maxConnections() != NettyServerConfiguration.UNLIMITED_CONNECTIONS) {
-            /*
-             * One accept per read, so the cap pauses before the next one: NIO otherwise accepts a batch of 16
-             * before firing any, a size DefaultChannelConfig's constructor imposes and its public setter keeps.
-             */
-            bootstrap.option(ChannelOption.RECVBUF_ALLOCATOR, new ServerChannelRecvByteBufAllocator())
-                .handler(new NettyMaxConnectionsHandler(configuration.maxConnections(), connectionRegistry));
+            bootstrap.handler(new NettyMaxConnectionsHandler(configuration.maxConnections(), connectionRegistry));
+            if (NioServerSocketChannel.class.isAssignableFrom(ioHandlerFactory.getServerChannelClass())) {
+                /*
+                 * One accept per read, so the cap pauses before the next one: NIO accepts a batch of 16 before
+                 * firing any, a size DefaultChannelConfig's constructor imposes and its public setter keeps. Epoll
+                 * and kqueue fire each accept inside their loop and stop once continueReading() sees autoRead off.
+                 */
+                bootstrap.option(ChannelOption.RECVBUF_ALLOCATOR, new ServerChannelRecvByteBufAllocator());
+            }
         }
         InetSocketAddress address = new InetSocketAddress(configuration.address(), configuration.port());
         ChannelFuture future = bootstrap.bind(address).await();
