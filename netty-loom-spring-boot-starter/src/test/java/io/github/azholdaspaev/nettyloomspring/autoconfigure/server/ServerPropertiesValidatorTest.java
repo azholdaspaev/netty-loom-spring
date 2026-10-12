@@ -1,6 +1,8 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.server;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.env.SystemEnvironmentPropertySource;
@@ -259,6 +261,13 @@ class ServerPropertiesValidatorTest {
 
         assertTrue(warning.contains("server.undertow.threads.io") && warning.contains("no Undertow support"),
             "the warning must name the key and that Boot 4 dropped Undertow, was: " + warning);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"server.tomcat", "server.jetty", "server.undertow"})
+    void shouldStayQuietWhenGroupKeyHasEmptyValue(String group) {
+        assertEquals(List.of(), describeUnsupported(group, ""),
+            "YAML flattens a group whose children are all commented out to an empty value; a warning must not throw");
     }
 
     private static MockEnvironment withDevToolsDefaults(MockEnvironment environment) {
