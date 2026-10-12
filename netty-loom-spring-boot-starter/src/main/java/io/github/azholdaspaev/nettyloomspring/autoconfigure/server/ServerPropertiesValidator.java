@@ -55,6 +55,15 @@ final class ServerPropertiesValidator {
         if (binder.bind("server.servlet.session.store-dir", String.class).isBound()) {
             warnings.add(describe("server.servlet.session.store-dir", "sessions are held in memory only"));
         }
+        if (binder.bind("server.max-http-request-header-size", String.class).isBound()) {
+            warnings.add(describe("server.max-http-request-header-size", "use server.netty.max-header-size"));
+        }
+        if (!binder.bind("spring.mvc.servlet.path", String.class).orElse("/").equals("/")) {
+            warnings.add(describe("spring.mvc.servlet.path", "the DispatcherServlet receives every in-context request"));
+        }
+        if (binder.bind("server.netty.port", String.class).isBound()) {
+            warnings.add(describe("server.netty.port", "it was removed; use server.port"));
+        }
         return warnings;
     }
 

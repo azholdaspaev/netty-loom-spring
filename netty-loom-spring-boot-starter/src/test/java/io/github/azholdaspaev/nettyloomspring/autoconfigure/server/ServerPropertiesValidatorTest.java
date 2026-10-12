@@ -122,6 +122,35 @@ class ServerPropertiesValidatorTest {
             "the warning must name the property, was: " + warning);
     }
 
+    @Test
+    void shouldPointHeaderSizeAtNettyPropertyWhenConfigured() {
+        String warning = describeSingle("server.max-http-request-header-size", "16KB");
+
+        assertTrue(warning.contains("server.max-http-request-header-size")
+                && warning.contains("server.netty.max-header-size"),
+            "the warning must name the property and its server.netty.* equivalent, was: " + warning);
+    }
+
+    @Test
+    void shouldNameServletPathWhenSetOffRoot() {
+        String warning = describeSingle("spring.mvc.servlet.path", "/api");
+
+        assertTrue(warning.contains("spring.mvc.servlet.path"), "the warning must name the property, was: " + warning);
+    }
+
+    @Test
+    void shouldStayQuietWhenServletPathIsRootExplicitly() {
+        assertEquals(List.of(), describeUnsupported("spring.mvc.servlet.path", "/"));
+    }
+
+    @Test
+    void shouldPointNettyPortAtServerPortWhenConfigured() {
+        String warning = describeSingle("server.netty.port", "9090");
+
+        assertTrue(warning.contains("server.netty.port") && warning.contains("server.port"),
+            "the warning must name the removed property and its replacement, was: " + warning);
+    }
+
     private static String describeSingle(String... properties) {
         List<String> warnings = describeUnsupported(properties);
         assertEquals(1, warnings.size(), "expected exactly one warning, was: " + warnings);
