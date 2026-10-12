@@ -32,8 +32,8 @@ The rule for which namespace a knob belongs to — Spring Boot's `server.*` vers
 
 `NettyLoomProperties` is a `@ConfigurationProperties` record, which binds with
 `ignoreUnknownFields = true`. A misspelled key under `server.netty.*` is therefore **silently
-dropped, not a startup error**. The one obsolete key, `server.netty.port`, removed in favour of
-`server.port`, [warns](#properties-that-warn-when-configured).
+dropped, not a startup error**. `server.netty.port`, removed in favour of `server.port`,
+[warns](#properties-that-warn-when-configured).
 
 ## Standard `server.*` properties that are honoured
 
