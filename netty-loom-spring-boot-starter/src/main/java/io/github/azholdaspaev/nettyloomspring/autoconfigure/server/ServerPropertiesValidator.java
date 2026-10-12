@@ -1,5 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.server;
 
+import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.web.server.Ssl;
 import org.springframework.boot.web.server.WebServerException;
@@ -9,6 +10,9 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 final class ServerPropertiesValidator {
 
@@ -35,11 +39,35 @@ final class ServerPropertiesValidator {
         if (StringUtils.hasText(binder.bind("server.server-header", String.class).orElse(null))) {
             warnings.add(describe("server.server-header", "no Server header is written (see issue #167)"));
         }
+        if (binder.bind("server.servlet.register-default-servlet", Boolean.class).orElse(false)) {
+            warnings.add(describe("server.servlet.register-default-servlet=true", "no default servlet is registered"));
+        }
+        Map<String, String> jsp = bindKeys(binder, "server.servlet.jsp");
+        jsp.remove("registered", "false");
+        if (!jsp.isEmpty()) {
+            warnings.add(describe(joinNames("server.servlet.jsp", jsp), "no JSP servlet is registered"));
+        }
+        Map<String, String> localeCharsets = bindKeys(binder, "server.servlet.encoding.mapping");
+        if (!localeCharsets.isEmpty()) {
+            warnings.add(describe(joinNames("server.servlet.encoding.mapping", localeCharsets),
+                "locale-to-charset mappings are never read"));
+        }
+        if (binder.bind("server.servlet.session.store-dir", String.class).isBound()) {
+            warnings.add(describe("server.servlet.session.store-dir", "sessions are held in memory only"));
+        }
         return warnings;
     }
 
-    private static String describe(String property, String absentBehaviour) {
-        return property + " is configured but has no effect: " + absentBehaviour + ".";
+    private static Map<String, String> bindKeys(Binder binder, String prefix) {
+        return new TreeMap<>(binder.bind(prefix, Bindable.mapOf(String.class, String.class)).orElse(Map.of()));
+    }
+
+    private static String joinNames(String prefix, Map<String, String> keys) {
+        return keys.keySet().stream().map(key -> prefix + "." + key).collect(Collectors.joining(", "));
+    }
+
+    private static String describe(String properties, String absentBehaviour) {
+        return "Ignoring " + properties + ": " + absentBehaviour + ".";
     }
 
     private void requireSslNotConfigured(Ssl ssl) {

@@ -69,6 +69,59 @@ class ServerPropertiesValidatorTest {
         assertEquals(List.of(), describeUnsupported("server.server-header", ""));
     }
 
+    @Test
+    void shouldNameDefaultServletWhenRegisteredExplicitly() {
+        String warning = describeSingle("server.servlet.register-default-servlet", "true");
+
+        assertTrue(warning.contains("server.servlet.register-default-servlet"),
+            "the warning must name the property, was: " + warning);
+    }
+
+    @Test
+    void shouldStayQuietWhenDefaultServletIsNotRegisteredExplicitly() {
+        assertEquals(List.of(), describeUnsupported("server.servlet.register-default-servlet", "false"));
+    }
+
+    @Test
+    void shouldNameEveryJspKeyWhenConfigured() {
+        String warning = describeSingle(
+            "server.servlet.jsp.class-name", "org.example.Jsp",
+            "server.servlet.jsp.init-parameters.development", "false");
+
+        assertTrue(warning.contains("server.servlet.jsp.class-name")
+                && warning.contains("server.servlet.jsp.init-parameters.development"),
+            "the warning must name each configured key, was: " + warning);
+    }
+
+    @Test
+    void shouldNameJspWhenRegisteredExplicitly() {
+        String warning = describeSingle("server.servlet.jsp.registered", "true");
+
+        assertTrue(warning.contains("server.servlet.jsp.registered"),
+            "Boot's default registers JSP but this server never does, so an explicit true warns, was: " + warning);
+    }
+
+    @Test
+    void shouldStayQuietWhenJspIsUnregisteredExplicitly() {
+        assertEquals(List.of(), describeUnsupported("server.servlet.jsp.registered", "false"));
+    }
+
+    @Test
+    void shouldNameLocaleCharsetMappingWhenConfigured() {
+        String warning = describeSingle("server.servlet.encoding.mapping.de", "UTF-8");
+
+        assertTrue(warning.contains("server.servlet.encoding.mapping.de"),
+            "the warning must name the configured key, was: " + warning);
+    }
+
+    @Test
+    void shouldNameSessionStoreDirWhenConfigured() {
+        String warning = describeSingle("server.servlet.session.store-dir", "/var/sessions");
+
+        assertTrue(warning.contains("server.servlet.session.store-dir"),
+            "the warning must name the property, was: " + warning);
+    }
+
     private static String describeSingle(String... properties) {
         List<String> warnings = describeUnsupported(properties);
         assertEquals(1, warnings.size(), "expected exactly one warning, was: " + warnings);
