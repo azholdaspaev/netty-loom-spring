@@ -10,6 +10,7 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class UnsupportedPropertyWarningTest {
@@ -34,5 +35,12 @@ class UnsupportedPropertyWarningTest {
 
         List<String> warnings = output.getAll().lines().filter(line -> line.contains("Ignoring ")).toList();
         assertEquals(List.of(), warnings, "Boot defaults must not log an unsupported-property warning");
+    }
+
+    @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    void shouldStartWhenTomcatGroupKeyHasEmptyValue() {
+        assertDoesNotThrow(() -> NettyLoomApplications.run("server.tomcat=").close(),
+            "an unsupported-property check only warns, so it must not fail startup");
     }
 }
