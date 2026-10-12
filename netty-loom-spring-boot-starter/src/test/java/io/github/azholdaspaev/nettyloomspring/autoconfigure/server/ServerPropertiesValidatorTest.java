@@ -1,6 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.server;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.env.SystemEnvironmentPropertySource;
 import org.springframework.mock.env.MockEnvironment;
@@ -107,6 +108,25 @@ class ServerPropertiesValidatorTest {
     }
 
     @Test
+    void shouldStayQuietWhenOnlyDevToolsDefaultsAreSet() {
+        MockEnvironment environment = withDevToolsDefaults(new MockEnvironment());
+
+        assertEquals(List.of(), new ServerPropertiesValidator(environment).describeUnsupported(),
+            "DevTools defaults server.servlet.jsp.init-parameters.development=true; that is not user configuration");
+    }
+
+    @Test
+    void shouldNameJspKeyWhenUserSetsKeyDevToolsAlsoDefaults() {
+        MockEnvironment environment = withDevToolsDefaults(new MockEnvironment());
+        environment.setProperty("server.servlet.jsp.init-parameters.development", "true");
+
+        List<String> warnings = new ServerPropertiesValidator(environment).describeUnsupported();
+
+        assertTrue(warnings.size() == 1 && warnings.getFirst().contains("server.servlet.jsp.init-parameters.development"),
+            "only the DevTools source is skipped, not the key, was: " + warnings);
+    }
+
+    @Test
     void shouldNameLocaleCharsetMappingWhenConfigured() {
         String warning = describeSingle("server.servlet.encoding.mapping.de", "UTF-8");
 
@@ -185,6 +205,12 @@ class ServerPropertiesValidatorTest {
 
         assertTrue(warning.contains("server.undertow.threads.io") && warning.contains("no Undertow support"),
             "the warning must name the key and that Boot 4 dropped Undertow, was: " + warning);
+    }
+
+    private static MockEnvironment withDevToolsDefaults(MockEnvironment environment) {
+        environment.getPropertySources().addLast(new MapPropertySource("devtools",
+            Map.of("server.servlet.jsp.init-parameters.development", "true")));
+        return environment;
     }
 
     private static String describeSingle(String... properties) {
