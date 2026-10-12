@@ -1,5 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.properties;
 
+import io.github.azholdaspaev.nettyloomspring.core.server.NettyServerConfiguration;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyTransportPreference;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyForwardedHeaderResolver;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyForwardedHeaders;
@@ -83,7 +84,7 @@ public record NettyLoomProperties(
     }
 
     private static void rejectNonPositiveUnlessUnlimited(String field, int value, Errors errors) {
-        if (value <= 0 && value != -1) {
+        if (value <= 0 && value != NettyServerConfiguration.UNLIMITED_CONNECTIONS) {
             errors.rejectValue(field, "positive", "must be positive, or -1 for no limit");
         }
     }
