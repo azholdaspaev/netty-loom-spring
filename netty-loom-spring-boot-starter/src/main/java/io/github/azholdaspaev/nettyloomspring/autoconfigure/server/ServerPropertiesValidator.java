@@ -1,5 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.server;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.web.server.Ssl;
@@ -16,6 +18,8 @@ import java.util.stream.Collectors;
 
 final class ServerPropertiesValidator {
 
+    private static final Logger log = LoggerFactory.getLogger(ServerPropertiesValidator.class);
+
     private final Environment environment;
 
     ServerPropertiesValidator(Environment environment) {
@@ -25,6 +29,10 @@ final class ServerPropertiesValidator {
     void requireSupported(Ssl ssl, Session session) {
         requireSslNotConfigured(ssl);
         requireSessionPersistenceNotConfigured(session);
+    }
+
+    void warnUnsupported() {
+        describeUnsupported().forEach(log::warn);
     }
 
     List<String> describeUnsupported() {

@@ -77,6 +77,7 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
     @Override
     public WebServer getWebServer(ServletContextInitializer... initializers) {
         validator.requireSupported(getSsl(), getSettings().getSession());
+        validator.warnUnsupported();
         /*
          * Set the context path before the initializer/filter/servlet startup phases so any component
          * that reads ServletContext.getContextPath() during onStartup/init sees the configured value,
