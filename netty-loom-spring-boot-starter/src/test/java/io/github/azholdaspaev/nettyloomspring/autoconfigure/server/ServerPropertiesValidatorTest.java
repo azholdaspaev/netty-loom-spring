@@ -192,6 +192,40 @@ class ServerPropertiesValidatorTest {
     }
 
     @Test
+    void shouldMapAcceptCountWhenSetThroughEnvironmentVariable() {
+        String warning = describeSingleEnvironmentVariable("SERVER_TOMCAT_ACCEPTCOUNT", "200");
+
+        assertTrue(warning.contains("server.tomcat.accept-count") && warning.contains("server.netty.accept-count"),
+            "Boot binds SERVER_TOMCAT_ACCEPTCOUNT to accept-count, so it must map the same, was: " + warning);
+    }
+
+    @Test
+    void shouldMapMaxConnectionsWhenEnvironmentVariableSplitsKey() {
+        String warning = describeSingleEnvironmentVariable("SERVER_TOMCAT_MAX_CONNECTIONS", "5");
+
+        assertTrue(warning.contains("server.tomcat.max-connections") && warning.contains("#45"),
+            "Boot binds SERVER_TOMCAT_MAX_CONNECTIONS to max-connections, so it must map the same, was: " + warning);
+    }
+
+    @Test
+    void shouldMapMaxConnectionsWhenSetInCamelCase() {
+        String warning = describeSingle("server.tomcat.maxConnections", "5");
+
+        assertTrue(warning.contains("server.tomcat.max-connections") && warning.contains("#45"),
+            "Boot binds maxConnections to max-connections, so it must map the same, was: " + warning);
+    }
+
+    @Test
+    void shouldNameAcceptCountOnceWhenSetInTwoForms() {
+        String warning = describeSingle(
+            "server.tomcat.accept-count", "200",
+            "server.tomcat.acceptCount", "200");
+
+        assertEquals(warning.indexOf("server.tomcat.accept-count"), warning.lastIndexOf("server.tomcat.accept-count"),
+            "two spellings of one key must be named once, was: " + warning);
+    }
+
+    @Test
     void shouldNameJettyKeyWhenConfigured() {
         String warning = describeSingle("server.jetty.threads.max", "50");
 
@@ -211,6 +245,15 @@ class ServerPropertiesValidatorTest {
         environment.getPropertySources().addLast(new MapPropertySource("devtools",
             Map.of("server.servlet.jsp.init-parameters.development", "true")));
         return environment;
+    }
+
+    private static String describeSingleEnvironmentVariable(String name, String value) {
+        MockEnvironment environment = new MockEnvironment();
+        environment.getPropertySources().addLast(new SystemEnvironmentPropertySource(
+            StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME, Map.of(name, value)));
+        List<String> warnings = new ServerPropertiesValidator(environment).describeUnsupported();
+        assertEquals(1, warnings.size(), "expected exactly one warning, was: " + warnings);
+        return warnings.getFirst();
     }
 
     private static String describeSingle(String... properties) {
