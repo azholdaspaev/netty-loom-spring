@@ -79,13 +79,13 @@ this table in the same change, with a test proving its warning is gone.
 | `server.compression.*` | `enabled=true` | No `HttpContentCompressor` in the pipeline | [#22](https://github.com/azholdaspaev/netty-loom-spring/issues/22) |
 | `server.http2.enabled` | `true` | `HttpServerCodec` is HTTP/1.1 only | [#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23) |
 | `server.server-header` | It has text | Never written to a response | [#167](https://github.com/azholdaspaev/netty-loom-spring/issues/167) |
-| `server.max-http-request-header-size` | Any value | The header cap is `server.netty.max-header-size` ([ADR 0001](adr/0001-server-properties-namespace.md): frame-size limits are Netty-only tuning) | |
+| `server.max-http-request-header-size` | It has text | The header cap is `server.netty.max-header-size` ([ADR 0001](adr/0001-server-properties-namespace.md): frame-size limits are Netty-only tuning) | |
 | `server.servlet.register-default-servlet` | `true` | Only the `DispatcherServlet` is ever initialized | |
 | `server.servlet.jsp.*` | Any key but `registered=false`. Boot defaults `registered` to `true`, and this server registers no JSP servlet, so an explicit `true` warns | No JSP servlet | |
 | `server.servlet.encoding.mapping.*` | Any key | Locale-to-charset mappings are never read. Note this is a different property from `spring.servlet.encoding.*`, which *is* honoured because Boot implements it as a filter | |
 | `server.servlet.session.store-dir` | Any value | Sessions are in memory only | |
 | `spring.mvc.servlet.path` | Anything but `/` or empty | `DispatcherServlet` receives every in-context request regardless | |
-| `server.netty.port` | Any value | Removed; use `server.port` | |
+| `server.netty.port` | It has text | Removed; use `server.port` | |
 | `server.tomcat.*` | Any key | Netty serves, not Tomcat. `accept-count` maps to `server.netty.accept-count`; `max-connections` has none yet; `threads.*` has none, because requests run on unbounded virtual threads | [#45](https://github.com/azholdaspaev/netty-loom-spring/issues/45) |
 | `server.jetty.*` | Any key | Netty serves, not Jetty. Keys are not mapped | |
 | `server.undertow.*` | Any key | Spring Boot 4 has no Undertow support | |

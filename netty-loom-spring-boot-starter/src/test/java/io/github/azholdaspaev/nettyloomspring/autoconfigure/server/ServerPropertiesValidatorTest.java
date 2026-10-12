@@ -158,6 +158,12 @@ class ServerPropertiesValidatorTest {
     }
 
     @Test
+    void shouldStayQuietWhenHeaderSizeIsEmpty() {
+        assertEquals(List.of(), describeUnsupported("server.max-http-request-header-size", ""),
+            "Boot converts an empty DataSize to null and keeps its 8KB default, the same as leaving it unset");
+    }
+
+    @Test
     void shouldNameServletPathWhenSetOffRoot() {
         String warning = describeSingle("spring.mvc.servlet.path", "/api");
 
@@ -181,6 +187,12 @@ class ServerPropertiesValidatorTest {
 
         assertTrue(warning.contains("server.netty.port") && warning.contains("server.port"),
             "the warning must name the removed property and its replacement, was: " + warning);
+    }
+
+    @Test
+    void shouldStayQuietWhenNettyPortIsEmpty() {
+        assertEquals(List.of(), describeUnsupported("server.netty.port", ""),
+            "nothing binds server.netty.port, and an empty value names no port to move to server.port");
     }
 
     @Test
