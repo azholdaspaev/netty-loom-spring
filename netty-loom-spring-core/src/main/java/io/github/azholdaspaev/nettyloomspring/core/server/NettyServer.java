@@ -141,7 +141,7 @@ public class NettyServer {
             .childHandler(channelInitializer)
             .option(ChannelOption.SO_BACKLOG, configuration.acceptCount())
             .childOption(ChannelOption.SO_KEEPALIVE, configuration.tcpKeepAlive());
-        if (configuration.maxConnections() > 0) {
+        if (configuration.maxConnections() != NettyServerConfiguration.UNLIMITED_CONNECTIONS) {
             /*
              * One accept per read, so the cap pauses before the next one: NIO otherwise accepts a batch of 16
              * before firing any, a size DefaultChannelConfig's constructor imposes and its public setter keeps.
