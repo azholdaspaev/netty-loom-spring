@@ -127,7 +127,7 @@ Path-based `forward` only ([#182](https://github.com/azholdaspaev/netty-loom-spr
 | URL rewriting | `none` | `encodeURL` is the identity; `isRequestedSessionIdFromURL()` is always `false` |
 | `server.servlet.session.tracking-modes` other than `cookie` | `fails startup` | An empty set is legal and disables the cookie |
 | `server.servlet.session.persistent=true` | `fails startup` | Use Spring Session for a durable store |
-| `server.servlet.session.store-dir` | `ignored` | |
+| `server.servlet.session.store-dir` | `warns` | |
 | Distributed sessions | `none` | Use Spring Session |
 
 ## Listeners
@@ -175,7 +175,7 @@ fired on an object bound into a session, and passing one to `addListener` throws
 | `Filter.destroy()`, `Servlet.destroy()` | `works` | On shutdown and on `ApplicationContext.stop()`: `DispatcherServlet` first, then the filters in reverse registration order, then session teardown, then `contextDestroyed`. A `start()` re-runs `init()` on each. A `destroy()` that throws is logged and the pass continues. **Constraints**, both because a stop/start cycle here runs a `destroy()`/`init()` pair where Tomcat destroys once, after the context has closed, and never re-initializes: a `dispatcherServlet` bean built as `new DispatcherServlet(applicationContext)` owns that context by Spring's contract, so its `destroy()` closes it (`FrameworkServlet.destroy()`), and on a plain `stop()` that closes the whole application, where on Tomcat the same call is a no-op — Boot's default `new DispatcherServlet()` is injected instead and is unaffected, and there is no accessor for the ownership flag, so this is not detected. A `DelegatingFilterProxy` with `targetFilterLifecycle=true` destroys its delegate on `stop()` but keeps it, and `initFilterBean()` builds a delegate only when none is held, so the `start()` re-init never reaches the delegate and every request after the restart runs through a destroyed one — Boot's `DelegatingFilterProxyRegistrationBean` leaves the flag at its default `false`, so Spring Security's chain is unaffected, and the delegate is private, so this is not detected either |
 | `addServlet(name, ...)` — all three overloads | `ignored` | Only the class name is recorded; the instance is discarded. The dispatch chain terminates at `DispatcherServlet` unconditionally, so a `ServletRegistrationBean` registers and is **never invoked** |
 | `setLoadOnStartup`, `setServletSecurity`, `setRunAsRole`, `setMultipartConfig`, `setAsyncSupported` | `ignored` | Accepted, no effect |
-| `spring.mvc.servlet.path` | `ignored` | `DispatcherServlet` receives every in-context request |
+| `spring.mvc.servlet.path` | `warns` | `DispatcherServlet` receives every in-context request |
 
 ## ServletContext
 
@@ -206,7 +206,7 @@ fired on an object bound into a session, and passing one to `addListener` throws
 | Handler execution deadline | `none` | A handler that never returns holds its connection until shutdown ([#43](https://github.com/azholdaspaev/netty-loom-spring/issues/43)) |
 | Connection cap / admission control | `none` | [#45](https://github.com/azholdaspaev/netty-loom-spring/issues/45), [#47](https://github.com/azholdaspaev/netty-loom-spring/issues/47) |
 | TLS | `fails startup` | [#16](https://github.com/azholdaspaev/netty-loom-spring/issues/16) |
-| HTTP/2 | `ignored` | `server.http2.*` has no effect ([#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23)) |
-| Response compression | `ignored` | `server.compression.*` has no effect ([#22](https://github.com/azholdaspaev/netty-loom-spring/issues/22)) |
+| HTTP/2 | `warns` | `server.http2.*` has no effect ([#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23)) |
+| Response compression | `warns` | `server.compression.*` has no effect ([#22](https://github.com/azholdaspaev/netty-loom-spring/issues/22)) |
 | Forwarded headers | `works` | `server.forward-headers-strategy=native` as in [Forwarded headers](configuration.md#forwarded-headers); `framework` applies Boot's `ForwardedHeaderFilter` |
 | Access logging, metrics, tracing | `none` | [#8](https://github.com/azholdaspaev/netty-loom-spring/issues/8), [#6](https://github.com/azholdaspaev/netty-loom-spring/issues/6), [#7](https://github.com/azholdaspaev/netty-loom-spring/issues/7) |

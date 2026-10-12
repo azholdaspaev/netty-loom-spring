@@ -1,6 +1,6 @@
 # Configuration reference
 
-Every property this library reads, everything it rejects, everything it ignores, and the two
+Every property this library reads, everything it rejects, everything it warns about, and the two
 behaviours whose design you need to understand before tuning them: response framing and the read
 timeout.
 
@@ -31,9 +31,9 @@ The rule for which namespace a knob belongs to — Spring Boot's `server.*` vers
 | `server.netty.forwarded-headers` | `NettyForwardedHeaders` | `x-forwarded` | The header family native forwarding reads: `x-forwarded` for `X-Forwarded-For`/`-Proto`/`-Host`/`-Port`, `forwarded` for RFC 7239 `Forwarded`. Set it to the family your proxy writes. See [Forwarded headers](#forwarded-headers) |
 
 `NettyLoomProperties` is a `@ConfigurationProperties` record, which binds with
-`ignoreUnknownFields = true`. A misspelled or obsolete key under `server.netty.*` is therefore
-**silently dropped, not a startup error** — most importantly `server.netty.port`, which was removed
-in favour of `server.port`.
+`ignoreUnknownFields = true`. A misspelled key under `server.netty.*` is therefore **silently
+dropped, not a startup error**. The one obsolete key, `server.netty.port`, removed in favour of
+`server.port`, [warns](#properties-that-warn-when-configured).
 
 ## Standard `server.*` properties that are honoured
 
@@ -64,27 +64,39 @@ beans and `CookieSameSiteSupplier` beans.
 | `server.servlet.session.tracking-modes` with `URL` or `SSL` | `IllegalArgumentException` naming the property |
 | `server.netty.transport` unknown or unavailable | A binding failure naming the property, with Boot's failure analyzer listing the valid constants (`AUTO`, `EPOLL`, `KQUEUE`, `NIO`) at startup, or `IllegalStateException` if the requested native transport is not available on this platform |
 
-## Properties that are silently ignored
+## Properties that warn when configured
 
 `NettyServletWebServerFactory` extends Boot's `AbstractConfigurableWebServerFactory`, so Boot binds
-and pushes the entire `server.*` surface onto it. The factory reads only the properties listed
-above. Everything below is set on the factory and never read again — **no warning, no startup
-failure**.
+and pushes the entire `server.*` surface onto it, and the factory reads only the properties listed
+above. At startup, each group below that is set in the `Environment` logs one WARN naming the
+configured keys. A group left unset, or set to what this server already does, logs nothing. The
+check reads the `Environment`, not the factory, so a value a `WebServerFactoryCustomizer` sets in
+code is not seen. A capability that becomes supported leaves this table in the same change, with
+a test proving its warning is gone.
 
-| Property | Why it does nothing | Issue |
+| Property | Warns when | What is absent | Issue |
+| --- | --- | --- | --- |
+| `server.compression.*` | `enabled=true` | No `HttpContentCompressor` in the pipeline | [#22](https://github.com/azholdaspaev/netty-loom-spring/issues/22) |
+| `server.http2.enabled` | `true` | `HttpServerCodec` is HTTP/1.1 only | [#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23) |
+| `server.server-header` | It has text | Never written to a response | [#167](https://github.com/azholdaspaev/netty-loom-spring/issues/167) |
+| `server.max-http-request-header-size` | Any value | The header cap is `server.netty.max-header-size` ([ADR 0001](adr/0001-server-properties-namespace.md): frame-size limits are Netty-only tuning) | |
+| `server.servlet.register-default-servlet` | `true` | Only the `DispatcherServlet` is ever initialized | |
+| `server.servlet.jsp.*` | Any key but `registered=false`. Boot defaults `registered` to `true`, and this server registers no JSP servlet, so an explicit `true` warns | No JSP servlet | |
+| `server.servlet.encoding.mapping.*` | Any key | Locale-to-charset mappings are never read. Note this is a different property from `spring.servlet.encoding.*`, which *is* honoured because Boot implements it as a filter | |
+| `server.servlet.session.store-dir` | Any value | Sessions are in memory only | |
+| `spring.mvc.servlet.path` | Anything but `/` | `DispatcherServlet` receives every in-context request regardless | |
+| `server.netty.port` | Any value | Removed; use `server.port` | |
+| `server.tomcat.*` | Any key | Netty serves, not Tomcat. `accept-count` maps to `server.netty.accept-count`; `max-connections` has none yet; `threads.*` has none, because requests run on unbounded virtual threads | [#45](https://github.com/azholdaspaev/netty-loom-spring/issues/45) |
+| `server.jetty.*` | Any key | Netty serves, not Jetty. Keys are not mapped | |
+| `server.undertow.*` | Any key | Spring Boot 4 has no Undertow support | |
+
+## Properties that are intentionally defaulted
+
+Not read, and not warned about, by design.
+
+| Property | Why | Issue |
 | --- | --- | --- |
-| `server.compression.*` | No `HttpContentCompressor` in the pipeline | [#22](https://github.com/azholdaspaev/netty-loom-spring/issues/22) |
-| `server.http2.enabled` | `HttpServerCodec` is HTTP/1.1 only | [#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23) |
-| `server.server-header` | Never written to a response | |
-| `server.max-http-request-header-size` | The header cap is `server.netty.max-header-size` ([ADR 0001](adr/0001-server-properties-namespace.md): frame-size limits are Netty-only tuning) | |
-| `server.servlet.register-default-servlet` | Only the `DispatcherServlet` is ever initialized | |
-| `server.servlet.jsp.*` | No JSP servlet | |
-| `server.servlet.encoding.mapping.*` | Locale-to-charset mappings are never read. Note this is a different property from `spring.servlet.encoding.*`, which *is* honoured because Boot implements it as a filter | |
-| `server.servlet.session.store-dir` | Only `persistent` is checked | |
-| `spring.ssl.bundle.*` | Never read. Unlike `server.ssl.bundle`, which fails startup, this namespace does not bind to `server.ssl` and so starts cleanly | [#16](https://github.com/azholdaspaev/netty-loom-spring/issues/16) |
-| `spring.mvc.servlet.path` | `DispatcherServlet` receives every in-context request regardless | |
-| `server.netty.port` | Removed; use `server.port` | |
-| `server.tomcat.*`, `server.jetty.*`, `server.undertow.*` | Those containers are not on the classpath | |
+| `spring.ssl.bundle.*` | It also configures clients, so setting it says nothing about the server. Server TLS is `server.ssl.*`, which fails startup | [#16](https://github.com/azholdaspaev/netty-loom-spring/issues/16) |
 
 In Spring Boot 4 the error properties moved from `server.error.*` to `spring.web.error.*`; Boot
 itself removed the old namespace, and nothing here rebinds it. The new one *is* honoured: `path`

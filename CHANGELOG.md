@@ -16,6 +16,11 @@ in any minor release.
   and the session cookie is `Secure` when the proxy forwarded `https`. See
   [Forwarded headers](https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#forwarded-headers)
   (#50).
+- A standard `server.*` setting that has no effect here, `server.tomcat.*`, `server.jetty.*` and
+  `server.undertow.*` included, now logs a WARN at startup when set explicitly, naming the keys
+  and, for Tomcat, the `server.netty.*` equivalent. Defaults log nothing. See
+  [Properties that warn when configured](https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#properties-that-warn-when-configured)
+  (#181).
 
 ### Changed
 
