@@ -5,6 +5,8 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.RejectedExecutionException;
 
 /**
@@ -19,7 +21,7 @@ class NettyMaxConnectionsHandler extends ChannelInboundHandlerAdapter {
     private final HttpConnectionRegistry connectionRegistry;
 
     // Read and written only on the server channel's event loop.
-    private int open;
+    private final Set<Channel> open = new HashSet<>();
 
     NettyMaxConnectionsHandler(int maxConnections, HttpConnectionRegistry connectionRegistry) {
         this.maxConnections = maxConnections;
@@ -28,26 +30,31 @@ class NettyMaxConnectionsHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
-        open++;
-        ((Channel) msg).closeFuture().addListener(_ -> releaseOn(ctx));
-        if (open == maxConnections) {
+        Channel child = (Channel) msg;
+        open.add(child);
+        child.closeFuture().addListener(_ -> releaseOn(ctx, child));
+        if (open.size() == maxConnections) {
             ctx.channel().config().setAutoRead(false);
             connectionRegistry.markAcceptPaused();
         }
         ctx.fireChannelRead(msg);
+        // ServerBootstrapAcceptor.forceClose uses closeForcibly(), which never completes the child's closeFuture.
+        if (!child.isOpen()) {
+            release(ctx, child);
+        }
     }
 
-    private void releaseOn(ChannelHandlerContext ctx) {
+    private void releaseOn(ChannelHandlerContext ctx, Channel child) {
         try {
-            ctx.executor().execute(() -> release(ctx));
+            ctx.executor().execute(() -> release(ctx, child));
         } catch (RejectedExecutionException _) {
             // The server loop has stopped, so there is no listen socket left to resume.
         }
     }
 
-    private void release(ChannelHandlerContext ctx) {
+    private void release(ChannelHandlerContext ctx, Channel child) {
         // Only on leaving the cap: ServerBootstrapAcceptor.exceptionCaught pauses accept for its own back-off.
-        if (open-- == maxConnections) {
+        if (open.remove(child) && open.size() == maxConnections - 1) {
             ctx.channel().config().setAutoRead(true);
         }
     }
