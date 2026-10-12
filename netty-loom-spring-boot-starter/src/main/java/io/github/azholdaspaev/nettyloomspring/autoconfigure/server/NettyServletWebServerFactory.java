@@ -25,6 +25,7 @@ import org.springframework.boot.web.servlet.ServletContextInitializer;
 import org.springframework.boot.webmvc.autoconfigure.DispatcherServletAutoConfiguration;
 import org.springframework.context.EnvironmentAware;
 import org.springframework.core.env.Environment;
+import org.springframework.core.env.StandardEnvironment;
 import org.springframework.web.servlet.DispatcherServlet;
 
 import java.util.HashMap;
@@ -44,7 +45,8 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
     private final NettyLoomProperties properties;
 
     private boolean useForwardHeaders;
-    private ServerPropertiesValidator validator;
+    // Replaced by setEnvironment, which registerSingleton and direct construction never call.
+    private ServerPropertiesValidator validator = new ServerPropertiesValidator(new StandardEnvironment());
 
     public NettyServletWebServerFactory(NettyIoHandlerFactory ioHandlerFactory,
                                         NettyServerChannelInitializer channelInitializer,
