@@ -16,14 +16,14 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 
 /**
- * Tracks what graceful shutdown must wait for: open connections, how many HTTP exchanges each is
- * still serving, and how many dispatches are running off the event loop. Shutdown has to wait for
- * in-flight requests, not open sockets — HTTP/1.1 makes persistence the default, so waiting on
- * socket liveness burned the whole grace period on every shutdown (issue #67). {@link #beginDrain()}
- * closes what is idle and flips {@link #isDraining()}, which makes {@link HttpDrainHandler} stamp
- * {@code Connection: close} on the response still owed. Dispatches are counted separately and
- * globally, because a client hanging up takes the per-connection count with it while a virtual
- * thread is still inside the handler (issue #108).
+ * Tracks what graceful shutdown must wait for — open connections, the HTTP exchanges each is still
+ * serving, the dispatches running off the event loop — and how often the connection cap paused
+ * accept. Shutdown waits for in-flight requests, not open sockets: HTTP/1.1 makes persistence the
+ * default, so waiting on socket liveness burned the whole grace period on every shutdown (issue
+ * #67). {@link #beginDrain()} closes what is idle and flips {@link #isDraining()}, which makes
+ * {@link HttpDrainHandler} stamp {@code Connection: close} on the response still owed. Dispatches
+ * are counted separately and globally, because a client hanging up takes the per-connection count
+ * with it while a virtual thread is still inside the handler (issue #108).
  */
 public class HttpConnectionRegistry {
 
@@ -268,6 +268,7 @@ public class HttpConnectionRegistry {
         acceptPauses.increment();
     }
 
+    /** Since construction rather than since {@link #reset()}, so a restart never rewinds a count read as a rate. */
     public long getAcceptPauseCount() {
         return acceptPauses.sum();
     }
