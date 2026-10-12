@@ -14,6 +14,7 @@ import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
 import io.netty.channel.EventLoop;
 import io.netty.channel.IoHandlerFactory;
+import io.netty.channel.MaxMessagesRecvByteBufAllocator;
 import io.netty.channel.ServerChannel;
 import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
@@ -22,6 +23,8 @@ import io.netty.util.concurrent.GlobalEventExecutor;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.io.IOException;
 import java.net.BindException;
@@ -50,6 +53,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 class NettyServerTest {
 
@@ -134,11 +138,12 @@ class NettyServerTest {
         }
     }
 
-    @Test
-    void shouldAdmitOnlyCapWhenBacklogFloodsNioAccept() throws Exception {
+    @ParameterizedTest
+    @EnumSource(value = NettyTransportPreference.class, names = {"NIO", "AUTO"})
+    void shouldAdmitOnlyCapWhenBacklogFloodsAccept(NettyTransportPreference transport) throws Exception {
         Semaphore accepted = new Semaphore(0);
         CompletableFuture<EventLoop> serverLoop = new CompletableFuture<>();
-        nettyServer = newServerCappedAt(4, new NettyIoHandlerFactory(NettyTransportPreference.NIO), accepted,
+        nettyServer = newServerCappedAt(4, new NettyIoHandlerFactory(transport), accepted,
             new NettyPipelineStep("serverLoop", () -> new ChannelInboundHandlerAdapter() {
                 @Override
                 public void channelActive(ChannelHandlerContext ctx) {
@@ -161,7 +166,7 @@ class NettyServerTest {
 
             assertTrue(accepted.tryAcquire(3, 5, TimeUnit.SECONDS), "the server must fill the cap from the backlog");
             assertFalse(accepted.tryAcquire(300, TimeUnit.MILLISECONDS),
-                "a backlog drained in one NIO read must not carry the server past the cap");
+                "a backlog drained in one read must not carry the server past the cap");
             Socket queued = clients.getLast();
             queued.setSoTimeout(300);
             assertThrows(SocketTimeoutException.class, () -> queued.getInputStream().read(),
@@ -169,6 +174,32 @@ class NettyServerTest {
         } finally {
             resume.complete(null);
             closeAll(clients);
+        }
+    }
+
+    @Test
+    void shouldKeepNativeAcceptBatchUnderCap() throws Exception {
+        NettyIoHandlerFactory ioHandlerFactory = new NettyIoHandlerFactory(NettyTransportPreference.AUTO);
+        assumeFalse(NioServerSocketChannel.class.equals(ioHandlerFactory.getServerChannelClass()),
+            "no native transport on this platform");
+        Semaphore accepted = new Semaphore(0);
+        CompletableFuture<Channel> serverChannel = new CompletableFuture<>();
+        nettyServer = newServerCappedAt(4, ioHandlerFactory, accepted,
+            new NettyPipelineStep("serverChannel", () -> new ChannelInboundHandlerAdapter() {
+                @Override
+                public void channelActive(ChannelHandlerContext ctx) {
+                    serverChannel.complete(ctx.channel().parent());
+                    ctx.fireChannelActive();
+                }
+            }));
+        nettyServer.start();
+
+        try (Socket _ = connect()) {
+            MaxMessagesRecvByteBufAllocator allocator =
+                serverChannel.get(5, TimeUnit.SECONDS).config().getRecvByteBufAllocator();
+
+            assertTrue(allocator.maxMessagesPerRead() > 1,
+                "a native accept loop stops at the cap on its own, so it must keep accepting in batches");
         }
     }
 
