@@ -2,10 +2,18 @@ package io.github.azholdaspaev.nettyloomspring.core.server;
 
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.github.azholdaspaev.nettyloomspring.core.support.StandardError;
+import io.netty.bootstrap.ServerBootstrap;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelConfig;
+import io.netty.channel.ChannelException;
+import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.DefaultChannelConfig;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.channel.group.DefaultChannelGroup;
+import io.netty.channel.local.LocalAddress;
 import io.netty.channel.local.LocalIoHandler;
 import io.netty.channel.local.LocalServerChannel;
 import io.netty.util.concurrent.GlobalEventExecutor;
@@ -102,6 +110,73 @@ class NettyMaxConnectionsHandlerTest {
          */
         assertFalse(logged.contains("RejectedExecutionException"),
             "a connection closing after the server loop stopped has nothing to resume; logged: " + logged);
+    }
+
+    @Test
+    void shouldResumeAcceptWhenAcceptorForceClosesChildAtCap() throws Exception {
+        EventLoopGroup serverLoop = new MultiThreadIoEventLoopGroup(1, LocalIoHandler.newFactory());
+        try {
+            Channel server = bindThroughAcceptor(serverLoop, 1);
+
+            server.eventLoop().submit(() -> server.pipeline().fireChannelRead(newChildRejectingOptions())).sync();
+
+            assertTrue(server.eventLoop().submit(() -> server.config().isAutoRead()).get(),
+                "a child the acceptor force-closes never completes its closeFuture, so its slot must still be released");
+        } finally {
+            serverLoop.shutdownGracefully(0, 0, TimeUnit.MILLISECONDS).sync();
+        }
+    }
+
+    @Test
+    void shouldReleaseForceClosedChildOnlyOnce() throws Exception {
+        EventLoopGroup serverLoop = new MultiThreadIoEventLoopGroup(1, LocalIoHandler.newFactory());
+        try {
+            Channel server = bindThroughAcceptor(serverLoop, 2);
+            EmbeddedChannel forceClosed = newChildRejectingOptions();
+            server.eventLoop().submit(() -> server.pipeline().fireChannelRead(forceClosed)).sync();
+
+            server.eventLoop().submit(() -> {
+                forceClosed.close();
+                server.pipeline().fireChannelRead(new EmbeddedChannel());
+                server.pipeline().fireChannelRead(new EmbeddedChannel());
+            }).sync();
+
+            assertFalse(server.eventLoop().submit(() -> server.config().isAutoRead()).get(),
+                "a closeFuture completing after the force-close release must not free the slot a second time");
+        } finally {
+            serverLoop.shutdownGracefully(0, 0, TimeUnit.MILLISECONDS).sync();
+        }
+    }
+
+    private Channel bindThroughAcceptor(EventLoopGroup serverLoop, int maxConnections) throws InterruptedException {
+        return new ServerBootstrap()
+            .group(serverLoop)
+            .channel(LocalServerChannel.class)
+            .handler(new NettyMaxConnectionsHandler(maxConnections, registry))
+            .childHandler(new ChannelInboundHandlerAdapter())
+            .childOption(ChannelOption.SO_KEEPALIVE, true)
+            .bind(new LocalAddress(NettyMaxConnectionsHandlerTest.class))
+            .sync()
+            .channel();
+    }
+
+    private static EmbeddedChannel newChildRejectingOptions() {
+        return new EmbeddedChannel() {
+            private ChannelConfig config;
+
+            @Override
+            public ChannelConfig config() {
+                if (config == null) {
+                    config = new DefaultChannelConfig(this) {
+                        @Override
+                        public <T> boolean setOption(ChannelOption<T> option, T value) {
+                            throw new ChannelException("setsockopt failed: Invalid argument");
+                        }
+                    };
+                }
+                return config;
+            }
+        };
     }
 
     private EmbeddedChannel newServerChannel(int maxConnections) {
