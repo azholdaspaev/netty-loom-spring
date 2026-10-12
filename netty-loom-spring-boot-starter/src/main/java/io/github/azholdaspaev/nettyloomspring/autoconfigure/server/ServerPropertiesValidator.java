@@ -5,6 +5,7 @@ import org.springframework.boot.web.server.Ssl;
 import org.springframework.boot.web.server.WebServerException;
 import org.springframework.boot.web.server.servlet.Session;
 import org.springframework.core.env.Environment;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,6 +28,12 @@ final class ServerPropertiesValidator {
         List<String> warnings = new ArrayList<>();
         if (binder.bind("server.compression.enabled", Boolean.class).orElse(false)) {
             warnings.add(describe("server.compression.enabled=true", "responses are never compressed (see issue #22)"));
+        }
+        if (binder.bind("server.http2.enabled", Boolean.class).orElse(false)) {
+            warnings.add(describe("server.http2.enabled=true", "only HTTP/1.1 is served (see issue #23)"));
+        }
+        if (StringUtils.hasText(binder.bind("server.server-header", String.class).orElse(null))) {
+            warnings.add(describe("server.server-header", "no Server header is written (see issue #167)"));
         }
         return warnings;
     }
