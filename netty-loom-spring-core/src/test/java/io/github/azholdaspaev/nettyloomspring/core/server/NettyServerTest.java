@@ -214,19 +214,8 @@ class NettyServerTest {
 
     private static NettyServer newServerCappedAt(int maxConnections, NettyIoHandlerFactory ioHandlerFactory,
                                                  Semaphore accepted, NettyPipelineStep... extra) {
-        List<NettyPipelineStep> handlers = new ArrayList<>();
-        handlers.add(new NettyPipelineStep("accepted", () -> new ChannelInboundHandlerAdapter() {
-            @Override
-            public void channelActive(ChannelHandlerContext ctx) {
-                accepted.release();
-                ctx.fireChannelActive();
-            }
-        }));
-        handlers.addAll(List.of(extra));
-        return NettyServerFixture.newServer(
-            new NettyServerConfiguration(0, InetAddress.getLoopbackAddress(), 1, 1, false, 128, maxConnections),
-            new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)),
-            handlers, ioHandlerFactory);
+        return newServer(InetAddress.getLoopbackAddress(), 0, maxConnections, ioHandlerFactory, accepted::release,
+            extra);
     }
 
     private static NettyServer newServer(InetAddress address) {
@@ -244,13 +233,20 @@ class NettyServerTest {
 
     private static NettyServer newServer(InetAddress address, CountDownLatch accepted, int port,
                                          NettyIoHandlerFactory ioHandlerFactory, NettyPipelineStep... extra) {
-        NettyServerConfiguration configuration = new NettyServerConfiguration(port, address, 0, 0, false, 128, -1);
+        return newServer(address, port, -1, ioHandlerFactory, accepted == null ? null : accepted::countDown, extra);
+    }
+
+    private static NettyServer newServer(InetAddress address, int port, int maxConnections,
+                                         NettyIoHandlerFactory ioHandlerFactory, Runnable accepted,
+                                         NettyPipelineStep... extra) {
+        NettyServerConfiguration configuration =
+            new NettyServerConfiguration(port, address, 0, 0, false, 128, maxConnections);
         List<NettyPipelineStep> handlers = new ArrayList<>();
         if (accepted != null) {
             handlers.add(new NettyPipelineStep("accepted", () -> new ChannelInboundHandlerAdapter() {
                 @Override
                 public void channelActive(ChannelHandlerContext ctx) {
-                    accepted.countDown();
+                    accepted.run();
                     ctx.fireChannelActive();
                 }
             }));
