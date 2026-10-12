@@ -35,6 +35,10 @@ final class ServerPropertiesValidator {
         describeUnsupported().forEach(log::warn);
     }
 
+    /**
+     * The Environment rather than factory state, because Boot pushes {@code Compression}, {@code Http2}
+     * and {@code Jsp} onto the factory whether or not they were set; only here is an explicit value visible.
+     */
     List<String> describeUnsupported() {
         Binder binder = Binder.get(environment);
         List<String> warnings = new ArrayList<>();
@@ -117,9 +121,9 @@ final class ServerPropertiesValidator {
 
     private void requireSslNotConfigured(Ssl ssl) {
         /*
-         * Because this factory is a ConfigurableServletWebServerFactory, Boot binds server.ssl.* onto it,
-         * but the Netty pipeline has no SslHandler (issue #16). Fail fast rather than silently serving
-         * plaintext while the application looks TLS-configured.
+         * Boot binds server.ssl.* onto every ConfigurableServletWebServerFactory, but the Netty pipeline
+         * has no SslHandler (issue #16). Fail fast rather than silently serving plaintext while the
+         * application looks TLS-configured.
          */
         if (Ssl.isEnabled(ssl)) {
             throw new WebServerException("server.ssl.* is configured but netty-loom-spring does not support "
