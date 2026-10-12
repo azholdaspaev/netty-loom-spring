@@ -77,7 +77,8 @@ final class ServerPropertiesValidator {
         if (binder.bind("server.max-http-request-header-size", String.class).isBound()) {
             warnings.add(describe("server.max-http-request-header-size", "use server.netty.max-header-size"));
         }
-        if (!binder.bind("spring.mvc.servlet.path", String.class).orElse("/").equals("/")) {
+        String servletPath = binder.bind("spring.mvc.servlet.path", String.class).orElse("/");
+        if (!servletPath.isEmpty() && !servletPath.equals("/")) {
             warnings.add(describe("spring.mvc.servlet.path", "the DispatcherServlet receives every in-context request"));
         }
         if (binder.bind("server.netty.port", String.class).isBound()) {

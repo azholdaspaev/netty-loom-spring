@@ -170,6 +170,12 @@ class ServerPropertiesValidatorTest {
     }
 
     @Test
+    void shouldStayQuietWhenServletPathIsEmpty() {
+        assertEquals(List.of(), describeUnsupported("spring.mvc.servlet.path", ""),
+            "Boot maps an empty servlet path to /, which is what this server does");
+    }
+
+    @Test
     void shouldPointNettyPortAtServerPortWhenConfigured() {
         String warning = describeSingle("server.netty.port", "9090");
 

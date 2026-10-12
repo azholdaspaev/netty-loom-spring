@@ -84,7 +84,7 @@ this table in the same change, with a test proving its warning is gone.
 | `server.servlet.jsp.*` | Any key but `registered=false`. Boot defaults `registered` to `true`, and this server registers no JSP servlet, so an explicit `true` warns | No JSP servlet | |
 | `server.servlet.encoding.mapping.*` | Any key | Locale-to-charset mappings are never read. Note this is a different property from `spring.servlet.encoding.*`, which *is* honoured because Boot implements it as a filter | |
 | `server.servlet.session.store-dir` | Any value | Sessions are in memory only | |
-| `spring.mvc.servlet.path` | Anything but `/` | `DispatcherServlet` receives every in-context request regardless | |
+| `spring.mvc.servlet.path` | Anything but `/` or empty | `DispatcherServlet` receives every in-context request regardless | |
 | `server.netty.port` | Any value | Removed; use `server.port` | |
 | `server.tomcat.*` | Any key | Netty serves, not Tomcat. `accept-count` maps to `server.netty.accept-count`; `max-connections` has none yet; `threads.*` has none, because requests run on unbounded virtual threads | [#45](https://github.com/azholdaspaev/netty-loom-spring/issues/45) |
 | `server.jetty.*` | Any key | Netty serves, not Jetty. Keys are not mapped | |
