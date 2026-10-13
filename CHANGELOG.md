@@ -30,6 +30,8 @@ in any minor release.
 
 ### Changed
 
+- Dispatch virtual threads are named `netty-loom-vt-N`. An application that supplies its own
+  `nettyLoomDispatchExecutor` keeps its own thread names (#47).
 - `HttpRequestBodyLimitHandler(long)` is replaced by
   `HttpRequestBodyLimitHandler(long, long, Duration)`, which also takes the swallow limit and
   timeout. A `NettyPipelineDefinition` of your own that builds the handler must pass them (#200).
