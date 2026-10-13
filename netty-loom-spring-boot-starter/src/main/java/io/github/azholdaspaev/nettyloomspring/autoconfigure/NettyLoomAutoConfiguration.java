@@ -167,7 +167,7 @@ public class NettyLoomAutoConfiguration {
     @Bean(name = DISPATCH_EXECUTOR_BEAN, destroyMethod = "shutdownNow")
     @ConditionalOnMissingBean(name = DISPATCH_EXECUTOR_BEAN, search = SearchStrategy.CURRENT)
     public ExecutorService nettyLoomDispatchExecutor() {
-        return Executors.newVirtualThreadPerTaskExecutor();
+        return Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("netty-loom-vt-", 0).factory());
     }
 
     @Bean

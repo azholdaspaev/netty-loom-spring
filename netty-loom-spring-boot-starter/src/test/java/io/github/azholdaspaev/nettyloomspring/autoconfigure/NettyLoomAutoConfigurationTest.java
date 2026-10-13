@@ -37,7 +37,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import static io.github.azholdaspaev.nettyloomspring.autoconfigure.NettyLoomAutoConfiguration.DISPATCH_EXECUTOR_BEAN;
 import static io.github.azholdaspaev.nettyloomspring.autoconfigure.NettyLoomAutoConfiguration.SERVLET_CONTEXT_BEAN;
@@ -246,6 +248,28 @@ class NettyLoomAutoConfigurationTest {
                 verifyNoInteractions(primaryExecutor);
                 channel.finishAndReleaseAll();
             });
+    }
+
+    @Test
+    void shouldDispatchOnNamedVirtualThread() throws Exception {
+        CompletableFuture<Thread> dispatchThread = new CompletableFuture<>();
+        DispatcherServlet servlet = mock(DispatcherServlet.class);
+        doAnswer(invocation -> {
+            dispatchThread.complete(Thread.currentThread());
+            return null;
+        }).when(servlet).service(any(ServletRequest.class), any(ServletResponse.class));
+        newBootedRunnerWithServlet(servlet).run(context -> {
+            int port = context.getSourceApplicationContext(AnnotationConfigServletWebServerApplicationContext.class)
+                .getWebServer().getPort();
+            try (HttpClient client = HttpClient.newBuilder().connectTimeout(TIMEOUT).build()) {
+                client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/")).timeout(TIMEOUT).build(),
+                    HttpResponse.BodyHandlers.discarding());
+            }
+
+            Thread thread = dispatchThread.get(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            assertThat(thread.isVirtual()).as("dispatch must run on a virtual thread").isTrue();
+            assertThat(thread.getName()).matches("netty-loom-vt-\\d+");
+        });
     }
 
     @Test
