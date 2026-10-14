@@ -464,6 +464,30 @@ class HttpConnectionRegistryTest {
             "the pause count must keep counting across a restart, not start over");
     }
 
+    @Test
+    void shouldStopCountingConnectionOnceItCloses() {
+        HttpConnectionRegistry registry = newRegistry();
+        EmbeddedChannel connection = register(registry);
+
+        assertEquals(1, registry.getOpenConnectionCount(), "a registered connection must count as open");
+
+        connection.close();
+
+        assertEquals(0, registry.getOpenConnectionCount(), "a closed connection must leave the open count");
+    }
+
+    @Test
+    void shouldStopCountingDispatchOnceItFinishes() {
+        HttpConnectionRegistry registry = newRegistry();
+        registry.dispatchStarted();
+
+        assertEquals(1, registry.getActiveDispatchCount(), "a started dispatch must count as active");
+
+        registry.dispatchFinished();
+
+        assertEquals(0, registry.getActiveDispatchCount(), "a finished dispatch must leave the active count");
+    }
+
     private static HttpConnectionRegistry newRegistry() {
         return new HttpConnectionRegistry(new DefaultChannelGroup(GlobalEventExecutor.INSTANCE));
     }
