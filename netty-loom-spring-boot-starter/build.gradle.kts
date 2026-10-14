@@ -17,6 +17,8 @@ dependencies {
         exclude(group = "org.springframework.boot", module = "spring-boot-starter-tomcat")
     }
 
+    compileOnly(libs.micrometer.core)
+
     annotationProcessor(libs.spring.boot.configuration.processor)
 
     testImplementation(libs.spring.boot.starter.test)
@@ -25,6 +27,7 @@ dependencies {
     testImplementation(libs.spring.boot.starter.restclient)
     testImplementation(libs.spring.boot.resttestclient)
     testImplementation(libs.spring.boot.tomcat)
+    testImplementation(libs.micrometer.core)
 
     // spring-boot-starter-test brings Mockito in transitively; load it as an agent.
     "mockitoAgent"(libs.mockito.core)

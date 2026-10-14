@@ -1,5 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure;
 
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.metrics.NettyServerMetrics;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.NettyServletWebServerFactory;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.ServletContextLifecycle;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
@@ -8,6 +9,9 @@ import io.github.azholdaspaev.nettyloomspring.core.pipeline.NettyPipelineDefinit
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyIoHandlerFactory;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyServerChannelInitializer;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.binder.MeterBinder;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.HttpMethod;
@@ -118,7 +122,8 @@ class NettyLoomAutoConfigurationTest {
         HttpConnectionRegistry.class,
         NettyServerChannelInitializer.class,
         NettyPipelineDefinition.class,
-        HttpRequestDispatcher.class
+        HttpRequestDispatcher.class,
+        NettyServerMetrics.class
     })
     void shouldUseUserBeanWithoutPrimary(Class<?> type) {
         assertUserBeanWins(type);
@@ -269,6 +274,46 @@ class NettyLoomAutoConfigurationTest {
             Thread thread = dispatchThread.get(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
             assertThat(thread.isVirtual()).as("dispatch must run on a virtual thread").isTrue();
             assertThat(thread.getName()).matches("netty-loom-vt-\\d+");
+        });
+    }
+
+    @Test
+    void shouldDeclareServerMetricsWhenMicrometerIsPresent() {
+        runner.run(context -> assertThat(context).hasSingleBean(NettyServerMetrics.class));
+    }
+
+    @Test
+    void shouldSkipServerMetricsWhenMicrometerIsAbsent() {
+        runner.withClassLoader(new FilteredClassLoader(MeterBinder.class))
+            .run(context -> assertThat(context)
+                .hasNotFailed()
+                .doesNotHaveBean(NettyServerMetrics.class));
+    }
+
+    @Test
+    void shouldReportOpenConnectionAndDispatchWhileServletRuns() throws Exception {
+        MeterRegistry meterRegistry = new SimpleMeterRegistry();
+        CompletableFuture<double[]> gaugesDuringService = new CompletableFuture<>();
+        DispatcherServlet servlet = mock(DispatcherServlet.class);
+        doAnswer(invocation -> {
+            gaugesDuringService.complete(new double[] {
+                meterRegistry.get("netty.server.connections.active").gauge().value(),
+                meterRegistry.get("netty.server.dispatches.active").gauge().value()
+            });
+            return null;
+        }).when(servlet).service(any(ServletRequest.class), any(ServletResponse.class));
+        newBootedRunnerWithServlet(servlet).run(context -> {
+            context.getBean(NettyServerMetrics.class).bindTo(meterRegistry);
+            int port = context.getSourceApplicationContext(AnnotationConfigServletWebServerApplicationContext.class)
+                .getWebServer().getPort();
+            try (HttpClient client = HttpClient.newBuilder().connectTimeout(TIMEOUT).build()) {
+                client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/")).timeout(TIMEOUT).build(),
+                    HttpResponse.BodyHandlers.discarding());
+            }
+
+            double[] gauges = gaugesDuringService.get(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            assertThat(gauges[0]).as("the connection carrying the request must count as open").isGreaterThanOrEqualTo(1);
+            assertThat(gauges[1]).as("the dispatch running the servlet must count as active").isGreaterThanOrEqualTo(1);
         });
     }
 

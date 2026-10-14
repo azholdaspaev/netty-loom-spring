@@ -26,6 +26,9 @@ spring-boot-webmvc-test = { module = "org.springframework.boot:spring-boot-webmv
 spring-boot-resttestclient = { module = "org.springframework.boot:spring-boot-resttestclient" }
 spring-boot-tomcat = { module = "org.springframework.boot:spring-boot-tomcat" }
 
+# Micrometer (version managed by Spring BOM)
+micrometer-core = { module = "io.micrometer:micrometer-core" }
+
 # Netty
 netty-transport = { module = "io.netty:netty-transport", version.ref = "netty" }
 netty-codec-http = { module = "io.netty:netty-codec-http", version.ref = "netty" }
