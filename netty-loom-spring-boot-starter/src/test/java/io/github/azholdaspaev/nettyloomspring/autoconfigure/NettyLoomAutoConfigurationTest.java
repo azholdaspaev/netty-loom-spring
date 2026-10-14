@@ -325,8 +325,8 @@ class NettyLoomAutoConfigurationTest {
             }
 
             double[] gauges = gaugesDuringService.get(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
-            assertThat(gauges[0]).as("the connection carrying the request must count as open").isGreaterThanOrEqualTo(1);
-            assertThat(gauges[1]).as("the dispatch running the servlet must count as active").isGreaterThanOrEqualTo(1);
+            assertThat(gauges[0]).as("the connection carrying the request must count as open, and only once").isEqualTo(1);
+            assertThat(gauges[1]).as("the dispatch running the servlet must count as active, and only once").isEqualTo(1);
         });
     }
 
