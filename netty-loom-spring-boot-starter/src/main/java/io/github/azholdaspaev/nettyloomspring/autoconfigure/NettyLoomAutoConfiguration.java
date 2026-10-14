@@ -1,6 +1,5 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure;
 
-import io.github.azholdaspaev.nettyloomspring.autoconfigure.metrics.NettyServerMetrics;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.properties.NettyLoomProperties;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.NettyForwardHeadersCustomizer;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.NettyServletWebServerFactory;
@@ -21,7 +20,6 @@ import io.github.azholdaspaev.nettyloomspring.core.server.NettyServerChannelInit
 import io.github.azholdaspaev.nettyloomspring.mvc.handler.SpringHttpRequestDispatcher;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.DefaultNettyServletContext;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
-import io.micrometer.core.instrument.binder.MeterBinder;
 import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.HttpServerKeepAliveHandler;
@@ -39,7 +37,6 @@ import org.springframework.boot.web.server.autoconfigure.servlet.ServletWebServe
 import org.springframework.boot.web.server.servlet.ServletWebServerFactory;
 import org.springframework.boot.webmvc.autoconfigure.WebMvcAutoConfiguration;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.web.servlet.DispatcherServlet;
 
@@ -178,16 +175,5 @@ public class NettyLoomAutoConfiguration {
     public HttpRequestDispatcher httpRequestDispatcher(DispatcherServlet dispatcherServlet,
                                                        @Qualifier(SERVLET_CONTEXT_BEAN) NettyServletContext nettyServletContext) {
         return new SpringHttpRequestDispatcher(dispatcherServlet, nettyServletContext);
-    }
-
-    @Configuration(proxyBeanMethods = false)
-    @ConditionalOnClass(MeterBinder.class)
-    static class NettyServerMetricsConfiguration {
-
-        @Bean
-        @ConditionalOnMissingBean(search = SearchStrategy.CURRENT)
-        public NettyServerMetrics nettyServerMetrics(HttpConnectionRegistry httpConnectionRegistry) {
-            return new NettyServerMetrics(httpConnectionRegistry);
-        }
     }
 }

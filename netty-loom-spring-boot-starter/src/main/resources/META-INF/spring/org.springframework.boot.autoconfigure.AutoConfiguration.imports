@@ -1,1 +1,2 @@
 io.github.azholdaspaev.nettyloomspring.autoconfigure.NettyLoomAutoConfiguration
+io.github.azholdaspaev.nettyloomspring.autoconfigure.metrics.NettyServerMetricsAutoConfiguration
