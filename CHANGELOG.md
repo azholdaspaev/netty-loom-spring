@@ -16,6 +16,11 @@ in any minor release.
   the cap. See
   [`server.netty.*`](https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty)
   (#45).
+- Micrometer gauges `netty.server.connections.active`, the open connections, and
+  `netty.server.dispatches.active`, the requests still inside the application, bound to every
+  `MeterRegistry` when Micrometer is on the classpath. See
+  [Protocol and transport](https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/compatibility-matrix.md#protocol-and-transport)
+  (#6).
 - `server.forward-headers-strategy=native`: behind a proxy in `server.netty.internal-proxies`,
   the request takes its scheme, server name and port, and client address from the
   `X-Forwarded-*` headers, or from `Forwarded` with `server.netty.forwarded-headers=forwarded`,
