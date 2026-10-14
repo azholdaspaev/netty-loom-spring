@@ -1,6 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure;
 
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.metrics.NettyServerMetrics;
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.metrics.NettyServerMetricsAutoConfiguration;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.NettyServletWebServerFactory;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.ServletContextLifecycle;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
@@ -291,6 +292,18 @@ class NettyLoomAutoConfigurationTest {
     }
 
     @Test
+    void shouldSkipServerMetricsWhenTomcatServes() {
+        runner.withConfiguration(AutoConfigurations.of(TomcatServletWebServerAutoConfiguration.class))
+            .run(context -> assertThat(context).doesNotHaveBean(NettyServerMetrics.class));
+    }
+
+    @Test
+    void shouldSkipServerMetricsWhenUserDeclaresServerFactory() {
+        runner.withBean("userBean", ServletWebServerFactory.class, () -> mock(ServletWebServerFactory.class))
+            .run(context -> assertThat(context).doesNotHaveBean(NettyServerMetrics.class));
+    }
+
+    @Test
     void shouldReportOpenConnectionAndDispatchWhileServletRuns() throws Exception {
         MeterRegistry meterRegistry = new SimpleMeterRegistry();
         CompletableFuture<double[]> gaugesDuringService = new CompletableFuture<>();
@@ -429,13 +442,13 @@ class NettyLoomAutoConfigurationTest {
 
     private static WebApplicationContextRunner newRunnerWithServlet(DispatcherServlet servlet) {
         return new WebApplicationContextRunner()
-            .withConfiguration(AutoConfigurations.of(NettyLoomAutoConfiguration.class))
+            .withConfiguration(AutoConfigurations.of(NettyLoomAutoConfiguration.class, NettyServerMetricsAutoConfiguration.class))
             .withBean(DEFAULT_DISPATCHER_SERVLET_BEAN_NAME, DispatcherServlet.class, () -> servlet);
     }
 
     private static WebApplicationContextRunner newBootedRunnerWithServlet(DispatcherServlet servlet) {
         return new WebApplicationContextRunner(AnnotationConfigServletWebServerApplicationContext::new)
-            .withConfiguration(AutoConfigurations.of(NettyLoomAutoConfiguration.class))
+            .withConfiguration(AutoConfigurations.of(NettyLoomAutoConfiguration.class, NettyServerMetricsAutoConfiguration.class))
             .withBean(DEFAULT_DISPATCHER_SERVLET_BEAN_NAME, DispatcherServlet.class, () -> servlet)
             .withPropertyValues("server.port=0");
     }
