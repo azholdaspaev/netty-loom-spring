@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Bean;
 
 @AutoConfiguration(after = NettyLoomAutoConfiguration.class)
 @ConditionalOnClass(MeterBinder.class)
-@ConditionalOnBean(NettyServletWebServerFactory.class)
+@ConditionalOnBean(value = NettyServletWebServerFactory.class, search = SearchStrategy.CURRENT)
 public class NettyServerMetricsAutoConfiguration {
 
     @Bean

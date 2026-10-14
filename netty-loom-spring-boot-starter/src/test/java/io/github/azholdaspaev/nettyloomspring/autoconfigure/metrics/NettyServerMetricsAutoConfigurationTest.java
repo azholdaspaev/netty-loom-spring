@@ -9,6 +9,7 @@ import jakarta.servlet.ServletResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.FilteredClassLoader;
+import org.springframework.boot.test.context.assertj.ApplicationContextAssert.Scope;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import org.springframework.boot.tomcat.autoconfigure.servlet.TomcatServletWebServerAutoConfiguration;
 import org.springframework.boot.web.server.servlet.ServletWebServerFactory;
@@ -54,6 +55,15 @@ class NettyServerMetricsAutoConfigurationTest {
     void shouldSkipServerMetricsWhenTomcatServes() {
         runner.withConfiguration(AutoConfigurations.of(TomcatServletWebServerAutoConfiguration.class))
             .run(context -> assertThat(context).doesNotHaveBean(NettyServerMetrics.class));
+    }
+
+    @Test
+    void shouldSkipServerMetricsWhenTomcatServesChildOfNettyParent() {
+        runner.run(parent -> runner.withConfiguration(AutoConfigurations.of(TomcatServletWebServerAutoConfiguration.class))
+            .withParent(parent)
+            .run(child -> assertThat(child)
+                .as("the parent's Netty factory must not bind gauges over the Tomcat child's idle registry")
+                .doesNotHaveBean(NettyServerMetrics.class, Scope.NO_ANCESTORS)));
     }
 
     @Test
