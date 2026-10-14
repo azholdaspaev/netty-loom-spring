@@ -210,4 +210,5 @@ fired on an object bound into a session, and passing one to `addListener` throws
 | HTTP/2 | `warns` | `server.http2.*` has no effect ([#23](https://github.com/azholdaspaev/netty-loom-spring/issues/23)) |
 | Response compression | `warns` | `server.compression.*` has no effect ([#22](https://github.com/azholdaspaev/netty-loom-spring/issues/22)) |
 | Forwarded headers | `works` | `server.forward-headers-strategy=native` as in [Forwarded headers](configuration.md#forwarded-headers); `framework` applies Boot's `ForwardedHeaderFilter` |
-| Access logging, metrics, tracing | `none` | [#8](https://github.com/azholdaspaev/netty-loom-spring/issues/8), [#6](https://github.com/azholdaspaev/netty-loom-spring/issues/6), [#7](https://github.com/azholdaspaev/netty-loom-spring/issues/7) |
+| Metrics | `works` | With Micrometer on the classpath, the `netty.server.connections.active` and `netty.server.dispatches.active` gauges bind to every `MeterRegistry` |
+| Access logging, tracing | `none` | [#8](https://github.com/azholdaspaev/netty-loom-spring/issues/8), [#7](https://github.com/azholdaspaev/netty-loom-spring/issues/7) |
