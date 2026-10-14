@@ -273,6 +273,14 @@ public class HttpConnectionRegistry {
         return acceptPauses.sum();
     }
 
+    public int getOpenConnectionCount() {
+        return connections.size();
+    }
+
+    public int getActiveDispatchCount() {
+        return dispatchesInFlight.get();
+    }
+
     /**
      * Read off the event loop, and not through {@link #counter(Channel)}: that installs the
      * attribute, so the shutdown thread would touch every connection that never served a request.
