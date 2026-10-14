@@ -309,10 +309,14 @@ class NettyLoomAutoConfigurationTest {
         CompletableFuture<double[]> gaugesDuringService = new CompletableFuture<>();
         DispatcherServlet servlet = mock(DispatcherServlet.class);
         doAnswer(invocation -> {
-            gaugesDuringService.complete(new double[] {
-                meterRegistry.get("netty.server.connections.active").gauge().value(),
-                meterRegistry.get("netty.server.dispatches.active").gauge().value()
-            });
+            try {
+                gaugesDuringService.complete(new double[] {
+                    meterRegistry.get("netty.server.connections.active").gauge().value(),
+                    meterRegistry.get("netty.server.dispatches.active").gauge().value()
+                });
+            } catch (RuntimeException e) {
+                gaugesDuringService.completeExceptionally(e);
+            }
             return null;
         }).when(servlet).service(any(ServletRequest.class), any(ServletResponse.class));
         newBootedRunnerWithServlet(servlet).run(context -> {
