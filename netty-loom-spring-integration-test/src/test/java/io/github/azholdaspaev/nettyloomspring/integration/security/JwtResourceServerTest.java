@@ -1,11 +1,10 @@
 package io.github.azholdaspaev.nettyloomspring.integration.security;
 
 import io.github.azholdaspaev.nettyloomspring.integration.app.ApiController;
-import io.github.azholdaspaev.nettyloomspring.integration.app.JwkSetServer;
 import io.github.azholdaspaev.nettyloomspring.integration.support.BaseIntegrationTest;
+import io.github.azholdaspaev.nettyloomspring.integration.support.JwkSetServer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 
@@ -19,8 +18,7 @@ class JwtResourceServerTest extends BaseIntegrationTest {
 
     private static final String INVALID_TOKEN_CHALLENGE = "Bearer error=\"invalid_token\"";
 
-    @Autowired
-    private JwkSetServer jwkSetServer;
+    private final JwkSetServer jwkSetServer = JwkSetServer.getInstance();
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)

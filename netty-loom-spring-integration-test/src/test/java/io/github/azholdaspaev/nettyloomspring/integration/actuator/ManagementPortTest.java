@@ -2,6 +2,7 @@ package io.github.azholdaspaev.nettyloomspring.integration.actuator;
 
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.NettyServletWebServer;
 import io.github.azholdaspaev.nettyloomspring.integration.app.RestServiceApplication;
+import io.github.azholdaspaev.nettyloomspring.integration.support.JwkSetServer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -14,6 +15,8 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.web.server.WebServer;
 import org.springframework.boot.web.server.context.WebServerInitializedEvent;
 import org.springframework.context.ApplicationListener;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 
 import java.io.IOException;
 import java.net.URI;
@@ -40,6 +43,11 @@ class ManagementPortTest {
 
     @Autowired
     private ManagementServerCapture managementServerCapture;
+
+    @DynamicPropertySource
+    static void registerJwkSetUri(DynamicPropertyRegistry registry) {
+        JwkSetServer.registerJwkSetUri(registry);
+    }
 
     @ParameterizedTest
     @ValueSource(strings = {"/actuator/health", "/actuator/health/readiness"})
