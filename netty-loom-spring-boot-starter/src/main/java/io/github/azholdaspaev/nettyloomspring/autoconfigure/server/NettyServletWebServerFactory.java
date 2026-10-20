@@ -51,8 +51,9 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
     private ServerPropertiesValidator validator = new ServerPropertiesValidator(new StandardEnvironment());
 
     /**
-     * Qualified for Boot's management child context, which autowires this constructor from a copy of
-     * the parent's bean definition: unqualified, the non-default servlet context resolved to the parent's.
+     * Qualified for Boot's management child context, which registers only this class
+     * ({@code ManagementContextFactory.registerWebServerFactoryFromParent}) and autowires this constructor:
+     * unqualified, the non-default servlet context resolved to the parent's.
      */
     public NettyServletWebServerFactory(NettyIoHandlerFactory ioHandlerFactory,
                                         NettyServerChannelInitializer channelInitializer,
