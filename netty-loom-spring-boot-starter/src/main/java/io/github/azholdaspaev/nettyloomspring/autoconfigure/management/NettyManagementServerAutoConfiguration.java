@@ -17,9 +17,9 @@ import org.springframework.context.annotation.Bean;
 
 /**
  * The child context runs {@link NettyLoomAutoConfiguration} itself, rather than reusing the parent's
- * beans, because every bean there is guarded with {@code SearchStrategy.CURRENT}: the child gets its
- * own servlet context, connection registry and pipeline, so the management port serves only the
- * management context. Boot's {@code TomcatServletManagementContextAutoConfiguration} is the model.
+ * beans, because the beans holding per-server state are guarded with {@code SearchStrategy.CURRENT}:
+ * the child gets its own servlet context, connection registry, pipeline and dispatch executor, so the
+ * management port serves only the management context. Boot's {@code TomcatServletManagementContextAutoConfiguration} is the model.
  */
 @AutoConfiguration(after = NettyLoomAutoConfiguration.class)
 @ConditionalOnClass(ManagementContextFactory.class)
