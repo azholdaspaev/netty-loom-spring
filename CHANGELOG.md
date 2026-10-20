@@ -10,6 +10,10 @@ in any minor release.
 
 ### Added
 
+- `management.server.port` set apart from `server.port` now serves Actuator from a second
+  Netty server; it used to fail startup for want of a `ManagementContextFactory`. See
+  [Programming model](https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/compatibility-matrix.md#programming-model)
+  (#25).
 - `server.netty.max-connections`, default `32768`: at the cap the server stops accepting, so
   further clients wait in the listen backlog until a connection closes, and
   `HttpConnectionRegistry.getAcceptPauseCount()` counts each time the cap is reached. `-1` lifts
