@@ -37,6 +37,25 @@ class JwtResourceServerTest extends BaseIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldDescribeCallerWhenJwtHasNoTeamClaim() {
+        Instant now = Instant.now();
+        String token = jwkSetServer.newToken(JwtClaimsSet.builder()
+            .subject("alice")
+            .issuedAt(now)
+            .expiresAt(now.plus(Duration.ofMinutes(5)))
+            .build());
+
+        restTestClient.get().uri("/api/me")
+            .headers(headers -> headers.setBearerAuth(token))
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody()
+            .jsonPath("$.sub").isEqualTo("alice")
+            .jsonPath("$." + ApiController.TEAM_CLAIM).doesNotExist();
+    }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
     void shouldRejectExpiredJwtWithInvalidTokenChallenge() {
         /*
          * Five minutes, not one second: JwtTimestampValidator accepts an expiry up to 60 seconds in
