@@ -25,9 +25,12 @@ spring-boot-starter-restclient = { module = "org.springframework.boot:spring-boo
 spring-boot-webmvc-test = { module = "org.springframework.boot:spring-boot-webmvc-test" }
 spring-boot-resttestclient = { module = "org.springframework.boot:spring-boot-resttestclient" }
 spring-boot-tomcat = { module = "org.springframework.boot:spring-boot-tomcat" }
+spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
+spring-boot-starter-security-oauth2-resource-server = { module = "org.springframework.boot:spring-boot-starter-security-oauth2-resource-server" }
 
 # Micrometer (version managed by Spring BOM)
 micrometer-core = { module = "io.micrometer:micrometer-core" }
+micrometer-registry-prometheus = { module = "io.micrometer:micrometer-registry-prometheus" }
 
 # Netty
 netty-transport = { module = "io.netty:netty-transport", version.ref = "netty" }
