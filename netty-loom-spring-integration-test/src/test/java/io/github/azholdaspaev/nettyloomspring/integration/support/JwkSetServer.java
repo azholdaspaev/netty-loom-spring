@@ -22,10 +22,6 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 
-/**
- * The wrong key carries the signing key's id rather than its own, because a token under an unknown
- * id fails on key lookup, not on the signature check under test.
- */
 public final class JwkSetServer {
 
     public static final String JWK_SET_URI_PROPERTY = "spring.security.oauth2.resourceserver.jwt.jwk-set-uri";
@@ -43,6 +39,7 @@ public final class JwkSetServer {
 
     private JwkSetServer() throws IOException, JOSEException {
         this.signingKey = new RSAKeyGenerator(2048).keyID(KEY_ID).generate();
+        // The signing key's id rather than its own: an unknown id fails on key lookup, not the signature check.
         this.wrongKey = new RSAKeyGenerator(2048).keyID(KEY_ID).generate();
         byte[] jwkSet = new JWKSet(signingKey.toPublicJWK()).toString().getBytes(StandardCharsets.UTF_8);
         this.server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
