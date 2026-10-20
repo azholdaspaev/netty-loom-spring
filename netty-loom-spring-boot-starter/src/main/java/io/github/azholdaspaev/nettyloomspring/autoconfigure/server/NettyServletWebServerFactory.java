@@ -1,5 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.server;
 
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.NettyLoomAutoConfiguration;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.properties.NettyLoomProperties;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.github.azholdaspaev.nettyloomspring.core.server.NettyIoHandlerFactory;
@@ -11,6 +12,7 @@ import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyRequestOriginReso
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.NettyServletContext;
 import io.netty.handler.codec.http.cookie.CookieHeaderNames;
 import jakarta.servlet.ServletException;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.web.server.AbstractConfigurableWebServerFactory;
 import org.springframework.boot.web.server.Cookie;
 import org.springframework.boot.web.server.MimeMappings;
@@ -48,10 +50,14 @@ public class NettyServletWebServerFactory extends AbstractConfigurableWebServerF
     // Replaced by setEnvironment, which registerSingleton and direct construction never call.
     private ServerPropertiesValidator validator = new ServerPropertiesValidator(new StandardEnvironment());
 
+    /**
+     * Qualified for Boot's management child context, which autowires this constructor from a copy of
+     * the parent's bean definition: unqualified, the non-default servlet context resolved to the parent's.
+     */
     public NettyServletWebServerFactory(NettyIoHandlerFactory ioHandlerFactory,
                                         NettyServerChannelInitializer channelInitializer,
                                         HttpConnectionRegistry connectionRegistry,
-                                        NettyServletContext servletContext,
+                                        @Qualifier(NettyLoomAutoConfiguration.SERVLET_CONTEXT_BEAN) NettyServletContext servletContext,
                                         DispatcherServlet dispatcherServlet,
                                         NettyLoomProperties properties) {
         this.ioHandlerFactory = ioHandlerFactory;

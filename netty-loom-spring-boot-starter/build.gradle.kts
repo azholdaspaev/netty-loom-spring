@@ -18,6 +18,7 @@ dependencies {
     }
 
     compileOnly(libs.micrometer.core)
+    compileOnly(libs.spring.boot.actuator.autoconfigure)
 
     annotationProcessor(libs.spring.boot.configuration.processor)
 
