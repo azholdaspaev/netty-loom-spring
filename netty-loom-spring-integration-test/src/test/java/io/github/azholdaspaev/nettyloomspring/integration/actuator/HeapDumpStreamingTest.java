@@ -1,9 +1,11 @@
 package io.github.azholdaspaev.nettyloomspring.integration.actuator;
 
 import io.github.azholdaspaev.nettyloomspring.integration.support.BaseIntegrationTest;
+import io.github.azholdaspaev.nettyloomspring.integration.support.FormLogin;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.http.HttpHeaders;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -36,7 +38,10 @@ class HeapDumpStreamingTest extends BaseIntegrationTest {
     @Test
     @Timeout(value = 120, unit = TimeUnit.SECONDS)
     void shouldStreamCompleteHeapDumpToConcurrentClients() throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/actuator/heapdump")).build();
+        String sessionId = FormLogin.logIn(restTestClient).postLoginSessionId();
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/actuator/heapdump"))
+            .header(HttpHeaders.COOKIE, FormLogin.SESSION_COOKIE + "=" + sessionId)
+            .build();
         List<Download> downloads = new ArrayList<>();
         try (HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
              ExecutorService clients = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -64,6 +69,16 @@ class HeapDumpStreamingTest extends BaseIntegrationTest {
                 assertEquals(429, download.status(), "a dump refused while another is written must be Boot's 429");
             }
         }
+    }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldRedirectToLoginWhenHeapDumpCallerIsAnonymous() {
+        restTestClient.get().uri("/actuator/heapdump")
+            .exchange()
+            .expectStatus().isFound()
+            .expectHeader().value(HttpHeaders.LOCATION, location ->
+                assertTrue(location.endsWith("/login"), "an anonymous heap dump must redirect to login; got " + location));
     }
 
     private static Download download(HttpClient client, HttpRequest request) throws IOException, InterruptedException {
