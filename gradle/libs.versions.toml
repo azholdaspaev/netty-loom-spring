@@ -26,6 +26,7 @@ spring-boot-webmvc-test = { module = "org.springframework.boot:spring-boot-webmv
 spring-boot-resttestclient = { module = "org.springframework.boot:spring-boot-resttestclient" }
 spring-boot-tomcat = { module = "org.springframework.boot:spring-boot-tomcat" }
 spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
+spring-boot-actuator-autoconfigure = { module = "org.springframework.boot:spring-boot-actuator-autoconfigure" }
 spring-boot-starter-security-oauth2-resource-server = { module = "org.springframework.boot:spring-boot-starter-security-oauth2-resource-server" }
 
 # Micrometer (version managed by Spring BOM)
