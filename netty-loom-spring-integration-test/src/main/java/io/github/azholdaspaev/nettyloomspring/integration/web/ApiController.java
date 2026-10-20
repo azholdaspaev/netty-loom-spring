@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RestController
@@ -17,7 +18,11 @@ public class ApiController {
 
     @GetMapping("/me")
     public Map<String, String> describeCaller(@AuthenticationPrincipal Jwt jwt) {
-        return Map.of("sub", jwt.getSubject(), TEAM_CLAIM, jwt.getClaimAsString(TEAM_CLAIM));
+        // LinkedHashMap rather than Map.of, because Map.of throws on the null an absent claim reads as.
+        Map<String, String> caller = new LinkedHashMap<>();
+        caller.put("sub", jwt.getSubject());
+        caller.put(TEAM_CLAIM, jwt.getClaimAsString(TEAM_CLAIM));
+        return caller;
     }
 
     @GetMapping("/admin")
