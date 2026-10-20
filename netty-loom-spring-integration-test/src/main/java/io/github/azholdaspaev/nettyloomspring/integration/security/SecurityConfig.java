@@ -1,4 +1,4 @@
-package io.github.azholdaspaev.nettyloomspring.integration.app;
+package io.github.azholdaspaev.nettyloomspring.integration.security;
 
 import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
@@ -15,7 +15,7 @@ import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration(proxyBeanMethods = false)
 @EnableMethodSecurity
-public class RestServiceSecurityConfig {
+public class SecurityConfig {
 
     public static final String USERNAME = "user";
 

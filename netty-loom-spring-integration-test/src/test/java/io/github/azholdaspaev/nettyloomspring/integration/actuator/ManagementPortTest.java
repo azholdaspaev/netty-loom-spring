@@ -1,7 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.integration.actuator;
 
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.NettyServletWebServer;
-import io.github.azholdaspaev.nettyloomspring.integration.app.RestServiceApplication;
+import io.github.azholdaspaev.nettyloomspring.integration.RestServiceApplication;
 import io.github.azholdaspaev.nettyloomspring.integration.support.JwkSetServer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;

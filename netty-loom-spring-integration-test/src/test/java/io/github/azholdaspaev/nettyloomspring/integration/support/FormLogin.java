@@ -1,6 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.integration.support;
 
-import io.github.azholdaspaev.nettyloomspring.integration.app.RestServiceSecurityConfig;
+import io.github.azholdaspaev.nettyloomspring.integration.security.SecurityConfig;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.client.RestTestClient;
@@ -35,8 +35,8 @@ public final class FormLogin {
         var login = restTestClient.post().uri("/login")
             .header(HttpHeaders.COOKIE, SESSION_COOKIE + "=" + preLoginSessionId)
             .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-            .body("username=" + RestServiceSecurityConfig.USERNAME
-                + "&password=" + RestServiceSecurityConfig.PASSWORD
+            .body("username=" + SecurityConfig.USERNAME
+                + "&password=" + SecurityConfig.PASSWORD
                 + "&_csrf=" + encode(csrfTokenFrom(loginPage.getResponseBody())))
             .exchange()
             .expectStatus().isFound()

@@ -1,7 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.integration.actuator;
 
-import io.github.azholdaspaev.nettyloomspring.integration.app.ItemUnavailableException;
 import io.github.azholdaspaev.nettyloomspring.integration.support.BaseIntegrationTest;
+import io.github.azholdaspaev.nettyloomspring.integration.web.ItemUnavailableException;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.junit.jupiter.api.Test;
