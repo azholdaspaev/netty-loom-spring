@@ -19,6 +19,7 @@ import java.io.UncheckedIOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -65,7 +66,11 @@ public final class JwkSetServer {
 
     public URI getJwkSetUri() {
         InetSocketAddress address = server.getAddress();
-        return URI.create("http://" + address.getHostString() + ":" + address.getPort() + "/jwks.json");
+        try {
+            return new URI("http", null, address.getHostString(), address.getPort(), "/jwks.json", null, null);
+        } catch (URISyntaxException failure) {
+            throw new IllegalStateException(failure);
+        }
     }
 
     public String newToken(JwtClaimsSet claims) {
