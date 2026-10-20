@@ -1,4 +1,4 @@
-package io.github.azholdaspaev.nettyloomspring.integration.app;
+package io.github.azholdaspaev.nettyloomspring.integration.support;
 
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.jwk.JWKSet;
@@ -11,9 +11,11 @@ import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.test.context.DynamicPropertyRegistry;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -23,9 +25,14 @@ import java.nio.charset.StandardCharsets;
  * The wrong key carries the signing key's id rather than its own, because a token under an unknown
  * id fails on key lookup, not on the signature check under test.
  */
-public class JwkSetServer implements AutoCloseable {
+public final class JwkSetServer {
+
+    public static final String JWK_SET_URI_PROPERTY = "spring.security.oauth2.resourceserver.jwt.jwk-set-uri";
 
     private static final String KEY_ID = "integration-test";
+
+    // Started once per test JVM and never stopped: every cached context points at it, and none owns it.
+    private static final JwkSetServer INSTANCE = start();
 
     private final RSAKey signingKey;
 
@@ -33,7 +40,7 @@ public class JwkSetServer implements AutoCloseable {
 
     private final HttpServer server;
 
-    public JwkSetServer() throws IOException, JOSEException {
+    private JwkSetServer() throws IOException, JOSEException {
         this.signingKey = new RSAKeyGenerator(2048).keyID(KEY_ID).generate();
         this.wrongKey = new RSAKeyGenerator(2048).keyID(KEY_ID).generate();
         byte[] jwkSet = new JWKSet(signingKey.toPublicJWK()).toString().getBytes(StandardCharsets.UTF_8);
@@ -46,6 +53,14 @@ public class JwkSetServer implements AutoCloseable {
             }
         });
         server.start();
+    }
+
+    public static JwkSetServer getInstance() {
+        return INSTANCE;
+    }
+
+    public static void registerJwkSetUri(DynamicPropertyRegistry registry) {
+        registry.add(JWK_SET_URI_PROPERTY, () -> INSTANCE.getJwkSetUri().toString());
     }
 
     public URI getJwkSetUri() {
@@ -67,8 +82,13 @@ public class JwkSetServer implements AutoCloseable {
         return encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
     }
 
-    @Override
-    public void close() {
-        server.stop(0);
+    private static JwkSetServer start() {
+        try {
+            return new JwkSetServer();
+        } catch (IOException failure) {
+            throw new UncheckedIOException(failure);
+        } catch (JOSEException failure) {
+            throw new IllegalStateException(failure);
+        }
     }
 }

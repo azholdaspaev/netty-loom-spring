@@ -1,6 +1,5 @@
 package io.github.azholdaspaev.nettyloomspring.integration.app;
 
-import com.nimbusds.jose.JOSEException;
 import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -11,12 +10,8 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
-
-import java.io.IOException;
 
 @Configuration(proxyBeanMethods = false)
 @EnableMethodSecurity
@@ -26,17 +21,7 @@ public class RestServiceSecurityConfig {
 
     public static final String PASSWORD = "password";
 
-    @Bean
-    public JwkSetServer jwkSetServer() throws IOException, JOSEException {
-        return new JwkSetServer();
-    }
-
-    @Bean
-    public JwtDecoder jwtDecoder(JwkSetServer jwkSetServer) {
-        return NimbusJwtDecoder.withJwkSetUri(jwkSetServer.getJwkSetUri().toString()).build();
-    }
-
-    // Declared, not left to Boot: UserDetailsServiceAutoConfiguration backs off once a JwtDecoder exists.
+    // Declared, not left to Boot: UserDetailsServiceAutoConfiguration backs off beside a resource server.
     @Bean
     public UserDetailsService userDetailsService() {
         return new InMemoryUserDetailsManager(

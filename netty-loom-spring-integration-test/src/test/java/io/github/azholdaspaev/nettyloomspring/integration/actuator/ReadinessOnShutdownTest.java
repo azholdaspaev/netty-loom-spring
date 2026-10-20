@@ -1,6 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.integration.actuator;
 
 import io.github.azholdaspaev.nettyloomspring.integration.app.RestServiceApplication;
+import io.github.azholdaspaev.nettyloomspring.integration.support.JwkSetServer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -33,7 +34,8 @@ class ReadinessOnShutdownTest {
         try (HttpClient client = HttpClient.newHttpClient()) {
             ReadinessProbe probe = new ReadinessProbe(client);
             ConfigurableApplicationContext context = new SpringApplicationBuilder(RestServiceApplication.class)
-                .properties("server.port=0")
+                .properties("server.port=0",
+                    JwkSetServer.JWK_SET_URI_PROPERTY + "=" + JwkSetServer.getInstance().getJwkSetUri())
                 .listeners(probe)
                 .run();
             context.close();
