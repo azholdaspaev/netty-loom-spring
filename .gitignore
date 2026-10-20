@@ -40,6 +40,7 @@ target/
 .classpath
 .settings/
 .vscode/
+bin/
 
 # OS
 .DS_Store
