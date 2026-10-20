@@ -1,4 +1,4 @@
-package io.github.azholdaspaev.nettyloomspring.integration.app;
+package io.github.azholdaspaev.nettyloomspring.integration.web;
 
 public class ItemUnavailableException extends RuntimeException {
 

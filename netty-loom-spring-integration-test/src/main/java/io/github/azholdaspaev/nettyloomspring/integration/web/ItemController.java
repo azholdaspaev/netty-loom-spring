@@ -1,4 +1,4 @@
-package io.github.azholdaspaev.nettyloomspring.integration.app;
+package io.github.azholdaspaev.nettyloomspring.integration.web;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;

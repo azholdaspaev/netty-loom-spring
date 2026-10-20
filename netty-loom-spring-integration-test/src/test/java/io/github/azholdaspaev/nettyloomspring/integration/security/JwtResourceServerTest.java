@@ -1,8 +1,8 @@
 package io.github.azholdaspaev.nettyloomspring.integration.security;
 
-import io.github.azholdaspaev.nettyloomspring.integration.app.ApiController;
 import io.github.azholdaspaev.nettyloomspring.integration.support.BaseIntegrationTest;
 import io.github.azholdaspaev.nettyloomspring.integration.support.JwkSetServer;
+import io.github.azholdaspaev.nettyloomspring.integration.web.ApiController;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.http.HttpHeaders;

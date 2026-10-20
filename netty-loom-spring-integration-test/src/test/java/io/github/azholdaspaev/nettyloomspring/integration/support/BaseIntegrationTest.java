@@ -1,6 +1,6 @@
 package io.github.azholdaspaev.nettyloomspring.integration.support;
 
-import io.github.azholdaspaev.nettyloomspring.integration.app.RestServiceApplication;
+import io.github.azholdaspaev.nettyloomspring.integration.RestServiceApplication;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient;
 import org.springframework.boot.test.context.SpringBootTest;

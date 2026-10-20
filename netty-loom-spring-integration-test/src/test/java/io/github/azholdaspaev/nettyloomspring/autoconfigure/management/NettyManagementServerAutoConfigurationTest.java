@@ -1,7 +1,6 @@
-package io.github.azholdaspaev.nettyloomspring.integration.actuator;
+package io.github.azholdaspaev.nettyloomspring.autoconfigure.management;
 
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.NettyLoomAutoConfiguration;
-import io.github.azholdaspaev.nettyloomspring.autoconfigure.management.NettyManagementServerAutoConfiguration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.actuate.autoconfigure.web.server.ManagementContextFactory;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
