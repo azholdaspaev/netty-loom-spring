@@ -6,4 +6,5 @@ include(
     "netty-loom-spring-boot-starter",
     "netty-loom-spring-example-tomcat",
     "netty-loom-spring-example-netty",
+    "netty-loom-spring-integration-test",
 )
