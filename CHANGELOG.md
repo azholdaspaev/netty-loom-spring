@@ -42,7 +42,8 @@ in any minor release.
 - An exception thrown out of the application's dispatch is answered `500` whatever its type, as
   on Tomcat: a filter's unwrapped `IllegalArgumentException` and `UnsupportedOperationException`
   were answered `400` and `501`, while `http.server.requests` recorded `500`. A malformed
-  percent-escape in the request path is now `500` too, where Tomcat answers `400`. A tail handler
+  percent-escape is now `500` too: in the request path, where Tomcat answers `400`, and in a
+  parameter a filter reads, where Tomcat drops the pair. A tail handler
   in your own `NettyPipelineDefinition` receives these failures wrapped, the original as
   `getCause()`; `HttpExceptionHandler.isClientDisconnect` looks through the wrapper.
   `HttpExceptionHandler.statusFor` maps `UnsupportedOperationException` to `500`, not `501`. See
