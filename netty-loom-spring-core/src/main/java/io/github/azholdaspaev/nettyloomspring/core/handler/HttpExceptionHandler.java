@@ -34,12 +34,14 @@ public class HttpExceptionHandler extends ChannelInboundHandlerAdapter {
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
         boolean dispatched = cause instanceof HttpDispatchException;
         Throwable failure = dispatched ? cause.getCause() : cause;
-        if (failure instanceof ReadTimeoutException) {
+        // Dispatched: by channel state, not type, since the application's own sockets reset and time out too.
+        boolean ofThisConnection = !dispatched || !ctx.channel().isActive();
+        if (ofThisConnection && failure instanceof ReadTimeoutException) {
             log.debug("Closing channel after read timeout", failure);
             ctx.close();
             return;
         }
-        if (isClientDisconnect(failure)) {
+        if (ofThisConnection && isClientDisconnect(failure)) {
             log.debug("Client disconnected before response", failure);
             ctx.close();
             return;

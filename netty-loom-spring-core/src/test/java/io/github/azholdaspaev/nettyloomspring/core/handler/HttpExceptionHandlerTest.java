@@ -1,5 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.core.handler;
 
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.PrematureChannelClosureException;
@@ -12,6 +14,7 @@ import io.netty.handler.codec.http.TooLongHttpLineException;
 import io.netty.handler.timeout.ReadTimeoutException;
 import org.junit.jupiter.api.Test;
 
+import java.net.SocketException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.charset.StandardCharsets;
 
@@ -139,10 +142,41 @@ class HttpExceptionHandlerTest {
     }
 
     @Test
-    void shouldCloseWithoutResponseOnDispatchedClosedChannel() {
+    void shouldRespondWith500OnDispatchedConnectionReset() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpExceptionHandler());
 
-        channel.pipeline().fireExceptionCaught(new HttpDispatchException(new ClosedChannelException()));
+        channel.pipeline().fireExceptionCaught(new HttpDispatchException(new SocketException("Connection reset")));
+
+        FullHttpResponse response = channel.readOutbound();
+        assertNotNull(response, "an upstream socket the application holds reset; this client is still connected");
+        assertEquals(HttpResponseStatus.INTERNAL_SERVER_ERROR, response.status());
+        response.release();
+        assertFalse(channel.isOpen());
+    }
+
+    @Test
+    void shouldRespondWith500OnDispatchedReadTimeout() {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpExceptionHandler());
+
+        channel.pipeline().fireExceptionCaught(new HttpDispatchException(ReadTimeoutException.INSTANCE));
+
+        FullHttpResponse response = channel.readOutbound();
+        assertNotNull(response, "an HTTP client inside the application timed out; this connection did not");
+        assertEquals(HttpResponseStatus.INTERNAL_SERVER_ERROR, response.status());
+        response.release();
+        assertFalse(channel.isOpen());
+    }
+
+    @Test
+    void shouldCloseWithoutResponseOnDispatchedClosedChannel() {
+        EmbeddedChannel channel = new EmbeddedChannel(new ChannelInboundHandlerAdapter() {
+            @Override
+            public void channelInactive(ChannelHandlerContext ctx) {
+                ctx.fireExceptionCaught(new HttpDispatchException(new ClosedChannelException()));
+            }
+        }, new HttpExceptionHandler());
+
+        channel.close().syncUninterruptibly();
         channel.runPendingTasks();
 
         Object outbound = channel.readOutbound();
