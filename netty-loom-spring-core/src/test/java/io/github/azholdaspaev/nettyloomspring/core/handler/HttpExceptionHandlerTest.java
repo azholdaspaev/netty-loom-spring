@@ -111,6 +111,20 @@ class HttpExceptionHandlerTest {
     }
 
     @Test
+    void shouldRespondWith500OnUnsupportedOperationException() {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpExceptionHandler());
+
+        channel.pipeline().fireExceptionCaught(new UnsupportedOperationException("nope"));
+
+        FullHttpResponse response = channel.readOutbound();
+        assertNotNull(response);
+        assertEquals(HttpResponseStatus.INTERNAL_SERVER_ERROR, response.status(),
+            "no pipeline handler throws one, so a raw one is a server fault, not a method the server lacks");
+        response.release();
+        assertFalse(channel.isOpen());
+    }
+
+    @Test
     void shouldRespondWith500OnDispatchedIllegalArgumentException() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpExceptionHandler());
 
