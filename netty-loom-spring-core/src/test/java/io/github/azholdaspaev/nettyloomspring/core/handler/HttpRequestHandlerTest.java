@@ -910,7 +910,9 @@ class HttpRequestHandlerTest {
         receive(channel, HttpMethod.GET, "/");
         channel.runPendingTasks();
 
-        assertInstanceOf(IllegalStateException.class, capture.captured,
+        assertInstanceOf(HttpDispatchException.class, capture.captured,
+            "a dispatcher that writes nothing has failed the exchange, as any dispatcher failure does");
+        assertInstanceOf(IllegalStateException.class, capture.captured.getCause(),
             "a dispatcher that writes nothing leaves the exchange hanging, so it must be reported");
         channel.finish();
     }
@@ -1261,7 +1263,9 @@ class HttpRequestHandlerTest {
         receive(channel, HttpMethod.GET, "/");
         channel.runPendingTasks();
 
-        assertSame(boom, capture.captured,
+        assertInstanceOf(HttpDispatchException.class, capture.captured,
+            "the tail handler must be able to tell a dispatcher's failure from the pipeline's own");
+        assertSame(boom, capture.captured.getCause(),
             "exception from dispatcher must propagate via exceptionCaught");
         assertNull(channel.readOutbound(),
             "handler must not write a response when the dispatcher fails");

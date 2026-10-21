@@ -32,19 +32,21 @@ public class HttpExceptionHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        if (cause instanceof ReadTimeoutException) {
-            log.debug("Closing channel after read timeout", cause);
+        boolean dispatched = cause instanceof HttpDispatchException;
+        Throwable failure = dispatched ? cause.getCause() : cause;
+        if (failure instanceof ReadTimeoutException) {
+            log.debug("Closing channel after read timeout", failure);
             ctx.close();
             return;
         }
-        if (isClientDisconnect(cause)) {
-            log.debug("Client disconnected before response", cause);
+        if (isClientDisconnect(failure)) {
+            log.debug("Client disconnected before response", failure);
             ctx.close();
             return;
         }
 
-        HttpResponseStatus status = statusFor(cause);
-        logException(status, cause);
+        HttpResponseStatus status = dispatched ? HttpResponseStatus.INTERNAL_SERVER_ERROR : statusFor(failure);
+        logException(status, failure);
 
         if (!ctx.channel().isActive()) {
             return;

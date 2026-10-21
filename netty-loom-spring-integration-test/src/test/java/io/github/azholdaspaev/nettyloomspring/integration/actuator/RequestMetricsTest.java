@@ -2,6 +2,7 @@ package io.github.azholdaspaev.nettyloomspring.integration.actuator;
 
 import io.github.azholdaspaev.nettyloomspring.integration.support.BaseIntegrationTest;
 import io.github.azholdaspaev.nettyloomspring.integration.web.ItemUnavailableException;
+import io.github.azholdaspaev.nettyloomspring.integration.web.RejectingFilterConfig;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.junit.jupiter.api.Test;
@@ -58,6 +59,19 @@ class RequestMetricsTest extends BaseIntegrationTest {
                 "the failed request must be recorded with status 500 and the controller's exception"));
         assertEquals(beforeEitherDispatch + 1, countByUri(Set.of(UNAVAILABLE_ITEM_URI, "/error")),
             "the error-page dispatch must not record a second sample under either uri");
+    }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldRecordFilterFailureUnderAnsweredStatus() {
+        String exception = IllegalArgumentException.class.getSimpleName();
+        long before = countOf("UNKNOWN", "500", exception);
+
+        restTestClient.get().uri(RejectingFilterConfig.REJECTED_PATH).exchange().expectStatus().isEqualTo(500);
+
+        await().atMost(RECORDING_DEADLINE).untilAsserted(() ->
+            assertEquals(before + 1, countOf("UNKNOWN", "500", exception),
+                "the status recorded for a filter's failure must be the status the client received"));
     }
 
     private long countOf(String uri, String status, String exception) {

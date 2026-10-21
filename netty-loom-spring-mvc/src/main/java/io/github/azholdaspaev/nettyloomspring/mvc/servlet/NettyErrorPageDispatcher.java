@@ -5,6 +5,7 @@ import jakarta.servlet.DispatcherType;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,14 +46,13 @@ public class NettyErrorPageDispatcher {
             return false;
         }
         /*
-         * The two throwables answer different questions, so both are passed on. The wrapper
-         * FrameworkServlet adds tells a controller failure from a filter's, and only the latter keeps
-         * the pipeline's mapped status -- taken over whatever the response already held, as Tomcat's
-         * StandardWrapperValve.exception does. The root cause is what an application registers a page
-         * for, which is why StandardHostValve.throwable unwraps too.
+         * Both throwables are passed on: a page registered for the failure as thrown matches first, and
+         * the root cause is what an application registers a page for, which is why Tomcat's
+         * StandardHostValve.throwable unwraps too. A failure takes 500 over whatever status the response
+         * held, as StandardWrapperValve.exception does.
          */
         Throwable rootCause = rootCauseOf(failure);
-        int status = statusFor(response, failure);
+        int status = failure == null ? response.getStatus() : HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
         String path = context.getErrorPageResolver().resolve(status, failure, rootCause);
         if (path == null) {
             return false;
@@ -86,10 +86,6 @@ public class NettyErrorPageDispatcher {
             return wrapper.getRootCause();
         }
         return failure;
-    }
-
-    private static int statusFor(NettyHttpServletResponse response, Throwable failure) {
-        return failure == null ? response.getStatus() : HttpExceptionHandler.statusFor(failure).code();
     }
 
     private static void setErrorAttributes(HttpServletRequest request, int status, String message,

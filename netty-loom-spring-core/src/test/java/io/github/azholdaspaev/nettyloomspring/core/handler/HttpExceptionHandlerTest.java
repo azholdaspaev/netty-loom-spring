@@ -104,9 +104,36 @@ class HttpExceptionHandlerTest {
 
         FullHttpResponse response = channel.readOutbound();
         assertNotNull(response);
-        assertEquals(HttpResponseStatus.BAD_REQUEST, response.status());
+        assertEquals(HttpResponseStatus.BAD_REQUEST, response.status(),
+            "a raw one is the decoder's, such as an unparseable HTTP version, and the request is at fault");
         response.release();
         assertFalse(channel.isOpen());
+    }
+
+    @Test
+    void shouldRespondWith500OnDispatchedIllegalArgumentException() {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpExceptionHandler());
+
+        channel.pipeline().fireExceptionCaught(new HttpDispatchException(new IllegalArgumentException("nope")));
+
+        FullHttpResponse response = channel.readOutbound();
+        assertNotNull(response);
+        assertEquals(HttpResponseStatus.INTERNAL_SERVER_ERROR, response.status(),
+            "a dispatcher's failure is the application's, whatever its type, so it is not the 400 a raw one maps to");
+        response.release();
+        assertFalse(channel.isOpen());
+    }
+
+    @Test
+    void shouldCloseWithoutResponseOnDispatchedClosedChannel() {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpExceptionHandler());
+
+        channel.pipeline().fireExceptionCaught(new HttpDispatchException(new ClosedChannelException()));
+        channel.runPendingTasks();
+
+        Object outbound = channel.readOutbound();
+        assertNull(outbound, "a client that left during the dispatch is a disconnect, not a 500 to answer");
+        assertFalse(channel.isOpen(), "channel must be closed after a disconnect");
     }
 
     @Test

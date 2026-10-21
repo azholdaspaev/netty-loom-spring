@@ -258,10 +258,12 @@ Two headers Tomcat always sends are never emitted here: `Date` and `Server`.
 disconnects (`ClosedChannelException`, `PrematureChannelClosureException`, and `IOException`s whose
 message names a reset, broken pipe or forcible close) close the connection with **no response**.
 Everything else maps to a status, is logged (`5xx` at error, below that at warn), and is answered
-with a plain-text body equal to the reason phrase plus `Connection: close`. A failure from the
-servlet chain reaches this handler only as a fallback: with an error page registered — and Boot
-registers `/error` — the same mapped status is answered by that page instead, on a connection that
-stays open.
+with a plain-text body equal to the reason phrase plus `Connection: close`.
+
+The table maps the pipeline's own failures. Anything thrown out of the application's dispatch,
+whatever its type and whether a filter or a controller threw it, is answered `500`, as on Tomcat.
+With an error page registered — and Boot registers `/error` — that page answers it instead, on a
+connection that stays open.
 
 | Cause | Status |
 | --- | --- |
@@ -272,6 +274,4 @@ stays open.
 | `UnsupportedOperationException` | `501` |
 | anything else | `500` |
 
-A `DecoderException` with a cause is unwrapped first. Note that Spring's `FrameworkServlet` wraps
-application exceptions in a `ServletException`, which is not unwrapped — so an
-`UnsupportedOperationException` thrown by your controller arrives as `500`, not `501`.
+A `DecoderException` with a cause is unwrapped first.

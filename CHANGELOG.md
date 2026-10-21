@@ -39,6 +39,14 @@ in any minor release.
 
 ### Changed
 
+- An exception thrown out of the application's dispatch is answered `500` whatever its type, as
+  on Tomcat: a filter's unwrapped `IllegalArgumentException` and `UnsupportedOperationException`
+  were answered `400` and `501`, while `http.server.requests` recorded `500`. A malformed
+  percent-escape in the request path is now `500` too, where Tomcat answers `400`. A tail handler
+  in your own `NettyPipelineDefinition` receives these failures wrapped, the original as
+  `getCause()`. See
+  [Errors](https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/compatibility-matrix.md#errors)
+  (#470).
 - Dispatch virtual threads are named `netty-loom-vt-N`. An application that supplies its own
   `nettyLoomDispatchExecutor` keeps its own thread names (#47).
 - `HttpRequestBodyLimitHandler(long)` is replaced by
