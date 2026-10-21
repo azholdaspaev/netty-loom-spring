@@ -137,6 +137,12 @@ class HttpExceptionHandlerTest {
     }
 
     @Test
+    void shouldReportDispatchedClosedChannelAsClientDisconnect() {
+        assertTrue(HttpExceptionHandler.isClientDisconnect(new HttpDispatchException(new ClosedChannelException())),
+            "a tail handler of its own sees the dispatch failure wrapped and cannot unwrap a package-private type");
+    }
+
+    @Test
     void shouldUnwrapDecoderExceptionCause() {
         EmbeddedChannel channel = new EmbeddedChannel(new HttpExceptionHandler());
 

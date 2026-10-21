@@ -90,6 +90,9 @@ public class HttpExceptionHandler extends ChannelInboundHandlerAdapter {
     }
 
     public static boolean isClientDisconnect(Throwable cause) {
+        if (cause instanceof HttpDispatchException) {
+            return isClientDisconnect(cause.getCause());
+        }
         if (cause instanceof ClosedChannelException || cause instanceof PrematureChannelClosureException) {
             return true;
         }
