@@ -228,28 +228,22 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
             "an uncaught failure is what the status describes, as Tomcat's StandardWrapperValve.exception has it");
     }
 
-    @Test
-    void shouldReportFailureWithStatusItsTypeMeans() throws Exception {
-        pageIs("/error");
-        var response = new NettyHttpServletResponse();
-        var request = requestFor("/boom", response);
-
-        errorPages.report(request, response, new IllegalArgumentException("bad"));
-
-        assertEquals(400, response.getStatus());
-        assertEquals(400, reached.getFirst().getAttribute(RequestDispatcher.ERROR_STATUS_CODE));
+    static Stream<Throwable> unwrappedFailures() {
+        return Stream.of(new IllegalArgumentException("bad"), new UnsupportedOperationException("nope"));
     }
 
-    @Test
-    void shouldReportUnsupportedOperationAsNotImplemented() throws Exception {
+    @ParameterizedTest
+    @MethodSource("unwrappedFailures")
+    void shouldReportUnwrappedFailureAsFiveHundred(Throwable failure) throws Exception {
         pageIs("/error");
         var response = new NettyHttpServletResponse();
         var request = requestFor("/boom", response);
 
-        errorPages.report(request, response, new UnsupportedOperationException("nope"));
+        errorPages.report(request, response, failure);
 
-        assertEquals(501, response.getStatus());
-        assertEquals(501, reached.getFirst().getAttribute(RequestDispatcher.ERROR_STATUS_CODE));
+        assertEquals(500, response.getStatus(),
+            "a filter's failure is the application's, whatever its type, as Tomcat's StandardWrapperValve has it");
+        assertEquals(500, reached.getFirst().getAttribute(RequestDispatcher.ERROR_STATUS_CODE));
     }
 
     @Test
@@ -262,7 +256,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
         errorPages.report(request, response, new ServletException("Request processing failed", rootCause));
 
         assertEquals(500, response.getStatus(),
-            "the wrapper is the failure the container saw; only a filter throws one of these unwrapped");
+            "a controller's failure arrives wrapped and is answered like a filter's");
         assertEquals(rootCause, reached.getFirst().getAttribute(RequestDispatcher.ERROR_EXCEPTION));
     }
 

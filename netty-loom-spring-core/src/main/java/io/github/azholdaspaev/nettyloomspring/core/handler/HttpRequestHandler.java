@@ -275,7 +275,7 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
             return;
         }
         try {
-            ctx.executor().execute(() -> ctx.fireExceptionCaught(cause));
+            ctx.executor().execute(() -> ctx.fireExceptionCaught(new HttpDispatchException(cause)));
         } catch (RejectedExecutionException terminated) {
             String dispatch = request.method() + " " + request.uri();
             log.warn("Abandoned {} after the event loop terminated: {}", dispatch, cause.toString());
