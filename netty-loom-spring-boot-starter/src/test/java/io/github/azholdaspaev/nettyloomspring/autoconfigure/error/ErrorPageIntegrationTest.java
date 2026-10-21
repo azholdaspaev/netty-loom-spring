@@ -1,18 +1,24 @@
 package io.github.azholdaspaev.nettyloomspring.autoconfigure.error;
 
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.error.app.ErrorTestApplication;
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.support.RawHttpClient;
+import io.github.azholdaspaev.nettyloomspring.autoconfigure.support.RawHttpResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.client.RestTestClient;
 
+import java.net.Socket;
+import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @AutoConfigureRestTestClient
@@ -28,6 +34,9 @@ class ErrorPageIntegrationTest {
 
     @Autowired
     private RestTestClient restTestClient;
+
+    @LocalServerPort
+    private int port;
 
     private RestTestClient.RequestHeadersSpec<?> getJson(String uri) {
         return restTestClient.get().uri(uri).accept(MediaType.APPLICATION_JSON);
@@ -141,5 +150,19 @@ class ErrorPageIntegrationTest {
             .expectHeader().value(HttpHeaders.SET_COOKIE, value ->
                 assertTrue(value.contains("JSESSIONID"),
                     "reopening the response must not clear headers written before the failure; got " + value));
+    }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldAnswerMalformedPathEscapeWithPlainServerError() throws Exception {
+        try (Socket socket = RawHttpClient.connect(port, Duration.ofSeconds(5))) {
+            RawHttpClient.send(socket, "GET /fail%zz HTTP/1.1", "Host: localhost");
+            RawHttpResponse response = RawHttpResponse.read(socket.getInputStream());
+
+            assertEquals(500, response.status(),
+                "decoding fails before any filter runs, so the dispatch fails; #473 is to make this Tomcat's 400");
+            assertEquals("Internal Server Error", response.readBody(),
+                "no error page answers a request that was never built, so the plain-text fallback does");
+        }
     }
 }
