@@ -10,6 +10,7 @@ import org.springframework.http.MediaType;
 import java.util.concurrent.TimeUnit;
 
 import static io.github.azholdaspaev.nettyloomspring.integration.support.FormLogin.SESSION_COOKIE;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
@@ -54,6 +55,17 @@ class FormLoginCsrfTest extends BaseIntegrationTest {
             .body("message=hello")
             .exchange()
             .expectStatus().isForbidden();
+    }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldAnswer500WhenCsrfFilterReadsMalformedEscape() {
+        restTestClient.post().uri("/form/echo")
+            .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+            .body("message=%zz")
+            .exchange()
+            .expectStatus().value(status -> assertEquals(500, status,
+                "CsrfFilter's getParameter(\"_csrf\") throws on the escape; #476 is to drop the pair as Tomcat does"));
     }
 
     private String csrfTokenFor(String sessionId) {
