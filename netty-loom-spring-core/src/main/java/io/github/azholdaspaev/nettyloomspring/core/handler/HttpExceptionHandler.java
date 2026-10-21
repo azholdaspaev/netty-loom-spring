@@ -74,9 +74,6 @@ public class HttpExceptionHandler extends ChannelInboundHandlerAdapter {
         if (unwrapped instanceof DecoderException || unwrapped instanceof IllegalArgumentException) {
             return HttpResponseStatus.BAD_REQUEST;
         }
-        if (unwrapped instanceof UnsupportedOperationException) {
-            return HttpResponseStatus.NOT_IMPLEMENTED;
-        }
         return HttpResponseStatus.INTERNAL_SERVER_ERROR;
     }
 

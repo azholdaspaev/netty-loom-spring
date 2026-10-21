@@ -44,7 +44,8 @@ in any minor release.
   were answered `400` and `501`, while `http.server.requests` recorded `500`. A malformed
   percent-escape in the request path is now `500` too, where Tomcat answers `400`. A tail handler
   in your own `NettyPipelineDefinition` receives these failures wrapped, the original as
-  `getCause()`; `HttpExceptionHandler.isClientDisconnect` looks through the wrapper. See
+  `getCause()`; `HttpExceptionHandler.isClientDisconnect` looks through the wrapper.
+  `HttpExceptionHandler.statusFor` maps `UnsupportedOperationException` to `500`, not `501`. See
   [Errors](https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/compatibility-matrix.md#errors)
   (#470).
 - Dispatch virtual threads are named `netty-loom-vt-N`. An application that supplies its own

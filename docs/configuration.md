@@ -271,7 +271,6 @@ connection that stays open.
 | `TooLongHttpLineException` | `414` |
 | `TooLongFrameException` | `413` |
 | `DecoderException`, `IllegalArgumentException` | `400` |
-| `UnsupportedOperationException` | `501` |
 | anything else | `500` |
 
 A `DecoderException` with a cause is unwrapped first.
