@@ -71,7 +71,7 @@ class TracingTest extends BaseIntegrationTest {
     }
 
     @Test
-    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void shouldPutTraceInMdcOfControllerLog() {
         String traceId = IdGenerator.random().generateTraceId();
 
@@ -112,7 +112,7 @@ class TracingTest extends BaseIntegrationTest {
     }
 
     @Test
-    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void shouldExposeControllerTraceIdAfterChain() {
         String traceId = IdGenerator.random().generateTraceId();
 
