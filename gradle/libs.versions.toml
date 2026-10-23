@@ -32,6 +32,11 @@ spring-boot-starter-security-oauth2-resource-server = { module = "org.springfram
 # Micrometer (version managed by Spring BOM)
 micrometer-core = { module = "io.micrometer:micrometer-core" }
 micrometer-registry-prometheus = { module = "io.micrometer:micrometer-registry-prometheus" }
+micrometer-tracing-bridge-otel = { module = "io.micrometer:micrometer-tracing-bridge-otel" }
+spring-boot-micrometer-tracing-opentelemetry = { module = "org.springframework.boot:spring-boot-micrometer-tracing-opentelemetry" }
+
+# OpenTelemetry (version managed by Spring BOM)
+opentelemetry-sdk-testing = { module = "io.opentelemetry:opentelemetry-sdk-testing" }
 
 # Netty
 netty-transport = { module = "io.netty:netty-transport", version.ref = "netty" }
