@@ -5,6 +5,8 @@ import io.github.azholdaspaev.nettyloomspring.integration.support.BaseIntegratio
 import io.github.azholdaspaev.nettyloomspring.integration.support.MdcRecordingAppender;
 import io.github.azholdaspaev.nettyloomspring.integration.support.SpanRecordingConfig;
 import io.github.azholdaspaev.nettyloomspring.integration.web.ItemController;
+import io.github.azholdaspaev.nettyloomspring.integration.web.ItemUnavailableException;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.sdk.trace.IdGenerator;
 import io.opentelemetry.sdk.trace.data.SpanData;
@@ -81,6 +83,28 @@ class TracingTest extends BaseIntegrationTest {
         assertTrue(descendsFrom(mdc.get("spanId"), server.getSpanId(), spansOf(traceId)),
             "the controller's MDC spanId " + mdc.get("spanId") + " must name the server span "
                 + server.getSpanId() + " or a span beneath it; trace was " + spansOf(traceId));
+    }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldEndOneSpanWith500AcrossErrorDispatch() {
+        String traceId = IdGenerator.random().generateTraceId();
+
+        restTestClient.get().uri("/items/7/unavailable")
+            .header("traceparent", traceparent(traceId, IdGenerator.random().generateSpanId()))
+            .exchange()
+            .expectStatus().isEqualTo(500);
+
+        List<SpanData> serverSpans = awaitServerSpans(traceId);
+        assertEquals(1, serverSpans.size(),
+            "the error-page dispatch must not end a second server span in the request's trace");
+        SpanData server = serverSpans.getFirst();
+        assertEquals("500", server.getAttributes().get(AttributeKey.stringKey("status")),
+            "the server span must carry the status the client received");
+        assertTrue(server.getEvents().stream().anyMatch(event -> event.getName().equals("exception")
+                && ItemUnavailableException.class.getCanonicalName()
+                    .equals(event.getAttributes().get(AttributeKey.stringKey("exception.type")))),
+            "the server span must record the controller's exception; events were " + server.getEvents());
     }
 
     private List<SpanData> awaitServerSpans(String traceId) {
