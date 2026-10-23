@@ -20,7 +20,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -32,6 +31,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TracingTest extends BaseIntegrationTest {
 
     private static final Duration RECORDING_DEADLINE = Duration.ofSeconds(5);
+
+    private static final String SAMPLED = "01";
+
+    private static final String NOT_SAMPLED = "00";
 
     private final MdcRecordingAppender controllerLog = new MdcRecordingAppender();
 
@@ -57,7 +60,7 @@ class TracingTest extends BaseIntegrationTest {
         String parentSpanId = IdGenerator.random().generateSpanId();
 
         restTestClient.get().uri("/items/42")
-            .header("traceparent", traceparent(traceId, parentSpanId))
+            .header("traceparent", traceparent(traceId, parentSpanId, SAMPLED))
             .exchange()
             .expectStatus().isOk();
 
@@ -73,7 +76,7 @@ class TracingTest extends BaseIntegrationTest {
         String traceId = IdGenerator.random().generateTraceId();
 
         restTestClient.get().uri("/items/42")
-            .header("traceparent", traceparent(traceId, IdGenerator.random().generateSpanId()))
+            .header("traceparent", traceparent(traceId, IdGenerator.random().generateSpanId(), SAMPLED))
             .exchange()
             .expectStatus().isOk();
 
@@ -92,7 +95,7 @@ class TracingTest extends BaseIntegrationTest {
         String traceId = IdGenerator.random().generateTraceId();
 
         restTestClient.get().uri("/items/7/unavailable")
-            .header("traceparent", traceparent(traceId, IdGenerator.random().generateSpanId()))
+            .header("traceparent", traceparent(traceId, IdGenerator.random().generateSpanId(), SAMPLED))
             .exchange()
             .expectStatus().isEqualTo(500);
 
@@ -111,11 +114,15 @@ class TracingTest extends BaseIntegrationTest {
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
     void shouldExposeControllerTraceIdAfterChain() {
-        restTestClient.get().uri("/items/42").exchange().expectStatus().isOk();
+        String traceId = IdGenerator.random().generateTraceId();
 
-        String traceId = await().atMost(RECORDING_DEADLINE).until(() -> controllerLog.getRecordedMdcs().stream()
-            .map(recorded -> recorded.get("traceId")).filter(Objects::nonNull).findFirst(), Optional::isPresent)
-            .orElseThrow();
+        restTestClient.get().uri("/items/42")
+            .header("traceparent", traceparent(traceId, IdGenerator.random().generateSpanId(), NOT_SAMPLED))
+            .exchange()
+            .expectStatus().isOk();
+
+        await().atMost(RECORDING_DEADLINE).until(() -> controllerLog.getRecordedMdcs().stream()
+            .anyMatch(recorded -> traceId.equals(recorded.get("traceId"))));
         await().atMost(RECORDING_DEADLINE).untilAsserted(() ->
             assertTrue(spanRecording.getTraceIdsAfterChain().contains(traceId),
                 "the observation context read after the chain must carry the trace id " + traceId
@@ -147,7 +154,7 @@ class TracingTest extends BaseIntegrationTest {
         return (Logger) LoggerFactory.getLogger(ItemController.class);
     }
 
-    private static String traceparent(String traceId, String parentSpanId) {
-        return "00-" + traceId + "-" + parentSpanId + "-01";
+    private static String traceparent(String traceId, String parentSpanId, String flags) {
+        return "00-" + traceId + "-" + parentSpanId + "-" + flags;
     }
 }
