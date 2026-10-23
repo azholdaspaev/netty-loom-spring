@@ -123,9 +123,9 @@ class TracingTest extends BaseIntegrationTest {
     }
 
     private List<SpanData> awaitServerSpans(String traceId) {
-        return await().atMost(RECORDING_DEADLINE).until(() -> spansOf(traceId).stream()
-            .filter(span -> span.getKind() == SpanKind.SERVER)
-            .toList(), spans -> !spans.isEmpty());
+        // requestDestroyed fires after the error-page dispatch, so every span the chain ended is exported by then.
+        await().atMost(RECORDING_DEADLINE).until(() -> spanRecording.getTraceIdsAfterChain().contains(traceId));
+        return spansOf(traceId).stream().filter(span -> span.getKind() == SpanKind.SERVER).toList();
     }
 
     private List<SpanData> spansOf(String traceId) {
