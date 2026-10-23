@@ -20,6 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -105,6 +106,20 @@ class TracingTest extends BaseIntegrationTest {
                 && ItemUnavailableException.class.getCanonicalName()
                     .equals(event.getAttributes().get(AttributeKey.stringKey("exception.type")))),
             "the server span must record the controller's exception; events were " + server.getEvents());
+    }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldExposeControllerTraceIdAfterChain() {
+        restTestClient.get().uri("/items/42").exchange().expectStatus().isOk();
+
+        String traceId = await().atMost(RECORDING_DEADLINE).until(() -> controllerLog.getRecordedMdcs().stream()
+            .map(recorded -> recorded.get("traceId")).filter(Objects::nonNull).findFirst(), Optional::isPresent)
+            .orElseThrow();
+        await().atMost(RECORDING_DEADLINE).untilAsserted(() ->
+            assertTrue(spanRecording.getTraceIdsAfterChain().contains(traceId),
+                "the observation context read after the chain must carry the trace id " + traceId
+                    + " the controller logged under"));
     }
 
     private List<SpanData> awaitServerSpans(String traceId) {
