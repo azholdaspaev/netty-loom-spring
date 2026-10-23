@@ -1,27 +1,51 @@
 package io.github.azholdaspaev.nettyloomspring.integration.tracing;
 
+import ch.qos.logback.classic.Logger;
 import io.github.azholdaspaev.nettyloomspring.integration.support.BaseIntegrationTest;
+import io.github.azholdaspaev.nettyloomspring.integration.support.MdcRecordingAppender;
 import io.github.azholdaspaev.nettyloomspring.integration.support.SpanRecordingConfig;
+import io.github.azholdaspaev.nettyloomspring.integration.web.ItemController;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.sdk.trace.IdGenerator;
 import io.opentelemetry.sdk.trace.data.SpanData;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TracingTest extends BaseIntegrationTest {
 
     private static final Duration RECORDING_DEADLINE = Duration.ofSeconds(5);
 
+    private final MdcRecordingAppender controllerLog = new MdcRecordingAppender();
+
     @Autowired
     private SpanRecordingConfig spanRecording;
+
+    @BeforeEach
+    void attachControllerLog() {
+        controllerLog.start();
+        controllerLogger().addAppender(controllerLog);
+    }
+
+    @AfterEach
+    void detachControllerLog() {
+        controllerLogger().detachAppender(controllerLog);
+        controllerLog.stop();
+    }
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
@@ -40,10 +64,48 @@ class TracingTest extends BaseIntegrationTest {
             "the server span must be parented on the span the traceparent header names");
     }
 
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldPutTraceInMdcOfControllerLog() {
+        String traceId = IdGenerator.random().generateTraceId();
+
+        restTestClient.get().uri("/items/42")
+            .header("traceparent", traceparent(traceId, IdGenerator.random().generateSpanId()))
+            .exchange()
+            .expectStatus().isOk();
+
+        Map<String, String> mdc = await().atMost(RECORDING_DEADLINE).until(() -> controllerLog.getRecordedMdcs()
+            .stream().filter(recorded -> traceId.equals(recorded.get("traceId"))).findFirst(), Optional::isPresent)
+            .orElseThrow();
+        SpanData server = awaitServerSpans(traceId).getFirst();
+        assertTrue(descendsFrom(mdc.get("spanId"), server.getSpanId(), spansOf(traceId)),
+            "the controller's MDC spanId " + mdc.get("spanId") + " must name the server span "
+                + server.getSpanId() + " or a span beneath it; trace was " + spansOf(traceId));
+    }
+
     private List<SpanData> awaitServerSpans(String traceId) {
-        return await().atMost(RECORDING_DEADLINE).until(() -> spanRecording.getFinishedSpans().stream()
-            .filter(span -> span.getTraceId().equals(traceId) && span.getKind() == SpanKind.SERVER)
+        return await().atMost(RECORDING_DEADLINE).until(() -> spansOf(traceId).stream()
+            .filter(span -> span.getKind() == SpanKind.SERVER)
             .toList(), spans -> !spans.isEmpty());
+    }
+
+    private List<SpanData> spansOf(String traceId) {
+        return spanRecording.getFinishedSpans().stream().filter(span -> span.getTraceId().equals(traceId)).toList();
+    }
+
+    private static boolean descendsFrom(String spanId, String ancestorId, List<SpanData> trace) {
+        Map<String, String> parentIds = trace.stream()
+            .collect(Collectors.toMap(SpanData::getSpanId, SpanData::getParentSpanId));
+        for (String id = spanId; parentIds.containsKey(id); id = parentIds.get(id)) {
+            if (id.equals(ancestorId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Logger controllerLogger() {
+        return (Logger) LoggerFactory.getLogger(ItemController.class);
     }
 
     private static String traceparent(String traceId, String parentSpanId) {
