@@ -65,7 +65,7 @@ public class HttpAccessLogHandler extends ChannelDuplexHandler {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
         if (msg instanceof HttpRequest request) {
-            current = newExchange(ctx, request);
+            current = log.isInfoEnabled() ? newExchange(ctx, request) : null;
             ctx.channel().attr(EXCHANGE).set(current);
         }
         ctx.fireChannelRead(msg);

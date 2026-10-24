@@ -33,6 +33,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.event.LoggingEvent;
+import org.slf4j.helpers.NOPLogger;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -407,6 +408,21 @@ class HttpAccessLogHandlerTest {
         channel.writeOutbound(ok(""));
 
         assertTrue(log.single().getMessage().startsWith("2001:db8::1 - - ["), log.single().getMessage());
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void shouldResolveNoClientWhileInfoIsDisabled() {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpAccessLogHandler((request, connection) -> {
+            resolved.add(request);
+            return CLIENT;
+        }, NOPLogger.NOP_LOGGER, CLOCK));
+
+        channel.writeInbound(get("/ping"));
+        channel.writeOutbound(ok(""));
+
+        assertEquals(List.of(), resolved, "the resolver runs on the event loop, for a line that will not be written");
+        assertNull(channel.attr(HttpAccessLogHandler.EXCHANGE).get(), "no exchange is opened for the trace id");
         channel.finishAndReleaseAll();
     }
 
