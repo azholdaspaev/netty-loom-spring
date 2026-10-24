@@ -10,6 +10,12 @@ in any minor release.
 
 ### Added
 
+- `server.netty.access-log.enabled`, default `false`: one INFO line per exchange that receives a
+  final response, in NCSA combined format followed by the duration in milliseconds, with every
+  field also an SLF4J key-value pair, `trace_id` included when a server observation served the
+  request. See
+  [`server.netty.*`](https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty)
+  (#8).
 - `management.server.port` set apart from `server.port` now serves Actuator from a second
   Netty server; it used to fail startup for want of a `ManagementContextFactory`. See
   [Programming model](https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/compatibility-matrix.md#programming-model)
