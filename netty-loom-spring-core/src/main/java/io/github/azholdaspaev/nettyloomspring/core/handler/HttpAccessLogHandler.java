@@ -30,7 +30,6 @@ import java.util.function.BiFunction;
  */
 public class HttpAccessLogHandler extends ChannelDuplexHandler {
 
-    /** The open exchange, for the response writer of the dispatch that serves it. */
     static final AttributeKey<Exchange> EXCHANGE = AttributeKey.valueOf(HttpAccessLogHandler.class, "exchange");
 
     private static final String ABSENT = "-";
@@ -104,7 +103,6 @@ public class HttpAccessLogHandler extends ChannelDuplexHandler {
         ctx.write(msg, tracked);
     }
 
-    /** A response that had started is logged with what reached the wire; a head never answered is not. */
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
         Exchange exchange = current;

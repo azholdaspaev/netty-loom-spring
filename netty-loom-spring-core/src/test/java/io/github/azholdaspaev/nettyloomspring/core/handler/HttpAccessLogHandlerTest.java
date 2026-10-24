@@ -471,9 +471,6 @@ class HttpAccessLogHandlerTest {
         }
     }
 
-    /**
-     * Holds every write unsettled until {@link #settle}, as a peer that has not yet acknowledged it.
-     */
     private static final class HeldWrites extends ChannelOutboundHandlerAdapter {
 
         private final List<ChannelPromise> unsettled = new ArrayList<>();
