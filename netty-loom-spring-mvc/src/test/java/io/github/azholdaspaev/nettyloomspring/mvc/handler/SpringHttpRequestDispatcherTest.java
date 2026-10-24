@@ -1,6 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.mvc.handler;
 
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionMetadata;
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpResponseWriter;
 import io.github.azholdaspaev.nettyloomspring.mvc.servlet.DefaultNettyServletContext;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
@@ -11,6 +12,9 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
+import io.netty.util.ReferenceCountUtil;
+import io.micrometer.tracing.handler.TracingObservationHandler;
+import io.micrometer.tracing.test.simple.SimpleSpan;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletRequestEvent;
@@ -23,6 +27,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.springframework.http.server.observation.ServerRequestObservationContext;
+import org.springframework.web.filter.ServerHttpObservationFilter;
 import org.springframework.web.servlet.DispatcherServlet;
 
 import java.io.IOException;
@@ -581,5 +587,69 @@ class SpringHttpRequestDispatcherTest {
 
         assertEquals(List.of("initialized", "source", "target", "destroyed"), events,
             "the listener pair brackets the request, not each dispatch");
+    }
+
+    @Test
+    void shouldHandObservationTraceIdToWriterBeforeLastWrite() throws Exception {
+        TracingWriter writer = new TracingWriter();
+        var dispatcher = dispatcher((request, response) -> observe(request, response,
+            "4bf92f3577b34da6a3ce929d0e0e4736"));
+
+        dispatcher.handle(get("/api/ping"), InputStream.nullInputStream(), CONNECTION, writer);
+
+        assertEquals(List.of("trace 4bf92f3577b34da6a3ce929d0e0e4736", "write DefaultFullHttpResponse"), writer.events,
+            "the access log line is written with the last part, so the trace id has to arrive first");
+    }
+
+    @Test
+    void shouldHandObservationTraceIdToWriterWhenChainThrows() {
+        TracingWriter writer = new TracingWriter();
+        var dispatcher = dispatcher((request, response) -> {
+            observe(request, response, "4bf92f3577b34da6a3ce929d0e0e4736");
+            throw new IllegalStateException("boom");
+        });
+
+        assertThrows(IllegalStateException.class,
+            () -> dispatcher.handle(get("/api/ping"), InputStream.nullInputStream(), CONNECTION, writer));
+
+        assertEquals(List.of("trace 4bf92f3577b34da6a3ce929d0e0e4736"), writer.events,
+            "the 500 the pipeline answers a failed chain with belongs to the same trace");
+    }
+
+    @Test
+    void shouldHandNoTraceIdWithoutObservation() throws Exception {
+        TracingWriter writer = new TracingWriter();
+        var dispatcher = dispatcher((request, response) -> events.add("service"));
+
+        dispatcher.handle(get("/api/ping"), InputStream.nullInputStream(), CONNECTION, writer);
+
+        assertEquals(List.of("write DefaultFullHttpResponse"), writer.events,
+            "with no observation there is no trace id, and none may be invented");
+    }
+
+    private static void observe(HttpServletRequest request, HttpServletResponse response, String traceId) {
+        SimpleSpan span = new SimpleSpan();
+        span.context().setTraceId(traceId);
+        TracingObservationHandler.TracingContext tracing = new TracingObservationHandler.TracingContext();
+        tracing.setSpan(span);
+        ServerRequestObservationContext context = new ServerRequestObservationContext(request, response);
+        context.put(TracingObservationHandler.TracingContext.class, tracing);
+        request.setAttribute(ServerHttpObservationFilter.CURRENT_OBSERVATION_CONTEXT_ATTRIBUTE, context);
+    }
+
+    private static final class TracingWriter implements HttpResponseWriter {
+
+        private final List<String> events = new ArrayList<>();
+
+        @Override
+        public void write(HttpObject part) {
+            events.add("write " + part.getClass().getSimpleName());
+            ReferenceCountUtil.release(part);
+        }
+
+        @Override
+        public void setTraceId(String traceId) {
+            events.add("trace " + traceId);
+        }
     }
 }

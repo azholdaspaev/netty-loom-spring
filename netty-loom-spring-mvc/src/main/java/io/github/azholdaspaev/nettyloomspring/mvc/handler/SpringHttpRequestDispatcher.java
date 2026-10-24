@@ -14,11 +14,15 @@ import io.netty.handler.codec.http.HttpRequest;
 
 import java.io.InputStream;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.util.ClassUtils;
 import org.springframework.web.servlet.DispatcherServlet;
 
 public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
 
     private static final String SERVER_WIDE_ALLOW = "GET, HEAD, POST, PUT, DELETE, OPTIONS";
+
+    private static final boolean TRACING_PRESENT = ClassUtils.isPresent(
+        "io.micrometer.tracing.handler.TracingObservationHandler", SpringHttpRequestDispatcher.class.getClassLoader());
 
     private final NettyServletContext servletContext;
     private final NettyErrorPageDispatcher errorPages;
@@ -83,6 +87,9 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
             serveWithErrorPages(servletRequest, servletResponse);
         } finally {
             servletContext.getListenerRegistry().fireRequestDestroyed(servletRequest);
+            if (TRACING_PRESENT) {
+                handTraceId(servletRequest, writer);
+            }
         }
 
         /*
@@ -90,6 +97,13 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
          * here would answer the request with it instead of letting the failure reach the connection.
          */
         servletResponse.complete();
+    }
+
+    private static void handTraceId(NettyHttpServletRequest request, HttpResponseWriter writer) {
+        String traceId = TracingDelegate.traceIdOf(request);
+        if (traceId != null) {
+            writer.setTraceId(traceId);
+        }
     }
 
     private void serveWithErrorPages(NettyHttpServletRequest request, NettyHttpServletResponse response)
