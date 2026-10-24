@@ -4,8 +4,6 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
-import io.netty.handler.codec.http.HttpResponseStatus;
-import io.netty.handler.codec.http.HttpStatusClass;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
@@ -49,7 +47,7 @@ final class HttpBodyFraming {
          * bare because isSelfDefinedMessageLength covers 1xx and 204 but not 304 or 205, so a bare
          * head has HttpServerKeepAliveHandler close after every conditional GET.
          */
-        if (carriesNoBody(response.status())) {
+        if (HttpResponses.carriesNoBody(response.status())) {
             HttpUtil.setContentLength(response, 0);
             return;
         }
@@ -67,13 +65,5 @@ final class HttpBodyFraming {
         return response instanceof LastHttpContent whole
             && !whole.trailingHeaders().isEmpty()
             && !HttpVersion.HTTP_1_0.equals(request.protocolVersion());
-    }
-
-    /** Tomcat suppresses framing for this same set in {@code Http11Processor.prepareResponse}. */
-    private static boolean carriesNoBody(HttpResponseStatus status) {
-        return status.codeClass() == HttpStatusClass.INFORMATIONAL
-            || status.code() == HttpResponseStatus.NO_CONTENT.code()
-            || status.code() == HttpResponseStatus.RESET_CONTENT.code()
-            || status.code() == HttpResponseStatus.NOT_MODIFIED.code();
     }
 }

@@ -1,6 +1,7 @@
 package io.github.azholdaspaev.nettyloomspring.core.handler;
 
 import io.netty.handler.codec.http.HttpResponse;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpStatusClass;
 import io.netty.handler.codec.http.LastHttpContent;
 
@@ -21,5 +22,13 @@ final class HttpResponses {
     static boolean isInformational(Object msg) {
         return msg instanceof HttpResponse response
             && response.status().codeClass() == HttpStatusClass.INFORMATIONAL;
+    }
+
+    /** Tomcat suppresses framing for this same set in {@code Http11Processor.prepareResponse}. */
+    static boolean carriesNoBody(HttpResponseStatus status) {
+        return status.codeClass() == HttpStatusClass.INFORMATIONAL
+            || status.code() == HttpResponseStatus.NO_CONTENT.code()
+            || status.code() == HttpResponseStatus.RESET_CONTENT.code()
+            || status.code() == HttpResponseStatus.NOT_MODIFIED.code();
     }
 }

@@ -241,13 +241,10 @@ public class HttpAccessLogHandler extends ChannelDuplexHandler {
             this.traceId = traceId;
         }
 
-        /** HttpServerCodec drops the body of these, so none of it is counted (HttpResponseEncoder:79-97). */
+        /** HttpServerCodec drops the body of these, so none of it is counted ({@code isContentAlwaysEmpty}). */
         private void markResponded(HttpResponseStatus responseStatus) {
             status = responseStatus.code();
-            bodyless = headRequest
-                || status == HttpResponseStatus.NO_CONTENT.code()
-                || status == HttpResponseStatus.RESET_CONTENT.code()
-                || status == HttpResponseStatus.NOT_MODIFIED.code();
+            bodyless = headRequest || HttpResponses.carriesNoBody(responseStatus);
         }
     }
 }
