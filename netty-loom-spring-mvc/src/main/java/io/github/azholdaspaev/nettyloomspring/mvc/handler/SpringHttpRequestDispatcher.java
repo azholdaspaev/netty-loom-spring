@@ -100,7 +100,7 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
     }
 
     private static void handTraceId(NettyHttpServletRequest request, HttpResponseWriter writer) {
-        String traceId = TracingDelegate.traceIdOf(request);
+        String traceId = TracingDelegate.findTraceId(request);
         if (traceId != null) {
             writer.setTraceId(traceId);
         }

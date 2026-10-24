@@ -125,19 +125,19 @@ public class HttpAccessLogHandler extends ChannelDuplexHandler {
          * cut short in its header block, so nothing on a failed head describes what the client sent.
          */
         if (request.decoderResult().isFailure()) {
-            exchange.remoteIp = orAbsent(connection.remoteAddr());
+            exchange.remoteIp = replaceEmptyWithDash(connection.remoteAddr());
             return exchange;
         }
         String uri = request.uri();
         int queryStart = uri.indexOf('?');
         HttpHeaders headers = request.headers();
-        exchange.remoteIp = orAbsent(remoteAddress.apply(request, connection));
+        exchange.remoteIp = replaceEmptyWithDash(remoteAddress.apply(request, connection));
         exchange.method = request.method().name();
         exchange.path = queryStart < 0 ? uri : uri.substring(0, queryStart);
-        exchange.query = queryStart < 0 ? ABSENT : orAbsent(uri.substring(queryStart + 1));
+        exchange.query = queryStart < 0 ? ABSENT : replaceEmptyWithDash(uri.substring(queryStart + 1));
         exchange.protocol = request.protocolVersion().text();
-        exchange.referer = orAbsent(headers.get(HttpHeaderNames.REFERER));
-        exchange.userAgent = orAbsent(headers.get(HttpHeaderNames.USER_AGENT));
+        exchange.referer = replaceEmptyWithDash(headers.get(HttpHeaderNames.REFERER));
+        exchange.userAgent = replaceEmptyWithDash(headers.get(HttpHeaderNames.USER_AGENT));
         return exchange;
     }
 
@@ -202,7 +202,7 @@ public class HttpAccessLogHandler extends ChannelDuplexHandler {
         return escaped == null ? value : escaped.toString();
     }
 
-    private static String orAbsent(String value) {
+    private static String replaceEmptyWithDash(String value) {
         return value == null || value.isEmpty() ? ABSENT : value;
     }
 

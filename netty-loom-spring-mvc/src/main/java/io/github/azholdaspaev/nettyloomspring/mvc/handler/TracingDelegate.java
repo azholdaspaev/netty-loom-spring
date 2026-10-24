@@ -17,7 +17,7 @@ final class TracingDelegate {
      * The filter's scope, and MDC with it, has closed by the time the chain returns; the context it left
      * as a request attribute still holds the span.
      */
-    static String traceIdOf(HttpServletRequest request) {
+    static String findTraceId(HttpServletRequest request) {
         return ServerHttpObservationFilter.findObservationContext(request)
             .map(context -> context.<TracingContext>get(TracingContext.class))
             .map(TracingContext::getSpan)
