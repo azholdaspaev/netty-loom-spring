@@ -12,6 +12,7 @@ import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.util.AttributeKey;
+import io.netty.util.NetUtil;
 import io.netty.util.concurrent.Ticker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -165,7 +166,10 @@ public class HttpAccessLogHandler extends ChannelDuplexHandler {
 
     private String formatLine(Exchange exchange, long durationMillis) {
         String target = ABSENT.equals(exchange.query) ? exchange.path : exchange.path + "?" + exchange.query;
-        return exchange.remoteIp
+        // An IP literal or -, rather than escaped: the field is unquoted, so an escaped space still splits it.
+        String remoteIp = NetUtil.isValidIpV4Address(exchange.remoteIp) || NetUtil.isValidIpV6Address(exchange.remoteIp)
+            ? exchange.remoteIp : ABSENT;
+        return remoteIp
             + " - - [" + TIMESTAMP.format(exchange.arrival.atZone(clock.getZone())) + "] \""
             + exchange.method + " " + escape(target) + " " + exchange.protocol + "\" "
             + exchange.status + " " + (exchange.bytesOut == 0 ? ABSENT : exchange.bytesOut)

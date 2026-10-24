@@ -381,6 +381,36 @@ class HttpAccessLogHandlerTest {
     }
 
     @Test
+    void shouldLogDashForClientAddressThatIsNotIpLiteralInMessageOnly() {
+        String forged = "1.2.3.4 - - [01/Jan/2000:00:00:00 +0000] \"GET /admin HTTP/1.1\" 200";
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpAccessLogHandler((request, connection) -> forged,
+            log, CLOCK));
+        channel.freezeTime();
+
+        channel.writeInbound(get("/ping"));
+        channel.writeOutbound(ok(""));
+
+        LoggingEvent event = log.single();
+        assertEquals("- - - [25/Oct/2026:10:15:30 +0000] \"GET /ping HTTP/1.1\" 200 - \"-\" \"-\" 0",
+            event.getMessage(), "a forwarded value is client-controlled, and the unquoted field cannot be escaped");
+        assertEquals(forged, keyValues(event).get("remote_ip"), "structured formatters escape the pairs themselves");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void shouldLogIpv6ClientAddressAsIs() {
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpAccessLogHandler((request, connection) -> "2001:db8::1",
+            log, CLOCK));
+        channel.freezeTime();
+
+        channel.writeInbound(get("/ping"));
+        channel.writeOutbound(ok(""));
+
+        assertTrue(log.single().getMessage().startsWith("2001:db8::1 - - ["), log.single().getMessage());
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
     void shouldAttachTraceIdSetOnExchange() {
         EmbeddedChannel channel = newChannel();
 
