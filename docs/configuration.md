@@ -30,6 +30,7 @@ The rule for which namespace a knob belongs to — Spring Boot's `server.*` vers
 | `server.netty.max-chunk-size` | `DataSize` | `10000B` | Largest piece of a request body the decoder hands on at once. A larger body is split into pieces of at most this size and reaches `getInputStream()` one piece at a time; nothing is refused for exceeding it |
 | `server.netty.internal-proxies` | `List<String>` | `192.168.0.0/16`, `172.16.0.0/12`, `169.254.0.0/16`, `fc00::/7`, `10.0.0.0/8`, `100.64.0.0/10`, `127.0.0.0/8`, `fe80::/10`, `::1/128` | The proxies whose forwarded headers `server.forward-headers-strategy=native` trusts, as IP addresses and CIDR blocks. The default is Boot's `server.tomcat.remoteip.internal-proxies`; a configured list replaces it, and an empty one trusts nobody. An entry that is neither fails at binding and Boot's failure report names the property. See [Forwarded headers](#forwarded-headers) |
 | `server.netty.forwarded-headers` | `NettyForwardedHeaders` | `x-forwarded` | The header family native forwarding reads: `x-forwarded` for `X-Forwarded-For`/`-Proto`/`-Host`/`-Port`, `forwarded` for RFC 7239 `Forwarded`. Set it to the family your proxy writes. See [Forwarded headers](#forwarded-headers) |
+| `server.netty.access-log.enabled` | `boolean` | `false` | Writes one INFO line per exchange that receives a final response, in NCSA combined format followed by the duration in milliseconds, with every field also attached as an SLF4J key-value pair that Boot's structured formats render as a JSON member. The logger is `io.github.azholdaspaev.nettyloomspring.core.handler.HttpAccessLogHandler`, and the line is written on the connection's event loop, so give that logger Logback's [`AsyncAppender`](https://logback.qos.ch/manual/appenders.html#AsyncAppender) if its appender can block. An application `NettyPipelineDefinition` bean replaces the whole pipeline and drops the step |
 
 `NettyLoomProperties` is a `@ConfigurationProperties` record, which binds with
 `ignoreUnknownFields = true`. A misspelled key under `server.netty.*` is therefore **silently
@@ -87,7 +88,7 @@ this table in the same change, with a test proving its warning is gone.
 | `server.servlet.session.store-dir` | Any value | Sessions are in memory only | |
 | `spring.mvc.servlet.path` | Anything but `/` or empty | `DispatcherServlet` receives every in-context request regardless | |
 | `server.netty.port` | It has text | Removed; use `server.port` | |
-| `server.tomcat.*` | Any key | Netty serves, not Tomcat. `accept-count` maps to `server.netty.accept-count`; `max-connections` has none yet; `threads.*` has none, because requests run on unbounded virtual threads | [#45](https://github.com/azholdaspaev/netty-loom-spring/issues/45) |
+| `server.tomcat.*` | Any key | Netty serves, not Tomcat. `accept-count` maps to `server.netty.accept-count`; `accesslog.*` maps to `server.netty.access-log.enabled`; `max-connections` has none yet; `threads.*` has none, because requests run on unbounded virtual threads | [#45](https://github.com/azholdaspaev/netty-loom-spring/issues/45) |
 | `server.jetty.*` | Any key | Netty serves, not Jetty. Keys are not mapped | |
 | `server.undertow.*` | Any key | Spring Boot 4 has no Undertow support | |
 
