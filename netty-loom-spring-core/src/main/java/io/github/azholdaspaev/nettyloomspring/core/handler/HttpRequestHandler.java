@@ -335,9 +335,20 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
          */
         private volatile boolean preempted;
 
+        /** Null when the pipeline has no access log step. Read on the event loop, in the head's turn. */
+        private final HttpAccessLogHandler.Exchange exchange;
+
         HttpChannelResponseWriter(ChannelHandlerContext ctx, HttpRequest request) {
             this.ctx = ctx;
             this.request = request;
+            this.exchange = ctx.channel().attr(HttpAccessLogHandler.EXCHANGE).get();
+        }
+
+        @Override
+        public void setTraceId(String traceId) {
+            if (exchange != null) {
+                exchange.setTraceId(traceId);
+            }
         }
 
         @Override

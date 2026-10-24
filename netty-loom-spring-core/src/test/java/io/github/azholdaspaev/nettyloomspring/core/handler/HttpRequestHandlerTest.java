@@ -25,6 +25,7 @@ import io.netty.channel.local.LocalIoHandler;
 import io.netty.channel.local.LocalServerChannel;
 import io.netty.handler.codec.EncoderException;
 import io.netty.handler.codec.TooLongFrameException;
+import io.github.azholdaspaev.nettyloomspring.core.support.RecordingLogger;
 import io.github.azholdaspaev.nettyloomspring.core.support.RecordingReads;
 import io.github.azholdaspaev.nettyloomspring.core.support.ReleaseFailingContent;
 import io.github.azholdaspaev.nettyloomspring.core.support.StandardError;
@@ -61,6 +62,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.channels.ClosedChannelException;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -140,6 +142,39 @@ class HttpRequestHandlerTest {
         assertSame(canned, out, "handler must forward the dispatcher's response unchanged");
         out.release();
         channel.finish();
+    }
+
+    @Test
+    void shouldHandTraceIdToExchangeOfAccessLogAbove() {
+        RecordingLogger log = new RecordingLogger();
+        EmbeddedChannel channel = new EmbeddedChannel(
+            new HttpAccessLogHandler((_, _) -> "203.0.113.7", log, Clock.systemUTC()),
+            new HttpRequestHandler((_, _, _, writer) -> {
+                writer.setTraceId("4bf92f3577b34da6a3ce929d0e0e4736");
+                writer.write(new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
+            }, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+
+        receive(channel, HttpMethod.GET, "/");
+
+        assertEquals("4bf92f3577b34da6a3ce929d0e0e4736", RecordingLogger.keyValues(log.single()).get("trace_id"),
+            "the dispatch's trace id must reach the line of the exchange it served");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void shouldIgnoreTraceIdWithoutAccessLog() {
+        FullHttpResponse canned = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+        EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestHandler((_, _, _, writer) -> {
+            writer.setTraceId("4bf92f3577b34da6a3ce929d0e0e4736");
+            writer.write(canned);
+        }, DIRECT, connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT));
+
+        receive(channel, HttpMethod.GET, "/");
+
+        FullHttpResponse out = channel.readOutbound();
+        assertSame(canned, out, "a pipeline without the access log step still answers the request");
+        out.release();
+        channel.finishAndReleaseAll();
     }
 
     @Test
