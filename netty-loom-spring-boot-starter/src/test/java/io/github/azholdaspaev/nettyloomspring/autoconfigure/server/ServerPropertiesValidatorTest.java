@@ -206,6 +206,17 @@ class ServerPropertiesValidatorTest {
     }
 
     @Test
+    void shouldPointTomcatAccessLogKeysAtNettyAccessLog() {
+        String warning = describeSingle(
+            "server.tomcat.accesslog.enabled", "true",
+            "server.tomcat.accesslog.pattern", "combined");
+
+        assertTrue(warning.contains("server.tomcat.accesslog.enabled (use server.netty.access-log.enabled)")
+                && warning.contains("server.tomcat.accesslog.pattern (use server.netty.access-log.enabled)"),
+            "every accesslog key must point at server.netty.access-log.enabled, was: " + warning);
+    }
+
+    @Test
     void shouldPointTomcatMaxConnectionsAtItsIssue() {
         String warning = describeSingle("server.tomcat.max-connections", "1000");
 
