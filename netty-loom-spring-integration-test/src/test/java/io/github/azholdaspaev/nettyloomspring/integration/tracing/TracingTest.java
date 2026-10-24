@@ -1,7 +1,9 @@
 package io.github.azholdaspaev.nettyloomspring.integration.tracing;
 
 import ch.qos.logback.classic.Logger;
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpAccessLogHandler;
 import io.github.azholdaspaev.nettyloomspring.integration.support.BaseIntegrationTest;
+import io.github.azholdaspaev.nettyloomspring.integration.support.KeyValueRecordingAppender;
 import io.github.azholdaspaev.nettyloomspring.integration.support.MdcRecordingAppender;
 import io.github.azholdaspaev.nettyloomspring.integration.support.SpanRecordingConfig;
 import io.github.azholdaspaev.nettyloomspring.integration.web.ItemController;
@@ -38,6 +40,8 @@ class TracingTest extends BaseIntegrationTest {
 
     private final MdcRecordingAppender controllerLog = new MdcRecordingAppender();
 
+    private final KeyValueRecordingAppender accessLog = new KeyValueRecordingAppender();
+
     @Autowired
     private SpanRecordingConfig spanRecording;
 
@@ -51,6 +55,18 @@ class TracingTest extends BaseIntegrationTest {
     void detachControllerLog() {
         controllerLogger().detachAppender(controllerLog);
         controllerLog.stop();
+    }
+
+    @BeforeEach
+    void attachAccessLog() {
+        accessLog.start();
+        accessLogger().addAppender(accessLog);
+    }
+
+    @AfterEach
+    void detachAccessLog() {
+        accessLogger().detachAppender(accessLog);
+        accessLog.stop();
     }
 
     @Test
@@ -129,6 +145,23 @@ class TracingTest extends BaseIntegrationTest {
                     + " the controller logged under"));
     }
 
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldCarryServerTraceIdInAccessLine() {
+        String traceId = IdGenerator.random().generateTraceId();
+
+        restTestClient.get().uri("/items/42")
+            .header("traceparent", traceparent(traceId, IdGenerator.random().generateSpanId(), NOT_SAMPLED))
+            .exchange()
+            .expectStatus().isOk();
+
+        await().atMost(RECORDING_DEADLINE).untilAsserted(() ->
+            assertTrue(accessLog.getRecordedKeyValues().stream()
+                    .anyMatch(pairs -> traceId.equals(pairs.get("trace_id")) && "/items/42".equals(pairs.get("path"))),
+                "the access line must carry the trace id of the observation that served the request; lines were "
+                    + accessLog.getRecordedKeyValues()));
+    }
+
     private List<SpanData> awaitServerSpans(String traceId) {
         // requestDestroyed fires after the error-page dispatch, so every span the chain ended is exported by then.
         await().atMost(RECORDING_DEADLINE).until(() -> spanRecording.getTraceIdsAfterChain().contains(traceId));
@@ -148,6 +181,10 @@ class TracingTest extends BaseIntegrationTest {
             }
         }
         return false;
+    }
+
+    private static Logger accessLogger() {
+        return (Logger) LoggerFactory.getLogger(HttpAccessLogHandler.class);
     }
 
     private static Logger controllerLogger() {
