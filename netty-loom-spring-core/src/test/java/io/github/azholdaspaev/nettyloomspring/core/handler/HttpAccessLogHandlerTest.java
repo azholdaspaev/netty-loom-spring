@@ -372,7 +372,8 @@ class HttpAccessLogHandlerTest {
         LoggingEvent event = log.single();
         assertEquals(CLIENT + " - - [25/Oct/2026:10:15:30 +0000] \"GET /a\\\"b\\\\c?q=\\\"x\\\" HTTP/1.1\" 200 -"
                 + " \"r\\r\\nforged\" \"ua\\\"\\\\\" 0", event.getMessage(),
-            "a request must not be able to end the quoted field or the line it is logged on");
+            "a request must not be able to end the quoted field or the line it is logged on; backslash too, or"
+                + " a \\\" it sent would read as an escaped quote and still close the field");
         Map<String, Object> pairs = keyValues(event);
         assertEquals("/a\"b\\c", pairs.get("path"), "structured formatters escape the pairs themselves");
         assertEquals("q=\"x\"", pairs.get("query"), "pairs: " + pairs);

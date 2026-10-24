@@ -177,10 +177,6 @@ public class HttpAccessLogHandler extends ChannelDuplexHandler {
             + durationMillis;
     }
 
-    /**
-     * Backslash too, not only the quote and line breaks: otherwise {@code \"} in the request would read
-     * as an escaped quote and still close the field.
-     */
     private static String escape(String value) {
         StringBuilder escaped = null;
         for (int i = 0; i < value.length(); i++) {
