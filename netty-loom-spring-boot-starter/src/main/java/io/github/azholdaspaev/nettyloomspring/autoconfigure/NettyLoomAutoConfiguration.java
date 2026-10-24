@@ -4,6 +4,7 @@ import io.github.azholdaspaev.nettyloomspring.autoconfigure.properties.NettyLoom
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.NettyForwardHeadersCustomizer;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.NettyServletWebServerFactory;
 import io.github.azholdaspaev.nettyloomspring.autoconfigure.server.ServletContextLifecycle;
+import io.github.azholdaspaev.nettyloomspring.core.handler.HttpAccessLogHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpConnectionRegistry;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpDecoderFailureHandler;
 import io.github.azholdaspaev.nettyloomspring.core.handler.HttpDrainHandler;
@@ -40,6 +41,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.web.servlet.DispatcherServlet;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -129,18 +131,28 @@ public class NettyLoomAutoConfiguration {
     public NettyPipelineDefinition nettyPipelineDefinition(NettyLoomProperties properties,
                                                            HttpRequestDispatcher httpRequestDispatcher,
                                                            @Qualifier(DISPATCH_EXECUTOR_BEAN) ExecutorService nettyLoomDispatchExecutor,
-                                                           HttpConnectionRegistry httpConnectionRegistry) {
+                                                           HttpConnectionRegistry httpConnectionRegistry,
+                                                           @Qualifier(SERVLET_CONTEXT_BEAN) NettyServletContext nettyServletContext) {
         int maxInitialLineLength = (int) properties.maxInitialLineLength().toBytes();
         int maxHeaderSize = (int) properties.maxHeaderSize().toBytes();
         int maxChunkSize = (int) properties.maxChunkSize().toBytes();
         long maxHttpBodyBytes = properties.maxHttpBodySize().toBytes();
         long maxSwallowBytes = properties.maxSwallowSize().toBytes();
-        return new NettyPipelineDefinition(List.of(
+        List<NettyPipelineStep> steps = new ArrayList<>(List.of(
             new NettyPipelineStep("httpCodec", () -> new HttpServerCodec(maxInitialLineLength, maxHeaderSize, maxChunkSize)),
             new NettyPipelineStep("httpKeepAlive", HttpServerKeepAliveHandler::new),
             new NettyPipelineStep("drain", () -> new HttpDrainHandler(httpConnectionRegistry)),
             new NettyPipelineStep("readTimeout", () -> new HttpReadTimeoutHandler(properties.readTimeout())),
-            new NettyPipelineStep("pipelining", HttpPipeliningHandler::new),
+            new NettyPipelineStep("pipelining", HttpPipeliningHandler::new)));
+        if (properties.accessLog().enabled()) {
+            /*
+             * Read per request rather than captured here: the factory chooses the resolver in getWebServer,
+             * after this bean is built.
+             */
+            steps.add(new NettyPipelineStep("accessLog", () -> new HttpAccessLogHandler((request, connection) ->
+                nettyServletContext.getRequestOriginResolver().resolve(request, connection).remoteAddr())));
+        }
+        steps.addAll(List.of(
             /*
              * Below the gate so the rejection is sequenced behind an earlier pipelined response and releases
              * the gate on its way out. Nothing is lost by rejecting this late: the decoder discards every
@@ -153,6 +165,7 @@ public class NettyLoomAutoConfiguration {
                 httpConnectionRegistry, properties.writeStallTimeout())),
             NettyPipelineStep.shared("exceptionHandler", new HttpExceptionHandler())
         ));
+        return new NettyPipelineDefinition(steps);
     }
 
     /**
