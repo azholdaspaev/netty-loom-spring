@@ -35,8 +35,12 @@ public record NettyLoomProperties(
     @DefaultValue("10000B") DataSize maxChunkSize,
     @DefaultValue("auto") NettyTransportPreference transport,
     List<String> internalProxies,
-    @DefaultValue("x-forwarded") NettyForwardedHeaders forwardedHeaders
+    @DefaultValue("x-forwarded") NettyForwardedHeaders forwardedHeaders,
+    @DefaultValue AccessLog accessLog
 ) implements Validator {
+
+    public record AccessLog(@DefaultValue("false") boolean enabled) {
+    }
 
     public static final List<String> DEFAULT_INTERNAL_PROXIES = List.of("192.168.0.0/16", "172.16.0.0/12",
         "169.254.0.0/16", "fc00::/7", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "fe80::/10", "::1/128");

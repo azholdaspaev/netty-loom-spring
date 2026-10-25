@@ -34,4 +34,11 @@ public interface HttpResponseWriter {
      *                     connection is given up on
      */
     void write(HttpObject part) throws IOException;
+
+    /**
+     * Names the trace that served this exchange, for its access log line. Call it before writing the
+     * last part: the line is written once that part is, and a later call is lost.
+     */
+    default void setTraceId(String traceId) {
+    }
 }

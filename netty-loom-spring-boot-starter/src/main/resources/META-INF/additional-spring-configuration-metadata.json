@@ -73,6 +73,10 @@
     {
       "name": "server.netty.forwarded-headers",
       "description": "Header family a trusted proxy writes and native forwarding reads: x-forwarded or forwarded. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
+    },
+    {
+      "name": "server.netty.access-log.enabled",
+      "description": "Writes one NCSA combined line per exchange that receives a final response. See https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/configuration.md#servernetty"
     }
   ],
   "hints": [

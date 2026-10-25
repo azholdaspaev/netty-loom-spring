@@ -121,7 +121,11 @@ final class ServerPropertiesValidator {
          * Bindable.mapOf keeps each key as written, while Boot binds accept-count from acceptCount,
          * acceptcount (SERVER_TOMCAT_ACCEPTCOUNT) and accept.count (SERVER_TOMCAT_ACCEPT_COUNT) alike.
          */
-        return switch (key.replace("-", "").replace(".", "").toLowerCase(Locale.ROOT)) {
+        String normalized = key.replace("-", "").replace(".", "").toLowerCase(Locale.ROOT);
+        if (normalized.startsWith("accesslog")) {
+            return "server.tomcat." + key + " (use server.netty.access-log.enabled)";
+        }
+        return switch (normalized) {
             case "acceptcount" -> "server.tomcat.accept-count (use server.netty.accept-count)";
             case "maxconnections" -> "server.tomcat.max-connections (see issue #45)";
             default -> "server.tomcat." + key + (key.startsWith("threads.")

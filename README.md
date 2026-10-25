@@ -192,6 +192,7 @@ TCP accept (boss loop)
       drain              HttpDrainHandler          # counts the exchange for graceful shutdown
       readTimeout        HttpReadTimeoutHandler    # client deadline; suspended while dispatching
       pipelining         HttpPipeliningHandler     # responses leave in request order
+      accessLog          HttpAccessLogHandler      # only with server.netty.access-log.enabled
       decoderFailure     HttpDecoderFailureHandler
       bodyLimit          HttpRequestBodyLimitHandler
       dispatcher         HttpRequestHandler

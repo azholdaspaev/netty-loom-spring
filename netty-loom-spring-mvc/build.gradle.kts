@@ -18,7 +18,9 @@ dependencies {
     implementation(libs.spring.web)
     implementation(libs.spring.context)
     implementation(libs.slf4j.api)
+    compileOnly(libs.micrometer.tracing)
 
     testImplementation(libs.junit.jupiter)
+    testImplementation(libs.micrometer.tracing.test)
     testRuntimeOnly(libs.slf4j.simple)
 }

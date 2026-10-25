@@ -33,18 +33,7 @@ class NettyLoomPropertiesTest {
             descriptions.put(property.path("name").asString(), property.path("description").asString(""));
         }
 
-        for (RecordComponent component : NettyLoomProperties.class.getRecordComponents()) {
-            String name = "server.netty." + DataObjectPropertyName.toDashedForm(component.getName());
-            String description = descriptions.get(name);
-            assertNotNull(description, name + " must have a metadata entry");
-            assertTrue(description.endsWith(" See " + CONFIGURATION_DOCS_URL),
-                name + " must end by pointing at " + CONFIGURATION_DOCS_URL
-                    + ", the owner of its semantics, but reads: " + description);
-            String summary = description.substring(0, description.lastIndexOf(" See "));
-            assertFalse(summary.contains(". "),
-                name + " must summarise in one sentence, leaving the rest and the default to their owners,"
-                    + " but reads: " + description);
-        }
+        assertDescribed(descriptions, "server.netty", NettyLoomProperties.class);
     }
 
     @Test
@@ -65,6 +54,20 @@ class NettyLoomPropertiesTest {
             }
         }
         assertTrue(hintValues > 0, "the metadata must carry server.netty.* hints for this test to check");
+    }
+
+    @Test
+    void shouldLeaveAccessLogDisabledByDefault() {
+        NettyLoomProperties properties = bind(Map.of());
+
+        assertFalse(properties.accessLog().enabled(), "the access log is opt-in");
+    }
+
+    @Test
+    void shouldBindAccessLogEnabled() {
+        NettyLoomProperties properties = bind(Map.of("server.netty.access-log.enabled", "true"));
+
+        assertTrue(properties.accessLog().enabled());
     }
 
     @Test
@@ -242,6 +245,25 @@ class NettyLoomPropertiesTest {
         NettyLoomProperties properties = bind(Map.of("server.netty.internal-proxies", ""));
 
         assertEquals(List.of(), properties.internalProxies(), "an empty list replaces the default and trusts nobody");
+    }
+
+    private static void assertDescribed(Map<String, String> descriptions, String prefix, Class<?> type) {
+        for (RecordComponent component : type.getRecordComponents()) {
+            String name = prefix + "." + DataObjectPropertyName.toDashedForm(component.getName());
+            if (component.getType().isRecord()) {
+                assertDescribed(descriptions, name, component.getType());
+                continue;
+            }
+            String description = descriptions.get(name);
+            assertNotNull(description, name + " must have a metadata entry");
+            assertTrue(description.endsWith(" See " + CONFIGURATION_DOCS_URL),
+                name + " must end by pointing at " + CONFIGURATION_DOCS_URL
+                    + ", the owner of its semantics, but reads: " + description);
+            String summary = description.substring(0, description.lastIndexOf(" See "));
+            assertFalse(summary.contains(". "),
+                name + " must summarise in one sentence, leaving the rest and the default to their owners,"
+                    + " but reads: " + description);
+        }
     }
 
     private static JsonNode readMetadata() throws Exception {
