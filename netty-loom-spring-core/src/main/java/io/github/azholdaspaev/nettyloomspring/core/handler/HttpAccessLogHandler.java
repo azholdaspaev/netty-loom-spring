@@ -166,9 +166,13 @@ public class HttpAccessLogHandler extends ChannelDuplexHandler {
 
     private String formatLine(Exchange exchange, long durationMillis) {
         String target = ABSENT.equals(exchange.query) ? exchange.path : exchange.path + "?" + exchange.query;
-        // An IP literal or -, rather than escaped: the field is unquoted, so an escaped space still splits it.
-        String remoteIp = NetUtil.isValidIpV4Address(exchange.remoteIp) || NetUtil.isValidIpV6Address(exchange.remoteIp)
-            ? exchange.remoteIp : ABSENT;
+        /*
+         * An IP literal or -, rather than escaped: the field is unquoted, so an escaped space still splits it.
+         * The zone id goes, because NetUtil.isValidIpV6Address reads no further than '%'.
+         */
+        int zoneStart = exchange.remoteIp.indexOf('%');
+        String address = zoneStart < 0 ? exchange.remoteIp : exchange.remoteIp.substring(0, zoneStart);
+        String remoteIp = NetUtil.isValidIpV4Address(address) || NetUtil.isValidIpV6Address(address) ? address : ABSENT;
         return remoteIp
             + " - - [" + TIMESTAMP.format(exchange.arrival.atZone(clock.getZone())) + "] \""
             + exchange.method + " " + escape(target) + " " + exchange.protocol + "\" "
