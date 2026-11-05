@@ -23,6 +23,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.web.servlet.DispatcherServlet;
 
 import java.io.IOException;
@@ -302,6 +303,35 @@ class SpringHttpRequestDispatcherTest {
 
         assertEquals(HttpServletResponse.SC_NOT_FOUND, response.status().code());
         assertTrue(events.isEmpty(), "an out-of-context request fires no request listener; got " + events);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/a%zz", "/a%", "/a%2"})
+    void shouldAnswerMalformedPathEscapeWith400(String uri) throws Exception {
+        errorPageIs("/error");
+        recordRequests();
+        var dispatcher = dispatcher((request, response) -> {
+            events.add("service");
+            write(response, "the error page");
+        });
+
+        FullHttpResponse response = dispatch(dispatcher, get(uri));
+
+        assertEquals(HttpServletResponse.SC_BAD_REQUEST, response.status().code());
+        assertEquals("", response.content().toString(StandardCharsets.UTF_8),
+            "a path that does not decode maps to no context, so it is owed no page from one");
+        assertTrue(events.isEmpty(), "no listener, filter or servlet sees the request; got " + events);
+    }
+
+    @Test
+    void shouldAnswerMalformedPathEscapeOutsideContextWith400() throws Exception {
+        servletContext.setContextPath("/app");
+        var dispatcher = dispatcher((request, response) -> { });
+
+        FullHttpResponse response = dispatch(dispatcher, get("/elsewhere%zz"));
+
+        assertEquals(HttpServletResponse.SC_BAD_REQUEST, response.status().code(),
+            "decoding fails before the context guard, so the 400 wins over the out-of-context 404");
     }
 
     // --- Server-wide OPTIONS * (issue #58) ---
