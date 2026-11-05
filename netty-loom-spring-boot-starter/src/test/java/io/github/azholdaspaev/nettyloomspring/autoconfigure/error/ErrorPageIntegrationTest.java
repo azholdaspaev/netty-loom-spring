@@ -154,15 +154,18 @@ class ErrorPageIntegrationTest {
 
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    void shouldAnswerMalformedPathEscapeWithPlainServerError() throws Exception {
+    void shouldAnswerMalformedPathEscapeWith400() throws Exception {
         try (Socket socket = RawHttpClient.connect(port, Duration.ofSeconds(5))) {
-            RawHttpClient.send(socket, "GET /fail%zz HTTP/1.1", "Host: localhost");
+            RawHttpClient.send(socket, "POST /fail%zz HTTP/1.1", "Host: localhost", "Content-Length: 5");
+            RawHttpClient.sendBody(socket, "hello");
             RawHttpResponse response = RawHttpResponse.read(socket.getInputStream());
 
-            assertEquals(500, response.status(),
-                "decoding fails before any filter runs, so the dispatch fails; #473 is to make this Tomcat's 400");
-            assertEquals("Internal Server Error", response.readBody(),
-                "no error page answers a request that was never built, so the plain-text fallback does");
+            assertEquals(400, response.status(), "the path does not decode, which is the client's fault");
+            assertEquals("", response.readBody(), "no error page answers a request that was never built");
+
+            RawHttpClient.send(socket, "GET /definitely-not-mapped HTTP/1.1", "Host: localhost");
+            assertEquals(404, RawHttpResponse.read(socket.getInputStream()).status(),
+                "the framing was sound, so the connection serves the next request past the unread body");
         }
     }
 }

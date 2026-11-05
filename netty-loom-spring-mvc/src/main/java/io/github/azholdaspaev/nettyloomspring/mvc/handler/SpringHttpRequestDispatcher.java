@@ -39,8 +39,18 @@ public class SpringHttpRequestDispatcher implements HttpRequestDispatcher {
          */
         NettyHttpServletResponse servletResponse =
             new NettyHttpServletResponse(servletContext.getCookieSameSiteResolver(), writer);
-        NettyHttpServletRequest servletRequest =
-            new NettyHttpServletRequest(request, body, connection, servletContext, servletResponse);
+        NettyHttpServletRequest servletRequest;
+        try {
+            servletRequest = new NettyHttpServletRequest(request, body, connection, servletContext, servletResponse);
+        } catch (IllegalArgumentException undecodablePath) {
+            /*
+             * A bare 400 with no filter, listener or error page, as on Tomcat: CoyoteAdapter.postParseRequest
+             * recycles a URI it cannot decode, so Mapper.internalMap finds no context to run any of them.
+             */
+            servletResponse.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            servletResponse.complete();
+            return;
+        }
 
         /*
          * Server-wide OPTIONS (RFC 9110 section 7.1, asterisk-form): "*" is not a path, so neither the
