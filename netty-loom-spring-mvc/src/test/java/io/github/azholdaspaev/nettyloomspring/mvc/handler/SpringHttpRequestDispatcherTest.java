@@ -334,6 +334,35 @@ class SpringHttpRequestDispatcherTest {
             "decoding fails before the context guard, so the 400 wins over the out-of-context 404");
     }
 
+    @Test
+    void shouldAnswerMalformedParameterEscapeWith400() throws Exception {
+        var dispatcher = dispatcher((request, response) -> request.getParameter("a"));
+
+        FullHttpResponse response = dispatch(dispatcher, get("/x?a=%zz"));
+
+        assertEquals(HttpServletResponse.SC_BAD_REQUEST, response.status().code(),
+            "the client's escape is the client's fault, as Tomcat's StandardWrapperValve answers it");
+        assertEquals("", response.content().toString(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void shouldReadParametersOnErrorPageAfterMalformedEscape() throws Exception {
+        errorPageIs("/error");
+        var dispatcher = dispatcher((request, response) -> {
+            if (request.getServletPath().equals("/error")) {
+                write(response, "a=" + request.getParameter("a"));
+                return;
+            }
+            request.getParameter("a");
+        });
+
+        FullHttpResponse response = dispatch(dispatcher, get("/x?a=%zz"));
+
+        assertEquals(HttpServletResponse.SC_BAD_REQUEST, response.status().code());
+        assertEquals("a=null", response.content().toString(StandardCharsets.UTF_8),
+            "the page reads parameters without failing again, which would leave the request unanswered");
+    }
+
     // --- Server-wide OPTIONS * (issue #58) ---
 
     private static FullHttpRequest optionsAsterisk() {

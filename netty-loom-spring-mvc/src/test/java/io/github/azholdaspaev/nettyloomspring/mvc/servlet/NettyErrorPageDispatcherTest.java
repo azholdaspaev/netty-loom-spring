@@ -348,6 +348,62 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
+    void shouldReportInvalidParameterAs400WithoutErrorLog() throws Exception {
+        pageIs("/error");
+        var response = new NettyHttpServletResponse();
+        var request = requestFor("/form", response);
+        var invalid = new InvalidParameterException(new IllegalArgumentException("invalid hex byte"));
+
+        var outcome = reportCapturingStandardError(request, response, invalid);
+
+        assertTrue(outcome.reported());
+        assertEquals(400, response.getStatus(),
+            "Tomcat's StandardWrapperValve answers InvalidParameterException with its 400");
+        assertEquals(400, reached.getFirst().getAttribute(RequestDispatcher.ERROR_STATUS_CODE));
+        assertEquals(invalid, reached.getFirst().getAttribute(RequestDispatcher.ERROR_EXCEPTION));
+        assertFalse(outcome.logged().contains("ERROR"),
+            "the client's malformed request is not the application's failure; log was: " + outcome.logged());
+    }
+
+    @Test
+    void shouldReportWrappedInvalidParameterAs400() throws Exception {
+        pageIs("/error");
+        var response = new NettyHttpServletResponse();
+        var request = requestFor("/form", response);
+        var invalid = new InvalidParameterException(new IllegalArgumentException("invalid hex byte"));
+
+        errorPages.report(request, response, new ServletException("Request processing failed", invalid));
+
+        assertEquals(400, response.getStatus(),
+            "a controller's read arrives wrapped by FrameworkServlet, which StandardWrapperValve looks through too");
+    }
+
+    @Test
+    void shouldAnswerInvalidParameterWith400WithoutPage() throws Exception {
+        var response = new NettyHttpServletResponse();
+        var request = requestFor("/form", response);
+        var invalid = new InvalidParameterException(new IllegalArgumentException("invalid hex byte"));
+
+        assertTrue(errorPages.report(request, response, invalid),
+            "answered here, or the caller rethrows it to the connection as a 500");
+        assertEquals(400, response.getStatus());
+        assertTrue(reached.isEmpty());
+    }
+
+    @Test
+    void shouldLeaveStreamedResponseToConnectionWithoutPage() throws Exception {
+        List<HttpObject> written = new ArrayList<>();
+        var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, written::add);
+        var request = requestFor("/download", response);
+        response.setBufferSize(1);
+        response.getOutputStream().write("streamed".getBytes(StandardCharsets.UTF_8));
+        var invalid = new InvalidParameterException(new IllegalArgumentException("invalid hex byte"));
+
+        assertFalse(errorPages.report(request, response, invalid),
+            "the head is on the wire, so no 400 can replace it");
+    }
+
+    @Test
     void shouldNotWarnAboutClientThatLeftMidResponse() throws Exception {
         String logged = reportOnStreamedResponse(new ClosedChannelException());
 

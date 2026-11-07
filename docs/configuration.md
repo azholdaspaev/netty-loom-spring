@@ -261,7 +261,8 @@ Everything else maps to a status, is logged (`5xx` at error, below that at warn)
 with a plain-text body equal to the reason phrase plus `Connection: close`.
 
 The table maps the pipeline's own failures. Anything thrown out of the application's dispatch,
-whatever its type and whether a filter or a controller threw it, is answered `500`, as on Tomcat.
+whatever its type and whether a filter or a controller threw it, is answered `500`, as on Tomcat,
+except a malformed parameter escape, which is `400` ([`getParameter*`](compatibility-matrix.md#request)).
 With an error page registered — and Boot registers `/error` — that page answers it instead, on a
 connection that stays open.
 

@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpHeaders;
 
 import java.io.UnsupportedEncodingException;
@@ -418,6 +419,37 @@ class NettyHttpServletRequestTest {
                 + "locked ParameterMap from Parameters.getParameterValues, which hands out a fresh "
                 + "array, so a caller writing into the map never reaches the accessor path");
         assertArrayEquals(new String[] {"1"}, request.getParameterValues("a"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/x?a=%zz", "/x?a=%", "/x?a=%z", "/x?%zz=1"})
+    void shouldRejectMalformedEscapeInQuery(String uri) {
+        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
+        var request = request(uri, null, insecure);
+
+        var thrown = assertThrows(IllegalStateException.class, () -> request.getParameter("a"),
+            "Servlet 6.1 ServletRequest.getParameter names IllegalStateException for invalid %nn encoding");
+        assertInstanceOf(IllegalArgumentException.class, thrown.getCause(), "the decoder's failure is kept as the cause");
+    }
+
+    @Test
+    void shouldRejectMalformedEscapeInFormBody() {
+        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
+        var request = formRequest("/x", "message=%zz".getBytes(StandardCharsets.UTF_8), insecure);
+
+        assertThrows(IllegalStateException.class, () -> request.getParameter("message"));
+    }
+
+    @Test
+    void shouldThrowOnlyOnceAfterMalformedEscape() {
+        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
+        var request = request("/x?a=1&b=%zz", null, insecure);
+        assertThrows(IllegalStateException.class, () -> request.getParameter("a"));
+
+        assertNull(request.getParameter("a"),
+            "Tomcat's Request marks parameters parsed before it parses, so an error page reading one does not fail again");
+        assertTrue(request.getParameterMap().isEmpty());
+        assertFalse(request.getParameterNames().hasMoreElements());
     }
 
     @Test
