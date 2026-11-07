@@ -116,8 +116,9 @@ in any minor release.
   instead of closing after the response. An empty response to `HEAD` declares no length, since it
   cannot know the one its `GET` would send (#452).
 - A malformed percent-escape in a query or form parameter now makes `getParameter` throw
-  `IllegalStateException`, answered `400` through the error page with no ERROR log, as on Tomcat.
-  It was a `400` from a filter and a `500` from a controller. See
+  `IllegalStateException`, answered `400` through the error page, as on Tomcat. It is not logged
+  at ERROR, where Tomcat logs a controller's read. It was a `400` from a filter and a `500` from
+  a controller. See
   [Request](https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/compatibility-matrix.md#request)
   (#476).
 
