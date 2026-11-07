@@ -391,6 +391,19 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
+    void shouldAnswerInvalidParameterWith400WhenPageDoesNotResolve() throws Exception {
+        pageIs("/../escape");
+        var response = new NettyHttpServletResponse();
+        var request = requestFor("/form", response);
+        var invalid = new InvalidParameterException(new IllegalArgumentException("invalid hex byte"));
+
+        assertTrue(errorPages.report(request, response, invalid),
+            "a 400 page that resolves to nothing must not hand the failure back to the connection as a 500");
+        assertEquals(400, response.getStatus());
+        assertTrue(reached.isEmpty());
+    }
+
+    @Test
     void shouldLeaveStreamedResponseToConnectionWithoutPage() throws Exception {
         List<HttpObject> written = new ArrayList<>();
         var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, written::add);

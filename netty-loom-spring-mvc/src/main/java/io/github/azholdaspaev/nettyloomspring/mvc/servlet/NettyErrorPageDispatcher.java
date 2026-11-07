@@ -28,8 +28,8 @@ public class NettyErrorPageDispatcher {
     }
 
     /**
-     * Renders the error page for a dispatch that failed, or with no page answers a badly encoded parameter
-     * with a bare 400, and reports whether it did either. A {@code false} answer leaves the response
+     * Renders the error page for a dispatch that failed, or with no page that resolves answers a badly
+     * encoded parameter with a bare 400, and reports whether it did either. A {@code false} answer leaves the response
      * untouched, so the caller still owes the client whatever it holds.
      */
     public boolean report(HttpServletRequest request, NettyHttpServletResponse response, Throwable failure)
@@ -74,6 +74,10 @@ public class NettyErrorPageDispatcher {
         NettyRequestDispatcher page = context.getDispatchFactory().resolve(path);
         if (page == null) {
             log.warn("Error page {} does not resolve to a path inside this context", path);
+            if (invalidParameter) {
+                response.sendError(status);
+                return true;
+            }
             return false;
         }
         if (rootCause != null && !invalidParameter) {
