@@ -352,7 +352,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
         pageIs("/error");
         var response = new NettyHttpServletResponse();
         var request = requestFor("/form", response);
-        var invalid = new InvalidParameterException(new IllegalArgumentException("invalid hex byte"));
+        var invalid = new NettyInvalidParameterException(new IllegalArgumentException("invalid hex byte"));
 
         var outcome = reportCapturingStandardError(request, response, invalid);
 
@@ -370,7 +370,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
         pageIs("/error");
         var response = new NettyHttpServletResponse();
         var request = requestFor("/form", response);
-        var invalid = new InvalidParameterException(new IllegalArgumentException("invalid hex byte"));
+        var invalid = new NettyInvalidParameterException(new IllegalArgumentException("invalid hex byte"));
 
         errorPages.report(request, response, new ServletException("Request processing failed", invalid));
 
@@ -382,7 +382,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     void shouldAnswerInvalidParameterWith400WithoutPage() throws Exception {
         var response = new NettyHttpServletResponse();
         var request = requestFor("/form", response);
-        var invalid = new InvalidParameterException(new IllegalArgumentException("invalid hex byte"));
+        var invalid = new NettyInvalidParameterException(new IllegalArgumentException("invalid hex byte"));
 
         assertTrue(errorPages.report(request, response, invalid),
             "answered here, or the caller rethrows it to the connection as a 500");
@@ -395,7 +395,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
         pageIs("/../escape");
         var response = new NettyHttpServletResponse();
         var request = requestFor("/form", response);
-        var invalid = new InvalidParameterException(new IllegalArgumentException("invalid hex byte"));
+        var invalid = new NettyInvalidParameterException(new IllegalArgumentException("invalid hex byte"));
 
         assertTrue(errorPages.report(request, response, invalid),
             "a 400 page that resolves to nothing must not hand the failure back to the connection as a 500");
@@ -410,7 +410,7 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
         var request = requestFor("/download", response);
         response.setBufferSize(1);
         response.getOutputStream().write("streamed".getBytes(StandardCharsets.UTF_8));
-        var invalid = new InvalidParameterException(new IllegalArgumentException("invalid hex byte"));
+        var invalid = new NettyInvalidParameterException(new IllegalArgumentException("invalid hex byte"));
 
         assertFalse(errorPages.report(request, response, invalid),
             "the head is on the wire, so no 400 can replace it");

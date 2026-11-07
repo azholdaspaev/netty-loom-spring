@@ -5,9 +5,9 @@ package io.github.azholdaspaev.nettyloomspring.mvc.servlet;
  * {@code InvalidParameterException} ({@code StandardWrapperValve}). An {@code IllegalStateException}
  * because Servlet 6.1 {@code ServletRequest.getParameter} names that type for invalid %nn encoding.
  */
-final class InvalidParameterException extends IllegalStateException {
+final class NettyInvalidParameterException extends IllegalStateException {
 
-    InvalidParameterException(IllegalArgumentException malformedEscape) {
+    NettyInvalidParameterException(IllegalArgumentException malformedEscape) {
         super(malformedEscape.getMessage(), malformedEscape);
     }
 }

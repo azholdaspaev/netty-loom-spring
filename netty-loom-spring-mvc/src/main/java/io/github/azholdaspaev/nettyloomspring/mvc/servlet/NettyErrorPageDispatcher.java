@@ -53,7 +53,7 @@ public class NettyErrorPageDispatcher {
          * held, or 400 for a badly encoded parameter, as StandardWrapperValve.exception does.
          */
         Throwable rootCause = rootCauseOf(failure);
-        boolean invalidParameter = rootCause instanceof InvalidParameterException;
+        boolean invalidParameter = rootCause instanceof NettyInvalidParameterException;
         int status = failure == null ? response.getStatus()
             : invalidParameter ? HttpServletResponse.SC_BAD_REQUEST : HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
         String path = context.getErrorPageResolver().resolve(status, failure, rootCause);
