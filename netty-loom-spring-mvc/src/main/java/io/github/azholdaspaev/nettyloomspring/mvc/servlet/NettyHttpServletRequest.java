@@ -127,7 +127,7 @@ public class NettyHttpServletRequest implements HttpServletRequest {
         } catch (IllegalArgumentException malformedEscape) {
             // Only the first call throws: Tomcat's Request.doParseParameters marks parameters parsed before parsing.
             this.parameterMap = Map.of();
-            throw new InvalidParameterException(malformedEscape);
+            throw new NettyInvalidParameterException(malformedEscape);
         }
         this.parameterMap = toParameterMap(merged);
     }
