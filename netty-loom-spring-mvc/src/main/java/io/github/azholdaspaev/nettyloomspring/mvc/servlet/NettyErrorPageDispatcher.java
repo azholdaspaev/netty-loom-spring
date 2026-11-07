@@ -57,23 +57,18 @@ public class NettyErrorPageDispatcher {
         int status = failure == null ? response.getStatus()
             : invalidParameter ? HttpServletResponse.SC_BAD_REQUEST : HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
         String path = context.getErrorPageResolver().resolve(status, failure, rootCause);
-        if (path == null) {
-            if (invalidParameter && !response.isHeadWritten()) {
-                response.sendError(status);
-                return true;
-            }
-            return false;
-        }
         if (response.isHeadWritten()) {
-            if (!HttpExceptionHandler.isClientDisconnect(rootCause)) {
+            if (path != null && !HttpExceptionHandler.isClientDisconnect(rootCause)) {
                 log.warn("Cannot answer {} with error page {}: the response is already on the wire",
                     request.getRequestURI(), path, rootCause);
             }
             return false;
         }
-        NettyRequestDispatcher page = context.getDispatchFactory().resolve(path);
+        NettyRequestDispatcher page = path == null ? null : context.getDispatchFactory().resolve(path);
         if (page == null) {
-            log.warn("Error page {} does not resolve to a path inside this context", path);
+            if (path != null) {
+                log.warn("Error page {} does not resolve to a path inside this context", path);
+            }
             if (invalidParameter) {
                 response.sendError(status);
                 return true;

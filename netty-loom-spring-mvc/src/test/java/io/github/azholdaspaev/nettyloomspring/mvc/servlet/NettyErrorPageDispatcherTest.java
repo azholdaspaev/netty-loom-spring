@@ -417,6 +417,33 @@ class NettyErrorPageDispatcherTest extends DispatchFixture {
     }
 
     @Test
+    void shouldNotWarnAboutFailureWithoutPage() throws Exception {
+        var response = new NettyHttpServletResponse();
+        var request = requestFor("/boom", response);
+
+        var outcome = reportCapturingStandardError(request, response, new IllegalStateException("bang"));
+
+        assertFalse(outcome.reported());
+        assertFalse(outcome.logged().contains("WARN"),
+            "no page was registered, so none failed to resolve; log was: " + outcome.logged());
+    }
+
+    @Test
+    void shouldNotWarnAboutStreamedResponseWithoutPage() throws Exception {
+        List<HttpObject> written = new ArrayList<>();
+        var response = new NettyHttpServletResponse(NettyCookieSameSiteResolver.NO_OPINION, written::add);
+        var request = requestFor("/download", response);
+        response.setBufferSize(1);
+        response.getOutputStream().write("streamed".getBytes(StandardCharsets.UTF_8));
+
+        var outcome = reportCapturingStandardError(request, response, new IllegalStateException("bang"));
+
+        assertFalse(outcome.reported());
+        assertFalse(outcome.logged().contains("WARN"),
+            "no page was owed, so none was lost to the head on the wire; log was: " + outcome.logged());
+    }
+
+    @Test
     void shouldNotWarnAboutClientThatLeftMidResponse() throws Exception {
         String logged = reportOnStreamedResponse(new ClosedChannelException());
 
