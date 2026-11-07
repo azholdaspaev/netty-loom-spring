@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
@@ -30,6 +31,11 @@ public class FailingController {
     String withSession(HttpServletRequest request) {
         request.getSession(true);
         throw new IllegalStateException("failed after creating a session");
+    }
+
+    @GetMapping("/echo")
+    String echo(@RequestParam String message) {
+        return message;
     }
 
     @GetMapping("/gone-page")

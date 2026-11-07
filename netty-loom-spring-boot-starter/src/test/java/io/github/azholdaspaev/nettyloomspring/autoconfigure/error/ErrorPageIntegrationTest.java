@@ -168,4 +168,22 @@ class ErrorPageIntegrationTest {
                 "the framing was sound, so the connection serves the next request past the unread body");
         }
     }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void shouldAnswerMalformedEscapeInRequestParamWith400() throws Exception {
+        try (Socket socket = RawHttpClient.connect(port, Duration.ofSeconds(5))) {
+            RawHttpClient.send(socket, "GET /echo?message=%zz HTTP/1.1", "Host: localhost", "Accept: application/json");
+            RawHttpResponse response = RawHttpResponse.read(socket.getInputStream());
+
+            assertEquals(400, response.status(),
+                "the controller's @RequestParam read fails on the client's escape, which Tomcat answers 400");
+            String body = response.readBody();
+            assertTrue(body.contains("\"status\":400"), "Boot's error page renders the 400; got " + body);
+
+            RawHttpClient.send(socket, "GET /definitely-not-mapped HTTP/1.1", "Host: localhost");
+            assertEquals(404, RawHttpResponse.read(socket.getInputStream()).status(),
+                "a 400 for a parameter keeps the connection, unlike the tail handler's 500");
+        }
+    }
 }

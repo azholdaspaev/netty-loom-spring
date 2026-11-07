@@ -28,8 +28,9 @@ public class NettyErrorPageDispatcher {
     }
 
     /**
-     * Renders the error page for a dispatch that failed, and reports whether it did. A {@code false}
-     * answer leaves the response untouched, so the caller still owes the client whatever it holds.
+     * Renders the error page for a dispatch that failed, or with no page answers a badly encoded parameter
+     * with a bare 400, and reports whether it did either. A {@code false} answer leaves the response
+     * untouched, so the caller still owes the client whatever it holds.
      */
     public boolean report(HttpServletRequest request, NettyHttpServletResponse response, Throwable failure)
         throws ServletException, IOException {
@@ -49,12 +50,18 @@ public class NettyErrorPageDispatcher {
          * Both throwables are passed on: a page registered for the failure as thrown matches first, and
          * the root cause is what an application registers a page for, which is why Tomcat's
          * StandardHostValve.throwable unwraps too. A failure takes 500 over whatever status the response
-         * held, as StandardWrapperValve.exception does.
+         * held, or 400 for a badly encoded parameter, as StandardWrapperValve.exception does.
          */
         Throwable rootCause = rootCauseOf(failure);
-        int status = failure == null ? response.getStatus() : HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
+        boolean invalidParameter = rootCause instanceof InvalidParameterException;
+        int status = failure == null ? response.getStatus()
+            : invalidParameter ? HttpServletResponse.SC_BAD_REQUEST : HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
         String path = context.getErrorPageResolver().resolve(status, failure, rootCause);
         if (path == null) {
+            if (invalidParameter && !response.isHeadWritten()) {
+                response.sendError(status);
+                return true;
+            }
             return false;
         }
         if (response.isHeadWritten()) {
@@ -69,7 +76,7 @@ public class NettyErrorPageDispatcher {
             log.warn("Error page {} does not resolve to a path inside this context", path);
             return false;
         }
-        if (rootCause != null) {
+        if (rootCause != null && !invalidParameter) {
             log.error("Answering {} with error page {} after an uncaught failure",
                 request.getRequestURI(), path, rootCause);
         }

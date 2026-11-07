@@ -41,10 +41,9 @@ in any minor release.
 
 - An exception thrown out of the application's dispatch is answered `500` whatever its type, as
   on Tomcat: a filter's unwrapped `IllegalArgumentException` and `UnsupportedOperationException`
-  were answered `400` and `501`, while `http.server.requests` recorded `500`. A malformed
-  percent-escape in a parameter a filter reads is now `500` too, where Tomcat drops the pair.
-  A tail handler in your own `NettyPipelineDefinition` receives these failures wrapped, the
-  original as `getCause()`; `HttpExceptionHandler.isClientDisconnect` looks through the wrapper.
+  were answered `400` and `501`, while `http.server.requests` recorded `500`. A tail handler in
+  your own `NettyPipelineDefinition` receives these failures wrapped, the original as
+  `getCause()`; `HttpExceptionHandler.isClientDisconnect` looks through the wrapper.
   `HttpExceptionHandler.statusFor` maps `UnsupportedOperationException` to `500`, not `501`. See
   [Errors](https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/compatibility-matrix.md#errors)
   (#470).
@@ -116,6 +115,11 @@ in any minor release.
   `Transfer-Encoding` now declares the length of its body, so its keep-alive connection stays open
   instead of closing after the response. An empty response to `HEAD` declares no length, since it
   cannot know the one its `GET` would send (#452).
+- A malformed percent-escape in a query or form parameter now makes `getParameter` throw
+  `IllegalStateException`, answered `400` through the error page with no ERROR log, as on Tomcat.
+  It was a `400` from a filter and a `500` from a controller. See
+  [Request](https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/compatibility-matrix.md#request)
+  (#476).
 
 ## [0.1.0] — 2026-09-20
 
