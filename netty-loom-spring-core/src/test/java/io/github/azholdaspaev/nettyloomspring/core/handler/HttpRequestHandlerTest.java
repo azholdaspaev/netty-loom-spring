@@ -77,6 +77,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import javax.net.ssl.SSLException;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -569,6 +570,59 @@ class HttpRequestHandlerTest {
         assertEquals(0, orphan.refCnt(), "the writer owns the part it could not send");
         assertNull(capture.captured,
             "a client that left is why the response stopped, not a dispatcher that broke its contract");
+    }
+
+    @Test
+    void shouldKeepDepartedClientFailureFromPipelineTail() throws Exception {
+        CountDownLatch connectionClosed = new CountDownLatch(1);
+        AtomicReference<Thread> worker = new AtomicReference<>();
+        EmbeddedChannel channel = new EmbeddedChannel(
+            new HttpRequestHandler((_, _, _, writer) -> {
+                    connectionClosed.await();
+                    writer.write(new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
+                },
+                task -> worker.set(startQuietly(task)), connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT),
+            new HttpExceptionHandler());
+
+        receive(channel, HttpMethod.GET, "/");
+        channel.close();
+        connectionClosed.countDown();
+        worker.get().join();
+        String logged = StandardError.captureDuring(channel::runPendingTasks);
+
+        assertDoesNotThrow(channel::checkException,
+            "a client that left before the response must not surface at the pipeline tail");
+        assertFalse(logged.contains("WARN") || logged.contains("ERROR"),
+            "a client that left before the response is not a failure; log was: " + logged);
+    }
+
+    @Test
+    void shouldLogDispatchFailureAsErrorOnceClientHasLeft() throws Exception {
+        CountDownLatch connectionClosed = new CountDownLatch(1);
+        AtomicReference<Thread> worker = new AtomicReference<>();
+        EmbeddedChannel channel = new EmbeddedChannel(
+            new HttpRequestHandler((_, _, _, _) -> {
+                    connectionClosed.await();
+                    throw new IllegalStateException("the application's own fault");
+                },
+                task -> worker.set(startQuietly(task)), connectionRegistry, UNREACHED_WRITE_STALL_TIMEOUT),
+            new HttpExceptionHandler());
+
+        receive(channel, HttpMethod.GET, "/work");
+        channel.close();
+        connectionClosed.countDown();
+        worker.get().join();
+        String logged = StandardError.captureDuring(channel::runPendingTasks);
+
+        assertDoesNotThrow(channel::checkException,
+            "a failure there is no pipeline left to answer must not surface at its tail");
+        assertEquals(1L, logged.lines()
+                .filter(line -> line.contains("ERROR"))
+                .filter(line -> line.contains("GET /work"))
+                .count(),
+            "the application's failure is still the server's to report, once; log was: " + logged);
+        assertTrue(logged.contains("java.lang.IllegalStateException: the application's own fault"),
+            "the report must carry the failure itself; log was: " + logged);
     }
 
     @Test
