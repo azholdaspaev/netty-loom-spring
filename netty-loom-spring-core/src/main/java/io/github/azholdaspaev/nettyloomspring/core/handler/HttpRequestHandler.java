@@ -275,11 +275,25 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
             return;
         }
         try {
-            ctx.executor().execute(() -> ctx.fireExceptionCaught(new HttpDispatchException(cause)));
+            ctx.executor().execute(() -> {
+                if (ctx.isRemoved()) {
+                    logFailureAfterTeardown(request, cause);
+                } else {
+                    ctx.fireExceptionCaught(new HttpDispatchException(cause));
+                }
+            });
         } catch (RejectedExecutionException terminated) {
             String dispatch = request.method() + " " + request.uri();
             log.warn("Abandoned {} after the event loop terminated: {}", dispatch, cause.toString());
             log.debug("Abandoned {}", dispatch, cause);
+        }
+    }
+
+    private static void logFailureAfterTeardown(HttpRequest request, Throwable cause) {
+        if (HttpExceptionHandler.isClientDisconnect(cause)) {
+            log.debug("Client left before the response to {} {}", request.method(), request.uri(), cause);
+        } else {
+            log.error("Dispatch of {} {} failed after the client left", request.method(), request.uri(), cause);
         }
     }
 
