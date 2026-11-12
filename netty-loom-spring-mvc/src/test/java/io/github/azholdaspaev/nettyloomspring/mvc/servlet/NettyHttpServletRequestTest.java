@@ -408,6 +408,16 @@ class NettyHttpServletRequestTest {
     }
 
     @Test
+    void shouldMergeRepeatedNameQueryFirst() {
+        var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
+        var request = formRequest("/x?a=1", "a=2".getBytes(StandardCharsets.UTF_8), insecure);
+
+        assertArrayEquals(new String[] {"1", "2"}, request.getParameterValues("a"),
+            "Servlet 6.1 section 3.1.1 aggregates query string and post body data, query string first; "
+                + "Tomcat's Parameters.addParameter appends likewise");
+    }
+
+    @Test
     void shouldNotCorruptGetParameterOnceParameterMapArrayIsMutated() {
         var insecure = new HttpConnectionMetadata("198.51.100.2", 1, "198.51.100.9", 7070, false, "");
         var request = formRequest("/x?a=1", "b=2".getBytes(StandardCharsets.UTF_8), insecure);

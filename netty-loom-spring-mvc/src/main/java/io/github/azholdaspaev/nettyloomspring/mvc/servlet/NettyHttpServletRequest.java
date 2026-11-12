@@ -119,10 +119,10 @@ public class NettyHttpServletRequest implements HttpServletRequest {
             return;
         }
         Charset bodyCharset = characterEncoding != null ? characterEncoding : StandardCharsets.UTF_8;
-        Map<String, List<String>> merged;
+        Map<String, List<String>> merged = new LinkedHashMap<>();
         try {
             // queryDecoder defaults to UTF-8, keeping query decoding independent of the body charset.
-            merged = new LinkedHashMap<>(queryDecoder.parameters());
+            queryDecoder.parameters().forEach((name, values) -> merged.put(name, new ArrayList<>(values)));
             mergeFormBodyParameters(merged, bodyCharset);
         } catch (IllegalArgumentException malformedEscape) {
             // Only the first call throws: Tomcat's Request.doParseParameters marks parameters parsed before parsing.
