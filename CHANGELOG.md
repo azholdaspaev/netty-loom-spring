@@ -121,6 +121,9 @@ in any minor release.
   a controller. See
   [Request](https://github.com/azholdaspaev/netty-loom-spring/blob/main/docs/compatibility-matrix.md#request)
   (#476).
+- A parameter named once in the query string and again in a urlencoded `POST` body no longer makes
+  every `getParameter*` call throw `UnsupportedOperationException`, answered `500`: its values are
+  merged, query first (#482).
 
 ## [0.1.0] — 2026-09-20
 
