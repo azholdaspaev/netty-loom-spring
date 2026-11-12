@@ -119,10 +119,10 @@ public class NettyHttpServletRequest implements HttpServletRequest {
             return;
         }
         Charset bodyCharset = characterEncoding != null ? characterEncoding : StandardCharsets.UTF_8;
-        Map<String, List<String>> merged = new LinkedHashMap<>();
+        Map<String, List<String>> merged;
         try {
             // queryDecoder defaults to UTF-8, keeping query decoding independent of the body charset.
-            queryDecoder.parameters().forEach((name, values) -> merged.put(name, new ArrayList<>(values)));
+            merged = copyDecodedParameters(queryDecoder);
             mergeFormBodyParameters(merged, bodyCharset);
         } catch (IllegalArgumentException malformedEscape) {
             // Only the first call throws: Tomcat's Request.doParseParameters marks parameters parsed before parsing.
@@ -183,6 +183,12 @@ public class NettyHttpServletRequest implements HttpServletRequest {
         } catch (IOException stopped) {
             throw new UncheckedIOException(stopped);
         }
+    }
+
+    static Map<String, List<String>> copyDecodedParameters(QueryStringDecoder decoder) {
+        Map<String, List<String>> copy = new LinkedHashMap<>();
+        decoder.parameters().forEach((name, values) -> copy.put(name, new ArrayList<>(values)));
+        return copy;
     }
 
     static Map<String, String[]> toParameterMap(Map<String, List<String>> parameters) {
