@@ -147,9 +147,8 @@ class NettyDispatchRequestWrapper extends HttpServletRequestWrapper {
      * than replacing them (Servlet 6.1 section 9.1.1).
      */
     private Map<String, String[]> mergedParameters() {
-        Map<String, List<String>> merged = new LinkedHashMap<>();
-        new QueryStringDecoder(queryString, StandardCharsets.UTF_8, false).parameters()
-            .forEach((name, values) -> merged.put(name, new ArrayList<>(values)));
+        Map<String, List<String>> merged = NettyHttpServletRequest.copyDecodedParameters(
+            new QueryStringDecoder(queryString, StandardCharsets.UTF_8, false));
         super.getParameterMap().forEach((name, values) ->
             merged.computeIfAbsent(name, key -> new ArrayList<>()).addAll(List.of(values)));
         return NettyHttpServletRequest.toParameterMap(merged);
