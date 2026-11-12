@@ -413,7 +413,7 @@ class NettyHttpServletRequestTest {
         var request = formRequest("/x?a=1", "a=2".getBytes(StandardCharsets.UTF_8), insecure);
 
         assertArrayEquals(new String[] {"1", "2"}, request.getParameterValues("a"),
-            "Servlet 6.1 section 3.1.1 aggregates query string and post body data, query string first; "
+            "Servlet 6.1 section 3.1 aggregates query string and post body data, query string first; "
                 + "Tomcat's Parameters.addParameter appends likewise");
     }
 
